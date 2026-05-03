@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+build/
+
+# Environment variables (CRITICAL - contains secrets)
+.env
+.env.local
+.env.production
+.env.*.local
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Testing
+coverage/
+
+# Temp files
+*.tmp
+*.bak
+
+# Package archives
+*.rar
+*.zip
+
+# Upload artifacts
+upload/

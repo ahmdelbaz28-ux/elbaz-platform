@@ -1,0 +1,20 @@
+// بيئة التشغيل – لا يعتمد على أي ملف آخر
+export const env = {
+  isProduction: process.env.NODE_ENV === "production",
+  port: parseInt(process.env.PORT || "7860"),
+  databaseUrl: process.env.DATABASE_URL || "",
+  corsOrigins: process.env.CORS_ORIGINS || "",
+  appSecret: process.env.APP_SECRET || "",
+  frontendUrl: process.env.FRONTEND_URL || "",
+  emailProvider: process.env.EMAIL_PROVIDER || "console",
+  resendApiKey: process.env.RESEND_API_KEY || "",
+  emailFrom: process.env.EMAIL_FROM || "noreply@elbaz.com",
+  chatbotApiKey: process.env.CHATBOT_API_KEY || "",
+  chatbotApiBase: process.env.CHATBOT_API_BASE || "",
+  chatbotModel: process.env.CHATBOT_MODEL || "",
+  paymobApiKey: process.env.PAYMOB_API_KEY || "",
+  paymobHmacSecret: process.env.PAYMOB_HMAC_SECRET || "",
+  paymobIntegrationCard: process.env.PAYMOB_INTEGRATION_CARD || "",
+  paymobIntegrationPayPal: process.env.PAYMOB_INTEGRATION_PAYPAL || "",
+  paymobIntegrationWallet: process.env.PAYMOB_INTEGRATION_WALLET || "",
+};
