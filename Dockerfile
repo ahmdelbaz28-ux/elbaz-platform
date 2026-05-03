@@ -14,8 +14,9 @@ COPY --from=build /app/db ./db
 COPY --from=build /app/contracts ./contracts
 COPY --from=build /app/tsconfig.json ./
 COPY --from=build /app/package.json ./
+COPY --from=build /app/register-paths.cjs ./
 RUN chown -R 1000:1000 /app
 USER 1000
 EXPOSE 7860
 ENTRYPOINT ["dumb-init", "--"]
-CMD ["npx", "tsx", "api/boot.ts"]
+CMD ["npx", "tsx", "-r", "./register-paths.cjs", "api/boot.ts"]
