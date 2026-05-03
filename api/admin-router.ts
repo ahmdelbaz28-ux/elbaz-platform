@@ -1,22 +1,17 @@
-import { Hono } from "hono";
-import { getDb } from "./queries/connection";
-import { users, payments } from "../db/schema";
+import { z } from "zod";
 import { desc } from "drizzle-orm";
+import { createRouter, adminQuery } from "./middleware";
+import { getDb } from "./queries/connection";
+import { users, payments } from "@db/schema";
 
-const adminRouter = new Hono();
+export const adminRouter = createRouter({
+  getAllUsers: adminQuery.query(async () => {
+    const db = getDb();
+    return db.select().from(users).orderBy(desc(users.createdAt));
+  }),
 
-// Get all users
-adminRouter.get("/users", async (c) => {
-  const db = getDb();
-  const allUsers = await db.select().from(users).orderBy(desc(users.createdAt));
-  return c.json(allUsers);
+  getAllPayments: adminQuery.query(async () => {
+    const db = getDb();
+    return db.select().from(payments).orderBy(desc(payments.createdAt));
+  }),
 });
-
-// Get all payments
-adminRouter.get("/payments", async (c) => {
-  const db = getDb();
-  const allPayments = await db.select().from(payments).orderBy(desc(payments.createdAt));
-  return c.json(allPayments);
-});
-
-export { adminRouter };
