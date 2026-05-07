@@ -36,4 +36,7 @@ export const env = {
   // Aiven Platform API (for service management & monitoring)
   aivenToken: process.env.AIVEN_TOKEN || "",
   aivenProject: process.env.AIVEN_PROJECT || "ahmdelbaz",
+
+  // Sentry Error Tracking
+  sentryDsn: process.env.SENTRY_DSN || "",
 };

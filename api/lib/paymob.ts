@@ -246,7 +246,7 @@ export async function refundPaymobPayment(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       auth_token: authToken,
-      txn: Number(payment.gatewayTxnId || payment.paymobTransactionId),
+      txn: Number(payment.gatewayTxnId),
       amount_cents: Math.round(parseFloat(String(payment.amount)) * 100),
     }),
   });

@@ -163,6 +163,15 @@ app.all("/api/trpc/*", async (c) => {
     createContext: createContext,
     onError: function(opts) {
       console.error("[tRPC Error] " + opts.path + ": " + opts.error.message);
+      // Send to Sentry if configured
+      if (process.env.SENTRY_DSN) {
+        import("@sentry/node").then(function(Sentry) {
+          Sentry.captureException(opts.error, {
+            tags: { trpc_path: opts.path, type: opts.error.code },
+            contexts: { tRPC: { path: opts.path, input: JSON.stringify(opts.input || {}) } },
+          });
+        }).catch(function() {});
+      }
     },
   });
 });
@@ -324,7 +333,7 @@ app.post("/api/webhooks/paymob", async (c) => {
 
           await db.update(payments).set({
             status: "paid",
-            paymobTransactionId: params.id,
+            gatewayTxnId: params.id,
             paidAt: new Date(),
           }).where(eq(payments.transactionId, merchantOrderId));
           console.log("[Paymob] Payment confirmed (HMAC verified): " + merchantOrderId);
@@ -425,6 +434,12 @@ var server = createServer(async (req, res) => {
     }
   } catch (e) {
     console.error("[Server Error] " + String(e));
+ // Send to Sentry if configured
+    if (process.env.SENTRY_DSN) {
+      import("@sentry/node").then(function(Sentry) {
+        Sentry.captureException(e);
+      }).catch(function() {});
+    }
     res.writeHead(500);
     res.end("Error");
   }
@@ -444,7 +459,7 @@ async function initSentry() {
   try {
     const Sentry = await import("@sentry/node");
     Sentry.init({
-      dsn,
+      dsn: env.sentryDsn || dsn,
       environment: env.isProduction ? "production" : "development",
       release: process.env.npm_package_version || "0.0.0",
       tracesSampleRate: env.isProduction ? 0.1 : 1.0,
