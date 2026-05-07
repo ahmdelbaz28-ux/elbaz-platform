@@ -1,0 +1,4 @@
+RESEND_API_KEY=re_gy2kcsMd_JqyPqGQkL2bUFZbo72iYYjQg
+RESEND_FROM_EMAIL=noreply@ahmedelbaz.qzz.io
+RESEND_FROM_NAME=Ahmed El-Baz Platform
+DOMAIN=ahmedelbaz.qzz.io

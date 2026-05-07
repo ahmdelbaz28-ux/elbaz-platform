@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-exporter
+  namespace: ahmedelbaz
+  labels:
+    app: mysql-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql-exporter
+  template:
+    metadata:
+      labels:
+        app: mysql-exporter
+    spec:
+      securityContext:
+        runAsUser: 65534
+        runAsGroup: 65534
+      containers:
+        - name: mysql-exporter
+          image: prom/mysqld-exporter:v0.15.0
+          args:
+            - --mysqld.username=exporter
+            - --mysqld.address=mysql:3306
+            - --collect.info_schema.processlist
+            - --collect.info_schema.innodb_metrics
+            - --collect.info_schema.tablestats
+            - --collect.perf_schema.tableiowaits
+            - --collect.perf_schema.indexiowaits
+            - --web.listen-address=:9104
+          ports:
+            - containerPort: 9104
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          securityContext:
+            runAsUser: 65534
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+          env:
+            - name: DATA_SOURCE_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secrets
+                  key: exporter-dsn
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-exporter
+  namespace: ahmedelbaz
+  labels:
+    app: mysql-exporter
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9104
+      targetPort: 9104
+      protocol: TCP
+  selector:
+    app: mysql-exporter

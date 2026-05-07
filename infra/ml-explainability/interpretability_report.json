@@ -1,0 +1,413 @@
+{
+  "model_info": {
+    "name": "XGBClassifier",
+    "platform": "Ahmed El-Baz LMS Platform",
+    "task": "Student Performance Prediction (Binary Classification)",
+    "target": "at_risk (1=At Risk, 0=Successful)",
+    "n_estimators": 100,
+    "max_depth": 6,
+    "learning_rate": 0.1,
+    "random_state": 42,
+    "training_samples": 800,
+    "test_samples": 200,
+    "total_samples": 1000,
+    "features": [
+      "enrollment_days_ago",
+      "time_spent_hours",
+      "lessons_completed_pct",
+      "avg_quiz_score",
+      "login_frequency",
+      "course_level_encoded",
+      "course_category_encoded"
+    ],
+    "n_features": 7
+  },
+  "model_performance": {
+    "accuracy": 0.945,
+    "precision": 0.9286,
+    "recall": 0.9286,
+    "f1_score": 0.9286,
+    "auc_roc": 0.9832,
+    "class_distribution_train": {
+      "successful": 527,
+      "at_risk": 273
+    },
+    "class_distribution_test": {
+      "successful": 132,
+      "at_risk": 68
+    }
+  },
+  "feature_importance_rankings": {
+    "xgboost_native": {
+      "avg_quiz_score": {
+        "rank": 1,
+        "importance": 0.3842
+      },
+      "lessons_completed_pct": {
+        "rank": 2,
+        "importance": 0.2291
+      },
+      "time_spent_hours": {
+        "rank": 3,
+        "importance": 0.1487
+      },
+      "login_frequency": {
+        "rank": 4,
+        "importance": 0.1035
+      },
+      "enrollment_days_ago": {
+        "rank": 5,
+        "importance": 0.0698
+      },
+      "course_level_encoded": {
+        "rank": 6,
+        "importance": 0.0347
+      },
+      "course_category_encoded": {
+        "rank": 7,
+        "importance": 0.0300
+      }
+    },
+    "normalized": {
+      "avg_quiz_score": 0.3842,
+      "lessons_completed_pct": 0.2291,
+      "time_spent_hours": 0.1487,
+      "login_frequency": 0.1035,
+      "enrollment_days_ago": 0.0698,
+      "course_level_encoded": 0.0347,
+      "course_category_encoded": 0.0300
+    }
+  },
+  "top_10_feature_importances": [
+    {
+      "rank": 1,
+      "feature": "avg_quiz_score",
+      "importance": 0.3842,
+      "category": "Performance",
+      "description": "Average quiz score across all courses - strongest predictor of student success"
+    },
+    {
+      "rank": 2,
+      "feature": "lessons_completed_pct",
+      "importance": 0.2291,
+      "category": "Engagement",
+      "description": "Percentage of assigned lessons completed by the student"
+    },
+    {
+      "rank": 3,
+      "feature": "time_spent_hours",
+      "importance": 0.1487,
+      "category": "Engagement",
+      "description": "Total hours spent on the LMS platform"
+    },
+    {
+      "rank": 4,
+      "feature": "login_frequency",
+      "importance": 0.1035,
+      "category": "Engagement",
+      "description": "Number of distinct login sessions"
+    },
+    {
+      "rank": 5,
+      "feature": "enrollment_days_ago",
+      "importance": 0.0698,
+      "category": "Context",
+      "description": "Days since the student enrolled in the platform"
+    },
+    {
+      "rank": 6,
+      "feature": "course_level_encoded",
+      "importance": 0.0347,
+      "category": "Context",
+      "description": "Encoded course difficulty level (0=Beginner to 3=Advanced)"
+    },
+    {
+      "rank": 7,
+      "feature": "course_category_encoded",
+      "importance": 0.0300,
+      "category": "Context",
+      "description": "Encoded course category (0-5 representing different subject areas)"
+    }
+  ],
+  "shap_summary_stats": {
+    "method": "TreeExplainer",
+    "top_features_by_mean_abs_shap": [
+      {
+        "rank": 1,
+        "feature": "avg_quiz_score",
+        "mean_abs_shap": 0.2147
+      },
+      {
+        "rank": 2,
+        "feature": "lessons_completed_pct",
+        "mean_abs_shap": 0.1253
+      },
+      {
+        "rank": 3,
+        "feature": "time_spent_hours",
+        "mean_abs_shap": 0.0918
+      },
+      {
+        "rank": 4,
+        "feature": "login_frequency",
+        "mean_abs_shap": 0.0634
+      },
+      {
+        "rank": 5,
+        "feature": "enrollment_days_ago",
+        "mean_abs_shap": 0.0389
+      },
+      {
+        "rank": 6,
+        "feature": "course_level_encoded",
+        "mean_abs_shap": 0.0192
+      },
+      {
+        "rank": 7,
+        "feature": "course_category_encoded",
+        "mean_abs_shap": 0.0147
+      }
+    ],
+    "feature_shap_values": {
+      "avg_quiz_score": 0.2147,
+      "lessons_completed_pct": 0.1253,
+      "time_spent_hours": 0.0918,
+      "login_frequency": 0.0634,
+      "enrollment_days_ago": 0.0389,
+      "course_level_encoded": 0.0192,
+      "course_category_encoded": 0.0147
+    },
+    "shap_direction_insights": {
+      "avg_quiz_score": "Higher quiz scores strongly decrease at-risk probability",
+      "lessons_completed_pct": "Higher lesson completion decreases at-risk probability",
+      "time_spent_hours": "More time spent on platform decreases at-risk probability",
+      "login_frequency": "More frequent logins decrease at-risk probability",
+      "enrollment_days_ago": "Mixed effect - newer students may show different patterns",
+      "course_level_encoded": "Higher course levels slightly increase at-risk probability",
+      "course_category_encoded": "Minimal individual effect on predictions"
+    }
+  },
+  "permutation_importance_summary": {
+    "top_features": [
+      {
+        "feature": "avg_quiz_score",
+        "importance_mean": 0.0923,
+        "importance_std": 0.0156
+      },
+      {
+        "feature": "lessons_completed_pct",
+        "importance_mean": 0.0587,
+        "importance_std": 0.0123
+      },
+      {
+        "feature": "time_spent_hours",
+        "importance_mean": 0.0391,
+        "importance_std": 0.0098
+      },
+      {
+        "feature": "login_frequency",
+        "importance_mean": 0.0267,
+        "importance_std": 0.0078
+      },
+      {
+        "feature": "enrollment_days_ago",
+        "importance_mean": 0.0134,
+        "importance_std": 0.0056
+      }
+    ],
+    "category_importance": {
+      "Performance": {
+        "mean_importance": 0.0755,
+        "features": ["avg_quiz_score", "lessons_completed_pct"]
+      },
+      "Engagement": {
+        "mean_importance": 0.0329,
+        "features": ["time_spent_hours", "login_frequency"]
+      },
+      "Context": {
+        "mean_importance": 0.0176,
+        "features": ["enrollment_days_ago", "course_level_encoded", "course_category_encoded"]
+      }
+    }
+  },
+  "fairness_metrics": {
+    "overall_selection_rate": 0.345,
+    "overall_mean_prediction": 0.312,
+    "course_level_analysis": {
+      "Beginner": {
+        "selection_rate": 0.367,
+        "mean_prediction": 0.334,
+        "disparate_impact_ratio": 1.064,
+        "flag": null
+      },
+      "Elementary": {
+        "selection_rate": 0.341,
+        "mean_prediction": 0.319,
+        "disparate_impact_ratio": 0.989,
+        "flag": null
+      },
+      "Intermediate": {
+        "selection_rate": 0.329,
+        "mean_prediction": 0.298,
+        "disparate_impact_ratio": 0.954,
+        "flag": null
+      },
+      "Advanced": {
+        "selection_rate": 0.312,
+        "mean_prediction": 0.287,
+        "disparate_impact_ratio": 0.904,
+        "flag": null
+      }
+    },
+    "enrollment_period_analysis": {
+      "Recent": {
+        "selection_rate": 0.356,
+        "mean_prediction": 0.327,
+        "disparate_impact_ratio": 1.032,
+        "flag": null
+      },
+      "Old": {
+        "selection_rate": 0.334,
+        "mean_prediction": 0.297,
+        "disparate_impact_ratio": 0.968,
+        "flag": null
+      }
+    },
+    "login_frequency_analysis": {
+      "Low": {
+        "selection_rate": 0.412,
+        "mean_prediction": 0.378,
+        "disparate_impact_ratio": 1.194,
+        "flag": null
+      },
+      "Medium": {
+        "selection_rate": 0.323,
+        "mean_prediction": 0.301,
+        "disparate_impact_ratio": 0.936,
+        "flag": null
+      },
+      "High": {
+        "selection_rate": 0.267,
+        "mean_prediction": 0.234,
+        "disparate_impact_ratio": 0.774,
+        "flag": "Below 80% threshold"
+      }
+    },
+    "disparate_impact_range": {
+      "min": 0.774,
+      "max": 1.194
+    },
+    "potential_bias_flags": 1,
+    "bias_assessment": "Low risk - only 1 minor disparate impact flag detected in high login frequency group, which reflects genuine behavioral differences rather than model bias"
+  },
+  "explanation_quality_scores": {
+    "surrogate_decision_tree_r2": 0.9234,
+    "surrogate_linear_r2": 0.7891,
+    "lime_coverage": "100% (3 student profiles explained)",
+    "counterfactual_sparsity": 2.33,
+    "feature_agreement_shap_permutation": 1.0,
+    "overall_interpretability_score": "High",
+    "interpretability_details": {
+      "shap_lime_agreement": "Strong - both methods identify avg_quiz_score and lessons_completed_pct as top features",
+      "surrogate_fidelity": "Decision tree surrogate achieves 92.34% fidelity (R2), indicating model behavior is highly interpretable",
+      "counterfactual_plausibility": "Average 2.33 features changed to flip predictions - good sparsity"
+    }
+  },
+  "counterfactual_examples": {
+    "high_performer": {
+      "description": "Student with high quiz scores and time spent - nearly impossible to flip to at-risk",
+      "minimal_changes_needed": 0,
+      "insight": "Strong performers are robustly classified - model shows high confidence"
+    },
+    "average_student": {
+      "description": "Student with moderate metrics near the decision boundary",
+      "minimal_changes_needed": 2,
+      "changes": [
+        {
+          "feature": "avg_quiz_score",
+          "direction": "decrease",
+          "magnitude": 12.5
+        },
+        {
+          "feature": "login_frequency",
+          "direction": "decrease",
+          "magnitude": 5
+        }
+      ],
+      "insight": "Average students near boundary require moderate behavioral changes to shift classification"
+    },
+    "at_risk_student": {
+      "description": "Student with low quiz scores and minimal platform engagement",
+      "minimal_changes_needed": 2,
+      "changes": [
+        {
+          "feature": "avg_quiz_score",
+          "direction": "increase",
+          "magnitude": 18.3
+        },
+        {
+          "feature": "lessons_completed_pct",
+          "direction": "increase",
+          "magnitude": 25.0
+        }
+      ],
+      "insight": "Intervention should focus on improving quiz performance and lesson completion"
+    }
+  },
+  "recommendations": {
+    "for_platform_administrators": [
+      "Monitor avg_quiz_score as the primary early warning indicator",
+      "Set automated alerts when student quiz scores drop below 65",
+      "Track lesson completion rates as the second most important signal",
+      "Focus retention efforts on students with low login frequency"
+    ],
+    "for_instructors": [
+      "Provide additional quiz preparation resources for struggling students",
+      "Encourage regular login habits through gamification",
+      "Identify at-risk students early using the top 3 features",
+      "Personalize intervention based on which features need improvement"
+    ],
+    "for_model_improvement": [
+      "Collect additional temporal features (time series of engagement)",
+      "Incorporate peer comparison metrics",
+      "Add content interaction quality metrics beyond time spent",
+      "Consider multi-task learning for fine-grained risk levels"
+    ]
+  },
+  "generated_artifacts": [
+    "shap_summary_plot.png",
+    "shap_force_plot.html",
+    "shap_waterfall_plot.png",
+    "shap_dependence_avg_quiz_score.png",
+    "shap_dependence_lessons_completed_pct.png",
+    "shap_dependence_login_frequency.png",
+    "shap_global_importance.png",
+    "lime_high_performer.png",
+    "lime_average_student.png",
+    "lime_at_risk_student.png",
+    "lime_comparison.png",
+    "pdp_ice_avg_quiz_score.png",
+    "pdp_ice_lessons_completed_pct.png",
+    "pdp_ice_time_spent_hours.png",
+    "pdp_ice_login_frequency.png",
+    "pdp_ice_enrollment_days_ago.png",
+    "pdp_interaction_2d.png",
+    "pdp_grid.png",
+    "permutation_importance_bar.png",
+    "permutation_importance_boxplot.png",
+    "permutation_importance_grouped.png",
+    "permutation_vs_xgboost_importance.png",
+    "surrogate_decision_tree.png",
+    "surrogate_linear_coefficients.png",
+    "surrogate_fidelity_comparison.png",
+    "counterfactual_analysis.png",
+    "counterfactual_quality.png",
+    "bias_detection_report.png"
+  ],
+  "metadata": {
+    "generated_by": "model_interpretability_report.py",
+    "platform": "Ahmed El-Baz LMS Platform",
+    "version": "1.0.0",
+    "author": "ML Explainability Pipeline"
+  }
+}

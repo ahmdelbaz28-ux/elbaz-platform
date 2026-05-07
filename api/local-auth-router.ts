@@ -1,0 +1,305 @@
+import { z } from "zod";
+import { TRPCError } from "@trpc/server";
+import { eq, sql } from "drizzle-orm";
+import { createRouter, publicQuery, authedQuery, checkRateLimit, clearRateLimit } from "./middleware";
+import { getDb } from "./queries/connection";
+import { users } from "@db/schema";
+import { hashPassword, verifyPassword } from "./lib/password";
+import { createToken, verifyToken } from "./lib/jwt";
+import { initiatePasswordReset, completePasswordReset, initiateEmailVerification, completeEmailVerification } from "./lib/email";
+import { setAuthCookie } from "./context";
+
+export const localAuthRouter = createRouter({
+  register: publicQuery
+    .input(
+      z.object({
+        username: z.string()
+          .min(3, "Username must be at least 3 characters")
+          .max(30, "Username too long")
+          .regex(/^[a-zA-Z0-9_]+$/, "Username can only contain letters, numbers, and underscores"),
+        password: z.string()
+          .min(8, "Password must be at least 8 characters")
+          .max(100),
+        name: z.string().min(1).max(255).optional(),
+        email: z.string().email("Invalid email format").optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      // ✅ SECURITY FIX: Use rightmost IP from x-forwarded-for to prevent spoofing
+      // Attackers can set x-forwarded-for to anything — the rightmost value
+      // is set by the trusted reverse proxy (or use x-real-ip if available)
+      const forwarded = ctx.req.headers.get("x-forwarded-for");
+      const realIp = ctx.req.headers.get("x-real-ip");
+      const ip = realIp || (forwarded ? forwarded.split(",").pop()?.trim() : "unknown");
+      await checkRateLimit(ip, "register");
+
+      const db = getDb();
+      const existing = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.username, input.username))
+        .limit(1);
+
+      if (existing.length > 0) {
+        throw new TRPCError({ code: "CONFLICT", message: "Username already taken" });
+      }
+
+      // ✅ SECURITY FIX: Check email uniqueness if provided
+      if (input.email) {
+        const existingEmail = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.email, input.email))
+          .limit(1);
+
+        if (existingEmail.length > 0) {
+          throw new TRPCError({ code: "CONFLICT", message: "Email already registered" });
+        }
+      }
+
+      // ✅ bcrypt rounds=12 already in hashPassword
+      const passwordHash = await hashPassword(input.password);
+      const [user] = await db.insert(users).values({
+        username: input.username,
+        passwordHash,
+        name: input.name || input.username,
+        email: input.email || null,
+      });
+
+      const userId = Number(user.insertId);
+      const token = await createToken({ userId, username: input.username, role: "user", tokenVersion: 0 });
+      await clearRateLimit(ip, "register");
+
+      // Set HttpOnly Secure Cookie (primary auth method)
+      setAuthCookie(ctx.req.headers, token, ctx.resHeaders);
+
+      return {
+        user: { id: userId, username: input.username, name: input.name || input.username },
+      };
+    }),
+
+  login: publicQuery
+    .input(
+      z.object({
+        username: z.string().min(1),
+        password: z.string().min(1),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      // ✅ SECURITY FIX: Use rightmost IP from x-forwarded-for to prevent spoofing
+      const forwarded = ctx.req.headers.get("x-forwarded-for");
+      const realIp = ctx.req.headers.get("x-real-ip");
+      const ip = realIp || (forwarded ? forwarded.split(",").pop()?.trim() : "unknown");
+      await checkRateLimit(ip, "login");
+
+      const db = getDb();
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.username, input.username))
+        .limit(1);
+
+      // ✅ Always run verifyPassword even if user not found (timing attack prevention)
+      const dummyHash = "$2a$12$dummy.hash.to.prevent.timing.attacks.xxxxxxxxxxxxxxxxx";
+      const valid = user
+        ? await verifyPassword(input.password, user.passwordHash)
+        : await verifyPassword(input.password, dummyHash).then(() => false);
+
+      if (!user || !valid) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "Invalid username or password",
+        });
+      }
+
+      // ✅ SECURITY: Increment tokenVersion on every login (Single Device Policy)
+      // This forces a "Single Session" rule: when a user logs in on a new device,
+      // all previous sessions are immediately invalidated. This is critical for 
+      // LMS business models to prevent account sharing.
+      const newTokenVersion = user.tokenVersion + 1;
+
+      await db
+        .update(users)
+        .set({ 
+          lastSignInAt: new Date(),
+          tokenVersion: newTokenVersion 
+        })
+        .where(eq(users.id, user.id));
+
+      const token = await createToken({
+        userId: user.id,
+        username: user.username,
+        role: user.role,
+        tokenVersion: newTokenVersion,
+      });
+
+      // ✅ Clear rate limit on success
+      const forwarded2 = ctx.req.headers.get("x-forwarded-for");
+      const realIp2 = ctx.req.headers.get("x-real-ip");
+      const loginIp = realIp2 || (forwarded2 ? forwarded2.split(",").pop()?.trim() : "unknown");
+      await clearRateLimit(loginIp, "login");
+
+      // Set HttpOnly Secure Cookie (primary auth method)
+      setAuthCookie(ctx.req.headers, token, ctx.resHeaders);
+
+      return {
+        user: {
+          id: user.id,
+          username: user.username,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          avatar: user.avatar,
+        },
+      };
+    }),
+
+  me: authedQuery.query(async ({ ctx }) => {
+    return {
+      id: ctx.user.id,
+      username: ctx.user.username,
+      name: ctx.user.name,
+      email: ctx.user.email,
+      role: ctx.user.role,
+      avatar: ctx.user.avatar,
+      preferredLanguage: ctx.user.preferredLanguage,
+      emailVerifiedAt: ctx.user.emailVerifiedAt,
+    };
+  }),
+
+  updateProfile: authedQuery
+    .input(
+      z.object({
+        name: z.string().min(1).max(255).optional(),
+        email: z.string().email().optional(),
+        preferredLanguage: z.enum(["en", "ar"]).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = getDb();
+
+      // ✅ SECURITY: Check email uniqueness before updating
+      if (input.email !== undefined && input.email !== ctx.user.email) {
+        const existingEmail = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.email, input.email))
+          .limit(1);
+
+        if (existingEmail.length > 0) {
+          throw new TRPCError({ code: "CONFLICT", message: "Email already in use" });
+        }
+      }
+
+      await db
+        .update(users)
+        .set({
+          ...(input.name !== undefined && { name: input.name }),
+          ...(input.email !== undefined && { email: input.email }),
+          ...(input.preferredLanguage !== undefined && { preferredLanguage: input.preferredLanguage }),
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, ctx.user.id));
+
+      return { success: true };
+    }),
+
+  changePassword: authedQuery
+    .input(
+      z.object({
+        currentPassword: z.string().min(1),
+        newPassword: z.string().min(8).max(100),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = getDb();
+      const [user] = await db
+        .select({ passwordHash: users.passwordHash })
+        .from(users)
+        .where(eq(users.id, ctx.user.id))
+        .limit(1);
+
+      const valid = await verifyPassword(input.currentPassword, user.passwordHash);
+      if (!valid) {
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "Current password is incorrect" });
+      }
+
+      const newHash = await hashPassword(input.newPassword);
+      // ✅ SECURITY FIX: Increment tokenVersion on password change — invalidates all existing tokens
+      await db
+        .update(users)
+        .set({
+          passwordHash: newHash,
+          tokenVersion: sql`${users.tokenVersion} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, ctx.user.id));
+
+      return { success: true };
+    }),
+
+  // ═══════════════════════════════════════════════════════════
+  // ✅ CRITICAL FIX: Password Reset Flow
+  // Previously, users who forgot their password were permanently locked out!
+  // ═══════════════════════════════════════════════════════════
+
+  // Step 1: Request password reset (sends email with reset link)
+  forgotPassword: publicQuery
+    .input(z.object({ email: z.string().email() }))
+    .mutation(async ({ ctx, input }) => {
+      // ✅ FIXED: Use dedicated rate limit for forgotPassword (not shared with register)
+      const forwarded = ctx.req.headers.get("x-forwarded-for");
+      const realIp = ctx.req.headers.get("x-real-ip");
+      const ip = realIp || (forwarded ? forwarded.split(",").pop()?.trim() : "unknown");
+      await checkRateLimit(ip, "forgotPassword");
+
+      const result = await initiatePasswordReset(input.email);
+      return result;
+    }),
+
+  // Step 2: Complete password reset (verify token + set new password)
+  resetPassword: publicQuery
+    .input(z.object({
+      userId: z.number().int().positive(),
+      token: z.string().min(1),
+      newPassword: z.string().min(8).max(100),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // ✅ FIXED: Add rate limiting to resetPassword to prevent brute-force
+      const forwarded = ctx.req.headers.get("x-forwarded-for");
+      const realIp = ctx.req.headers.get("x-real-ip");
+      const ip = realIp || (forwarded ? forwarded.split(",").pop()?.trim() : "unknown");
+      await checkRateLimit(ip, "resetPassword");
+
+      const result = await completePasswordReset(
+        input.userId,
+        input.token,
+        input.newPassword,
+      );
+
+      if (!result.success) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: result.message });
+      }
+
+      return result;
+    }),
+
+  sendVerificationEmail: authedQuery
+    .mutation(async ({ ctx }) => {
+      const result = await initiateEmailVerification(ctx.user.id);
+      return result;
+  }),
+
+  verifyEmail: publicQuery
+    .input(z.object({
+      userId: z.number().int().positive(),
+      token: z.string().min(1),
+    }))
+    .mutation(async ({ input }) => {
+      const result = await completeEmailVerification(input.userId, input.token);
+      if (!result.success) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: result.message });
+      }
+      return result;
+  }),
+});

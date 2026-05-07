@@ -1,0 +1,100 @@
+slos:
+  - name: api-availability
+    display_name: API Availability
+    description: Percentage of successful API requests (non-5xx responses)
+    target: 99.9
+    window: 30d
+    service: backend
+    sli:
+      type: availability
+      metric: |
+        1 - (
+          sum(rate(http_requests_total{status=~"5..", namespace="ahmedelbaz"}[5m]))
+          /
+          sum(rate(http_requests_total{namespace="ahmedelbaz"}[5m]))
+        )
+    error_budget:
+      target: 0.001
+      window: 30d
+      alerting:
+        page:
+          burn_rate: 14.4
+          window: 5m
+        ticket:
+          burn_rate: 6.0
+          window: 30m
+
+  - name: api-latency-p99
+    display_name: API Latency P99
+    description: P99 request latency for all API endpoints
+    target: 99.0
+    window: 30d
+    service: backend
+    sli:
+      type: latency
+      metric: |
+        1 - (
+          sum(rate(http_request_duration_seconds_bucket{le="0.5", namespace="ahmedelbaz"}[5m]))
+          /
+          sum(rate(http_request_duration_seconds_count{namespace="ahmedelbaz"}[5m]))
+        )
+    error_budget:
+      target: 0.01
+      window: 30d
+      alerting:
+        page:
+          burn_rate: 14.4
+          window: 5m
+        ticket:
+          burn_rate: 6.0
+          window: 30m
+
+  - name: login-availability
+    display_name: Login Availability
+    description: Percentage of successful login attempts
+    target: 99.5
+    window: 30d
+    service: backend
+    sli:
+      type: availability
+      metric: |
+        1 - (
+          sum(rate(http_requests_total{endpoint="/api/v1/auth/login", status=~"5..", namespace="ahmedelbaz"}[5m]))
+          /
+          sum(rate(http_requests_total{endpoint="/api/v1/auth/login", namespace="ahmedelbaz"}[5m]))
+        )
+    error_budget:
+      target: 0.005
+      window: 30d
+      alerting:
+        page:
+          burn_rate: 14.4
+          window: 5m
+        ticket:
+          burn_rate: 6.0
+          window: 30m
+
+  - name: payment-latency
+    display_name: Payment Processing Latency
+    description: P99 latency for payment processing endpoint
+    target: 99.0
+    window: 30d
+    service: backend
+    sli:
+      type: latency
+      metric: |
+        1 - (
+          sum(rate(http_request_duration_seconds_bucket{le="3.0", endpoint="/api/v1/payments", namespace="ahmedelbaz"}[5m]))
+          /
+          sum(rate(http_request_duration_seconds_count{endpoint="/api/v1/payments", namespace="ahmedelbaz"}[5m]))
+        )
+    error_budget:
+      target: 0.01
+      window: 30d
+      alerting:
+        page:
+          burn_rate: 14.4
+          window: 5m
+        ticket:
+          burn_rate: 6.0
+          window: 30m

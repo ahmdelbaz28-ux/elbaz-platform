@@ -1,0 +1,176 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg: #070b12;
+  --color-text: #e8f0fe;
+  --color-accent: #06b6d4;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* ── Hero glow effect (replaces inline style) ── */
+.hero-glow {
+  background: radial-gradient(ellipse at 20% 30%, rgba(6,182,212,0.08) 0%, transparent 50%);
+}
+
+/* ── CTA gradient banner (replaces inline style) ── */
+.cta-gradient {
+  background: linear-gradient(135deg, rgba(6,182,212,0.08) 0%, rgba(16,185,129,0.05) 100%);
+}
+
+/* ── Promo pattern overlay (replaces inline style) ── */
+.promo-pattern {
+  background-image: radial-gradient(circle at 25% 50%, rgba(255,255,255,0.3) 0%, transparent 50%),
+    radial-gradient(circle at 75% 50%, rgba(255,255,255,0.2) 0%, transparent 50%);
+}
+
+/* ── Gradient text utility ── */
+.gradient-text {
+  background: linear-gradient(135deg, #06b6d4, #22d3ee, #10b981);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Floating animation ── */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* ── Grid pattern for sections ── */
+.grid-pattern {
+  background-image: linear-gradient(rgba(6,182,212,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(6,182,212,0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
+}
+
+/* ── Fade in animation ── */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ── Glow button effect ── */
+.glow-btn {
+  box-shadow: 0 0 20px rgba(6,182,212,0.3);
+  transition: box-shadow 0.3s ease;
+}
+.glow-btn:hover {
+  box-shadow: 0 0 30px rgba(6,182,212,0.5), 0 0 60px rgba(6,182,212,0.2);
+}
+
+/* ── Hero background image ── */
+.hero-bg-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  opacity: 0.4;
+  filter: brightness(0.8) saturate(1.2);
+}
+
+/* ── Hero image animations ── */
+@keyframes heroGlowPulse {
+  0%, 100% { box-shadow: 0 0 30px rgba(6,182,212,0.4), 0 0 60px rgba(6,182,212,0.2), 0 0 100px rgba(6,182,212,0.1), inset 0 0 30px rgba(6,182,212,0.05); }
+  50% { box-shadow: 0 0 40px rgba(6,182,212,0.6), 0 0 80px rgba(6,182,212,0.3), 0 0 120px rgba(6,182,212,0.15), inset 0 0 40px rgba(6,182,212,0.08); }
+}
+@keyframes heroShimmer {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+@keyframes heroFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+.hero-image-wrapper {
+  position: relative;
+  animation: heroFloat 4s ease-in-out infinite;
+}
+.hero-image-glow-ring {
+  position: relative;
+  border-radius: 1rem;
+  padding: 3px;
+  background: linear-gradient(135deg, rgba(6,182,212,0.6), rgba(16,185,129,0.3), rgba(6,182,212,0.6));
+  animation: heroGlowPulse 3s ease-in-out infinite;
+}
+.hero-image-display {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 0.85rem;
+  opacity: 1;
+  object-fit: cover;
+}
+.hero-image-shimmer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 0 0 1rem 1rem;
+  overflow: hidden;
+  background: linear-gradient(90deg, transparent, rgba(6,182,212,0.5), transparent);
+  animation: heroShimmer 4s ease-in-out infinite;
+}
+
+/* ── Video protection utilities ── */
+.no-select {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+.watermark {
+  pointer-events: none;
+}
+
+/* ── Mobile menu backdrop (replaces inline style) ── */
+.mobile-menu-backdrop {
+  background: rgba(7,11,18,0.97);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* ── Scrollbar styling ── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #070b12;
+}
+::-webkit-scrollbar-thumb {
+  background: #1f2d44;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2d3f52;
+}
+
+/* ── Focus visible for accessibility ── */
+*:focus-visible {
+  outline: 2px solid #06b6d4;
+  outline-offset: 2px;
+}
+
+/* ── Reduced motion preference ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+

@@ -1,0 +1,132 @@
+{
+  "cloudflare_api_tokens": [
+    {
+      "name": "Worker Read-Only",
+      "account_id": "951840a21847d5c55c8284d4ded7cffc",
+      "permissions": [
+        {
+          "effect": "allow",
+          "resources": {
+            "com.cloudflare.api.account.zone.workers_scripts": "*"
+          },
+          "permission": "Read"
+        }
+      ],
+      "condition": {}
+    },
+    {
+      "name": "DNS Administrator",
+      "zone_id": "93ccd466aeba31bc1f8bac061ab168e2",
+      "permissions": [
+        {
+          "effect": "allow",
+          "resources": {
+            "com.cloudflare.api.account.zone.dns": "*"
+          },
+          "permission": "Edit"
+        },
+        {
+          "effect": "allow",
+          "resources": {
+            "com.cloudflare.api.account.zone": "*"
+          },
+          "permission": "Read"
+        }
+      ],
+      "condition": {}
+    },
+    {
+      "name": "WAF Operator",
+      "zone_id": "93ccd466aeba31bc1f8bac061ab168e2",
+      "permissions": [
+        {
+          "effect": "allow",
+          "resources": {
+            "com.cloudflare.api.account.zone.waf": "*"
+          },
+          "permission": "Edit"
+        }
+      ],
+      "condition": {}
+    },
+    {
+      "name": "Security Auditor",
+      "zone_id": "93ccd466aeba31bc1f8bac061ab168e2",
+      "permissions": [
+        {
+          "effect": "allow",
+          "resources": {
+            "com.cloudflare.api.account.zone.ssl": "*"
+          },
+          "permission": "Read"
+        },
+        {
+          "effect": "allow",
+          "resources": {
+            "com.cloudflare.api.account.zone.firewall": "*"
+          },
+          "permission": "Read"
+        },
+        {
+          "effect": "allow",
+          "resources": {
+            "com.cloudflare.api.account.zone.waf": "*"
+          },
+          "permission": "Read"
+        }
+      ],
+      "condition": {}
+    },
+    {
+      "name": "Zone Settings",
+      "zone_id": "93ccd466aeba31bc1f8bac061ab168e2",
+      "permissions": [
+        {
+          "effect": "allow",
+          "resources": {
+            "com.cloudflare.api.account.zone": "*"
+          },
+          "permission": "Edit"
+        }
+      ],
+      "condition": {}
+    }
+  ],
+  "huggingface_secrets_policy": {
+    "name": "hf-secrets-access",
+    "description": "Policy for accessing Hugging Face API secrets stored in Vault",
+    "path": "secret/data/integrations/huggingface",
+    "capabilities": ["read"],
+    "allowed_services": ["backend-app", "ml-training-pipeline"],
+    "rotation_period": "720h",
+    "max_ttl": "2160h"
+  },
+  "aiven_database_policy": {
+    "name": "aiven-app-user",
+    "database": "ahmedelbaz_lms",
+    "privileges": [
+      "SELECT",
+      "INSERT",
+      "UPDATE",
+      "DELETE"
+    ],
+    "denied_privileges": [
+      "DROP",
+      "ALTER",
+      "GRANT",
+      "REVOKE",
+      "CREATE",
+      "TRUNCATE",
+      "REFERENCES",
+      "INDEX",
+      "ALL PRIVILEGES"
+    ],
+    "tables": "*",
+    "with_grant_option": false,
+    "connection_source": "kubernetes_namespace:ahmedelbaz",
+    "timeout": "30s",
+    "max_connections": 50,
+    "statement_timeout": "60s",
+    "idle_in_transaction_session_timeout": "300s"
+  }
+}

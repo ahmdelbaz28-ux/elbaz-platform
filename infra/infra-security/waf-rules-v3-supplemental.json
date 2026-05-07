@@ -1,0 +1,105 @@
+{
+  "description": "Supplemental Cloudflare WAF Custom Rules for Ahmed El-Baz LMS Platform (Reference - Free Plan May Not Support All)",
+  "account_id": "951840a21847d5c55c8284d4ded7cffc",
+  "zone_id": "93ccd466aeba31bc1f8bac061ab168e2",
+  "rules": [
+    {
+      "id": "xxe-protection",
+      "name": "XXE Protection",
+      "expression": "(http.request.body contains \"<!DOCTYPE\" and http.request.body contains \"<!ENTITY\") or (http.request.body contains \"SYSTEM\" and http.request.body contains \"PUBLIC\")",
+      "action": "block",
+      "description": "Block XML External Entity injection attempts"
+    },
+    {
+      "id": "crlf-injection-prevention",
+      "name": "CRLF Injection Prevention",
+      "expression": "http.request.body contains \"\\r\\n\" or http.request.body contains \"%0d%0a\" or http.request.uri contains \"%0d%0a\"",
+      "action": "block",
+      "description": "Block CRLF (Carriage Return Line Feed) injection attempts"
+    },
+    {
+      "id": "prototype-pollution-detection",
+      "name": "Prototype Pollution Detection",
+      "expression": "(http.request.body contains \"__proto__\" and http.request.body contains \"constructor\") or (http.request.body contains \"Object.assign\" and http.request.body contains \"prototype\")",
+      "action": "block",
+      "description": "Detect and block JavaScript prototype pollution attacks"
+    },
+    {
+      "id": "unicode-encoding-abuse",
+      "name": "Unicode/Encoding Abuse",
+      "expression": "(http.request.uri.path contains \"%u00\" and http.request.uri.path matches \"^.*%u[0-9a-fA-F]{4}.*$\") or (http.request.body matches \"\\\\u[0-9a-fA-F]{4}.*\\\\u[0-9a-fA-F]{4}.*\\\\u[0-9a-fA-F]{4}\")",
+      "action": "block",
+      "description": "Block obfuscated unicode encoding abuse patterns"
+    },
+    {
+      "id": "xz-backdoor-cve-2024-3094",
+      "name": "XZ Backdoor (CVE-2024-3094)",
+      "expression": "(http.request.body contains \"liblzma\" and http.request.body contains \"_none_\" and http.request.body contains \"/usr/bin\") or (http.request.headers[\"user-agent\"] contains \"xz-backdoor\")",
+      "action": "block",
+      "description": "Block indicators related to XZ Utils backdoor CVE-2024-3094"
+    },
+    {
+      "id": "log4shell-cve-2021-44228",
+      "name": "Log4Shell (CVE-2021-44228)",
+      "expression": "(http.request.body contains \"${jndi:\" or http.request.uri.query contains \"${jndi:\" or http.request.headers[\"x-forwarded-for\"] contains \"${jndi:\" or http.request.headers[\"user-agent\"] contains \"${jndi:\") or (http.request.headers[*] contains \"${lower:\" and http.request.headers[*] contains \"ldap://\")",
+      "action": "block",
+      "description": "Block Log4Shell exploit patterns targeting JNDI lookups"
+    },
+    {
+      "id": "mfa-bypass-prevention",
+      "name": "MFA Bypass Prevention",
+      "expression": "(http.request.uri.path contains \"/auth/mfa\" and http.request.method eq \"POST\" and not ip.src in {verified_mfa_ips}) or (http.request.uri.path contains \"/auth/verify-mfa\" and http.request.body contains \"bypass\" and http.request.body contains \"skip\")",
+      "action": "block",
+      "description": "Block attempts to bypass multi-factor authentication"
+    },
+    {
+      "id": "graphql-introspection-block",
+      "name": "GraphQL Introspection Block",
+      "expression": "(http.request.uri.path contains \"/graphql\" and http.request.body contains \"__schema\" and http.request.method eq \"POST\") or (http.request.uri.path contains \"/graphql\" and http.request.body contains \"__type\" and http.request.method eq \"POST\")",
+      "action": "block",
+      "description": "Block GraphQL introspection queries in production"
+    },
+    {
+      "id": "websocket-origin-validation",
+      "name": "WebSocket Origin Validation",
+      "expression": "(http.request.uri.path contains \"/ws\" or http.request.uri.path contains \"/socket\" or http.request.uri.path contains \"/websocket\") and not http.request.headers[\"origin\"] contains \"ahmedelbaz.qzz.io\" and http.connection_type eq \"WebSocket\"",
+      "action": "block",
+      "description": "Block WebSocket connections from unauthorized origins"
+    },
+    {
+      "id": "slowloris-detection",
+      "name": "Slowloris Detection",
+      "expression": "(cf.time.until_close lt 300 and http.request.method eq \"GET\" and http.request.uri.path eq \"/\") or (http.request.uri.path contains \"/api/\" and cf.bot_management.score lt 30)",
+      "action": "challenge",
+      "description": "Detect and challenge potential Slowloris-style connection exhaustion attacks"
+    },
+    {
+      "id": "search-rate-limiting",
+      "name": "Search Rate Limiting",
+      "expression": "(http.request.uri.path contains \"/api/search\" or http.request.uri.path contains \"/api/courses/search\" or http.request.uri.path contains \"/api/lessons/search\") and http.request.method eq \"GET\" and cf.rate_limit.rate gt 60",
+      "action": "block",
+      "description": "Rate limit search API endpoints to prevent abuse"
+    },
+    {
+      "id": "geo-restricted-admin-access",
+      "name": "Geo-Restricted Admin Access",
+      "expression": "(http.request.uri.path contains \"/admin\" or http.request.uri.path contains \"/api/admin\" or http.request.uri.path contains \"/dashboard/admin\") and not ip.geoip.country eq \"EG\"",
+      "action": "block",
+      "description": "Block non-Egypt access to administrative endpoints"
+    },
+    {
+      "id": "api-schema-validation",
+      "name": "API Schema Validation",
+      "expression": "(http.request.uri.path contains \"/api/\" and http.request.method eq \"POST\" and http.request.body contains \"<script\" or http.request.body contains \"DROP TABLE\" or http.request.body contains \"UNION SELECT\" and not ip.src in {trusted_proxy_ips})",
+      "action": "block",
+      "description": "Validate API request payloads against known attack patterns"
+    },
+    {
+      "id": "request-anomaly-scoring",
+      "name": "Request Anomaly Scoring",
+      "expression": "(http.request.body contains \"alert(\" or http.request.body contains \"javascript:\" or http.request.body contains \"onerror=\" or http.request.body contains \"onload=\" or http.request.body contains \"eval(\") and cf.threat_score gt 10",
+      "action": "challenge",
+      "description": "Score and challenge requests with multiple anomaly indicators"
+    }
+  ]
+}
