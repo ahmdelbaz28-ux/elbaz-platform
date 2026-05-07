@@ -220,7 +220,7 @@ export async function confirmPaymentAndEnroll(
         userId: payment.userId, courseId: payment.courseId, progress: 0, isCompleted: false,
       });
       await tx.update(courses)
-        .set({ studentCount: sql[courses.studentCount] + " + 1" })
+        .set({ studentCount: sql`${courses.studentCount} + 1` })
         .where(eq(courses.id, payment.courseId));
       isNew = true;
     }
@@ -260,7 +260,7 @@ export async function refundPaymobPayment(
     await tx.delete(enrollments)
       .where(and(eq(enrollments.userId, payment.userId), eq(enrollments.courseId, payment.courseId)));
     await tx.update(courses)
-      .set({ studentCount: sql[courses.studentCount] + " - 1" })
+      .set({ studentCount: sql`${courses.studentCount} - 1` })
       .where(eq(courses.id, payment.courseId));
   });
   return { success: true, refundId: String(refundData.id || refundData.txn_ref || "N/A") };

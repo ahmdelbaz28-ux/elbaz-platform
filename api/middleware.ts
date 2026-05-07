@@ -32,7 +32,7 @@ function requireRole(role: string) {
 }
 
 const globalRateLimit = t.middleware(async (opts) => {
-  const ip = opts.ctx.req?.headers?.get("x-real-ip") || "unknown";
+  const ip = opts.ctx.req?.headers?.get("cf-connecting-ip") || opts.ctx.req?.headers?.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   await checkRateLimit(ip, "api");
   return opts.next();
 });

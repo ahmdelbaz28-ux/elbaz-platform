@@ -72,7 +72,7 @@ export const adminRouter = createRouter({
     const [revenueResult] = await db
       .select({ total: sql<string>`COALESCE(SUM(CAST(amount AS DECIMAL(12,2))), 0)` })
       .from(payments)
-      .where(eq(payments.status, "completed"));
+      .where(eq(payments.status, "paid"));
 
     return {
       totalUsers: userCount?.value ?? 0,

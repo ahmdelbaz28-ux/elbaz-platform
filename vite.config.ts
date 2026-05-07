@@ -36,12 +36,11 @@ export default defineConfig({
           },
           {
             urlPattern: /\/api\/trpc\/.*/i,
-            handler: 'NetworkFirst',
+            handler: 'NetworkOnly',
             options: {
-              cacheName: 'trpc-api-cache',
-              expiration: { maxEntries: 50, maxAgeSeconds: 60 * 5 },
-              networkTimeoutSeconds: 10,
-              cacheableResponse: { statuses: [0, 200] },
+              backgroundSync: {
+                maxRetries: 2,
+              },
             },
           },
         ],

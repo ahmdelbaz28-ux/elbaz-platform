@@ -84,8 +84,8 @@ app.use("*", async (c, next) => {
 // ══════════════════════════════════════════════════════════════════
 app.use("*", async (c, next) => {
   await next();
-  // Content Security Policy
-  c.header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; font-src 'self' data:; connect-src 'self' https://openrouter.ai https://*.paymob.com wss://; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://*.paymob.com;");
+  // Content Security Policy — hardened: removed unsafe-inline/eval from script-src
+  c.header("Content-Security-Policy", "default-src 'self'; script-src 'self' https://www.clarity.ms https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https: blob:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://openrouter.ai https://*.paymob.com https://www.clarity.ms https://*.sentry.io wss://; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://*.paymob.com;");
   // Prevent clickjacking
   c.header("X-Frame-Options", "DENY");
   // Prevent MIME type sniffing
@@ -93,9 +93,9 @@ app.use("*", async (c, next) => {
   // Referrer policy
   c.header("Referrer-Policy", "strict-origin-when-cross-origin");
   // Restrict browser features
-  c.header("Permissions-Policy", "camera=(), microphone=(self), geolocation=(), payment=(self)");
+  c.header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(self)");
   // HSTS (HTTPS enforcement)
-  c.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  c.header("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
   // X-Permitted-Cross-Domain-Policies
   c.header("X-Permitted-Cross-Domain-Policies", "none");
 });
@@ -358,7 +358,9 @@ app.use("*", async (c, next) => {
   if (p.startsWith("/api")) return next();
   var fp = path.join(DIST_PUBLIC, p);
   try {
-    if (fs.existsSync(fp) && fs.statSync(fp).isFile()) {
+    // ✅ FIX: Use async fs methods to avoid blocking the event loop under load
+    const stat = await fs.promises.stat(fp).catch(() => null);
+    if (stat && stat.isFile()) {
       var ext = path.extname(fp).toLowerCase();
       var headers: Record<string, string> = {
         "Content-Type": MIME[ext] || "application/octet-stream",
@@ -367,7 +369,7 @@ app.use("*", async (c, next) => {
       if (CACHEABLE_EXTENSIONS.has(ext)) {
         headers["Cache-Control"] = "public, max-age=31536000, immutable";
       }
-      return new Response(fs.readFileSync(fp), { headers });
+      return new Response(await fs.promises.readFile(fp), { headers });
     }
   } catch (e) { /* ignore */ }
   return next();
@@ -377,8 +379,10 @@ app.use("*", async (c, next) => {
 app.get("*", async (c) => {
   var ip = path.join(DIST_PUBLIC, "index.html");
   try {
-    if (fs.existsSync(ip)) {
-      return new Response(fs.readFileSync(ip, "utf-8"), {
+    // ✅ FIX: Async file serving for SPA fallback
+    const idxStat = await fs.promises.stat(ip).catch(() => null);
+    if (idxStat && idxStat.isFile()) {
+      return new Response(await fs.promises.readFile(ip, "utf-8"), {
         headers: {
           "Content-Type": "text/html; charset=utf-8",
           // ✅ OPTIMIZED: HTML should never be cached by browser
