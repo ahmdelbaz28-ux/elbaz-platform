@@ -1,3 +1,4 @@
+import { ErrorMessages } from "@contracts/constants";
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { TrpcContext } from "./context";
@@ -7,12 +8,8 @@ import { env } from "./lib/env";
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
   errorFormatter: ({ shape, error }) => {
-    // ✅ Always log internal errors; only show details in development
-    if (shape.data?.code === "INTERNAL_SERVER_ERROR") {
-      console.error("[tRPC Internal Error] Path:", shape.data?.path, "Message:", error.message);
-      if (!env.isProduction) {
-        return { ...shape, message: error.message };
-      }
+    if (env.isProduction && shape.data?.code === "INTERNAL_SERVER_ERROR") {
+      return { ...shape, message: "An internal error occurred." };
     }
     return shape;
   },

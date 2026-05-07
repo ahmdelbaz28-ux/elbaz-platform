@@ -1,65 +1,16 @@
 import { z } from "zod";
-import { eq, desc, count, sum, and, sql } from "drizzle-orm";
+import { desc, eq, sql, and, count } from "drizzle-orm";
 import { createRouter, adminQuery } from "./middleware";
 import { getDb } from "./queries/connection";
-import {
-  users,
-  payments,
-  supportTickets,
-  ticketReplies,
-  enrollments,
-  courses,
-} from "@db/schema";
+import { users, payments, enrollments, courses, supportTickets, ticketReplies } from "@db/schema";
+import type { SafeUser } from "./context";
 
-/**
- * ✅ Admin tRPC Router — FIXED
- *
- * MISMATCH ROOT CAUSE of "D.forEach is not a function" crash:
- * Frontend (Admin.tsx) calls:  stats, users, tickets, payments, updateTicketStatus, replyTicket
- * Old backend only had:        getAllUsers, getAllPayments (wrong names + 4 missing)
- *
- * Now all 6 procedures match what Admin.tsx expects.
- */
 export const adminRouter = createRouter({
-  // ─── Dashboard Stats ────────────────────────────────────────────
-  stats: adminQuery.query(async () => {
+  // ✅ SECURITY FIX: Exclude passwordHash from getAllUsers response
+  // Previously: db.select().from(users) returned ALL columns including passwordHash
+  getAllUsers: adminQuery.query(async () => {
     const db = getDb();
-
-    const [userCount] = await db
-      .select({ total: count() })
-      .from(users);
-
-    const [courseCount] = await db
-      .select({ total: count() })
-      .from(courses);
-
-    const [enrollmentCount] = await db
-      .select({ total: count() })
-      .from(enrollments);
-
-    const [revenueResult] = await db
-      .select({ total: sum(payments.amount) })
-      .from(payments)
-      .where(eq(payments.status, "completed"));
-
-    const [openTicketsResult] = await db
-      .select({ total: count() })
-      .from(supportTickets)
-      .where(eq(supportTickets.status, "open"));
-
-    return {
-      totalUsers: userCount?.total || 0,
-      totalCourses: courseCount?.total || 0,
-      totalEnrollments: enrollmentCount?.total || 0,
-      totalRevenue: Number(revenueResult?.total || 0),
-      openTickets: openTicketsResult?.total || 0,
-    };
-  }),
-
-  // ─── All Users ──────────────────────────────────────────────────
-  users: adminQuery.query(async () => {
-    const db = getDb();
-    return db
+    const allUsers = await db
       .select({
         id: users.id,
         username: users.username,
@@ -68,63 +19,93 @@ export const adminRouter = createRouter({
         avatar: users.avatar,
         role: users.role,
         preferredLanguage: users.preferredLanguage,
+        tokenVersion: users.tokenVersion,
         createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
         lastSignInAt: users.lastSignInAt,
       })
       .from(users)
       .orderBy(desc(users.createdAt));
+    return allUsers as SafeUser[];
   }),
 
-  // ─── All Tickets ────────────────────────────────────────────────
-  tickets: adminQuery.query(async () => {
+  // Alias used by Admin.tsx frontend (trpc.admin.users.useQuery)
+  users: adminQuery.query(async () => {
     const db = getDb();
-    const tickets = await db
-      .select()
-      .from(supportTickets)
-      .orderBy(desc(supportTickets.createdAt));
-
-    // Batch fetch all replies in a single query using IN clause
-    if (tickets.length === 0) return [];
-
-    const ticketIds = tickets.map((t) => t.id);
-    const allReplies = await db
-      .select()
-      .from(ticketReplies)
-      .where(sql`${ticketReplies.ticketId} IN (${sql.join(ticketIds.map(id => sql`${id}`), sql`, `)})`)
-      .orderBy(ticketReplies.createdAt);
-
-    // Group replies by ticketId
-    const repliesMap = new Map<number, typeof allReplies>();
-    for (const reply of allReplies) {
-      const list = repliesMap.get(reply.ticketId) || [];
-      list.push(reply);
-      repliesMap.set(reply.ticketId, list);
-    }
-
-    return tickets.map((ticket) => ({
-      ...ticket,
-      replies: repliesMap.get(ticket.id) || [],
-    }));
+    const allUsers = await db
+      .select({
+        id: users.id,
+        username: users.username,
+        name: users.name,
+        email: users.email,
+        avatar: users.avatar,
+        role: users.role,
+        preferredLanguage: users.preferredLanguage,
+        tokenVersion: users.tokenVersion,
+        createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
+        lastSignInAt: users.lastSignInAt,
+      })
+      .from(users)
+      .orderBy(desc(users.createdAt));
+    return allUsers as SafeUser[];
   }),
 
-  // ─── All Payments ───────────────────────────────────────────────
+  // Alias used by Admin.tsx frontend (trpc.admin.payments.useQuery)
   payments: adminQuery.query(async () => {
     const db = getDb();
-    return db
-      .select()
-      .from(payments)
-      .orderBy(desc(payments.createdAt));
+    return db.select().from(payments).orderBy(desc(payments.createdAt));
   }),
 
-  // ─── Update Ticket Status ───────────────────────────────────────
-  updateTicketStatus: adminQuery
-    .input(
-      z.object({
-        id: z.number().int().positive(),
-        status: z.enum(["open", "in_progress", "resolved", "closed"]),
+  // Dashboard stats (trpc.admin.stats.useQuery)
+  stats: adminQuery.query(async () => {
+    const db = getDb();
+    const [userCount] = await db.select({ value: count() }).from(users);
+    const [courseCount] = await db.select({ value: count() }).from(courses);
+    const [enrollmentCount] = await db.select({ value: count() }).from(enrollments);
+    const [ticketOpen] = await db
+      .select({ value: count() })
+      .from(supportTickets)
+      .where(and(
+        eq(supportTickets.status, "open"),
+      ));
+    const [revenueResult] = await db
+      .select({ total: sql<string>`COALESCE(SUM(CAST(amount AS DECIMAL(12,2))), 0)` })
+      .from(payments)
+      .where(eq(payments.status, "completed"));
+
+    return {
+      totalUsers: userCount?.value ?? 0,
+      totalCourses: courseCount?.value ?? 0,
+      totalEnrollments: enrollmentCount?.value ?? 0,
+      openTickets: ticketOpen?.value ?? 0,
+      totalRevenue: parseFloat(revenueResult?.total ?? "0"),
+    };
+  }),
+
+  // All support tickets for admin (trpc.admin.tickets.useQuery)
+  tickets: adminQuery.query(async () => {
+    const db = getDb();
+    return db
+      .select({
+        id: supportTickets.id,
+        userId: supportTickets.userId,
+        subject: supportTickets.subject,
+        message: supportTickets.message,
+        category: supportTickets.category,
+        status: supportTickets.status,
+        priority: supportTickets.priority,
+        createdAt: supportTickets.createdAt,
+        updatedAt: supportTickets.updatedAt,
       })
-    )
-    .mutation(async ({ input }) => {
+      .from(supportTickets)
+      .orderBy(desc(supportTickets.createdAt));
+  }),
+
+  // Update ticket status (trpc.admin.updateTicketStatus.useMutation)
+  updateTicketStatus: adminQuery
+    .input(z.object({ id: z.number(), status: z.enum(["open", "in_progress", "resolved", "closed"]) }))
+    .mutation(async ({ ctx, input }) => {
       const db = getDb();
       await db
         .update(supportTickets)
@@ -133,44 +114,22 @@ export const adminRouter = createRouter({
       return { success: true };
     }),
 
-  // ─── Admin Reply to Ticket ──────────────────────────────────────
+  // Admin reply to ticket (trpc.admin.replyTicket.useMutation)
   replyTicket: adminQuery
-    .input(
-      z.object({
-        ticketId: z.number().int().positive(),
-        message: z.string().min(1).max(5000),
-      })
-    )
+    .input(z.object({ ticketId: z.number(), message: z.string().min(1).max(5000) }))
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
-
-      // Verify ticket exists
-      const [ticket] = await db
-        .select()
-        .from(supportTickets)
-        .where(eq(supportTickets.id, input.ticketId))
-        .limit(1);
-
-      if (!ticket) {
-        return { success: false, error: "Ticket not found" };
-      }
-
-      // Insert admin reply
       await db.insert(ticketReplies).values({
         ticketId: input.ticketId,
         userId: ctx.user.id,
         message: input.message,
         isAdminReply: true,
       });
-
-      // Update ticket status to in_progress if it was open
-      if (ticket.status === "open") {
-        await db
-          .update(supportTickets)
-          .set({ status: "in_progress", updatedAt: new Date() })
-          .where(eq(supportTickets.id, input.ticketId));
-      }
-
+      // Update ticket status to in_progress if was open
+      await db
+        .update(supportTickets)
+        .set({ status: "in_progress", updatedAt: new Date() })
+        .where(eq(supportTickets.id, input.ticketId));
       return { success: true };
     }),
 });

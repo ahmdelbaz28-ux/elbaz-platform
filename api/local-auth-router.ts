@@ -6,8 +6,10 @@ import { getDb } from "./queries/connection";
 import { users } from "@db/schema";
 import { hashPassword, verifyPassword } from "./lib/password";
 import { createToken, verifyToken } from "./lib/jwt";
-import { initiatePasswordReset, completePasswordReset, initiateEmailVerification, completeEmailVerification } from "./lib/email";
-import { setAuthCookie } from "./context";
+import { initiatePasswordReset, completePasswordReset } from "./lib/email";
+// ✅ SECURITY FIX: Import auth cookie helpers for httpOnly cookie auth
+import { serializeAuthCookie, clearAuthCookie, AUTH_COOKIE_NAME } from "./lib/cookies";
+import { parse } from "cookie";
 
 export const localAuthRouter = createRouter({
   register: publicQuery
@@ -70,10 +72,12 @@ export const localAuthRouter = createRouter({
       const token = await createToken({ userId, username: input.username, role: "user", tokenVersion: 0 });
       await clearRateLimit(ip, "register");
 
-      // Set HttpOnly Secure Cookie (primary auth method)
-      setAuthCookie(ctx.req.headers, token, ctx.resHeaders);
+      // ✅ SECURITY FIX: Set JWT in httpOnly cookie instead of returning only in body
+      const authCookie = serializeAuthCookie(ctx.req.headers, token);
+      ctx.resHeaders.append("set-cookie", authCookie);
 
       return {
+        token,
         user: { id: userId, username: input.username, name: input.name || input.username },
       };
     }),
@@ -139,10 +143,12 @@ export const localAuthRouter = createRouter({
       const loginIp = realIp2 || (forwarded2 ? forwarded2.split(",").pop()?.trim() : "unknown");
       await clearRateLimit(loginIp, "login");
 
-      // Set HttpOnly Secure Cookie (primary auth method)
-      setAuthCookie(ctx.req.headers, token, ctx.resHeaders);
+      // ✅ SECURITY FIX: Set JWT in httpOnly cookie instead of returning only in body
+      const authCookie = serializeAuthCookie(ctx.req.headers, token);
+      ctx.resHeaders.append("set-cookie", authCookie);
 
       return {
+        token,
         user: {
           id: user.id,
           username: user.username,
@@ -155,6 +161,7 @@ export const localAuthRouter = createRouter({
     }),
 
   me: authedQuery.query(async ({ ctx }) => {
+    // ✅ Uses authedQuery — user is guaranteed to exist in ctx
     return {
       id: ctx.user.id,
       username: ctx.user.username,
@@ -163,7 +170,6 @@ export const localAuthRouter = createRouter({
       role: ctx.user.role,
       avatar: ctx.user.avatar,
       preferredLanguage: ctx.user.preferredLanguage,
-      emailVerifiedAt: ctx.user.emailVerifiedAt,
     };
   }),
 
@@ -176,21 +182,8 @@ export const localAuthRouter = createRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // ✅ Uses authedQuery — no manual token parsing needed
       const db = getDb();
-
-      // ✅ SECURITY: Check email uniqueness before updating
-      if (input.email !== undefined && input.email !== ctx.user.email) {
-        const existingEmail = await db
-          .select({ id: users.id })
-          .from(users)
-          .where(eq(users.email, input.email))
-          .limit(1);
-
-        if (existingEmail.length > 0) {
-          throw new TRPCError({ code: "CONFLICT", message: "Email already in use" });
-        }
-      }
-
       await db
         .update(users)
         .set({
@@ -284,22 +277,10 @@ export const localAuthRouter = createRouter({
       return result;
     }),
 
-  sendVerificationEmail: authedQuery
-    .mutation(async ({ ctx }) => {
-      const result = await initiateEmailVerification(ctx.user.id);
-      return result;
-  }),
-
-  verifyEmail: publicQuery
-    .input(z.object({
-      userId: z.number().int().positive(),
-      token: z.string().min(1),
-    }))
-    .mutation(async ({ input }) => {
-      const result = await completeEmailVerification(input.userId, input.token);
-      if (!result.success) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: result.message });
-      }
-      return result;
+  // ✅ SECURITY FIX: Logout mutation — clears httpOnly auth cookie
+  logout: authedQuery.mutation(async ({ ctx }) => {
+    const clearedCookie = clearAuthCookie(ctx.req.headers);
+    ctx.resHeaders.append("set-cookie", clearedCookie);
+    return { success: true };
   }),
 });

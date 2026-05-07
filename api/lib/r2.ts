@@ -4,10 +4,6 @@
  * R2 is S3-compatible. We use the AWS SDK v3 with a custom endpoint
  * pointing to the Cloudflare R2 API.
  *
- * Supports two auth modes:
- * Mode 1: S3 API Token (R2_ACCESS_KEY_ID + R2_SECRET_ACCESS_KEY) — preferred
- * Mode 2: Cloudflare API Token (CLOUDFLARE_API_TOKEN) — fallback for R2 presigned URLs
- *
  * Features:
  * - Presigned URLs for secure video streaming (30-minute expiry)
  * - Direct object upload support
@@ -25,10 +21,6 @@ let r2Client: S3Client | null = null;
 /**
  * Get or create the R2 S3 client instance.
  * Singleton pattern to avoid creating multiple connections.
- *
- * Auth priority:
- * 1. R2_ACCESS_KEY_ID + R2_SECRET_ACCESS_KEY (S3-compatible tokens — best for presigned URLs)
- * 2. CLOUDFLARE_API_TOKEN (account-level token — works for reads but NOT for presigned URL signing)
  */
 export function getR2Client(): S3Client {
   if (r2Client) return r2Client;
@@ -36,34 +28,28 @@ export function getR2Client(): S3Client {
   const accountId = env.r2AccountId;
   const accessKeyId = env.r2AccessKeyId;
   const secretAccessKey = env.r2SecretAccessKey;
-  const cfApiToken = process.env.CLOUDFLARE_API_TOKEN || "";
 
-  if (accountId && accessKeyId && secretAccessKey) {
-    // Mode 1: S3 API Token (preferred — supports presigned URLs)
-    r2Client = new S3Client({
-      region: "auto",
-      endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
-      credentials: { accessKeyId, secretAccessKey },
-      forcePathStyle: false,
-      checksumValidation: false,
-    });
-  } else if (accountId && cfApiToken) {
-    // Mode 2: Cloudflare API Token (fallback — no presigned URLs)
-    r2Client = new S3Client({
-      region: "auto",
-      endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
-      credentials: {
-        accessKeyId: cfApiToken,
-        secretAccessKey: cfApiToken,
-      },
-      forcePathStyle: false,
-      checksumValidation: false,
-    });
-  } else {
+  if (!accountId || !accessKeyId || !secretAccessKey) {
     throw new Error(
-      "R2 is not configured. Set R2_ACCOUNT_ID + R2_ACCESS_KEY_ID + R2_SECRET_ACCESS_KEY, or R2_ACCOUNT_ID + CLOUDFLARE_API_TOKEN."
+      "R2 is not configured. Set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY in your .env file."
     );
   }
+
+  // Use explicit endpoint if provided, otherwise construct from accountId
+  const endpoint = env.r2Endpoint || `https://${accountId}.r2.cloudflarestorage.com`;
+
+  r2Client = new S3Client({
+    region: "auto",
+    endpoint,
+    credentials: {
+      accessKeyId,
+      secretAccessKey,
+    },
+    // Required for R2
+    forcePathStyle: false,
+    // Disable checksum validation for R2 compatibility
+    checksumValidation: false,
+  });
 
   return r2Client;
 }
@@ -77,8 +63,6 @@ interface PresignedVideoOptions {
   expiresIn?: number;
   /** Response content disposition (default: inline for streaming) */
   disposition?: "inline" | "attachment";
-  /** Override content type (auto-detected from extension if not set) */
-  contentType?: string;
 }
 
 /**
@@ -97,23 +81,13 @@ export async function generateR2PresignedUrl(options: PresignedVideoOptions): Pr
   const { objectKey, expiresIn = 1800, disposition = "inline" } = options;
   const client = getR2Client();
 
-  // Auto-detect content type from file extension
-  const ext = objectKey.split('.').pop()?.toLowerCase() || "";
-  const contentTypes: Record<string, string> = {
-    "mp4": "video/mp4",
-    "m3u8": "application/vnd.apple.mpegurl",
-    "ts": "video/mp2t",
-    "webm": "video/webm",
-  };
-  const detectedContentType = contentType || contentTypes[ext] || "application/octet-stream";
-
   const command = new GetObjectCommand({
-    Bucket: env.r2Bucket || "elbaz-videos",
+    Bucket: env.r2Bucket,
     Key: objectKey,
-    ResponseContentType: detectedContentType,
-    ResponseContentDisposition: `${disposition}; filename="video${ext ? '.' + ext : '.mp4'}"`,
-    // HLS manifests need short cache; segments can be cached longer; MP4 no cache for security
-    CacheControl: ext === "m3u8" ? "public, max-age=300" : ext === "ts" ? "public, max-age=86400" : "no-store",
+    ResponseContentType: "video/mp4",
+    ResponseContentDisposition: `${disposition}; filename="video.mp4"`,
+    // Cache-Control: no-store prevents browser caching of video chunks
+    CacheControl: "no-store",
   });
 
   const signedUrl = await getSignedUrl(client, command, { expiresIn });
@@ -134,7 +108,7 @@ export async function getR2ObjectMetadata(objectKey: string): Promise<{
   try {
     const client = getR2Client();
     const command = new HeadObjectCommand({
-      Bucket: env.r2Bucket || "elbaz-videos",
+      Bucket: env.r2Bucket,
       Key: objectKey,
     });
     const response = await client.send(command);

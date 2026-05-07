@@ -4,9 +4,13 @@ import { verifyToken } from "./lib/jwt";
 import { getDb } from "./queries/connection";
 import { users } from "@db/schema";
 import { eq } from "drizzle-orm";
-import * as cookie from "cookie";
+import { AUTH_COOKIE_NAME } from "./lib/cookies";
+import { parse } from "cookie";
 
-// SECURITY: Exclude passwordHash from context
+// ✅ SECURITY FIX: Define a SafeUser type that excludes passwordHash
+// The full User object (including passwordHash) should NEVER be in the tRPC context
+// because any route using authedQuery has access to ctx.user — accidentally
+// returning it in a response would leak the bcrypt hash.
 export type SafeUser = Omit<User, "passwordHash">;
 
 export type TrpcContext = {
@@ -15,71 +19,30 @@ export type TrpcContext = {
   user?: SafeUser;
 };
 
-const AUTH_COOKIE_NAME = "elbaz_auth";
-// FIX: Reduced from 1 year to 30 days — limits damage window if token is stolen
-// TODO: Add refresh-token rotation for long-lived sessions (Udemy pattern)
-const AUTH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60; // 30 days
-
-function parseCookies(req: Request): Record<string, string> {
-  const header = req.headers.get("cookie") || "";
-  return cookie.parse(header);
-}
-
-function isLocalhost(headers: Headers): boolean {
-  const host = headers.get("host") || "";
-  return host.startsWith("localhost:") || host.startsWith("127.0.0.1:");
-}
-
-export function getAuthCookieOptions(headers: Headers) {
-  const localhost = isLocalhost(headers);
-  return {
-    httpOnly: true,
-    path: "/",
-    sameSite: localhost ? "Lax" : "None" as const,
-    secure: !localhost,
-    maxAge: AUTH_COOKIE_MAX_AGE,
-  };
-}
-
-export function setAuthCookie(headers: Headers, token: string, resHeaders: Headers) {
-  const opts = getAuthCookieOptions(headers);
-  resHeaders.append(
-    "set-cookie",
-    cookie.serialize(AUTH_COOKIE_NAME, token, {
-      httpOnly: opts.httpOnly,
-      path: opts.path,
-      sameSite: opts.sameSite,
-      secure: opts.secure,
-      maxAge: opts.maxAge,
-    }),
-  );
-}
-
-export function clearAuthCookie(headers: Headers, resHeaders: Headers) {
-  const opts = getAuthCookieOptions(headers);
-  resHeaders.append(
-    "set-cookie",
-    cookie.serialize(AUTH_COOKIE_NAME, "", {
-      httpOnly: opts.httpOnly,
-      path: opts.path,
-      sameSite: opts.sameSite,
-      secure: opts.secure,
-      maxAge: 0,
-    }),
-  );
-}
-
 export async function createContext(
   opts: FetchCreateContextFnOptions,
 ): Promise<TrpcContext> {
   const ctx: TrpcContext = { req: opts.req, resHeaders: opts.resHeaders };
 
+  // Try local auth token
   try {
-    // FIX #1: Cookie-only auth — removed header fallback to prevent XSS token theft
-    // HttpOnly cookies cannot be read by JavaScript, headers can
-    const cookies = parseCookies(opts.req);
-    const token = cookies[AUTH_COOKIE_NAME];
+    // ✅ SECURITY FIX: Check httpOnly cookie first, then fallback to header
+    // Cookie-based auth is the primary method (XSS-safe)
+    let token: string | undefined;
 
+    // 1. Try httpOnly cookie (preferred — XSS cannot steal httpOnly cookies)
+    const cookieHeader = opts.req.headers.get("cookie") || "";
+    const parsedCookies = parse(cookieHeader);
+    if (parsedCookies[AUTH_COOKIE_NAME]) {
+      token = parsedCookies[AUTH_COOKIE_NAME];
+    }
+
+    // 2. Fallback to Authorization header (for backward compatibility during migration)
+    if (!token) {
+      token =
+        opts.req.headers.get("x-auth-token") ||
+        opts.req.headers.get("authorization")?.replace("Bearer ", "");
+    }
     if (token) {
       const payload = await verifyToken(token);
       if (payload) {
@@ -89,29 +52,23 @@ export async function createContext(
           .from(users)
           .where(eq(users.id, payload.userId))
           .limit(1);
-
         if (user) {
-          // FIX #4: Clear stale cookie + log when tokenVersion mismatch (token revoked)
+          // ✅ SECURITY FIX: Verify tokenVersion to support token revocation
+          // If admin changed user's role or user changed password, tokenVersion
+          // in DB will be higher than in the JWT, invalidating the token
           if (payload.tokenVersion !== undefined && payload.tokenVersion !== user.tokenVersion) {
-            console.warn(
-              "[Auth] Stale token for user " + payload.userId +
-              " (token v" + payload.tokenVersion + " != db v" + user.tokenVersion + ") — cookie cleared"
-            );
-            clearAuthCookie(opts.req.headers, ctx.resHeaders);
+            // Token has been revoked — do not authenticate
             return ctx;
           }
 
+          // ✅ SECURITY FIX: Strip passwordHash before putting user in context
           const { passwordHash: _ph, ...safeUser } = user;
           ctx.user = safeUser;
         }
       }
     }
-  } catch (error) {
-    // FIX #2: Log auth errors for monitoring instead of silent swallow
-    console.error(
-      "[Auth] createContext error:",
-      error instanceof Error ? error.message : String(error)
-    );
+  } catch {
+    // Authentication is optional
   }
 
   return ctx;
