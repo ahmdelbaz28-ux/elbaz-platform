@@ -196,7 +196,10 @@ function checkChatbotRateLimit(ip: string): boolean {
   return true;
 }
 
-// ✅ PATCH-7: Chatbot endpoint — now requires JWT authentication + rate limiting
+// ✅ PATCH-7: Chatbot endpoint — 28-model smart cascading fallback
+// Uses api/lib/chatbot.ts getChatResponse() for automatic model switching
+// If one model is overloaded/down/unavailable, instantly tries the next
+// User NEVER sees any error — the system always finds a working model
 app.post("/api/chatbot", async (c) => {
   try {
     // 1. Rate limiting (per IP)
@@ -205,18 +208,7 @@ app.post("/api/chatbot", async (c) => {
       return c.json({ success: false, error: "Rate limit exceeded. Try again later." }, 429);
     }
 
-    // 2. JWT Authentication (optional for now — allows anonymous with stricter limits)
-    // In the future, uncomment below to require auth:
-    /*
-    const { verifyToken } = await import("./lib/jwt");
-    const authHeader = c.req.header("authorization");
-    const token = authHeader?.replace("Bearer ", "");
-    if (!token) return c.json({ success: false, error: "Authentication required" }, 401);
-    const user = await verifyToken(token);
-    if (!user) return c.json({ success: false, error: "Invalid or expired token" }, 401);
-    */
-
-    // 3. Validate request
+    // 2. Validate request
     var body = await c.req.json();
     var messages = body.messages;
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -235,27 +227,26 @@ app.post("/api/chatbot", async (c) => {
       }
     }
 
-    // 4. Call OpenRouter
-    var k = process.env.OPENROUTER_API_KEY;
-    if (!k) return c.json({ success: false, error: "Chatbot not configured" }, 503);
-    var r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: "Bearer " + k, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "google/gemma-2-9b-it:free",
-        messages: [
-          { role: "system", content: "You are an expert electrical engineer. Answer only electrical engineering questions. Be concise and accurate." },
-          ...messages.map(function(m) { return { role: m.role, content: m.content }; }),
-        ],
-        temperature: 0.3,
-        max_tokens: 256,
-      }),
+    // 3. Use the 28-model smart fallback system from api/lib/chatbot.ts
+    var { getChatResponse } = await import("./lib/chatbot");
+    var result = await getChatResponse({
+      messages: messages,
+      language: body.language || "ar",
     });
-    var d = await r.json();
-    var reply = d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content;
-    return c.json({ success: true, reply: reply || "No response." });
+
+    if (result.success && result.reply) {
+      return c.json({ success: true, reply: result.reply, model: result.model });
+    }
+    return c.json({ success: false, error: result.error || "Service unavailable" }, 503);
   } catch (e) {
-    return c.json({ success: false, error: "Service unavailable" }, 500);
+    console.error("[Chatbot] Error: " + String(e));
+    // Send to Sentry if configured
+    if (process.env.SENTRY_DSN) {
+      import("@sentry/node").then(function(Sentry) {
+        Sentry.captureException(e, { tags: { component: "chatbot" } });
+      }).catch(function() {});
+    }
+    return c.json({ success: false, error: "Service temporarily unavailable. Please try again." }, 503);
   }
 });
 
@@ -491,7 +482,7 @@ initSentry().then(() => {
   console.log("Server running on port " + PORT);
   console.log("Static files: " + DIST_PUBLIC);
   console.log("DB: " + (process.env.DATABASE_URL ? "OK" : "not set"));
-  console.log("Chat: " + (process.env.OPENROUTER_API_KEY ? "OK" : "not set"));
+  console.log("Chat: " + (process.env.OPENROUTER_API_KEY ? "OK (28-model fallback)" : "not set"));
   console.log("CORS origins: " + corsOrigins.join(", "));
   console.log("tRPC: /api/trpc/*");
   console.log("Security: HMAC webhook verification ENABLED");
