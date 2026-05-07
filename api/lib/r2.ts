@@ -29,14 +29,13 @@ export function getR2Client(): S3Client {
   const accessKeyId = env.r2AccessKeyId;
   const secretAccessKey = env.r2SecretAccessKey;
 
-  if (!accountId || !accessKeyId || !secretAccessKey) {
+  const endpoint = env.r2Endpoint || (accountId ? `https://${accountId}.r2.cloudflarestorage.com` : "");
+
+  if (!accessKeyId || !secretAccessKey || !endpoint) {
     throw new Error(
-      "R2 is not configured. Set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY in your .env file."
+      "R2 is not configured. Set R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and R2_ENDPOINT in your environment."
     );
   }
-
-  // Use explicit endpoint if provided, otherwise construct from accountId
-  const endpoint = env.r2Endpoint || `https://${accountId}.r2.cloudflarestorage.com`;
 
   r2Client = new S3Client({
     region: "auto",
