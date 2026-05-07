@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { createServer } from "http";
 import { cors } from "hono/cors";
 import { compress } from "hono/compress";
+import { sql } from "drizzle-orm";
 import fs from "fs";
 import path from "path";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
@@ -128,7 +129,7 @@ app.get("/api/health", async (c) => {
   try {
     var db = getDb();
     var start = Date.now();
-    await db.execute({ sql: "SELECT 1" });
+    await db.execute(sql`SELECT 1`);
     dbLatencyMs = Date.now() - start;
   } catch (e) {
     dbStatus = "error";
