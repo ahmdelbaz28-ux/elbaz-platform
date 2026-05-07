@@ -30,8 +30,12 @@ export const env = {
   r2Endpoint: process.env.R2_ENDPOINT || "",
   watermarkSecret: process.env.WATERMARK_SECRET || "",
 
+  // Cloudflare API Token (Workers, R2 management, DNS)
+  cloudflareToken: process.env.CLOUDFLARE_TOKEN || "",
+
   // Microsoft Clarity Analytics
   clarityId: process.env.CLARITY_ID || "3311349506496452",
+  clarityExportJwt: process.env.CLARITY_EXPORT_JWT || "",
 
   // Aiven Platform API (for service management & monitoring)
   aivenToken: process.env.AIVEN_TOKEN || "",
