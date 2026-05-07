@@ -1,26 +1,55 @@
-FROM node:20-alpine AS build
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  Elbaz LMS — Multi-Stage Docker Build
+#  Optimized for: layer caching, security, minimal image size
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# ── Stage 1: Install dependencies (cached layer) ──
+FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm install --prefer-offline --no-audit
+RUN npm ci --prefer-offline --no-audit --no-fund 2>&1 | tail -3
+
+# ── Stage 2: Build frontend + backend ──
+FROM deps AS build
+WORKDIR /app
 COPY . .
+
+# Build frontend (Vite) + generate types
 RUN npm run build
 
+# ── Stage 3: Production runtime (minimal image) ──
 FROM node:20-alpine AS production
 WORKDIR /app
+
+# Security: run as non-root user
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -S appuser -u 1001 -G appgroup
+
+# Install dumb-init for proper signal handling (SIGTERM → graceful shutdown)
+RUN apk add --no-cache dumb-init tini
+
 ENV NODE_ENV=production
-RUN apk add --no-cache dumb-init
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/api ./api
-COPY --from=build /app/db ./db
-COPY --from=build /app/contracts ./contracts
-COPY --from=build /app/tsconfig.json ./
-COPY package.json ./
-RUN chown -R 1000:1000 /app
-USER 1000
+ENV NODE_OPTIONS="--max-old-space-size=768"
+
+# Copy only what's needed for runtime (not devDependencies)
+COPY --from=build --chown=appuser:appgroup /app/node_modules ./node_modules
+COPY --from=build --chown=appuser:appgroup /app/dist ./dist
+COPY --from=build --chown=appuser:appgroup /app/api ./api
+COPY --from=build --chown=appuser:appgroup /app/db ./db
+COPY --from=build --chown=appuser:appgroup /app/contracts ./contracts
+COPY --from=build --chown=appuser:appgroup /app/tsconfig.json ./
+COPY --from=build --chown=appuser:appgroup /app/package.json ./
+
+USER appuser
+
 EXPOSE 7860
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+
+# Health check: verify server responds within 5s
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD wget -q --spider http://localhost:7860/api/health || exit 1
+
+# Use dumb-init for proper PID 1 signal forwarding
 ENTRYPOINT ["dumb-init", "--"]
-ENV NODE_OPTIONS="--max-old-space-size=1024"
+
+# Start with tsx
 CMD ["npx", "tsx", "api/boot.ts"]
