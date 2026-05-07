@@ -37,11 +37,6 @@ export default defineConfig({
           {
             urlPattern: /\/api\/trpc\/.*/i,
             handler: 'NetworkOnly',
-            options: {
-              backgroundSync: {
-                maxRetries: 2,
-              },
-            },
           },
         ],
       },
