@@ -206,7 +206,7 @@ app.all("/api/trpc/*", async (c) => {
       }
       console.error("[tRPC Error] " + opts.path + ": " + opts.error.message);
       // Send to Sentry if configured and DSN is valid
-      if (process.env.SENTRY_DSN && process.env.SENTRY_DSN.startsWith("https://")) {
+      if (env.sentryDsn && env.sentryDsn.startsWith("https://")) {
         import("@sentry/node").then(function(Sentry) {
           Sentry.captureException(opts.error, {
             tags: { trpc_path: opts.path, type: opts.error.code },
@@ -282,7 +282,7 @@ app.post("/api/chatbot", async (c) => {
   } catch (e) {
     console.error("[Chatbot] Error: " + String(e));
     // Send to Sentry if configured and DSN is valid
-    if (process.env.SENTRY_DSN && process.env.SENTRY_DSN.startsWith("https://")) {
+    if (env.sentryDsn && env.sentryDsn.startsWith("https://")) {
       import("@sentry/node").then(function(Sentry) {
         Sentry.captureException(e, { tags: { component: "chatbot" } });
       }).catch(function() {});
@@ -714,7 +714,7 @@ const server = createServer(async (req, res) => {
   } catch (e) {
     console.error("[Server Error] " + String(e));
  // Send to Sentry if configured and DSN is valid
-    if (process.env.SENTRY_DSN && process.env.SENTRY_DSN.startsWith("https://")) {
+    if (env.sentryDsn && env.sentryDsn.startsWith("https://")) {
       import("@sentry/node").then(function(Sentry) {
         Sentry.captureException(e);
       }).catch(function() {});
@@ -730,7 +730,7 @@ const server = createServer(async (req, res) => {
 // Only initializes if SENTRY_DSN is configured
 // ══════════════════════════════════════════════════════════════════
 async function initSentry() {
-  const dsn = process.env.SENTRY_DSN;
+  const dsn = env.sentryDsn;
   if (!dsn) {
     console.log("Sentry: Not configured (no SENTRY_DSN env var)");
     return;
@@ -740,8 +740,6 @@ async function initSentry() {
   if (!dsn.startsWith("https://")) {
     console.warn("Sentry: Invalid DSN format (starts with \"" + dsn.slice(0, 8) + "...\"). Expected \"https://KEY@ORG.ingest.sentry.io/PROJECT_ID\". Skipping initialization.");
     console.warn("Sentry: Tip: Go to Sentry > Project Settings > Client Keys (DSN) > copy the DSN value.");
-    // Mark as invalid so runtime error handlers skip Sentry
-    process.env.SENTRY_DSN = "";
     return;
   }
   try {
@@ -792,7 +790,7 @@ initSentry().then(() => {
     compressionThreshold: "1KB",
     staticAssetsCache: "1-year (immutable)",
     connectionPoolLimit: env.isProduction ? 15 : 5,
-    sentryEnabled: !!process.env.SENTRY_DSN,
+    sentryEnabled: !!env.sentryDsn,
   });
   server.listen(PORT);
 });
