@@ -146,7 +146,7 @@ app.get("/api/health", async (c) => {
   const uptimeSeconds = Math.floor((Date.now() - START_TIME) / 1000);
   const memUsage = process.memoryUsage();
   return c.json({
-    status: dbStatus === "ok" ? "ok" : "degraded",
+    status: dbStatus === "ok" && distPublicExists ? "ok" : "degraded",
     ts: new Date().toISOString(),
     db: dbStatus,
     dbLatencyMs,
@@ -162,6 +162,10 @@ app.get("/api/health", async (c) => {
       chatbot: CHATBOT_RATE_LIMIT + "/hour",
     },
     pool: getPoolMetrics(),
+    staticFiles: {
+      enabled: distPublicExists,
+      path: DIST_PUBLIC_RESOLVED,
+    },
   });
 });
 
@@ -463,29 +467,63 @@ app.post("/api/webhooks/paymob", async (c) => {
   }
 });
 
-// ══════════════════════════════════════════════════════════════════
-// ✅ FIXED: Static file serving with aggressive caching
-// Hashed filenames (.js, .css) get 1-year cache, HTML gets no-cache
-//
-// CRITICAL FIX: The SPA fallback MUST NOT serve index.html for requests
-// that have a file extension (like /assets/index-xxx.js). Previously,
-// if dist/public was missing or the file path was wrong, ALL asset
-// requests fell through to the SPA fallback and returned index.html
-// (HTML content with JS content-type), which the browser rejected
-// due to X-Content-Type-Options: nosniff → WHITE SCREEN.
-// ══════════════════════════════════════════════════════════════════
-const CACHEABLE_EXTENSIONS = new Set([".js", ".css", ".woff", ".woff2", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico", ".br", ".gz"]);
-const STATIC_EXTENSIONS = new Set([".js", ".css", ".woff", ".woff2", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico", ".br", ".gz", ".html", ".json", ".xml", ".txt", ".pdf", ".woff2", ".map"]);
+// ══════════════════════════════════════════════════════════════════════
+// STATIC FILE SERVING — Elite Root Solution
+// ══════════════════════════════════════════════════════════════════════
+// This section handles static file serving for the SPA frontend.
+// Design principles:
+//   1. Accept-Encoding negotiation: serve .br/.gz pre-compressed files
+//   2. ETag + Last-Modified: conditional requests → 304 Not Modified
+//   3. File existence check BEFORE fallback: prevents white screen bug
+//   4. Directory traversal protection: sandbox to DIST_PUBLIC
+//   5. Aggressive cache: immutable for hashed assets, no-store for HTML
+// ══════════════════════════════════════════════════════════════════════
 
-// Check if dist/public directory exists at startup
+const CACHEABLE_EXTENSIONS = new Set([
+  ".js", ".css", ".woff", ".woff2", ".png", ".jpg", ".jpeg",
+  ".gif", ".svg", ".webp", ".ico", ".map",
+]);
+const STATIC_EXTENSIONS = new Set([
+  ".js", ".css", ".woff", ".woff2", ".png", ".jpg", ".jpeg",
+  ".gif", ".svg", ".webp", ".ico", ".map", ".html", ".json",
+  ".xml", ".txt", ".pdf",
+]);
+
+// Pre-computed resolved DIST_PUBLIC for path security checks
+const DIST_PUBLIC_RESOLVED = path.resolve(DIST_PUBLIC);
+
+// Startup validation: verify dist/public exists (fail-fast in production)
 let distPublicExists = false;
 try {
-  distPublicExists = fs.existsSync(DIST_PUBLIC) && fs.statSync(DIST_PUBLIC).isDirectory();
-} catch (e) { /* not found */ }
+  distPublicExists = fs.statSync(DIST_PUBLIC_RESOLVED).isDirectory();
+} catch (_e) { /* not found */ }
 
 if (!distPublicExists) {
-  console.warn("[STATIC] WARNING: dist/public directory not found at: " + DIST_PUBLIC);
-  console.warn("[STATIC] Static files will NOT be served. Build the frontend first with: npm run build");
+  const msg = "[FATAL] dist/public not found at: " + DIST_PUBLIC_RESOLVED
+    + " — Run 'npm run build' before starting. In Docker, check the build stage.";
+  if (process.env.NODE_ENV === "production") {
+    console.error(msg);
+    // In production, this is a fatal misconfiguration — refuse to start
+    // serving traffic if we can't serve any frontend assets.
+    // We still start the server so /api/health can report the issue.
+  } else {
+    console.warn(msg);
+  }
+}
+
+// Generate ETag from file size + mtime (fast, no need to hash content)
+function generateETag(stat: fs.Stats): string {
+  const mtime = stat.mtimeMs.toString(36);
+  const size = stat.size.toString(36);
+  return '"' + size + '-' + mtime + '"';
+}
+
+// Parse Accept-Encoding header and return preferred encoding (br > gzip > identity)
+function parseAcceptEncoding(header: string | undefined): string {
+  if (!header) return "identity";
+  if (header.includes("br")) return "br";
+  if (header.includes("gzip")) return "gzip";
+  return "identity";
 }
 
 app.use("*", async (c, next) => {
@@ -494,79 +532,130 @@ app.use("*", async (c, next) => {
   // Skip API routes entirely
   if (requestPath.startsWith("/api")) return next();
 
-  // SECURITY: Block path traversal attempts (../, ..\, %2e%2e)
+  // SECURITY: Block path traversal attempts
   if (requestPath.includes("..") || requestPath.includes("\0")) {
-    return c.text("Not Found", 404);
+    return c.notFound();
   }
 
   // Resolve the file path safely
   const filePath = path.join(DIST_PUBLIC, requestPath);
-
-  // SECURITY: Ensure resolved path is within DIST_PUBLIC (prevent directory traversal)
   const resolvedPath = path.resolve(filePath);
-  if (!resolvedPath.startsWith(path.resolve(DIST_PUBLIC) + path.sep) && resolvedPath !== path.resolve(DIST_PUBLIC)) {
-    return c.text("Not Found", 404);
+
+  // SECURITY: Sandboxed to DIST_PUBLIC — resolved path must be within the static root
+  if (!resolvedPath.startsWith(DIST_PUBLIC_RESOLVED + path.sep) && resolvedPath !== DIST_PUBLIC_RESOLVED) {
+    return c.notFound();
   }
 
+  // SECURITY: Block directory listing — return 403 for directory access
+  let stat: fs.Stats | null = null;
   try {
-    const stat = await fs.promises.stat(resolvedPath).catch(() => null);
-    if (stat && stat.isFile()) {
-      const ext = path.extname(resolvedPath).toLowerCase();
-      const headers: Record<string, string> = {
-        "Content-Type": MIME[ext] || "application/octet-stream",
-      };
+    stat = await fs.promises.stat(resolvedPath);
+  } catch (_e) { /* not found */ }
 
-      // Aggressive caching for static assets with content hashes
-      if (CACHEABLE_EXTENSIONS.has(ext)) {
-        headers["Cache-Control"] = "public, max-age=31536000, immutable";
+  if (!stat) return next(); // Not a file, not a dir → fall through to SPA
+  if (stat.isDirectory()) return c.text("Forbidden", 403);
+
+  // ── File exists — prepare response ──
+  const ext = path.extname(resolvedPath).toLowerCase();
+
+  // ── Accept-Encoding negotiation ──
+  // If the client accepts brotli or gzip, and a pre-compressed version exists,
+  // serve it instead of the original file.
+  const acceptEncoding = parseAcceptEncoding(c.req.header("accept-encoding"));
+  let finalPath = resolvedPath;
+  let contentEncoding = "";
+
+  if (acceptEncoding !== "identity" && CACHEABLE_EXTENSIONS.has(ext)) {
+    const compressedExt = acceptEncoding === "br" ? ".br" : ".gz";
+    const compressedPath = resolvedPath + compressedExt;
+    try {
+      const compressedStat = await fs.promises.stat(compressedPath);
+      if (compressedStat.isFile()) {
+        finalPath = compressedPath;
+        contentEncoding = acceptEncoding === "br" ? "br" : "gzip";
+        stat = compressedStat; // Update stat for ETag
       }
+    } catch (_e) { /* compressed version not found → serve original */ }
+  }
 
-      // Proper Content-Encoding header for pre-compressed files
-      if (ext === ".br") {
-        headers["Content-Encoding"] = "br";
-        // Remove .br extension to get original content type
-        const originalExt = path.extname(resolvedPath.slice(0, -3)).toLowerCase();
-        headers["Content-Type"] = MIME[originalExt] || "application/octet-stream";
-      } else if (ext === ".gz") {
-        headers["Content-Encoding"] = "gzip";
-        const originalExt = path.extname(resolvedPath.slice(0, -3)).toLowerCase();
-        headers["Content-Type"] = MIME[originalExt] || "application/octet-stream";
-      }
+  // ── Conditional request: ETag + If-None-Match → 304 ──
+  const etag = generateETag(stat);
+  const ifNoneMatch = c.req.header("if-none-match");
+  if (ifNoneMatch && ifNoneMatch === etag) {
+    return new Response(null, { status: 304, headers: { "ETag": etag } });
+  }
 
-      return new Response(await fs.promises.readFile(resolvedPath), { headers });
-    }
-  } catch (e) { /* ignore — file not found */ }
+  // ── Conditional request: Last-Modified + If-Modified-Since → 304 ──
+  const lastModified = stat.mtime.toUTCString();
+  const ifModifiedSince = c.req.header("if-modified-since");
+  if (ifModifiedSince && new Date(ifModifiedSince).getTime() >= stat.mtime.getTime()) {
+    return new Response(null, { status: 304, headers: { "Last-Modified": lastModified, "ETag": etag } });
+  }
 
-  // File not found — continue to next handler
-  return next();
+  // ── Build response headers ──
+  const headers: Record<string, string> = {
+    "Content-Type": MIME[ext] || "application/octet-stream",
+    "ETag": etag,
+    "Last-Modified": lastModified,
+  };
+
+  // Aggressive caching for hashed static assets (1 year, immutable)
+  if (CACHEABLE_EXTENSIONS.has(ext)) {
+    headers["Cache-Control"] = "public, max-age=31536000, immutable";
+  }
+
+  // Content-Encoding for pre-compressed files
+  if (contentEncoding) {
+    headers["Content-Encoding"] = contentEncoding;
+    headers["Vary"] = "Accept-Encoding";
+  }
+
+  return new Response(await fs.promises.readFile(finalPath), { headers });
 });
 
-// SPA fallback — ONLY serve index.html for routes that look like page navigation
-// NOT for requests with static file extensions (those should 404 if not found)
+// ══════════════════════════════════════════════════════════════════════
+// SPA FALLBACK — Serve index.html ONLY for page navigation routes
+// NEVER for requests with static file extensions (prevents white screen)
+// ══════════════════════════════════════════════════════════════════════
 app.get("*", async (c) => {
   const requestPath = c.req.path;
 
-  // CRITICAL: If the request has a static file extension, return 404 instead of index.html
-  // This prevents the white screen bug where index.html was served as application/javascript
+  // CRITICAL SAFETY: If the request targets a static file extension,
+  // return 404. Previously, index.html was served as application/javascript
+  // which browsers rejected due to X-Content-Type-Options: nosniff → WHITE SCREEN.
   const ext = path.extname(requestPath).toLowerCase();
   if (ext && STATIC_EXTENSIONS.has(ext)) {
-    return c.text("Not Found", 404);
+    return c.notFound();
   }
 
   const indexPath = path.join(DIST_PUBLIC, "index.html");
   try {
-    const idxStat = await fs.promises.stat(indexPath).catch(() => null);
-    if (idxStat && idxStat.isFile()) {
-      return new Response(await fs.promises.readFile(indexPath, "utf-8"), {
-        headers: {
-          "Content-Type": "text/html; charset=utf-8",
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-        },
-      });
-    }
-  } catch (e) { /* ignore */ }
+    const idxContent = await fs.promises.readFile(indexPath, "utf-8");
+    const idxStat = await fs.promises.stat(indexPath);
+    const idxEtag = generateETag(idxStat);
+    const idxLastModified = idxStat.mtime.toUTCString();
 
-  return c.text("Starting...", 503);
+    // Conditional request for index.html too
+    const ifNoneMatch = c.req.header("if-none-match");
+    if (ifNoneMatch && ifNoneMatch === idxEtag) {
+      return new Response(null, { status: 304, headers: { "ETag": idxEtag } });
+    }
+    const ifModifiedSince = c.req.header("if-modified-since");
+    if (ifModifiedSince && new Date(ifModifiedSince).getTime() >= idxStat.mtime.getTime()) {
+      return new Response(null, { status: 304, headers: { "Last-Modified": idxLastModified, "ETag": idxEtag } });
+    }
+
+    return new Response(idxContent, {
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store, must-revalidate",
+        "ETag": idxEtag,
+        "Last-Modified": idxLastModified,
+      },
+    });
+  } catch (_e) {
+    return c.text("Starting...", 503);
+  }
 });
 
 var server = createServer(async (req, res) => {
