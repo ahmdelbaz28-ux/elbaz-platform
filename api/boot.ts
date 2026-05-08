@@ -87,8 +87,27 @@ app.use("*", async (c, next) => {
 // ══════════════════════════════════════════════════════════════════
 app.use("*", async (c, next) => {
   await next();
-  // Content Security Policy — hardened: removed unsafe-inline/eval from script-src
-  c.header("Content-Security-Policy", "default-src 'self'; script-src 'self' https://www.clarity.ms https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https: blob:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://openrouter.ai https://*.paymob.com https://www.clarity.ms https://*.sentry.io wss://; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://*.paymob.com;");
+  // ═══════════════════════════════════════════════════════════════
+  // Content Security Policy — Single source of truth (no <meta> tag)
+  // ═══════════════════════════════════════════════════════════════
+  // Design decisions:
+  //   - script-src: NO 'unsafe-inline' — all scripts must be external files
+  //     (inline scripts moved to /rtl-detect.js to comply)
+  //   - connect-src: includes Google Fonts for workbox service worker caching
+  //   - wss:// removed (invalid bare origin — add specific WS origins if needed)
+  //   - frame-ancestors 'none' ONLY works via HTTP header (ignored in <meta>)
+  // ═══════════════════════════════════════════════════════════════
+  c.header("Content-Security-Policy",
+    "default-src 'self';"
+    + " script-src 'self' https://www.clarity.ms https://cdn.jsdelivr.net;"
+    + " style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;"
+    + " img-src 'self' data: https: blob:;"
+    + " font-src 'self' https://fonts.gstatic.com data:;"
+    + " connect-src 'self' https://openrouter.ai https://*.openrouter.ai https://*.paymob.com https://www.clarity.ms https://*.sentry.io https://fonts.googleapis.com https://fonts.gstatic.com https://api.github.com;"
+    + " frame-ancestors 'none';"
+    + " base-uri 'self';"
+    + " form-action 'self' https://*.paymob.com;"
+  );
   // Prevent clickjacking — CSP frame-ancestors 'none' is the modern replacement.
   // Cloudflare may override this to SAMEORIGIN, but CSP frame-ancestors takes
   // precedence in all modern browsers (Chrome/Firefox/Safari/Edge).

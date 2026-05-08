@@ -75,24 +75,12 @@
     }
     </script>
 
-    <!-- Content Security Policy — hardened: removed unsafe-inline from script-src -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.clarity.ms https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.openrouter.ai https://www.clarity.ms https://*.paymob.com https://api.github.com; frame-ancestors 'none';" />
+    <!-- CSP is enforced via HTTP header in boot.ts (not meta tag — avoids double-policy conflicts) -->
     <link rel="preload" as="image" href="/hero-main.webp" type="image/webp" />
   </head>
   <body>
-    <!-- Early RTL detection to prevent FOUC -->
-    <script>
-      (function() {
-        try {
-          var lang = localStorage.getItem("language") || "en";
-          document.documentElement.lang = lang;
-          document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
-          document.documentElement.style.fontFamily = lang === "ar"
-            ? "'Cairo', 'Inter', system-ui, sans-serif"
-            : "'Inter', system-ui, sans-serif";
-        } catch(e) {}
-      })();
-    </script>
+    <!-- Early RTL detection to prevent FOUC (external file to satisfy CSP script-src) -->
+    <script src="/rtl-detect.js"></script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
