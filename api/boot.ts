@@ -306,9 +306,8 @@ app.post("/api/chatbot/stream", async (c) => {
 
         // Send model name first
         if (result.model) {
-          controller.enqueue(encoder.encode("data: " + JSON.stringify({ model: result.model }) + "
+          controller.enqueue(encoder.encode("data: " + JSON.stringify({ model: result.model }) + "\n\n"));
 
-"));
         }
 
         if (result.success && result.reply) {
@@ -319,25 +318,17 @@ app.post("/api/chatbot/stream", async (c) => {
           var interval = setInterval(function() {
             if (i < reply.length) {
               var chunk = reply.slice(i, i + chunkSize);
-              controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: chunk }) + "
-
-"));
+              controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: chunk }) + "\n\n"));
               i += chunkSize;
             } else {
               clearInterval(interval);
-              controller.enqueue(encoder.encode("data: [DONE]
-
-"));
+              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
               controller.close();
             }
           }, 8); // 8ms between chunks for smooth streaming feel
         } else {
-          controller.enqueue(encoder.encode("data: " + JSON.stringify({ error: result.error || "Service unavailable" }) + "
-
-"));
-          controller.enqueue(encoder.encode("data: [DONE]
-
-"));
+          controller.enqueue(encoder.encode("data: " + JSON.stringify({ error: result.error || "Service unavailable" }) + "\n\n"));
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
           controller.close();
         }
       },
