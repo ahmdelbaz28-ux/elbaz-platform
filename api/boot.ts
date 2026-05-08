@@ -133,11 +133,11 @@ const MIME: Record<string, string> = {
 // Used by HuggingFace Spaces health probe and monitoring
 // ══════════════════════════════════════════════════════════════════
 app.get("/api/health", async (c) => {
-  var dbStatus = "ok";
-  var dbLatencyMs = 0;
+  let dbStatus = "ok";
+  let dbLatencyMs = 0;
   try {
-    var db = getDb();
-    var start = Date.now();
+    const db = getDb();
+    const start = Date.now();
     await db.execute(sql`SELECT 1`);
     dbLatencyMs = Date.now() - start;
   } catch (e) {
@@ -231,8 +231,8 @@ app.post("/api/chatbot", async (c) => {
     }
 
     // 2. Validate request
-    var body = await c.req.json();
-    var messages = body.messages;
+    const body = await c.req.json();
+    const messages = body.messages;
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return c.json({ success: false, error: "Messages array is required" }, 400);
     }
@@ -250,8 +250,8 @@ app.post("/api/chatbot", async (c) => {
     }
 
     // 3. Use the 28-model smart fallback system from api/lib/chatbot.ts
-    var { getChatResponse } = await import("./lib/chatbot");
-    var result = await getChatResponse({
+    const { getChatResponse } = await import("./lib/chatbot");
+    const result = await getChatResponse({
       messages: messages,
       language: body.language || "ar",
     });
@@ -282,8 +282,8 @@ app.post("/api/chatbot/stream", async (c) => {
     }
 
     // 2. Validate request
-    var body = await c.req.json();
-    var messages = body.messages;
+    const body = await c.req.json();
+    const messages = body.messages;
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return c.json({ success: false, error: "Messages array is required" }, 400);
     }
@@ -300,16 +300,16 @@ app.post("/api/chatbot/stream", async (c) => {
     }
 
     // 3. Get chat response using the smart fallback system
-    var { getChatResponse } = await import("./lib/chatbot");
-    var result = await getChatResponse({
+    const { getChatResponse } = await import("./lib/chatbot");
+    const result = await getChatResponse({
       messages: messages,
       language: body.language || "ar",
     });
 
     // 4. Stream the response as SSE
-    var stream = new ReadableStream({
+    const stream = new ReadableStream({
       start(controller) {
-        var encoder = new TextEncoder();
+        const encoder = new TextEncoder();
 
         // Send model name first
         if (result.model) {
@@ -319,12 +319,12 @@ app.post("/api/chatbot/stream", async (c) => {
 
         if (result.success && result.reply) {
           // Stream character by character in small chunks
-          var reply = result.reply;
-          var chunkSize = 3; // Send 3 chars at a time for smooth effect
-          var i = 0;
-          var interval = setInterval(function() {
+          const reply = result.reply;
+          const chunkSize = 3; // Send 3 chars at a time for smooth effect
+          let i = 0;
+          const interval = setInterval(function() {
             if (i < reply.length) {
-              var chunk = reply.slice(i, i + chunkSize);
+              const chunk = reply.slice(i, i + chunkSize);
               controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: chunk }) + "\n\n"));
               i += chunkSize;
             } else {
@@ -358,11 +358,11 @@ app.post("/api/chatbot/stream", async (c) => {
 // ✅ PATCH-6: Paymob webhook — HMAC verification + IP allowlist + amount verification
 app.post("/api/webhooks/paymob", async (c) => {
   try {
-    var contentType = c.req.header("content-type") || "";
-    var params;
+    const contentType = c.req.header("content-type") || "";
+    let params;
     if (contentType.indexOf("application/json") !== -1) {
-      var body = await c.req.json();
-      var obj = body.obj || body;
+      const body = await c.req.json();
+      const obj = body.obj || body;
       params = {
         hmac: body.hmac || "",
         amount_cents: String(obj.amount_cents || ""),
@@ -393,12 +393,12 @@ app.post("/api/webhooks/paymob", async (c) => {
     console.log("[Paymob] webhook received, success=" + params.success + ", order=" + params.order);
 
     // ✅ SECURITY: IP Allowlist check
-    var clientIp = c.req.header("cf-connecting-ip") || c.req.header("x-forwarded-for") || "";
-    var paymobIps = process.env.PAYMOB_WEBHOOK_IPS;
+    const clientIp = c.req.header("cf-connecting-ip") || c.req.header("x-forwarded-for") || "";
+    const paymobIps = process.env.PAYMOB_WEBHOOK_IPS;
     if (paymobIps) {
-      var allowedIps = paymobIps.split(",").map(function(s) { return s.trim(); });
+      const allowedIps = paymobIps.split(",").map(function(s) { return s.trim(); });
       // Extract first IP if x-forwarded-for contains multiple
-      var ipToCheck = clientIp.split(",")[0].trim();
+      const ipToCheck = clientIp.split(",")[0].trim();
       if (allowedIps.length > 0 && !allowedIps.includes(ipToCheck)) {
         console.warn("[Paymob] Webhook from unauthorized IP: " + clientIp);
         return c.json({ received: true, verified: false, error: "Unauthorized source" });
@@ -411,18 +411,18 @@ app.post("/api/webhooks/paymob", async (c) => {
       return c.json({ received: true, verified: false, error: "Invalid signature" });
     }
 
-    var isSuccess = params.success === "true";
-    var isPending = params.pending === "true";
-    var merchantOrderId = params.order;
+    const isSuccess = params.success === "true";
+    const isPending = params.pending === "true";
+    const merchantOrderId = params.order;
 
     if (isSuccess && !isPending && merchantOrderId) {
       try {
-        var db = getDb();
-        var results = await db.select().from(payments).where(eq(payments.transactionId, merchantOrderId)).limit(1);
+        const db = getDb();
+        const results = await db.select().from(payments).where(eq(payments.transactionId, merchantOrderId)).limit(1);
         if (results.length > 0 && results[0].status === "pending") {
           // ✅ SECURITY: Amount verification — prevent partial payment attacks
-          var expectedAmount = parseFloat(String(results[0].amount));
-          var paidAmount = parseInt(params.amount_cents) / 100;
+          const expectedAmount = parseFloat(String(results[0].amount));
+          const paidAmount = parseInt(params.amount_cents) / 100;
           if (Math.abs(paidAmount - expectedAmount) > 0.01) {
             console.warn("[Paymob] Amount mismatch for order " + merchantOrderId + ": expected=" + expectedAmount + " got=" + paidAmount);
             return c.json({ received: true, verified: true, error: "Amount mismatch" });
@@ -439,10 +439,10 @@ app.post("/api/webhooks/paymob", async (c) => {
               paidAt: new Date(),
             }).where(eq(payments.transactionId, merchantOrderId));
 
-            var payment = results[0];
+            const payment = results[0];
             // ✅ CRITICAL: Create enrollment if not already exists
             // Use ON DUPLICATE KEY to handle race conditions safely
-            var { drizzle } = await import("drizzle-orm");
+            const { drizzle } = await import("drizzle-orm");
             await tx.execute(drizzle.sql`INSERT IGNORE INTO enrollments (\`userId\`, \`courseId\`, \`progress\`, \`isCompleted\`, \`lastAccessedAt\`, \`createdAt\`)
               VALUES (${payment.userId}, ${payment.courseId}, 0, false, NOW(), NOW())
               ON DUPLICATE KEY UPDATE \`lastAccessedAt\` = NOW()`);
@@ -455,7 +455,7 @@ app.post("/api/webhooks/paymob", async (c) => {
       }
     } else if (!isSuccess && merchantOrderId) {
       try {
-        var db2 = getDb();
+        const db2 = getDb();
         await db2.update(payments).set({ status: "failed" }).where(eq(payments.transactionId, merchantOrderId));
       } catch (e) { /* ignore */ }
     }
@@ -658,32 +658,32 @@ app.get("*", async (c) => {
   }
 });
 
-var server = createServer(async (req, res) => {
-  var u = new URL(req.url || "/", "http://localhost:" + PORT);
-  var h = new Headers();
-  for (var _i = 0, _a = Object.entries(req.headers); _i < _a.length; _i++) {
-    var entry = _a[_i];
+const server = createServer(async (req, res) => {
+  const u = new URL(req.url || "/", "http://localhost:" + PORT);
+  const h = new Headers();
+  for (let _i = 0, _a = Object.entries(req.headers); _i < _a.length; _i++) {
+    const entry = _a[_i];
     if (entry[1]) h.set(entry[0], entry[1]);
   }
-  var body;
+  let body;
   if (req.method !== "GET" && req.method !== "HEAD") {
-    var chunks = [];
-    for await (var chunk of req) chunks.push(chunk);
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
     body = Buffer.concat(chunks);
   }
-  var request = new Request(u.toString(), {
+  const request = new Request(u.toString(), {
     method: req.method || "GET",
     headers: h,
     body: body ? String(body) : undefined,
   });
   try {
-    var response = await app.fetch(request);
+    const response = await app.fetch(request);
     res.writeHead(response.status, Object.fromEntries(response.headers));
     if (response.body) {
-      var reader = response.body.getReader();
-      var pump = async () => {
+      const reader = response.body.getReader();
+      const pump = async () => {
         while (true) {
-          var result = await reader.read();
+          const result = await reader.read();
           if (result.done) { res.end(); break; }
           res.write(Buffer.from(result.value));
         }

@@ -276,7 +276,8 @@ export async function invalidateSettingsCache(): Promise<void> {
 
 /**
  * Invalidate testimonial cache.
- * Call this when testimonials are created, updated, or deleted.
+ * NOTE: Currently no API endpoint modifies testimonials (managed directly in DB).
+ * Wire this up when a testimonial CRUD endpoint is added to the admin router.
  */
 export async function invalidateTestimonialCache(): Promise<void> {
   const cache = getCache();

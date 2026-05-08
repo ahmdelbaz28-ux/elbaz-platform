@@ -131,13 +131,14 @@ export function getPoolMetrics(): {
   if (!pool) {
     return { totalConnections: 0, freeConnections: 0, activeConnections: 0, queuedRequests: 0, connectionLimit: 0 };
   }
-  // mysql2 pool exposes these internal properties
+  // mysql2 pool exposes internal properties for monitoring
   const poolAny = pool as any;
+  const allConnections: unknown[] = poolAny._allConnections || [];
+  const freeConnections: unknown[] = poolAny._freeConnections || [];
   return {
-    totalConnections: poolAllConnections?.length || poolAny._allConnections?.length || 0,
-    freeConnections: poolFreeConnections?.length || poolAny._freeConnections?.length || 0,
-    activeConnections: (poolAllConnections?.length || poolAny._allConnections?.length || 0) -
-                      (poolFreeConnections?.length || poolAny._freeConnections?.length || 0),
+    totalConnections: allConnections.length,
+    freeConnections: freeConnections.length,
+    activeConnections: allConnections.length - freeConnections.length,
     queuedRequests: poolAny._connectionQueue?.length || 0,
     connectionLimit: pool.config.connectionLimit || 0,
   };
