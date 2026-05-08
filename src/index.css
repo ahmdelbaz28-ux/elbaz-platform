@@ -279,7 +279,8 @@ body {
   .animate-float-slow,
   .animate-float-icon,
   .animate-pulse-glow,
-  .whatsapp-pulse {
+  .whatsapp-pulse,
+  .logo-3d-container {
     animation: none !important;
   }
 }
@@ -304,4 +305,27 @@ a, button {
 /* Image placeholder while loading */
 img[loading="lazy"] {
   background: #111827;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   3D LOGO ANIMATIONS
+   ════════════════════════════════════════════════════════════════════ */
+
+@keyframes logo3d-glow-pulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(6,182,212,0.18); }
+  50% { box-shadow: 0 0 20px rgba(6,182,212,0.4), 0 0 40px rgba(6,182,212,0.12); }
+}
+
+/* Smooth 3D rotation for the logo disc */
+.logo-3d-container {
+  transform-style: preserve-3d;
+}
+
+/* Footer glow text effect */
+.footer-glow-text {
+  text-shadow: 0 0 10px rgba(6,182,212,0.3), 0 0 20px rgba(6,182,212,0.15);
+  transition: text-shadow 0.3s ease;
+}
+.footer-glow-text:hover {
+  text-shadow: 0 0 15px rgba(6,182,212,0.5), 0 0 30px rgba(6,182,212,0.25), 0 0 45px rgba(6,182,212,0.1);
 }
