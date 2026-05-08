@@ -6,3 +6,7 @@ dist/
 *.local
 upload/
 .githooks/
+
+# ⛔ CRITICAL: Never commit credentials or secrets to git
+infra/credentials-reference.txt
+infra/resend-integration/env-variables.txt
