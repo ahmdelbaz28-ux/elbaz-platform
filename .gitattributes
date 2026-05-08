@@ -18,3 +18,4 @@
 *.zip filter=lfs diff=lfs merge=lfs -text
 public/hero-main.webp filter=lfs diff=lfs merge=lfs -text
 public/hero-main.webp filter=lfs diff=lfs merge=lfs -text
+public/hero-new.jpg filter=lfs diff=lfs merge=lfs -text
