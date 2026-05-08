@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useChatFabAnimation } from "@/hooks/useChatFabAnimation";
 import {
   MessageSquare,
   X,
@@ -57,6 +58,7 @@ export default function ChatBot() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const chatIdRef = useRef<string>(crypto.randomUUID());
+  const fabRef = useChatFabAnimation();
 
   // ─── Scroll to bottom when new messages arrive ───
   useEffect(() => {
@@ -188,6 +190,7 @@ export default function ChatBot() {
       {/* ─── Floating Button ─── */}
       {!isOpen && (
         <button
+          ref={fabRef}
           onClick={() => {
             setIsOpen(true);
             setIsMinimized(false);

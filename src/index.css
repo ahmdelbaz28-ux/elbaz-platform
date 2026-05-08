@@ -227,6 +227,33 @@ body {
 }
 
 /* ════════════════════════════════════════════════════════════════════
+   CHATBOT FAB — Shake + Sparkle Animations
+   ════════════════════════════════════════════════════════════════════ */
+
+@keyframes chatbotFabShake {
+  0%, 100% { transform: rotate(0deg); }
+  10% { transform: rotate(-8deg) scale(1.05); }
+  20% { transform: rotate(8deg) scale(1.05); }
+  30% { transform: rotate(-6deg) scale(1.03); }
+  40% { transform: rotate(6deg) scale(1.03); }
+  50% { transform: rotate(-4deg) scale(1.02); }
+  60% { transform: rotate(4deg) scale(1.02); }
+  70% { transform: rotate(-2deg); }
+  80% { transform: rotate(2deg); }
+  90% { transform: rotate(0deg); }
+}
+
+.chatbot-fab-shake {
+  animation: chatbotFabShake 0.7s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+/* Sparkle container positioning for the FAB */
+.chatbot-fab {
+  position: relative;
+  overflow: visible;
+}
+
+/* ════════════════════════════════════════════════════════════════════
    SCROLLBAR STYLING
    ════════════════════════════════════════════════════════════════════ */
 ::-webkit-scrollbar {
