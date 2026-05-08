@@ -2,19 +2,8 @@ import { trpc } from "@/providers/trpc";
 import { useCallback, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 import { identifyUser } from "@/lib/clarity";
+import { hasStoredAuth, removeStoredToken } from "@/lib/auth-storage";
 
-/**
- * Check if the auth flag cookie exists (non-HttpOnly companion to elbaz_auth).
- * This cookie is set on login/register and cleared on logout.
- * It allows the frontend to skip the auth.me call entirely for unauthenticated users,
- * avoiding unnecessary network requests and UNAUTHORIZED error logs on every page load.
- */
-function hasAuthFlagCookie(): boolean {
-  if (typeof document === "undefined") return false;
-  return document.cookie.split(";").some(
-    (c) => c.trim().startsWith("elbaz_auth_flag=")
-  );
-}
 
 export function useAuth() {
   const utils = trpc.useUtils();
@@ -26,9 +15,9 @@ export function useAuth() {
     error,
     refetch,
   } = trpc.auth.me.useQuery(undefined, {
-    // ✅ FIX: Only call auth.me if the auth flag cookie exists
-    // This prevents unnecessary requests for unauthenticated visitors
-    enabled: hasAuthFlagCookie(),
+    // Cross-platform check: cookie flag on web, stored token on Capacitor
+    // Prevents unnecessary requests for unauthenticated users
+    enabled: hasStoredAuth(),
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 10,
     retry: false,
@@ -54,6 +43,7 @@ export function useAuth() {
     } catch {
       // Fallback — cookie may already be cleared
     }
+    removeStoredToken();
     utils.invalidate();
     navigate("/login", { replace: true });
   }, [utils, navigate]);

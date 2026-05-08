@@ -14,11 +14,22 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "cap:sync": "cap sync",
+    "cap:android": "cap open android",
+    "cap:ios": "cap open ios",
+    "cap:build": "vite build && cap sync"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.965.0",
     "@aws-sdk/s3-request-presigner": "^3.965.0",
+    "@capacitor/android": "^8.3.3",
+    "@capacitor/app": "^8.1.0",
+    "@capacitor/cli": "^8.3.3",
+    "@capacitor/core": "^8.3.3",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/ios": "^8.3.3",
+    "@capacitor/status-bar": "^8.0.2",
     "@hono/node-server": "^1.14.3",
     "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-accordion": "^1.2.12",

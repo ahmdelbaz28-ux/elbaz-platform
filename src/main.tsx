@@ -6,7 +6,7 @@ import { TRPCProvider } from "@/providers/trpc"
 import App from './App.tsx'
 
 // Register PWA Service Worker with aggressive update
-if ('serviceWorker' in navigator) {
+if ('serviceWorker' in navigator && !(window as any).Capacitor?.isNativePlatform?.()) {
   import('virtual:pwa-register').then(({ registerSW }) => {
     registerSW({
       immediate: true,

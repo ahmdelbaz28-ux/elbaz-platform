@@ -7,11 +7,11 @@ export default function NotFound() {
   const { t, lang } = useTranslation();
 
   return (
-    <div className="flex min-h-[80vh] items-center justify-center bg-[#0a0e17] px-4">
+    <div className="flex min-h-[80vh] items-center justify-center bg-[#070b12] px-4">
       <div className="w-full max-w-lg text-center">
-        {/* Animated Icon */}
-        <div className="animate-float mx-auto mb-8 flex h-24 w-24 items-center justify-center rounded-2xl border border-[#1f2d44] bg-[#111827]">
-          <Zap className="h-12 w-12 text-[#06b6d4]" />
+        {/* Animated Glow Icon */}
+        <div className="animate-float mx-auto mb-8 flex h-24 w-24 items-center justify-center rounded-2xl border border-[#1f2d44] bg-[#0d1420] shadow-[0_0_40px_rgba(6,182,212,0.2)]">
+          <Zap className="h-12 w-12 text-[#06b6d4] drop-shadow-[0_0_12px_rgba(6,182,212,0.6)]" />
         </div>
 
         {/* 404 Number */}
@@ -37,7 +37,7 @@ export default function NotFound() {
         <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
           <Button
             asChild
-            className="glow-btn h-12 gap-2 bg-gradient-to-r from-[#06b6d4] to-[#0891b2] px-8 font-semibold text-[#0a0e17]"
+            className="glow-btn h-12 gap-2 bg-gradient-to-r from-[#06b6d4] to-[#0891b2] px-8 font-semibold text-[#070b12]"
           >
             <Link to="/">
               <Home className="h-4 w-4" />

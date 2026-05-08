@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trackPlatform, identifyUser } from "@/lib/clarity";
+import { isNativePlatform, setStoredToken } from "@/lib/auth-storage";
 
 export default function Login() {
   const { t, lang } = useTranslation();
@@ -25,6 +26,10 @@ export default function Login() {
         identifyUser(data.user.id, data.user.username, {
           role: data.user.role || "user",
         });
+      }
+      // On native platforms, store the JWT token for Authorization header
+      if (isNativePlatform() && data?.token) {
+        setStoredToken(data.token);
       }
       toast.success(t("loginSuccess"));
       window.location.href = "/";

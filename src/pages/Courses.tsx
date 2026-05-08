@@ -2,7 +2,7 @@ import { useSearchParams } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
 import { trpc } from "@/providers/trpc";
 import CourseCard from "@/components/CourseCard";
-import { Skeleton } from "@/components/ui/skeleton";
+import { CourseCardSkeleton } from "@/components/SkeletonCard";
 import { Input } from "@/components/ui/input";
 import { Zap, CircuitBoard, Cpu, FileCheck, SlidersHorizontal, Search, X } from "lucide-react";
 import { useState, useMemo } from "react";
@@ -14,24 +14,6 @@ const categoryIcons: Record<string, React.ReactNode> = {
   Cpu: <Cpu className="h-4 w-4" />,
   FileCheck: <FileCheck className="h-4 w-4" />,
 };
-
-function CourseCardSkeleton() {
-  return (
-    <div className="rounded-xl border border-[#1f2d44] bg-[#111827] overflow-hidden">
-      <Skeleton className="h-48 w-full rounded-none" />
-      <div className="p-5 space-y-3">
-        <Skeleton className="h-4 w-20 rounded" />
-        <Skeleton className="h-5 w-3/4 rounded" />
-        <Skeleton className="h-4 w-full rounded" />
-        <div className="flex items-center gap-4 pt-2">
-          <Skeleton className="h-4 w-16 rounded" />
-          <Skeleton className="h-4 w-16 rounded" />
-          <Skeleton className="h-4 w-16 rounded" />
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function Courses() {
   const { t, lang } = useTranslation();

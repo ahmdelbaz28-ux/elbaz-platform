@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import superjson from "superjson";
 import type { AppRouter } from "../../api/router";
 import type { ReactNode } from "react";
+import { isNativePlatform, getStoredToken } from "@/lib/auth-storage";
 
 export const trpc = createTRPCReact<AppRouter>();
 
@@ -37,9 +38,14 @@ const trpcClient = trpc.createClient({
       url: getApiBaseUrl() + "/api/trpc",
       transformer: superjson,
       fetch(input, init) {
+        const token = getStoredToken();
         return globalThis.fetch(input, {
           ...(init ?? {}),
-          credentials: "include",
+          credentials: isNativePlatform() ? "omit" : "include",
+          headers: {
+            ...(init?.headers ?? {}),
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
         });
       },
     }),
