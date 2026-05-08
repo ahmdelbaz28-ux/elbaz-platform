@@ -1,12 +1,13 @@
 import { TRPCError } from "@trpc/server";
 
-export type RateLimitAction = "login" | "register" | "forgotPassword" | "resetPassword" | "payment" | "quiz" | "api";
+export type RateLimitAction = "login" | "register" | "forgotPassword" | "resetPassword" | "sendVerification" | "payment" | "quiz" | "api";
 
 const configs = {
   login: { windowMs: 15 * 60 * 1000, maxAttempts: 5 },
   register: { windowMs: 60 * 60 * 1000, maxAttempts: 3 },
   forgotPassword: { windowMs: 15 * 60 * 1000, maxAttempts: 3 },
   resetPassword: { windowMs: 15 * 60 * 1000, maxAttempts: 5 },
+  sendVerification: { windowMs: 60 * 60 * 1000, maxAttempts: 3 },
   payment: { windowMs: 15 * 60 * 1000, maxAttempts: 10 },
   quiz: { windowMs: 5 * 60 * 1000, maxAttempts: 20 },
   api: { windowMs: 60 * 1000, maxAttempts: 60 },

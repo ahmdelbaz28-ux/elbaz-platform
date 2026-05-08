@@ -6,7 +6,7 @@ import { createRouter, publicQuery, authedQuery, checkRateLimit, clearRateLimit 
 import { getDb } from "./queries/connection";
 import { hashPassword, verifyPassword } from "./lib/password";
 import { createToken, verifyToken } from "./lib/jwt";
-import { initiatePasswordReset, completePasswordReset } from "./lib/email";
+import { initiatePasswordReset, completePasswordReset, initiateEmailVerification, completeEmailVerification } from "./lib/email";
 // ✅ SECURITY FIX: Import auth cookie helpers for httpOnly cookie auth
 import { serializeAuthCookie, serializeAuthFlagCookie, clearAuthCookie, AUTH_COOKIE_NAME } from "./lib/cookies";
 import { parse } from "cookie";
@@ -184,15 +184,23 @@ export const localAuthRouter = createRouter({
 
   me: authedQuery.query(async ({ ctx }) => {
     // ✅ Uses authedQuery — user is guaranteed to exist in ctx
-    return {
-      id: ctx.user.id,
-      username: ctx.user.username,
-      name: ctx.user.name,
-      email: ctx.user.email,
-      role: ctx.user.role,
-      avatar: ctx.user.avatar,
-      preferredLanguage: ctx.user.preferredLanguage,
-    };
+    const db = getDb();
+    const [user] = await db
+      .select({
+        id: users.id,
+        username: users.username,
+        name: users.name,
+        email: users.email,
+        role: users.role,
+        avatar: users.avatar,
+        preferredLanguage: users.preferredLanguage,
+        emailVerifiedAt: users.emailVerifiedAt,
+      })
+      .from(users)
+      .where(eq(users.id, ctx.user.id))
+      .limit(1);
+
+    return user;
   }),
 
   updateProfile: authedQuery
@@ -360,4 +368,36 @@ export const localAuthRouter = createRouter({
     ctx.resHeaders.append("set-cookie", clearedCookie);
     return { success: true };
   }),
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ✅ Email Verification Flow
+  // Backend functions existed in email.ts but were dead code — no endpoints
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // Step 1: Authenticated user requests a verification email
+  sendVerificationEmail: authedQuery.mutation(async ({ ctx }) => {
+    const forwarded = ctx.req.headers.get("x-forwarded-for");
+    const realIp = ctx.req.headers.get("x-real-ip");
+    const ip = realIp || (forwarded ? forwarded.split(",").pop()?.trim() : "unknown");
+    await checkRateLimit(ip, "sendVerification");
+
+    const result = await initiateEmailVerification(ctx.user.id);
+    return result;
+  }),
+
+  // Step 2: Anyone with a valid token completes verification (e.g. from email link)
+  verifyEmail: publicQuery
+    .input(z.object({
+      userId: z.number().int().positive(),
+      token: z.string().min(1),
+    }))
+    .mutation(async ({ input }) => {
+      const result = await completeEmailVerification(input.userId, input.token);
+
+      if (!result.success) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: result.message });
+      }
+
+      return result;
+    }),
 });
