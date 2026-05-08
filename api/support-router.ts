@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 // ✅ SECURITY FIX: Use authedQuery instead of manual token verification
 import { createRouter, authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
@@ -30,15 +30,47 @@ export const supportRouter = createRouter({
       return { success: true, ticketId: Number(ticket.insertId) };
     }),
 
-  // ✅ SECURITY FIX: Uses authedQuery — automatic auth + userId scoping
-  list: authedQuery.query(async ({ ctx }) => {
-    const db = getDb();
-    return db
-      .select()
-      .from(supportTickets)
-      .where(eq(supportTickets.userId, ctx.user.id))
-      .orderBy(desc(supportTickets.createdAt));
-  }),
+  // ✅ FIX: Added pagination to prevent loading all tickets at once
+  list: authedQuery
+    .input(z.object({
+      page: z.number().int().min(1).default(1),
+      limit: z.number().int().min(1).max(50).default(20),
+      status: z.enum(["open", "in_progress", "resolved", "closed"]).optional(),
+    }).optional())
+    .query(async ({ ctx, input }) => {
+      const db = getDb();
+      const page = input?.page ?? 1;
+      const limit = input?.limit ?? 20;
+      const offset = (page - 1) * limit;
+
+      const conditions = [eq(supportTickets.userId, ctx.user.id)];
+      if (input?.status) conditions.push(eq(supportTickets.status, input.status));
+
+      // Get total count for pagination
+      const [countResult] = await db
+        .select({ total: sql<number>`count(*)` })
+        .from(supportTickets)
+        .where(and(...conditions));
+      const totalCount = countResult?.total ?? 0;
+
+      const tickets = await db
+        .select()
+        .from(supportTickets)
+        .where(and(...conditions))
+        .orderBy(desc(supportTickets.createdAt))
+        .limit(limit)
+        .offset(offset);
+
+      return {
+        items: tickets,
+        pagination: {
+          page,
+          limit,
+          totalCount,
+          totalPages: Math.ceil(totalCount / limit),
+        },
+      };
+    }),
 
   // ✅ SECURITY FIX: Uses authedQuery — ticket ownership verified via userId
   getById: authedQuery

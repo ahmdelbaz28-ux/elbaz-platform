@@ -330,12 +330,27 @@ app.post("/api/webhooks/paymob", async (c) => {
             return c.json({ received: true, verified: true, error: "Amount mismatch" });
           }
 
-          await db.update(payments).set({
-            status: "completed",
-            gatewayTxnId: params.id,
-            paidAt: new Date(),
-          }).where(eq(payments.transactionId, merchantOrderId));
-          console.log("[Paymob] Payment confirmed (HMAC verified): " + merchantOrderId);
+          // ✅ CRITICAL FIX: Use transaction — update payment + create enrollment atomically
+          // Previously, the webhook only updated payment status but NEVER created the enrollment!
+          // This meant users who paid via Paymob could not access their courses.
+          await db.transaction(async (tx) => {
+            await tx.update(payments).set({
+              status: "completed",
+              gatewayTxnId: params.id,
+              paymobTransactionId: params.id,
+              paidAt: new Date(),
+            }).where(eq(payments.transactionId, merchantOrderId));
+
+            var payment = results[0];
+            // ✅ CRITICAL: Create enrollment if not already exists
+            // Use ON DUPLICATE KEY to handle race conditions safely
+            var { drizzle } = await import("drizzle-orm");
+            await tx.execute(drizzle.sql`INSERT IGNORE INTO enrollments (\`userId\`, \`courseId\`, \`progress\`, \`isCompleted\`, \`lastAccessedAt\`, \`createdAt\`)
+              VALUES (${payment.userId}, ${payment.courseId}, 0, false, NOW(), NOW())
+              ON DUPLICATE KEY UPDATE \`lastAccessedAt\` = NOW()`);
+
+            console.log("[Paymob] Payment confirmed + enrollment created (HMAC verified): " + merchantOrderId);
+          });
         }
       } catch (e) {
         console.error("[Paymob] DB error: " + String(e));

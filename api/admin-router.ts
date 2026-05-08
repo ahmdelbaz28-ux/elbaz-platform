@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { desc, eq, sql, and, count } from "drizzle-orm";
 import { createRouter, adminQuery } from "./middleware";
 import { getDb } from "./queries/connection";
@@ -154,6 +155,18 @@ export const adminRouter = createRouter({
     .input(z.object({ ticketId: z.number(), message: z.string().min(1).max(5000) }))
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
+
+      // ✅ FIX: Verify ticket exists before inserting reply
+      const [ticket] = await db
+        .select({ id: supportTickets.id })
+        .from(supportTickets)
+        .where(eq(supportTickets.id, input.ticketId))
+        .limit(1);
+
+      if (!ticket) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Ticket not found" });
+      }
+
       await db.insert(ticketReplies).values({
         ticketId: input.ticketId,
         userId: ctx.user.id,
