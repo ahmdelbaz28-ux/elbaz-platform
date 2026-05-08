@@ -25,6 +25,7 @@ const TermsOfService = lazy(() => import("./pages/TermsOfService"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 const RefundPolicy = lazy(() => import("./pages/RefundPolicy"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+const VerifyEmail = lazy(() => import("./pages/VerifyEmail"));
 
 function PageLoader() {
   return (
@@ -64,6 +65,7 @@ export default function App() {
         <Layout>
           <Routes>
             {/* ── Public Routes ── */}
+            <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/" element={<Home />} />
             <Route path="/courses" element={<Courses />} />
             <Route path="/courses/:slug" element={<CourseDetail />} />

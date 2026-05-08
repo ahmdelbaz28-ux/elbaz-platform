@@ -20,6 +20,9 @@ import {
   Zap,
   CheckCircle2,
   AlertTriangle,
+  MailCheck,
+  MailWarning,
+  Send,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,6 +51,15 @@ export default function Profile() {
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
+
+  // ─── Email Verification State ───────────────────────────────
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [cooldown]);
 
   // ─── Mutations ───────────────────────────────────────────────
   const updateProfileMutation = trpc.auth.updateProfile.useMutation({
@@ -85,6 +97,17 @@ export default function Profile() {
   });
   const { data: myCertificates } = trpc.certificate.myCertificates.useQuery(undefined, {
     enabled: isAuthenticated,
+  });
+
+  // ─── Send Verification Email Mutation ─────────────────────
+  const sendVerificationMutation = trpc.auth.sendVerificationEmail.useMutation({
+    onSuccess: (data) => {
+      toast.success(data.message || (lang === "en" ? "Verification email sent!" : "تم إرسال بريد التحقق!"));
+      setCooldown(60);
+    },
+    onError: (err) => {
+      toast.error(err.message);
+    },
   });
 
   // ─── Handlers ────────────────────────────────────────────────
@@ -216,6 +239,68 @@ export default function Profile() {
             )}
           </div>
         </div>
+
+        {/* ─── Email Verification Card ──────────────────────── */}
+        {user.email && (
+          <div className="mb-6 rounded-xl border border-[#1f2d44] bg-[#111827] p-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                {user.emailVerifiedAt ? (
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[rgba(16,185,129,0.1)]">
+                    <MailCheck className="h-5 w-5 text-[#10b981]" />
+                  </div>
+                ) : (
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[rgba(245,158,11,0.1)]">
+                    <MailWarning className="h-5 w-5 text-[#f59e0b]" />
+                  </div>
+                )}
+                <div>
+                  <p className="text-sm font-medium text-[#f0f4f8]">
+                    {lang === "en" ? "Email Verification" : "التحقق من البريد الإلكتروني"}
+                  </p>
+                  {user.emailVerifiedAt ? (
+                    <>
+                      <p className="mt-0.5 text-xs text-[#10b981]">
+                        {lang === "en" ? "Verified" : "موثق"}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-[#64748b]">
+                        {new Date(user.emailVerifiedAt).toLocaleDateString(
+                          lang === "ar" ? "ar-EG" : "en-US",
+                          { year: "numeric", month: "long", day: "numeric" }
+                        )}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="mt-0.5 text-xs text-[#f59e0b]">
+                      {lang === "en"
+                        ? "Your email is not verified yet"
+                        : "بريدك الإلكتروني غير موثق بعد"}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {!user.emailVerifiedAt && (
+                <Button
+                  onClick={() => sendVerificationMutation.mutate()}
+                  disabled={sendVerificationMutation.isPending || cooldown > 0}
+                  className="gap-2 shrink-0 bg-gradient-to-r from-[#06b6d4] to-[#0891b2] text-[#0a0e17] font-semibold"
+                >
+                  {sendVerificationMutation.isPending ? (
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#0a0e17] border-t-transparent" />
+                  ) : cooldown > 0 ? (
+                    <span className="text-xs">{cooldown}s</span>
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                  {cooldown > 0
+                    ? (lang === "en" ? `Resend in ${cooldown}s` : `إعادة الإرسال بعد ${cooldown}ث`)
+                    : (lang === "en" ? "Send Verification Email" : "أرسل بريد التأكيد")}
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* ─── Edit Profile Form (shown when editing) ─────────── */}
         {isEditing && (

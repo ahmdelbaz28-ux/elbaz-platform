@@ -189,6 +189,15 @@ const translations: Translations = {
     securitySettings: "Security Settings",
     changePassword: "Change Password",
     accountSettings: "Account Settings",
+    // Email verification
+    emailVerification: "Email Verification",
+    emailVerified: "Verified",
+    emailNotVerified: "Not Verified",
+    sendVerificationEmail: "Send Verification Email",
+    verificationEmailSent: "Verification email sent successfully",
+    emailVerifiedDesc: "Your email has been verified",
+    emailNotVerifiedDesc: "Your email is not verified yet",
+    resendIn: "Resend in",
   },
   ar: {
     home: "الرئيسية",
