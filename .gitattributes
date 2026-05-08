@@ -21,3 +21,4 @@ public/hero-main.webp filter=lfs diff=lfs merge=lfs -text
 public/hero-new.jpg filter=lfs diff=lfs merge=lfs -text
 public/hero-new.webp filter=lfs diff=lfs merge=lfs -text
 public/logo.png filter=lfs diff=lfs merge=lfs -text
+public/pwa-512x512.png filter=lfs diff=lfs merge=lfs -text
