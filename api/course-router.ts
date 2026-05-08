@@ -72,6 +72,14 @@ export const courseRouter = createRouter({
 
       const offset = ((input?.page ?? 1) - 1) * (input?.limit ?? 12);
 
+      // ✅ CRITICAL FIX: Get total count for pagination
+      // Without this, the frontend cannot know the total number of pages
+      const [countResult] = await db
+        .select({ total: sql<number>`count(*)` })
+        .from(courses)
+        .where(and(...conditions));
+      const totalCount = countResult?.total ?? 0;
+
       const result = await db
         .select({
           id: courses.id,
@@ -106,10 +114,18 @@ export const courseRouter = createRouter({
       // Cache the result (only for non-search queries)
       if (!isSearch) {
         const cache = getCache();
-        await cache.set(cacheKey, result, CACHE_TTL.COURSES);
+        await cache.set(cacheKey, { items: result, pagination: { page: input?.page ?? 1, limit: input?.limit ?? 12, totalCount, totalPages: Math.ceil(totalCount / (input?.limit ?? 12)) } }, CACHE_TTL.COURSES);
       }
 
-      return result;
+      return {
+        items: result,
+        pagination: {
+          page: input?.page ?? 1,
+          limit: input?.limit ?? 12,
+          totalCount,
+          totalPages: Math.ceil(totalCount / (input?.limit ?? 12)),
+        },
+      };
     }),
 
   bySlug: publicQuery

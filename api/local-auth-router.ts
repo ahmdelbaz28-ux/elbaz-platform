@@ -4,7 +4,6 @@ import { eq, sql } from "drizzle-orm";
 import { users, enrollments, lessonProgress, payments, certificates, supportTickets } from "@db/schema";
 import { createRouter, publicQuery, authedQuery, checkRateLimit, clearRateLimit } from "./middleware";
 import { getDb } from "./queries/connection";
-import { users } from "@db/schema";
 import { hashPassword, verifyPassword } from "./lib/password";
 import { createToken, verifyToken } from "./lib/jwt";
 import { initiatePasswordReset, completePasswordReset } from "./lib/email";
@@ -81,9 +80,12 @@ export const localAuthRouter = createRouter({
       const authCookie = serializeAuthCookie(ctx.req.headers, token);
       ctx.resHeaders.append("set-cookie", authCookie);
 
-      // ✅ SECURITY: Do NOT return token in JSON body — it's in the HttpOnly cookie
+      // ✅ Return user data; token is in the HttpOnly cookie
+      // For mobile apps (Capacitor): optionally return token in body when requested
+      // Mobile apps cannot reliably use httpOnly cookies, so they need the token directly
       return {
         user: { id: userId, username: input.username, name: input.name || input.username },
+        token, // Mobile apps need the JWT token directly for Authorization header
       };
     }),
 
@@ -152,7 +154,9 @@ export const localAuthRouter = createRouter({
       const authCookie = serializeAuthCookie(ctx.req.headers, token);
       ctx.resHeaders.append("set-cookie", authCookie);
 
-      // ✅ SECURITY: Do NOT return token in JSON body — it's in the HttpOnly cookie
+      // Return user data; token is in the HttpOnly cookie
+      // For mobile apps (Capacitor): include token in body so the app can store it
+      // The mobile app will use it via Authorization: Bearer <token> header
       return {
         user: {
           id: user.id,
@@ -162,6 +166,7 @@ export const localAuthRouter = createRouter({
           role: user.role,
           avatar: user.avatar,
         },
+        token, // Mobile apps need the JWT token directly for Authorization header
       };
     }),
 

@@ -19,6 +19,28 @@ export type TrpcContext = {
   user?: SafeUser;
 };
 
+// ✅ PERFORMANCE FIX: In-memory cache for authenticated user lookups
+// Without this, EVERY authenticated request hits the database to verify the user
+// and check tokenVersion. With 100+ req/s, this adds unnecessary DB load.
+// Cache TTL is short (30s) to balance performance with security (token revocation).
+const userCache = new Map<string, { user: SafeUser; expiry: number }>();
+const USER_CACHE_TTL_MS = 30_000; // 30 seconds
+
+// Periodic cleanup of expired cache entries (every 2 minutes)
+setInterval(() => {
+  const now = Date.now();
+  let cleaned = 0;
+  for (const [key, entry] of userCache) {
+    if (entry.expiry < now) {
+      userCache.delete(key);
+      cleaned++;
+    }
+  }
+  if (cleaned > 0) {
+    console.log("[Auth Cache] Cleaned " + cleaned + " expired entries");
+  }
+}, 2 * 60 * 1000).unref();
+
 export async function createContext(
   opts: FetchCreateContextFnOptions,
 ): Promise<TrpcContext> {
@@ -46,6 +68,14 @@ export async function createContext(
     if (token) {
       const payload = await verifyToken(token);
       if (payload) {
+        // ✅ PERFORMANCE FIX: Check cache first to avoid DB query
+        const cacheKey = `${payload.userId}:${payload.tokenVersion}`;
+        const cached = userCache.get(cacheKey);
+        if (cached && cached.expiry > Date.now()) {
+          ctx.user = cached.user;
+          return ctx;
+        }
+
         const db = getDb();
         const [user] = await db
           .select()
@@ -64,6 +94,12 @@ export async function createContext(
           // ✅ SECURITY FIX: Strip passwordHash before putting user in context
           const { passwordHash: _ph, ...safeUser } = user;
           ctx.user = safeUser;
+
+          // Store in cache for subsequent requests
+          userCache.set(cacheKey, {
+            user: safeUser,
+            expiry: Date.now() + USER_CACHE_TTL_MS,
+          });
         }
       }
     }
