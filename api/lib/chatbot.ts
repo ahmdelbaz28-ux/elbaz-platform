@@ -52,11 +52,11 @@ const AI_MODELS = [
 ];
 
 // Smart tracking: remember which models work to optimize future requests
-var modelSuccessCount: Record<string, number> = {};
-var modelFailCount: Record<string, number> = {};
-var lastWorkingModel = "";
-var lastWorkingTime = 0;
-var modelFailResetTime = 0;
+const modelSuccessCount: Record<string, number> = {};
+const modelFailCount: Record<string, number> = {};
+let lastWorkingModel = "";
+let lastWorkingTime = 0;
+let modelFailResetTime = 0;
 
 /**
  * Build system prompt based on user's language
@@ -129,14 +129,14 @@ async function tryModel(
   systemPrompt: string,
   timeoutMs: number
 ): Promise<{ reply: string; model: string } | null> {
-  var controller: AbortController | null = null;
-  var timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let controller: AbortController | null = null;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
   try {
     controller = new AbortController();
     timeoutId = setTimeout(function() { controller!.abort(); }, timeoutMs);
 
-    var response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": "Bearer " + OPENROUTER_API_KEY,
@@ -164,7 +164,7 @@ async function tryModel(
       return null;
     }
 
-    var data = await response.json();
+    const data = await response.json();
 
     // Check for API-level error
     if (data.error) {
@@ -172,7 +172,7 @@ async function tryModel(
       return null;
     }
 
-    var reply = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+    const reply = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
     if (!reply || reply.trim().length === 0) {
       modelFailCount[modelId] = (modelFailCount[modelId] || 0) + 1;
       return null;
@@ -214,20 +214,20 @@ export async function getChatResponse(request: {
     return { success: false, error: "Chatbot API key not configured" };
   }
 
-  var systemPrompt = getSystemPrompt(request.language);
+  const systemPrompt = getSystemPrompt(request.language);
 
   // ✅ Reset fail counts every 10 minutes — models recover from transient errors
   if (!modelFailResetTime || Date.now() - modelFailResetTime > 600000) {
-    modelFailCount = {};
+    for (const k in modelFailCount) { modelFailCount[k] = 0; }
     modelFailResetTime = Date.now();
   }
 
   // ✅ Global timeout — prevent user waiting >60s even if all models are slow
-  var globalStartTime = Date.now();
-  var GLOBAL_TIMEOUT_MS = 60000;
+  const globalStartTime = Date.now();
+  const GLOBAL_TIMEOUT_MS = 60000;
 
   // Timeout per tier (decreasing for smaller/faster models)
-  var TIER_TIMEOUTS: Record<number, number> = {
+  const TIER_TIMEOUTS: Record<number, number> = {
     1: 20000, // Tier 1: 20s (large models need more time)
     2: 15000, // Tier 2: 15s
     3: 10000, // Tier 3: 10s
@@ -238,18 +238,18 @@ export async function getChatResponse(request: {
   if (lastWorkingModel && (Date.now() - lastWorkingTime) < 300000) {
     // Check it hasn't failed 3+ times since
     if ((modelFailCount[lastWorkingModel] || 0) < 3) {
-      var result = await tryModel(lastWorkingModel, request.messages, systemPrompt, TIER_TIMEOUTS[1]);
+      const result = await tryModel(lastWorkingModel, request.messages, systemPrompt, TIER_TIMEOUTS[1]);
       if (result) return { success: true, reply: result.reply, model: result.model };
     }
   }
 
   // ─── Step 2: Try all models by tier, skipping known-bad ones ───
-  for (var tier = 1; tier <= 4; tier++) {
-    var tierTried = 0;
-    var tierSkipped = 0;
+  for (let tier = 1; tier <= 4; tier++) {
+    let tierTried = 0;
+    let tierSkipped = 0;
 
-    for (var i = 0; i < AI_MODELS.length; i++) {
-      var model = AI_MODELS[i];
+    for (let i = 0; i < AI_MODELS.length; i++) {
+      const model = AI_MODELS[i];
       if (model.tier !== tier) continue;
 
       // Skip models that failed 3+ times recently (they're likely still down)
@@ -259,7 +259,7 @@ export async function getChatResponse(request: {
       }
 
       tierTried++;
-      var result = await tryModel(model.id, request.messages, systemPrompt, TIER_TIMEOUTS[tier]);
+      const result = await tryModel(model.id, request.messages, systemPrompt, TIER_TIMEOUTS[tier]);
       if (result) return { success: true, reply: result.reply, model: result.model };
     }
 
@@ -274,11 +274,11 @@ export async function getChatResponse(request: {
   // ─── Step 3: ABSOLUTE LAST RESORT - try ALL models including known-bad ones ───
   // This only happens if ALL 28 models were skipped as "bad"
   console.warn("[Chatbot] All tiers exhausted with skips. Trying all models as last resort...");
-  for (var i = 0; i < AI_MODELS.length; i++) {
-    var model = AI_MODELS[i];
+  for (let i = 0; i < AI_MODELS.length; i++) {
+    const model = AI_MODELS[i];
     // Reset fail count to give them another chance
     modelFailCount[model.id] = 0;
-    var result = await tryModel(model.id, request.messages, systemPrompt, 10000);
+    const result = await tryModel(model.id, request.messages, systemPrompt, 10000);
     if (result) return { success: true, reply: result.reply, model: result.model };
   }
 

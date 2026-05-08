@@ -12,6 +12,7 @@ export const env = {
   chatbotApiKey: process.env.CHATBOT_API_KEY || "",
   chatbotApiBase: process.env.CHATBOT_API_BASE || "",
   chatbotModel: process.env.CHATBOT_MODEL || "",
+  openrouterApiKey: process.env.OPENROUTER_API_KEY || "",
   paymobApiKey: process.env.PAYMOB_API_KEY || "",
   paymobHmacSecret: process.env.PAYMOB_HMAC_SECRET || "",
   paymobBaseUrl: process.env.PAYMOB_BASE_URL || "https://accept.paymob.com/api",

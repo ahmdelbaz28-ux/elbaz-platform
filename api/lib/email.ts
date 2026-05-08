@@ -62,14 +62,19 @@ export async function sendEmail(message: EmailMessage): Promise<boolean> {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: env.emailFrom,
+          from: `Ahmed Elbaz Platform <${env.emailFrom}>`,
           to: message.to,
           subject: message.subject,
           html: message.html,
           text: message.text,
         }),
       });
-      return response.ok;
+      if (!response.ok) {
+        const errBody = await response.text().catch(() => "");
+        console.error("[Email/Resend] Error " + response.status + ": " + errBody);
+        return false;
+      }
+      return true;
     }
 
     case "sendgrid": {
@@ -90,7 +95,12 @@ export async function sendEmail(message: EmailMessage): Promise<boolean> {
           ],
         }),
       });
-      return response.ok;
+      if (!response.ok) {
+        const errBody = await response.text().catch(() => "");
+        console.error("[Email/SendGrid] Error " + response.status + ": " + errBody);
+        return false;
+      }
+      return true;
     }
 
     default:
