@@ -82,13 +82,18 @@ export const localAuthRouter = createRouter({
       ctx.resHeaders.append("set-cookie", authCookie);
       ctx.resHeaders.append("set-cookie", flagCookie);
 
-      // ✅ Return user data; token is in the HttpOnly cookie
-      // For mobile apps (Capacitor): optionally return token in body when requested
-      // Mobile apps cannot reliably use httpOnly cookies, so they need the token directly
-      return {
+      // ✅ SECURITY FIX: Only return token in body for Capacitor/mobile apps
+      // Web browsers use httpOnly cookies (cannot be read by JS → no XSS token theft)
+      // Mobile apps need the token directly for Authorization: Bearer header
+      const isMobile = ctx.req.headers.get("x-capacitor-platform") !== null;
+      const responseData: Record<string, unknown> = {
         user: { id: userId, username: input.username, name: input.name || input.username },
-        token, // Mobile apps need the JWT token directly for Authorization header
       };
+      if (isMobile) {
+        responseData.token = token;
+      }
+
+      return responseData;
     }),
 
   login: publicQuery
@@ -158,10 +163,9 @@ export const localAuthRouter = createRouter({
       ctx.resHeaders.append("set-cookie", authCookie);
       ctx.resHeaders.append("set-cookie", flagCookie);
 
-      // Return user data; token is in the HttpOnly cookie
-      // For mobile apps (Capacitor): include token in body so the app can store it
-      // The mobile app will use it via Authorization: Bearer <token> header
-      return {
+      // ✅ SECURITY FIX: Only return token in body for Capacitor/mobile apps
+      const isMobile = ctx.req.headers.get("x-capacitor-platform") !== null;
+      const loginData: Record<string, unknown> = {
         user: {
           id: user.id,
           username: user.username,
@@ -170,8 +174,12 @@ export const localAuthRouter = createRouter({
           role: user.role,
           avatar: user.avatar,
         },
-        token, // Mobile apps need the JWT token directly for Authorization header
       };
+      if (isMobile) {
+        loginData.token = token;
+      }
+
+      return loginData;
     }),
 
   me: authedQuery.query(async ({ ctx }) => {

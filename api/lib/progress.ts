@@ -80,6 +80,9 @@ export async function recalcEnrollmentProgress(
 /**
  * Mark a lesson as "watched" (video completed) — separate from quiz pass.
  * This is for lessons where watching the video is sufficient (no quiz required).
+ *
+ * ✅ FIX: Uses atomic UPSERT (INSERT ... ON DUPLICATE KEY UPDATE) to prevent
+ * race condition when multiple heartbeats/markWatched calls arrive simultaneously.
  */
 export async function markLessonWatched(
   userId: number,
@@ -87,35 +90,14 @@ export async function markLessonWatched(
 ): Promise<void> {
   const db = getDb();
 
-  const [existing] = await db
-    .select()
-    .from(lessonProgress)
-    .where(
-      and(eq(lessonProgress.userId, userId), eq(lessonProgress.lessonId, lessonId)),
-    )
-    .limit(1);
-
-  if (existing) {
-    // Only update if not already completed
-    if (!existing.isCompleted) {
-      await db
-        .update(lessonProgress)
-        .set({
-          isCompleted: true,
-          completedAt: new Date(),
-        })
-        .where(eq(lessonProgress.id, existing.id));
-    }
-  } else {
-    await db.insert(lessonProgress).values({
-      userId,
-      lessonId,
-      isCompleted: true,
-      isQuizPassed: false,
-      quizScore: 0,
-      completedAt: new Date(),
-    });
-  }
+  // Atomic UPSERT: insert if not exists, update isCompleted if exists
+  await db.execute(
+    sql`INSERT INTO lessonProgress (\`userId\`, \`lessonId\`, \`isCompleted\`, \`isQuizPassed\`, \`quizScore\`, \`watchedSeconds\`, \`lastPosition\`, \`completedAt\`, \`lastHeartbeatAt\`)
+     VALUES (${userId}, ${lessonId}, true, false, 0, 0, 0, NOW(), NOW())
+     ON DUPLICATE KEY UPDATE
+       \`isCompleted\` = true,
+       \`completedAt\` = IF(\`isCompleted\` = 0, NOW(), \`completedAt\`)`
+  );
 
   // Get the course ID and recalculate enrollment progress
   const [lesson] = await db

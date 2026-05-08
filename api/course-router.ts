@@ -398,7 +398,7 @@ export const courseRouter = createRouter({
   heartbeat: authedQuery
     .input(z.object({
       lessonId: z.number().int().positive(),
-      watchedSeconds: z.number().int().min(0).max(86400), // Max 24h per heartbeat
+      watchedSeconds: z.number().int().min(0).max(300), // Max 5 minutes per heartbeat (matches client cap)
       lastPosition: z.number().int().min(0),              // Current playback position in seconds
     }))
     .mutation(async ({ ctx, input }) => {

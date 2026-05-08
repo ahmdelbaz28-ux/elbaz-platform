@@ -230,7 +230,7 @@ export default function Dashboard() {
                         {lang === "en" ? "Course Purchase" : "شراء كورس"}
                       </p>
                       <p className="text-xs text-[#64748b]">
-                        {p.paymentMethod} — {new Date(p.createdAt).toLocaleDateString()}
+                        {p.paymentMethod} — {p.createdAt ? new Date(p.createdAt).toLocaleDateString() : "—"}
                       </p>
                     </div>
                     <span className="text-sm font-semibold text-[#06b6d4]">

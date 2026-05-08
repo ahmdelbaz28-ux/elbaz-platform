@@ -170,6 +170,7 @@ export default function Admin() {
 
   const updateTicket = trpc.admin.updateTicketStatus.useMutation({
     onSuccess: () => utils.admin.tickets.invalidate(),
+    onError: (err) => console.warn("[Admin] updateTicket failed:", err.message),
   });
 
   const [replyText, setReplyText] = useState("");
@@ -191,6 +192,7 @@ export default function Admin() {
   const [cmsValues, setCmsValues] = useState<Record<string, string>>({});
   const cmsSave = trpc.settings.bulkUpsert.useMutation({
     onSuccess: () => utils.settings.getSection.invalidate({ section: cmsSection }),
+    onError: (err) => console.warn("[Admin] cmsSave failed:", err.message),
   });
 
   useEffect(() => {
@@ -221,6 +223,7 @@ export default function Admin() {
   const { data: activeTheme } = trpc.settings.getActiveTheme.useQuery(undefined, { enabled: !!isAdmin });
   const createTheme = trpc.settings.createTheme.useMutation({
     onSuccess: () => utils.settings.listThemes.invalidate(),
+    onError: (err) => console.warn("[Admin] createTheme failed:", err.message),
   });
   const activateTheme = trpc.settings.activateTheme.useMutation({
     onSuccess: () => {
@@ -290,9 +293,11 @@ export default function Admin() {
   });
   const updatePromo = trpc.promo.update.useMutation({
     onSuccess: () => utils.promo.list.invalidate(),
+    onError: (err) => console.warn("[Admin] updatePromo failed:", err.message),
   });
   const deletePromo = trpc.promo.delete.useMutation({
     onSuccess: () => utils.promo.list.invalidate(),
+    onError: (err) => console.warn("[Admin] deletePromo failed:", err.message),
   });
 
   const [showPromoForm, setShowPromoForm] = useState(false);
@@ -333,12 +338,15 @@ export default function Admin() {
   const { data: promotions, isLoading: promotionsLoading } = trpc.settings.listPromotions.useQuery(undefined, { enabled: !!isAdmin });
   const createPromotion = trpc.settings.createPromotion.useMutation({
     onSuccess: () => utils.settings.listPromotions.invalidate(),
+    onError: (err) => console.warn("[Admin] createPromotion failed:", err.message),
   });
   const updatePromotion = trpc.settings.updatePromotion.useMutation({
     onSuccess: () => utils.settings.listPromotions.invalidate(),
+    onError: (err) => console.warn("[Admin] updatePromotion failed:", err.message),
   });
   const deletePromotion = trpc.settings.deletePromotion.useMutation({
     onSuccess: () => utils.settings.listPromotions.invalidate(),
+    onError: (err) => console.warn("[Admin] deletePromotion failed:", err.message),
   });
 
   const [showPromotionForm, setShowPromotionForm] = useState(false);
@@ -486,7 +494,7 @@ export default function Admin() {
                           </span>
                         </td>
                         <td className="py-3 text-[#64748b]">
-                          {new Date(u.createdAt).toLocaleDateString()}
+                          {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—"}
                         </td>
                       </tr>
                     ))}
@@ -626,7 +634,7 @@ export default function Admin() {
                           </span>
                         </td>
                         <td className="py-3 text-[#64748b]">
-                          {new Date(p.createdAt).toLocaleDateString()}
+                          {p.createdAt ? new Date(p.createdAt).toLocaleDateString() : "—"}
                         </td>
                       </tr>
                     ))}

@@ -60,6 +60,7 @@ const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVid
   const [duration, setDuration] = useState(0);
   const [buffered, setBuffered] = useState(0);
   const [isBuffering, setIsBuffering] = useState(false);
+  const [videoError, setVideoError] = useState(false);
   const [volume, setVolume] = useState(1);
   const hlsControllerRef = useRef<{ destroy: () => void } | null>(null); // HLS controller
 
@@ -90,7 +91,14 @@ const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVid
   const handleTogglePlay = useCallback(() => {
     if (!videoRef.current) return;
     if (videoRef.current.paused) {
-      videoRef.current.play();
+      // ✅ FIX: play() returns a Promise — catch DOMException (autoplay blocked)
+      const playPromise = videoRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((err: DOMException) => {
+          // Autoplay was prevented — user needs to interact first (browser policy)
+          console.warn("[Video] play() blocked:", err.message);
+        });
+      }
     } else {
       videoRef.current.pause();
     }
@@ -265,7 +273,7 @@ const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVid
         onCanPlay={() => setIsBuffering(false)}
         onDurationChange={() => setDuration(videoRef.current?.duration || 0)}
         onLoadedMetadata={() => setDuration(videoRef.current?.duration || 0)}
-        onError={() => setIsBuffering(false)}
+        onError={() => { setIsBuffering(false); setVideoError(true); }}
       >
         {lessonTitle}
       </video>
@@ -281,9 +289,26 @@ const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVid
         </button>
       )}
 
-      {isBuffering && (
+      {isBuffering && !videoError && (
         <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
           <Loader2 className="h-10 w-10 animate-spin text-[#06b6d4]" />
+        </div>
+      )}
+
+      {videoError && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/80 gap-3">
+          <AlertCircle className="h-10 w-10 text-[#ef4444]" />
+          <p className="text-sm text-[#f0f4f8]">
+            {lang === "en" ? "Failed to load video. Please try again." : "فشل تحميل الفيديو. يرجى المحاولة مرة أخرى."}
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-[#06b6d4] text-[#06b6d4] hover:bg-[rgba(6,182,212,0.1)]"
+            onClick={() => { setVideoError(false); if (videoRef.current) videoRef.current.load(); }}
+          >
+            {lang === "en" ? "Retry" : "إعادة المحاولة"}
+          </Button>
         </div>
       )}
 
@@ -937,7 +962,7 @@ export default function CourseDetail() {
                         </p>
                       </div>
                       <span className="shrink-0 text-xs text-[#64748b]">
-                        {lesson.durationMinutes}m
+                        {lesson.durationMinutes != null ? `${lesson.durationMinutes}m` : ""}
                       </span>
                     </button>
                   );

@@ -30,13 +30,17 @@ function useCountUp(end: number, duration: number = 2000, start: boolean = false
   useEffect(() => {
     if (!start) return;
     let startTime: number;
+    let frameId: number;
     const step = (timestamp: number) => {
       if (!startTime) startTime = timestamp;
       const progress = Math.min((timestamp - startTime) / duration, 1);
       setCount(Math.floor(progress * end));
-      if (progress < 1) requestAnimationFrame(step);
+      if (progress < 1) {
+        frameId = requestAnimationFrame(step);
+      }
     };
-    requestAnimationFrame(step);
+    frameId = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frameId);
   }, [end, duration, start]);
   return count;
 }
@@ -101,10 +105,12 @@ function PromoBanner({ promotion }: { promotion: any }) {
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
-    const dismissedKey = `dismissed-promo-${promotion.id}`;
-    if (localStorage.getItem(dismissedKey)) {
-      setDismissed(true);
-    }
+    try {
+      const dismissedKey = `dismissed-promo-${promotion.id}`;
+      if (localStorage.getItem(dismissedKey)) {
+        setDismissed(true);
+      }
+    } catch { /* localStorage unavailable (incognito/Safari) */ }
   }, [promotion.id]);
 
   useEffect(() => {
@@ -129,8 +135,10 @@ function PromoBanner({ promotion }: { promotion: any }) {
   }, [dismissed, promotion.endsAt, promotion.showCountdown]);
 
   const handleDismiss = () => {
-    const dismissedKey = `dismissed-promo-${promotion.id}`;
-    localStorage.setItem(dismissedKey, "true");
+    try {
+      const dismissedKey = `dismissed-promo-${promotion.id}`;
+      localStorage.setItem(dismissedKey, "true");
+    } catch { /* localStorage unavailable */ }
     setDismissed(true);
   };
 
@@ -261,9 +269,12 @@ export default function Home() {
 
   // Filter promotions for top/hero_above position and check dismissed state
   const topPromotion = activePromotions?.find(
-    (p) =>
-      (p.position === "top" || p.position === "hero_above") &&
-      !localStorage.getItem(`dismissed-promo-${p.id}`)
+    (p) => {
+      try {
+        return (p.position === "top" || p.position === "hero_above") &&
+          !localStorage.getItem(`dismissed-promo-${p.id}`);
+      } catch { return (p.position === "top" || p.position === "hero_above"); }
+    }
   );
 
   return (

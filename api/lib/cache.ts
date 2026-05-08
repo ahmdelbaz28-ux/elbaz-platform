@@ -186,7 +186,7 @@ export function getCache(): MemoryLRUCache | RedisCache {
   if (cacheInstance) return cacheInstance;
 
   if (env.redisUrl && env.redisUrl !== "redis://localhost:6379" && env.redisUrl.length > 20) {
-    console.log("[Cache] Using Redis:", env.redisUrl.substring(0, 30) + "...");
+    console.log("[Cache] Using Redis: redis://****");
     cacheInstance = new RedisCache();
   } else {
     console.log("[Cache] Using in-memory LRU cache (no Redis configured)");

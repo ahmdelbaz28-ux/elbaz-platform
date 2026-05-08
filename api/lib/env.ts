@@ -40,7 +40,7 @@ export const env = {
   cloudflareToken: process.env.CLOUDFLARE_TOKEN || "",
 
   // Microsoft Clarity Analytics
-  clarityId: process.env.CLARITY_ID || "3311349506496452",
+  clarityId: process.env.CLARITY_ID || "",
   clarityExportJwt: process.env.CLARITY_EXPORT_JWT || "",
 
   // Aiven Platform API (for service management & monitoring)
