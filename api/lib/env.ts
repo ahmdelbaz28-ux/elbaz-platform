@@ -1,4 +1,4 @@
-// بيئة التشغيل – لا يعتمد على أي ملف آخر
+// Environment configuration — all app settings centralized here
 export const env = {
   isProduction: process.env.NODE_ENV === "production",
   port: parseInt(process.env.PORT || "7860"),

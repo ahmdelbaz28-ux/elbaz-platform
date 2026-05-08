@@ -14,6 +14,49 @@ import { S3Client, GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "./env";
 
+// ─── File Size Validation Constants ──────────────────────────────────────────
+
+const MAX_FILE_SIZE_BYTES = 500 * 1024 * 1024; // 500 MB
+const ALLOWED_CONTENT_TYPES = new Set([
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/svg+xml",
+  "application/pdf",
+  "text/plain",
+  "application/json",
+]);
+
+/**
+ * Validate file size and content type before upload.
+ * Throws an Error if validation fails.
+ */
+export function validateFileForUpload(
+  sizeBytes: number,
+  contentType: string,
+  context = "upload",
+): void {
+  if (sizeBytes <= 0) {
+    throw new Error(`Invalid file size for ${context}: ${sizeBytes} bytes`);
+  }
+  if (sizeBytes > MAX_FILE_SIZE_BYTES) {
+    const maxMB = Math.round(MAX_FILE_SIZE_BYTES / 1024 / 1024);
+    throw new Error(
+      `File too large for ${context}: ${(sizeBytes / 1024 / 1024).toFixed(1)}MB exceeds ${maxMB}MB limit`
+    );
+  }
+  if (contentType && !ALLOWED_CONTENT_TYPES.has(contentType)) {
+    throw new Error(
+      `Unsupported file type for ${context}: "${contentType}". ` +
+      `Allowed: ${Array.from(ALLOWED_CONTENT_TYPES).join(", ")}`
+    );
+  }
+}
+
 // ─── Singleton Client ────────────────────────────────────────────────────────
 
 let r2Client: S3Client | null = null;

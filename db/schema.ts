@@ -213,6 +213,10 @@ export const payments = mysqlTable("payments", {
   statusIdx: index("idx_payments_status").on(table.status),
   paymobOrderIdx: index("idx_payments_paymob_order").on(table.paymobOrderId),
   expiresIdx: index("idx_payments_expires").on(table.expiresAt),
+  // Composite index for admin "get payments by user + status" queries
+  userStatusIdx: index("idx_payments_user_status").on(table.userId, table.status),
+  // Composite index for expiry cleanup queries (status + expiresAt)
+  pendingExpiresIdx: index("idx_payments_pending_expires").on(table.status, table.expiresAt),
 }));
 
 export type Payment = typeof payments.$inferSelect;
@@ -249,6 +253,8 @@ export const supportTickets = mysqlTable("supportTickets", {
 }, (table) => ({
   userIdx: index("idx_tickets_user").on(table.userId),
   statusIdx: index("idx_tickets_status").on(table.status),
+  // Composite index for admin "get tickets by user + status" queries
+  userStatusIdx: index("idx_tickets_user_status").on(table.userId, table.status),
 }));
 
 export type SupportTicket = typeof supportTickets.$inferSelect;

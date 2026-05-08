@@ -118,7 +118,7 @@ export async function createPaymobOrder(
     const text = await response.text();
     throw new Error("Paymob order failed (" + response.status + "): " + text);
   }
-  return response.json().then(function(d) { return d.id; });
+  return response.json().then((d) => d.id);
 }
 
 export async function generatePaymobPaymentKey(
@@ -155,7 +155,7 @@ export async function generatePaymobPaymentKey(
     const text = await response.text();
     throw new Error("Paymob payment key failed (" + response.status + "): " + text);
   }
-  return response.json().then(function(d) { return d.token; });
+  return response.json().then((d) => d.token);
 }
 
 export async function initiatePaymobPayment(
@@ -182,15 +182,15 @@ export function verifyPaymobHmac(queryParams: Record<string, string>): boolean {
   }
   const hmac = queryParams.hmac;
   if (!hmac) return false;
-  var fields = [
+  const fields = [
     "amount_cents","created_at","currency","error_occured",
     "has_parent_transaction","id","integration_id","is_3d_secure",
     "is_auth","is_capture","is_refunded","is_standalone_payment",
     "is_voided","order","owner","pending","source_data_pan",
     "source_data_sub_type","source_data_type","success",
   ];
-  var concatenated = fields.map(function(f) { return queryParams[f] || ""; }).join("");
-  var calculated = crypto.createHmac("sha512", PAYMOB_HMAC_SECRET).update(concatenated).digest("hex");
+  const concatenated = fields.map((f) => queryParams[f] || "").join("");
+  const calculated = crypto.createHmac("sha512", PAYMOB_HMAC_SECRET).update(concatenated).digest("hex");
   try {
     return crypto.timingSafeEqual(Buffer.from(hmac, "hex"), Buffer.from(calculated, "hex"));
   } catch (e) {
@@ -201,10 +201,10 @@ export function verifyPaymobHmac(queryParams: Record<string, string>): boolean {
 export async function confirmPaymentAndEnroll(
   txnId: string, paymobTxnId: string, paymobOrderId: number,
 ): Promise<{ success: boolean; userId: number; courseId: number; isNewEnrollment: boolean }> {
-  return await withTransaction(async function(tx) {
-    var rows = await tx.select().from(payments)
+  return await withTransaction(async (tx) => {
+    const rows = await tx.select().from(payments)
       .where(and(eq(payments.transactionId, txnId), eq(payments.status, "pending"))).limit(1);
-    var payment = rows[0];
+    const payment = rows[0];
     if (!payment) throw new Error("No pending payment found: " + txnId);
     if (payment.paymobOrderId && Number(payment.paymobOrderId) !== paymobOrderId) {
       throw new Error("Order ID mismatch: " + txnId);
@@ -212,9 +212,9 @@ export async function confirmPaymentAndEnroll(
     await tx.update(payments)
       .set({ status: "completed", paidAt: new Date(), gatewayTxnId: paymobTxnId })
       .where(eq(payments.id, payment.id));
-    var existing = await tx.select({ id: enrollments.id }).from(enrollments)
+    const existing = await tx.select({ id: enrollments.id }).from(enrollments)
       .where(and(eq(enrollments.userId, payment.userId), eq(enrollments.courseId, payment.courseId))).limit(1);
-    var isNew = false;
+    let isNew = false;
     if (!existing[0]) {
       await tx.insert(enrollments).values({
         userId: payment.userId, courseId: payment.courseId, progress: 0, isCompleted: false,
@@ -233,15 +233,15 @@ export async function refundPaymobPayment(
   paymentId: number,
   adminAuthToken?: string,
 ): Promise<{ success: boolean; refundId?: string }> {
-  var db = getDb();
-  var rows = await db.select().from(payments).where(eq(payments.id, paymentId)).limit(1);
-  var payment = rows[0];
+  const db = getDb();
+  const rows = await db.select().from(payments).where(eq(payments.id, paymentId)).limit(1);
+  const payment = rows[0];
   if (!payment) throw new Error("Payment not found: " + paymentId);
   if (payment.status !== "completed") throw new Error("Cannot refund: " + payment.status);
   if (!payment.gatewayTxnId) throw new Error("No gateway transaction ID");
   if (!payment.paymobOrderId) throw new Error("No Paymob order ID");
-  var authToken = adminAuthToken || await getPaymobAuthToken();
-  var res = await fetch(PAYMOB_BASE_URL + "/acceptance/refunds", {
+  const authToken = adminAuthToken || await getPaymobAuthToken();
+  const res = await fetch(PAYMOB_BASE_URL + "/acceptance/refunds", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -251,11 +251,11 @@ export async function refundPaymobPayment(
     }),
   });
   if (!res.ok) {
-    var text = await res.text();
+    const text = await res.text();
     throw new Error("Paymob refund failed (" + res.status + "): " + text);
   }
-  var refundData = await res.json();
-  await withTransaction(async function(tx) {
+  const refundData = await res.json();
+  await withTransaction(async (tx) => {
     await tx.update(payments).set({ status: "refunded" }).where(eq(payments.id, paymentId));
     await tx.delete(enrollments)
       .where(and(eq(enrollments.userId, payment.userId), eq(enrollments.courseId, payment.courseId)));
@@ -267,9 +267,9 @@ export async function refundPaymobPayment(
 }
 
 export async function expireOldPayments(): Promise<number> {
-  var db = getDb();
-  var expiryTime = new Date(Date.now() - PAYMENT_EXPIRY_MINUTES * 60 * 1000);
-  var result = await db.update(payments).set({ status: "expired" })
+  const db = getDb();
+  const expiryTime = new Date(Date.now() - PAYMENT_EXPIRY_MINUTES * 60 * 1000);
+  const result = await db.update(payments).set({ status: "expired" })
     .where(and(eq(payments.status, "pending"), lte(payments.expiresAt, expiryTime)));
   return result[0]?.affectedRows || 0;
 }

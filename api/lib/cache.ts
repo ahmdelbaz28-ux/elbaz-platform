@@ -229,3 +229,56 @@ export const cacheKeys = {
   savedPosition: (userId: number, lessonId: number) => `position:${userId}:${lessonId}`,
   rateLimit: (ip: string, action: string) => `rl:${action}:${ip}`,
 } as const;
+
+// ─── Cache Invalidation Helpers ─────────────────────────────────────────────
+// Call these whenever data is modified to keep cache fresh.
+
+/**
+ * Invalidate all course-related cache entries (course lists, details, stats).
+ * Call this when a course is created, updated, or its status changes.
+ */
+export async function invalidateCourseCache(): Promise<void> {
+  const cache = getCache();
+  await cache.del(cacheKeys.stats());
+  await cache.del(cacheKeys.categories());
+  await cache.delPattern("courses:list:");
+  await cache.delPattern("courses:detail:");
+}
+
+/**
+ * Invalidate cache for a specific course by slug.
+ * Call this when a single course is updated.
+ */
+export async function invalidateCourseDetailCache(slug: string): Promise<void> {
+  const cache = getCache();
+  await cache.del(cacheKeys.courseDetail(slug));
+  await cache.del(cacheKeys.stats());
+}
+
+/**
+ * Invalidate homepage stats cache.
+ * Call this when enrollments, courses, or users change.
+ */
+export async function invalidateStatsCache(): Promise<void> {
+  const cache = getCache();
+  await cache.del(cacheKeys.stats());
+}
+
+/**
+ * Invalidate all settings-related cache (themes, CMS settings, promotions).
+ * Call this when admin updates site settings, themes, or promotions.
+ */
+export async function invalidateSettingsCache(): Promise<void> {
+  const cache = getCache();
+  await cache.delPattern("settings:");
+  await cache.delPattern("theme:");
+}
+
+/**
+ * Invalidate testimonial cache.
+ * Call this when testimonials are created, updated, or deleted.
+ */
+export async function invalidateTestimonialCache(): Promise<void> {
+  const cache = getCache();
+  await cache.del(cacheKeys.testimonials());
+}

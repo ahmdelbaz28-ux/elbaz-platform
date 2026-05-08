@@ -4,6 +4,7 @@ import { createRouter, adminQuery, publicQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { siteSettings, themes, promotions } from "@db/schema";
 import { TRPCError } from "@trpc/server";
+import { invalidateSettingsCache } from "./lib/cache";
 
 export const settingsRouter = createRouter({
   // ═══════════════════════════════════════════════
@@ -57,6 +58,7 @@ export const settingsRouter = createRouter({
          VALUES (${input.section}, ${input.key}, ${input.value}, ${input.type}, ${input.sortOrder})
          ON DUPLICATE KEY UPDATE \`value\` = VALUES(\`value\`), \`type\` = VALUES(\`type\`)`
       );
+      await invalidateSettingsCache();
       return { success: true };
     }),
 
@@ -84,6 +86,7 @@ export const settingsRouter = createRouter({
           )
         )
       );
+      await invalidateSettingsCache();
       return { success: true };
     }),
 
@@ -141,6 +144,7 @@ export const settingsRouter = createRouter({
       // Deactivate all themes, then activate the target (sequential within same DB connection)
       await db.update(themes).set({ isActive: false });
       await db.update(themes).set({ isActive: true, updatedAt: new Date() }).where(eq(themes.id, input.id));
+      await invalidateSettingsCache();
       return { success: true };
     }),
 
@@ -167,6 +171,7 @@ export const settingsRouter = createRouter({
       const cleanUpdates = Object.fromEntries(Object.entries(updates).filter(([_, v]) => v !== undefined));
       if (Object.keys(cleanUpdates).length === 0) return { success: true };
       await db.update(themes).set(cleanUpdates).where(eq(themes.id, id));
+      await invalidateSettingsCache();
       return { success: true };
     }),
 
@@ -180,6 +185,7 @@ export const settingsRouter = createRouter({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot delete active theme" });
       }
       await db.delete(themes).where(eq(themes.id, input.id));
+      await invalidateSettingsCache();
       return { success: true };
     }),
 
@@ -281,6 +287,7 @@ export const settingsRouter = createRouter({
     .mutation(async ({ input }) => {
       const db = getDb();
       await db.update(promotions).set({ isActive: false }).where(eq(promotions.id, input.id));
+      await invalidateSettingsCache();
       return { success: true };
     }),
 });

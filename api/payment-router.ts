@@ -6,6 +6,7 @@ import { payments, enrollments, courses } from "@db/schema";
 import { TRPCError } from "@trpc/server";
 import { nanoid } from "nanoid";
 import { initiatePaymobPayment, isPaymobConfigured } from "./lib/paymob";
+import { invalidateCourseCache, invalidateStatsCache } from "./lib/cache";
 
 export const paymentRouter = createRouter({
   /**
@@ -95,6 +96,8 @@ export const paymentRouter = createRouter({
             progress: 0,
             isCompleted: false,
           });
+
+          await invalidateStatsCache();
 
           return {
             success: true,

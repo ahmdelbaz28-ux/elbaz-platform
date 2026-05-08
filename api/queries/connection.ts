@@ -118,6 +118,32 @@ export async function withTransaction<T>(
 }
 
 /**
+ * Get connection pool metrics for monitoring.
+ * Returns pool size, active connections, and queue length.
+ */
+export function getPoolMetrics(): {
+  totalConnections: number;
+  freeConnections: number;
+  activeConnections: number;
+  queuedRequests: number;
+  connectionLimit: number;
+} {
+  if (!pool) {
+    return { totalConnections: 0, freeConnections: 0, activeConnections: 0, queuedRequests: 0, connectionLimit: 0 };
+  }
+  // mysql2 pool exposes these internal properties
+  const poolAny = pool as any;
+  return {
+    totalConnections: poolAllConnections?.length || poolAny._allConnections?.length || 0,
+    freeConnections: poolFreeConnections?.length || poolAny._freeConnections?.length || 0,
+    activeConnections: (poolAllConnections?.length || poolAny._allConnections?.length || 0) -
+                      (poolFreeConnections?.length || poolAny._freeConnections?.length || 0),
+    queuedRequests: poolAny._connectionQueue?.length || 0,
+    connectionLimit: pool.config.connectionLimit || 0,
+  };
+}
+
+/**
  * Graceful shutdown — close pool on process exit
  * ✅ PRODUCTION FIX: Without this, the process hangs on SIGTERM
  */

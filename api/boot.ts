@@ -13,6 +13,8 @@ import { payments } from "@db/schema";
 import { eq } from "drizzle-orm";
 import { env } from "./lib/env";
 import { verifyPaymobHmac } from "./lib/paymob";
+import { getPoolMetrics } from "./queries/connection";
+import { logger } from "./lib/logger";
 
 const app = new Hono();
 const DIST_PUBLIC = path.resolve(process.cwd(), "dist/public");
@@ -159,6 +161,7 @@ app.get("/api/health", async (c) => {
       global: GLOBAL_RATE_LIMIT + "/min",
       chatbot: CHATBOT_RATE_LIMIT + "/hour",
     },
+    pool: getPoolMetrics(),
   });
 });
 
@@ -604,21 +607,25 @@ async function initSentry() {
 
 // Initialize Sentry before starting server
 initSentry().then(() => {
-  console.log("===== Application Startup =====");
-  console.log("Server running on port " + PORT);
-  console.log("Static files: " + DIST_PUBLIC);
-  console.log("DB: " + (process.env.DATABASE_URL ? "OK" : "not set"));
-  console.log("Chat: " + (process.env.OPENROUTER_API_KEY ? "OK (28-model fallback)" : "not set"));
-  console.log("CORS origins: " + corsOrigins.join(", "));
-  console.log("tRPC: /api/trpc/*");
-  console.log("Security: HMAC webhook verification ENABLED");
-  console.log("Security: Chatbot rate limiting ENABLED (" + CHATBOT_RATE_LIMIT + "/hour per IP)");
-  console.log("Security: Global rate limiting ENABLED (" + GLOBAL_RATE_LIMIT + "/min per IP)");
-  console.log("Security: HTTP security headers ENABLED");
-  console.log("Security: CSP strict policy ENABLED");
-  console.log("Performance: gzip/brotli compression ENABLED (threshold: 1KB)");
-  console.log("Performance: Static assets cache 1-year (immutable)");
-  console.log("Performance: Connection pool 15 (production)");
-  console.log("Sentry: " + (process.env.SENTRY_DSN ? "ENABLED" : "NOT CONFIGURED"));
+  logger.info("Application startup", {
+    port: PORT,
+    staticFiles: DIST_PUBLIC,
+    dbConfigured: !!process.env.DATABASE_URL,
+    corsOrigins: corsOrigins.join(", "),
+  });
+  logger.info("Security features enabled", {
+    hmacWebhook: true,
+    httpSecurityHeaders: true,
+    cspStrictPolicy: true,
+    chatbotRateLimit: `${CHATBOT_RATE_LIMIT}/hour per IP`,
+    globalRateLimit: `${GLOBAL_RATE_LIMIT}/min per IP`,
+  });
+  logger.info("Performance features enabled", {
+    gzipCompression: true,
+    compressionThreshold: "1KB",
+    staticAssetsCache: "1-year (immutable)",
+    connectionPoolLimit: env.isProduction ? 15 : 5,
+    sentryEnabled: !!process.env.SENTRY_DSN,
+  });
   server.listen(PORT);
 });
