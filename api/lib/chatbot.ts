@@ -13,8 +13,8 @@
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || process.env.CHATBOT_API_KEY || "";
 
 // ═══════════════════════════════════════════════════════════
-// MODEL POOL - 28 free models, ordered strongest -> weakest
-// Updated: May 2025 (all verified available on OpenRouter)
+// MODEL POOL - 24 free models, ordered strongest -> weakest
+// Updated: May 2026 (all verified available on OpenRouter)
 // ═══════════════════════════════════════════════════════════
 
 const AI_MODELS = [
@@ -27,7 +27,7 @@ const AI_MODELS = [
   { id: "z-ai/glm-4.5-air:free",                        ctx: 131072, tier: 1 },
 
   // ─── Tier 2: May work (rate-limited but accessible) ───
-  { id: "inclusionai/ling-2.6-1t:free",                ctx: 262144, tier: 2 },
+  { id: "inclusionai/ring-2.6-1t:free",                ctx: 262144, tier: 2 },
   { id: "nousresearch/hermes-3-llama-3.1-405b:free",   ctx: 131072, tier: 2 },
   { id: "openai/gpt-oss-120b:free",                     ctx: 131072, tier: 2 },
   { id: "qwen/qwen3-coder:free",                        ctx: 262000, tier: 2 },
@@ -42,15 +42,11 @@ const AI_MODELS = [
   { id: "cognitivecomputations/dolphin-mistral-24b-venice-edition:free", ctx: 32768, tier: 3 },
   { id: "poolside/laguna-xs.2:free",                    ctx: 131072, tier: 3 },
   { id: "meta-llama/llama-3.2-3b-instruct:free",        ctx: 131072, tier: 3 },
+  { id: "baidu/cobuddy:free",                         ctx: 131072, tier: 3 },
 
   // ─── Tier 4: Last resort — Google models (geo-restricted on HF) ───
   { id: "google/gemma-4-31b-it:free",                   ctx: 262144, tier: 4 },
   { id: "google/gemma-4-26b-a4b-it:free",               ctx: 262144, tier: 4 },
-  { id: "google/gemma-3-27b-it:free",                   ctx: 131072, tier: 4 },
-  { id: "google/gemma-3-12b-it:free",                   ctx: 32768,  tier: 4 },
-  { id: "google/gemma-3-4b-it:free",                    ctx: 32768,  tier: 4 },
-  { id: "google/gemma-3n-e4b-it:free",                  ctx: 8192,   tier: 4 },
-  { id: "google/gemma-3n-e2b-it:free",                  ctx: 8192,   tier: 4 },
   { id: "liquid/lfm-2.5-1.2b-thinking:free",            ctx: 32768,  tier: 4 },
   { id: "liquid/lfm-2.5-1.2b-instruct:free",            ctx: 32768,  tier: 4 },
 ];
@@ -287,7 +283,7 @@ export async function getChatResponse(request: {
   }
 
   // This should basically NEVER happen
-  console.error("[Chatbot] ALL 28 models failed completely");
+  console.error("[Chatbot] ALL 24 models failed completely");
   return { success: false, error: "All AI models are temporarily busy. Please try again in a few seconds." };
 }
 

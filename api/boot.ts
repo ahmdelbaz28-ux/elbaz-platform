@@ -265,6 +265,98 @@ app.post("/api/chatbot", async (c) => {
   }
 });
 
+// ✅ SSE Streaming endpoint for chatbot — streams reply character by character
+app.post("/api/chatbot/stream", async (c) => {
+  try {
+    // 1. Rate limiting (per IP)
+    const clientIp = c.req.header("cf-connecting-ip") || c.req.header("x-forwarded-for") || c.req.header("x-real-ip") || "unknown";
+    if (!checkChatbotRateLimit(clientIp)) {
+      return c.json({ success: false, error: "Rate limit exceeded. Try again later." }, 429);
+    }
+
+    // 2. Validate request
+    var body = await c.req.json();
+    var messages = body.messages;
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return c.json({ success: false, error: "Messages array is required" }, 400);
+    }
+    if (messages.length > 20) {
+      return c.json({ success: false, error: "Too many messages (max 20)" }, 400);
+    }
+    for (const m of messages) {
+      if (typeof m.content !== "string" || m.content.length > 4000) {
+        return c.json({ success: false, error: "Invalid message content" }, 400);
+      }
+      if (!["user", "assistant", "system"].includes(m.role)) {
+        return c.json({ success: false, error: "Invalid message role" }, 400);
+      }
+    }
+
+    // 3. Get chat response using the smart fallback system
+    var { getChatResponse } = await import("./lib/chatbot");
+    var result = await getChatResponse({
+      messages: messages,
+      language: body.language || "ar",
+    });
+
+    // 4. Stream the response as SSE
+    var stream = new ReadableStream({
+      start(controller) {
+        var encoder = new TextEncoder();
+
+        // Send model name first
+        if (result.model) {
+          controller.enqueue(encoder.encode("data: " + JSON.stringify({ model: result.model }) + "
+
+"));
+        }
+
+        if (result.success && result.reply) {
+          // Stream character by character in small chunks
+          var reply = result.reply;
+          var chunkSize = 3; // Send 3 chars at a time for smooth effect
+          var i = 0;
+          var interval = setInterval(function() {
+            if (i < reply.length) {
+              var chunk = reply.slice(i, i + chunkSize);
+              controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: chunk }) + "
+
+"));
+              i += chunkSize;
+            } else {
+              clearInterval(interval);
+              controller.enqueue(encoder.encode("data: [DONE]
+
+"));
+              controller.close();
+            }
+          }, 8); // 8ms between chunks for smooth streaming feel
+        } else {
+          controller.enqueue(encoder.encode("data: " + JSON.stringify({ error: result.error || "Service unavailable" }) + "
+
+"));
+          controller.enqueue(encoder.encode("data: [DONE]
+
+"));
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+      },
+    });
+  } catch (e) {
+    console.error("[Chatbot/Stream] Error: " + String(e));
+    return c.json({ success: false, error: "Service temporarily unavailable. Please try again." }, 503);
+  }
+});
+
 // ✅ PATCH-6: Paymob webhook — HMAC verification + IP allowlist + amount verification
 app.post("/api/webhooks/paymob", async (c) => {
   try {
