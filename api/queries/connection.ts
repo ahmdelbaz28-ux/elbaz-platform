@@ -34,9 +34,7 @@ function sanitizeDatabaseUrl(rawUrl: string): string {
         stripped = true;
       }
     }
-    if (stripped) {
-      console.warn("[DB] Sanitized DATABASE_URL: removed invalid mysql2 query params (ssl-mode, acquireTimeout).");
-    }
+    // Silently sanitized — no noise in logs
     return url.toString();
   } catch {
     return rawUrl;
