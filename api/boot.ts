@@ -87,13 +87,19 @@ app.use("*", async (c, next) => {
   await next();
   // Content Security Policy — hardened: removed unsafe-inline/eval from script-src
   c.header("Content-Security-Policy", "default-src 'self'; script-src 'self' https://www.clarity.ms https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https: blob:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://openrouter.ai https://*.paymob.com https://www.clarity.ms https://*.sentry.io wss://; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://*.paymob.com;");
-  // Prevent clickjacking
+  // Prevent clickjacking — CSP frame-ancestors 'none' is the modern replacement.
+  // Cloudflare may override this to SAMEORIGIN, but CSP frame-ancestors takes
+  // precedence in all modern browsers (Chrome/Firefox/Safari/Edge).
   c.header("X-Frame-Options", "DENY");
   // Prevent MIME type sniffing
   c.header("X-Content-Type-Options", "nosniff");
+  // Explicitly disable deprecated X-XSS-Protection (Cloudflare adds 1; mode=block by default,
+  // which can actually introduce XSS vulnerabilities via filter bypass).
+  // Modern CSP handles XSS protection — X-XSS-Protection is obsolete.
+  c.header("X-XSS-Protection", "0");
   // Referrer policy
   c.header("Referrer-Policy", "strict-origin-when-cross-origin");
-  // Restrict browser features
+  // Restrict browser features (Feature-Policy is deprecated — replaced by Permissions-Policy)
   c.header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(self)");
   // HSTS (HTTPS enforcement)
   c.header("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
