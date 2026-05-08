@@ -170,6 +170,14 @@ app.all("/api/trpc/*", async (c) => {
     router: appRouter,
     createContext: createContext,
     onError: function(opts) {
+      // ✅ Suppress noisy UNAUTHORIZED errors from auth.me (expected for unauthenticated visitors)
+      if (opts.path === "auth.me" && opts.error.code === "UNAUTHORIZED") {
+        return;
+      }
+      // ✅ Suppress expected heartbeat errors (sendBeacon with no Content-Type)
+      if (opts.path === "course.heartbeat") {
+        return;
+      }
       console.error("[tRPC Error] " + opts.path + ": " + opts.error.message);
       // Send to Sentry if configured
       if (process.env.SENTRY_DSN) {
@@ -474,10 +482,17 @@ async function initSentry() {
     console.log("Sentry: Not configured (no SENTRY_DSN env var)");
     return;
   }
+  // ✅ FIX: Validate DSN format — must start with https://
+  // Common mistake: using a Sentry auth token (sntryu_...) instead of a DSN
+  if (!dsn.startsWith("https://")) {
+    console.error("Sentry: Invalid DSN format. Expected 'https://KEY@ORG.ingest.sentry.io/PROJECT_ID', got: '***' + dsn.slice(-8));
+    console.error("Sentry: Tip: Go to https://elbaz-platform.sentry.io → create a project → copy the DSN from Settings → Client Keys (DSN)");
+    return;
+  }
   try {
     const Sentry = await import("@sentry/node");
     Sentry.init({
-      dsn: env.sentryDsn || dsn,
+      dsn: dsn,
       environment: env.isProduction ? "production" : "development",
       release: process.env.npm_package_version || "0.0.0",
       tracesSampleRate: env.isProduction ? 0.1 : 1.0,

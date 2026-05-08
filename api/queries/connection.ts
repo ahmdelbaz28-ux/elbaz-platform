@@ -26,7 +26,6 @@ export function getDb() {
       idleTimeout: 60000,                              // ✅ OPTIMIZED: Kill idle connections after 60s
       // ✅ SECURITY: Connection timeout prevents connection leak
       connectTimeout: 10000,
-      acquireTimeout: 8000,                            // ✅ OPTIMIZED: Fail fast if no connection in 8s
       // ✅ Timezone handling for Egypt (Africa/Cairo = UTC+2)
       timezone: "+02:00",
       // ✅ OPTIMIZED: Encoding
