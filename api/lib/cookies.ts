@@ -22,6 +22,10 @@ export function getSessionCookieOptions(headers: Headers): CookieOptions {
 export const AUTH_COOKIE_NAME = "elbaz_auth";
 export const AUTH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60; // 7 days in seconds
 
+// ✅ FIX: Non-HttpOnly companion cookie — readable from JS to guard auth.me calls
+// Prevents unnecessary auth.me requests on every page load for unauthenticated users
+export const AUTH_FLAG_COOKIE_NAME = "elbaz_auth_flag";
+
 export function getAuthCookieOptions(headers: Headers): CookieOptions {
   const localhost = isLocalhost(headers);
   return {
@@ -45,14 +49,35 @@ export function serializeAuthCookie(headers: Headers, token: string): string {
   });
 }
 
-/** Serialize a cleared auth cookie (set on logout) */
-export function clearAuthCookie(headers: Headers): string {
+/** Serialize a non-HttpOnly flag cookie (readable from JS to guard auth.me calls) */
+export function serializeAuthFlagCookie(headers: Headers): string {
   const opts = getAuthCookieOptions(headers);
-  return cookie.serialize(AUTH_COOKIE_NAME, "", {
-    httpOnly: opts.httpOnly,
+  return cookie.serialize(AUTH_FLAG_COOKIE_NAME, "1", {
+    httpOnly: false, // Must be readable from JavaScript
     path: opts.path,
     sameSite: opts.sameSite?.toLowerCase() as "lax" | "none",
     secure: opts.secure,
-    maxAge: 0,
+    maxAge: opts.maxAge,
   });
+}
+
+/** Serialize a cleared auth cookie (set on logout) */
+export function clearAuthCookie(headers: Headers): string {
+  const opts = getAuthCookieOptions(headers);
+  return [
+    cookie.serialize(AUTH_COOKIE_NAME, "", {
+      httpOnly: opts.httpOnly,
+      path: opts.path,
+      sameSite: opts.sameSite?.toLowerCase() as "lax" | "none",
+      secure: opts.secure,
+      maxAge: 0,
+    }),
+    cookie.serialize(AUTH_FLAG_COOKIE_NAME, "", {
+      httpOnly: false,
+      path: opts.path,
+      sameSite: opts.sameSite?.toLowerCase() as "lax" | "none",
+      secure: opts.secure,
+      maxAge: 0,
+    }),
+  ].join(", ");
 }

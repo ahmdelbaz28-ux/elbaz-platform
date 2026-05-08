@@ -10,13 +10,52 @@ let instance: ReturnType<typeof drizzle<typeof fullSchema>>;
 let pool: mysql.Pool;
 
 /**
+ * ✅ FIX: Sanitize DATABASE_URL by removing query params that are invalid for mysql2.
+ * Aiven MySQL URLs may include params like `ssl-mode=REQUIRED` and `acquireTimeout=10000`
+ * which are NOT valid mysql2 Connection options and trigger deprecation warnings.
+ * mysql2 uses `ssl: { rejectUnauthorized: true }` instead of `ssl-mode`.
+ */
+function sanitizeDatabaseUrl(rawUrl: string): string {
+  try {
+    const url = new URL(rawUrl);
+    const params = url.searchParams;
+    // mysql2 invalid params to strip (commonly added by Aiven/PlanetScale/other hosts)
+    const invalidParams = [
+      "ssl-mode",     // mysql2 uses `ssl` object, not `ssl-mode` query param
+      "acquireTimeout", // not a mysql2 pool option (pool uses waitForConnections)
+      "ssl-mode=REQUIRED",
+      "ssl-mode=VERIFY_IDENTITY",
+      "ssl-mode=PREFERRED",
+    ];
+    let stripped = false;
+    for (const key of Array.from(params.keys())) {
+      if (invalidParams.includes(key) || key.startsWith("ssl-mode")) {
+        params.delete(key);
+        stripped = true;
+      }
+    }
+    if (stripped) {
+      console.warn("[DB] Sanitized DATABASE_URL: removed invalid mysql2 query params (ssl-mode, acquireTimeout). Using ssl: true for secure connections.");
+      // If we removed ssl-mode but no ssl param exists, add ssl=true for secure Aiven connections
+      if (!params.has("ssl")) {
+        params.set("ssl", "true");
+      }
+    }
+    return url.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
+/**
  * ✅ PRODUCTION FIX: Connection pooling with proper limits
  * Without pooling, every request creates a new connection → server crashes under load
  */
 export function getDb() {
   if (!instance) {
+    const cleanUrl = sanitizeDatabaseUrl(env.databaseUrl);
     pool = mysql.createPool({
-      uri: env.databaseUrl,
+      uri: cleanUrl,
       // ✅ OPTIMIZED: Connection pool tuned for Aiven free-1-1gb (max_connections=76)
       waitForConnections: true,
       connectionLimit: env.isProduction ? 15 : 5,

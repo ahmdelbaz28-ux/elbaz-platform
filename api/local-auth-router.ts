@@ -8,7 +8,7 @@ import { hashPassword, verifyPassword } from "./lib/password";
 import { createToken, verifyToken } from "./lib/jwt";
 import { initiatePasswordReset, completePasswordReset } from "./lib/email";
 // ✅ SECURITY FIX: Import auth cookie helpers for httpOnly cookie auth
-import { serializeAuthCookie, clearAuthCookie, AUTH_COOKIE_NAME } from "./lib/cookies";
+import { serializeAuthCookie, serializeAuthFlagCookie, clearAuthCookie, AUTH_COOKIE_NAME } from "./lib/cookies";
 import { parse } from "cookie";
 
 export const localAuthRouter = createRouter({
@@ -78,7 +78,9 @@ export const localAuthRouter = createRouter({
 
       // ✅ SECURITY FIX: Set JWT in httpOnly cookie instead of returning only in body
       const authCookie = serializeAuthCookie(ctx.req.headers, token);
+      const flagCookie = serializeAuthFlagCookie(ctx.req.headers);
       ctx.resHeaders.append("set-cookie", authCookie);
+      ctx.resHeaders.append("set-cookie", flagCookie);
 
       // ✅ Return user data; token is in the HttpOnly cookie
       // For mobile apps (Capacitor): optionally return token in body when requested
@@ -152,7 +154,9 @@ export const localAuthRouter = createRouter({
 
       // ✅ SECURITY FIX: Set JWT in httpOnly cookie instead of returning only in body
       const authCookie = serializeAuthCookie(ctx.req.headers, token);
+      const flagCookie = serializeAuthFlagCookie(ctx.req.headers);
       ctx.resHeaders.append("set-cookie", authCookie);
+      ctx.resHeaders.append("set-cookie", flagCookie);
 
       // Return user data; token is in the HttpOnly cookie
       // For mobile apps (Capacitor): include token in body so the app can store it
