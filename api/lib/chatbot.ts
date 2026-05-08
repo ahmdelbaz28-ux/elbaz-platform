@@ -1,5 +1,5 @@
 /**
- * GENIUS CHATBOT - 28-Model Smart Fallback System
+ * GENIUS CHATBOT - 24-Model Smart Fallback System
  *
  * Uses OpenRouter free models with automatic cascading fallback.
  * If a model is overloaded/down/unavailable, instantly tries the next.
