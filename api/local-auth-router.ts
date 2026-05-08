@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { eq, sql } from "drizzle-orm";
+import { users, enrollments, lessonProgress, payments, certificates, supportTickets } from "@db/schema";
 import { createRouter, publicQuery, authedQuery, checkRateLimit, clearRateLimit } from "./middleware";
 import { getDb } from "./queries/connection";
 import { users } from "@db/schema";
@@ -21,7 +22,11 @@ export const localAuthRouter = createRouter({
           .regex(/^[a-zA-Z0-9_]+$/, "Username can only contain letters, numbers, and underscores"),
         password: z.string()
           .min(8, "Password must be at least 8 characters")
-          .max(100),
+          .max(100)
+          .regex(
+            /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
+            "Password must contain at least one uppercase letter, one lowercase letter, and one number"
+          ),
         name: z.string().min(1).max(255).optional(),
         email: z.string().email("Invalid email format").optional(),
       })
@@ -76,8 +81,8 @@ export const localAuthRouter = createRouter({
       const authCookie = serializeAuthCookie(ctx.req.headers, token);
       ctx.resHeaders.append("set-cookie", authCookie);
 
+      // ✅ SECURITY: Do NOT return token in JSON body — it's in the HttpOnly cookie
       return {
-        token,
         user: { id: userId, username: input.username, name: input.name || input.username },
       };
     }),
@@ -147,8 +152,8 @@ export const localAuthRouter = createRouter({
       const authCookie = serializeAuthCookie(ctx.req.headers, token);
       ctx.resHeaders.append("set-cookie", authCookie);
 
+      // ✅ SECURITY: Do NOT return token in JSON body — it's in the HttpOnly cookie
       return {
-        token,
         user: {
           id: user.id,
           username: user.username,
@@ -182,8 +187,21 @@ export const localAuthRouter = createRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // ✅ Uses authedQuery — no manual token parsing needed
       const db = getDb();
+
+      // ✅ SECURITY: Check email uniqueness before updating to prevent duplicates
+      if (input.email) {
+        const existingEmail = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.email, input.email))
+          .limit(1);
+
+        if (existingEmail.length > 0 && existingEmail[0].id !== ctx.user.id) {
+          throw new TRPCError({ code: "CONFLICT", message: "Email already in use by another account" });
+        }
+      }
+
       await db
         .update(users)
         .set({
@@ -201,7 +219,13 @@ export const localAuthRouter = createRouter({
     .input(
       z.object({
         currentPassword: z.string().min(1),
-        newPassword: z.string().min(8).max(100),
+        newPassword: z.string()
+          .min(8, "Password must be at least 8 characters")
+          .max(100)
+          .regex(
+            /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
+            "Password must contain at least one uppercase letter, one lowercase letter, and one number"
+          ),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -255,7 +279,13 @@ export const localAuthRouter = createRouter({
     .input(z.object({
       userId: z.number().int().positive(),
       token: z.string().min(1),
-      newPassword: z.string().min(8).max(100),
+      newPassword: z.string()
+          .min(8, "Password must be at least 8 characters")
+          .max(100)
+          .regex(
+            /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
+            "Password must contain at least one uppercase letter, one lowercase letter, and one number"
+          ),
     }))
     .mutation(async ({ ctx, input }) => {
       // ✅ FIXED: Add rate limiting to resetPassword to prevent brute-force
@@ -276,6 +306,36 @@ export const localAuthRouter = createRouter({
 
       return result;
     }),
+
+
+  // GDPR Data Export — allows users to download all their personal data
+  exportUserData: authedQuery.mutation(async ({ ctx }) => {
+    const db = getDb();
+    const userId = ctx.user.id;
+
+    // Collect all user-related data from every table
+    const [userData] = await db
+      .select({ id: users.id, username: users.username, name: users.name, email: users.email, role: users.role, preferredLanguage: users.preferredLanguage, createdAt: users.createdAt, lastSignInAt: users.lastSignInAt })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    const userEnrollments = await db.select().from(enrollments).where(eq(enrollments.userId, userId));
+    const userProgress = await db.select().from(lessonProgress).where(eq(lessonProgress.userId, userId));
+    const userPayments = await db.select({ id: payments.id, courseId: payments.courseId, amount: payments.amount, currency: payments.currency, paymentMethod: payments.paymentMethod, status: payments.status, createdAt: payments.createdAt, paidAt: payments.paidAt }).from(payments).where(eq(payments.userId, userId));
+    const userCertificates = await db.select().from(certificates).where(eq(certificates.userId, userId));
+    const userTickets = await db.select({ id: supportTickets.id, subject: supportTickets.subject, category: supportTickets.category, status: supportTickets.status, createdAt: supportTickets.createdAt }).from(supportTickets).where(eq(supportTickets.userId, userId));
+
+    return {
+      exportedAt: new Date().toISOString(),
+      user: userData,
+      enrollments: userEnrollments,
+      lessonProgress: userProgress,
+      payments: userPayments,
+      certificates: userCertificates,
+      supportTickets: userTickets,
+    };
+  }),
 
   // ✅ SECURITY FIX: Logout mutation — clears httpOnly auth cookie
   logout: authedQuery.mutation(async ({ ctx }) => {

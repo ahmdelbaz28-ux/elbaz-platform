@@ -8,8 +8,13 @@ import type { SafeUser } from "./context";
 export const adminRouter = createRouter({
   // ✅ SECURITY FIX: Exclude passwordHash from getAllUsers response
   // Previously: db.select().from(users) returned ALL columns including passwordHash
-  getAllUsers: adminQuery.query(async () => {
+  getAllUsers: adminQuery
+    .input(z.object({ page: z.number().int().min(1).default(1), limit: z.number().int().min(1).max(100).default(20) }).optional())
+    .query(async ({ input }) => {
     const db = getDb();
+    const page = input?.page ?? 1;
+    const limit = input?.limit ?? 20;
+    const offset = (page - 1) * limit;
     const allUsers = await db
       .select({
         id: users.id,
@@ -25,13 +30,20 @@ export const adminRouter = createRouter({
         lastSignInAt: users.lastSignInAt,
       })
       .from(users)
-      .orderBy(desc(users.createdAt));
+      .orderBy(desc(users.createdAt))
+      .limit(limit)
+      .offset(offset);
     return allUsers as SafeUser[];
   }),
 
   // Alias used by Admin.tsx frontend (trpc.admin.users.useQuery)
-  users: adminQuery.query(async () => {
+  users: adminQuery
+    .input(z.object({ page: z.number().int().min(1).default(1), limit: z.number().int().min(1).max(100).default(20) }).optional())
+    .query(async ({ input }) => {
     const db = getDb();
+    const page = input?.page ?? 1;
+    const limit = input?.limit ?? 20;
+    const offset = (page - 1) * limit;
     const allUsers = await db
       .select({
         id: users.id,
@@ -47,14 +59,27 @@ export const adminRouter = createRouter({
         lastSignInAt: users.lastSignInAt,
       })
       .from(users)
-      .orderBy(desc(users.createdAt));
+      .orderBy(desc(users.createdAt))
+      .limit(limit)
+      .offset(offset);
     return allUsers as SafeUser[];
   }),
 
   // Alias used by Admin.tsx frontend (trpc.admin.payments.useQuery)
-  payments: adminQuery.query(async () => {
+  payments: adminQuery
+    .input(z.object({ page: z.number().int().min(1).default(1), limit: z.number().int().min(1).max(100).default(20), status: z.enum(["pending", "completed", "failed", "refunded", "expired"]).optional() }).optional())
+    .query(async ({ input }) => {
     const db = getDb();
-    return db.select().from(payments).orderBy(desc(payments.createdAt));
+    const page = input?.page ?? 1;
+    const limit = input?.limit ?? 20;
+    const offset = (page - 1) * limit;
+    const conditions = [];
+    if (input?.status) conditions.push(eq(payments.status, input.status));
+    return db.select().from(payments)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(payments.createdAt))
+      .limit(limit)
+      .offset(offset);
   }),
 
   // Dashboard stats (trpc.admin.stats.useQuery)
@@ -72,7 +97,7 @@ export const adminRouter = createRouter({
     const [revenueResult] = await db
       .select({ total: sql<string>`COALESCE(SUM(CAST(amount AS DECIMAL(12,2))), 0)` })
       .from(payments)
-      .where(eq(payments.status, "paid"));
+      .where(eq(payments.status, "completed"));
 
     return {
       totalUsers: userCount?.value ?? 0,
@@ -84,8 +109,15 @@ export const adminRouter = createRouter({
   }),
 
   // All support tickets for admin (trpc.admin.tickets.useQuery)
-  tickets: adminQuery.query(async () => {
+  tickets: adminQuery
+    .input(z.object({ page: z.number().int().min(1).default(1), limit: z.number().int().min(1).max(100).default(20), status: z.enum(["open", "in_progress", "resolved", "closed"]).optional() }).optional())
+    .query(async ({ input }) => {
     const db = getDb();
+    const page = input?.page ?? 1;
+    const limit = input?.limit ?? 20;
+    const offset = (page - 1) * limit;
+    const conditions = [];
+    if (input?.status) conditions.push(eq(supportTickets.status, input.status));
     return db
       .select({
         id: supportTickets.id,
@@ -99,7 +131,10 @@ export const adminRouter = createRouter({
         updatedAt: supportTickets.updatedAt,
       })
       .from(supportTickets)
-      .orderBy(desc(supportTickets.createdAt));
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(supportTickets.createdAt))
+      .limit(limit)
+      .offset(offset);
   }),
 
   // Update ticket status (trpc.admin.updateTicketStatus.useMutation)

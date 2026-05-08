@@ -23,9 +23,12 @@ export async function findUserByUnionId(unionId: string) {
 
 export async function upsertUser(data: InsertUser) {
   const values = { ...data };
+  // SECURITY: Never overwrite passwordHash on update — only set on initial insert
+  // If data contains passwordHash, include it in insert but exclude from update set
+  const { passwordHash, ...dataWithoutPassword } = data;
   const updateSet: Partial<InsertUser> = {
     lastSignInAt: new Date(),
-    ...data,
+    ...dataWithoutPassword,
   };
 
   await getDb()

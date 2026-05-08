@@ -415,34 +415,17 @@ export const courseRouter = createRouter({
         }
       }
 
-      // Upsert lesson progress with watch time data
-      const existing = await db
-        .select()
-        .from(lessonProgress)
-        .where(and(eq(lessonProgress.userId, ctx.user.id), eq(lessonProgress.lessonId, input.lessonId)))
-        .limit(1);
-
-      if (existing && existing.length > 0) {
-        await db
-          .update(lessonProgress)
-          .set({
-            watchedSeconds: (existing[0].watchedSeconds || 0) + input.watchedSeconds,
-            lastPosition: input.lastPosition,
-            lastHeartbeatAt: new Date(),
-          })
-          .where(eq(lessonProgress.id, existing[0].id));
-      } else {
-        await db.insert(lessonProgress).values({
-          userId: ctx.user.id,
-          lessonId: input.lessonId,
-          isCompleted: false,
-          isQuizPassed: false,
-          quizScore: 0,
-          watchedSeconds: input.watchedSeconds,
-          lastPosition: input.lastPosition,
-          lastHeartbeatAt: new Date(),
-        });
-      }
+      // SECURITY FIX: Use atomic UPSERT to prevent race condition
+      // Previously used SELECT + INSERT/UPDATE which could lose watch time
+      // if two heartbeats arrived simultaneously (e.g., tab + background)
+      await db.execute(
+        sql`INSERT INTO lessonProgress (\`userId\`, \`lessonId\`, \`isCompleted\`, \`isQuizPassed\`, \`quizScore\`, \`watchedSeconds\`, \`lastPosition\`, \`lastHeartbeatAt\`)
+         VALUES (${ctx.user.id}, ${input.lessonId}, false, false, 0, ${input.watchedSeconds}, ${input.lastPosition}, NOW())
+         ON DUPLICATE KEY UPDATE
+           \`watchedSeconds\` = \`watchedSeconds\` + ${input.watchedSeconds},
+           \`lastPosition\` = ${input.lastPosition},
+           \`lastHeartbeatAt\` = NOW()`
+      );
 
       // Update enrollment lastAccessedAt
       await db

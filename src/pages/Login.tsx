@@ -64,19 +64,21 @@ export default function Login() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="rounded-xl border border-[#1f2d44] bg-[#111827] p-6">
             {error && (
-              <div className="mb-4 rounded-lg bg-[rgba(244,63,94,0.1)] p-3 text-sm text-[#f43f5e]">
+              <div className="mb-4 rounded-lg bg-[rgba(244,63,94,0.1)] p-3 text-sm text-[#f43f5e]" role="alert">
                 {error}
               </div>
             )}
 
             <div className="space-y-4">
               <div>
-                <Label className="text-sm text-[#94a3b8]">{t("username")}</Label>
+                <Label htmlFor="login-username" className="text-sm text-[#94a3b8]">{t("username")}</Label>
                 <Input
+                  id="login-username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder={t("enterUsername")}
                   className="mt-1 border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8] placeholder:text-[#64748b] focus:border-[#06b6d4] focus:ring-[#06b6d4]"
+                  autoComplete="username"
                 />
               </div>
 
@@ -102,6 +104,7 @@ export default function Login() {
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748b] hover:text-[#94a3b8]"
+                    aria-label={showPassword ? (lang === "ar" ? "إخفاء كلمة المرور" : "Hide password") : (lang === "ar" ? "إظهار كلمة المرور" : "Show password")}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>

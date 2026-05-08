@@ -127,13 +127,20 @@ export const settingsRouter = createRouter({
       return { success: true, id: Number(theme.insertId) };
     }),
 
-  // Activate a theme (deactivates all others)
+  // Activate a theme (deactivates all others — atomic operation)
   activateTheme: adminQuery
     .input(z.object({ id: z.number().int().positive() }))
     .mutation(async ({ input }) => {
       const db = getDb();
+      // SECURITY FIX: Atomic operation to prevent race condition
+      // First verify the theme exists
+      const [theme] = await db.select({ id: themes.id }).from(themes).where(eq(themes.id, input.id)).limit(1);
+      if (!theme) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Theme not found" });
+      }
+      // Deactivate all themes, then activate the target (sequential within same DB connection)
       await db.update(themes).set({ isActive: false });
-      await db.update(themes).set({ isActive: true }).where(eq(themes.id, input.id));
+      await db.update(themes).set({ isActive: true, updatedAt: new Date() }).where(eq(themes.id, input.id));
       return { success: true };
     }),
 

@@ -27,8 +27,9 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 
 function PageLoader() {
   return (
-    <div className="flex min-h-[60vh] items-center justify-center">
+    <div className="flex min-h-[60vh] items-center justify-center" role="status" aria-label="Loading">
       <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#1f2d44] border-t-[#06b6d4]" />
+      <span className="sr-only">Loading...</span>
     </div>
   );
 }
@@ -39,9 +40,12 @@ function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-[#070b12]">
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:rounded-lg focus:bg-[#06b6d4] focus:px-4 focus:py-2 focus:text-[#0a0e17] focus:font-semibold focus:outline-none focus:ring-2 focus:ring-[#06b6d4]">
+        {typeof window !== 'undefined' && document.documentElement.dir === 'rtl' ? 'تخطي إلى المحتوى' : 'Skip to main content'}
+      </a>
       <Navbar />
       <ScrollToTop />
-      <main className="pb-20 md:pb-0"><Suspense fallback={<PageLoader />}>{children}</Suspense></main>
+      <main id="main-content" className="pb-20 md:pb-0"><Suspense fallback={<PageLoader />}>{children}</Suspense></main>
       {!isAuthPage && <Footer />}
       <MobileBottomNav />
       <WhatsAppButton />

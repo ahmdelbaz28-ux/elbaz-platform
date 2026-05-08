@@ -55,9 +55,15 @@ export default function Register() {
       toast.error(msg);
       return;
     }
-    // ✅ FIX: Must match backend validation (min 8 chars)
+    // Must match backend validation (min 8 chars, uppercase, lowercase, digit)
     if (password.length < 8) {
       const msg = lang === "en" ? "Password must be at least 8 characters" : "كلمة المرور يجب أن تكون 8 أحرف على الأقل";
+      setError(msg);
+      toast.error(msg);
+      return;
+    }
+    if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
+      const msg = lang === "en" ? "Password must contain at least one uppercase letter, one lowercase letter, and one number" : "كلمة المرور يجب أن تحتوي على حرف كبير وحرف صغير ورقم على الأقل";
       setError(msg);
       toast.error(msg);
       return;
@@ -84,67 +90,78 @@ export default function Register() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="rounded-xl border border-[#1f2d44] bg-[#111827] p-6">
             {error && (
-              <div className="mb-4 rounded-lg bg-[rgba(244,63,94,0.1)] p-3 text-sm text-[#f43f5e]">
+              <div className="mb-4 rounded-lg bg-[rgba(244,63,94,0.1)] p-3 text-sm text-[#f43f5e]" role="alert">
                 {error}
               </div>
             )}
 
             <div className="space-y-4">
               <div>
-                <Label className="text-sm text-[#94a3b8]">{t("username")} *</Label>
+                <Label htmlFor="register-username" className="text-sm text-[#94a3b8]">{t("username")} *</Label>
                 <Input
+                  id="register-username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder={t("enterUsername")}
                   className="mt-1 border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8] placeholder:text-[#64748b] focus:border-[#06b6d4]"
+                  autoComplete="username"
                 />
               </div>
               <div>
-                <Label className="text-sm text-[#94a3b8]">{t("name")}</Label>
+                <Label htmlFor="register-name" className="text-sm text-[#94a3b8]">{t("name")}</Label>
                 <Input
+                  id="register-name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder={t("enterName")}
                   className="mt-1 border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8] placeholder:text-[#64748b] focus:border-[#06b6d4]"
+                  autoComplete="name"
                 />
               </div>
               <div>
-                <Label className="text-sm text-[#94a3b8]">{t("email")}</Label>
+                <Label htmlFor="register-email" className="text-sm text-[#94a3b8]">{t("email")}</Label>
                 <Input
+                  id="register-email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder={t("enterEmail")}
                   className="mt-1 border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8] placeholder:text-[#64748b] focus:border-[#06b6d4]"
+                  autoComplete="email"
                 />
               </div>
               <div>
-                <Label className="text-sm text-[#94a3b8]">{t("password")} *</Label>
+                <Label htmlFor="register-password" className="text-sm text-[#94a3b8]">{t("password")} *</Label>
                 <div className="relative mt-1">
                   <Input
+                    id="register-password"
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder={t("enterPassword")}
                     className="border-[#1f2d44] bg-[#0a0e17] pr-10 text-[#f0f4f8] placeholder:text-[#64748b] focus:border-[#06b6d4]"
+                    autoComplete="new-password"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748b] hover:text-[#94a3b8]"
+                    aria-label={showPassword ? (lang === "ar" ? "إخفاء كلمة المرور" : "Hide password") : (lang === "ar" ? "إظهار كلمة المرور" : "Show password")}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
               </div>
               <div>
-                <Label className="text-sm text-[#94a3b8]">{t("confirmPassword")} *</Label>
+                <Label htmlFor="register-confirm-password" className="text-sm text-[#94a3b8]">{t("confirmPassword")} *</Label>
                 <Input
+                  id="register-confirm-password"
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder={t("enterPassword")}
                   className="mt-1 border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8] placeholder:text-[#64748b] focus:border-[#06b6d4]"
+                  autoComplete="new-password"
                 />
               </div>
             </div>

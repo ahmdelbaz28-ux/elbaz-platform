@@ -30,6 +30,12 @@ export const env = {
   r2Endpoint: process.env.R2_ENDPOINT || "",
   watermarkSecret: process.env.WATERMARK_SECRET || "",
 
+  // Redis (distributed cache + rate limiting)
+  redisUrl: process.env.REDIS_URL || "",
+
+  // SendGrid (email delivery)
+  sendgridApiKey: process.env.SENDGRID_API_KEY || "",
+
   // Cloudflare API Token (Workers, R2 management, DNS)
   cloudflareToken: process.env.CLOUDFLARE_TOKEN || "",
 

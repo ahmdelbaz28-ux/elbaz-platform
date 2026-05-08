@@ -70,7 +70,8 @@ setInterval(() => {
 
 // Apply global rate limiting to ALL requests (before other middleware)
 app.use("*", async (c, next) => {
-  const clientIp = c.req.header("cf-connecting-ip") || c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || c.req.header("x-real-ip") || "unknown";
+  const fwd = c.req.header("x-forwarded-for");
+  const clientIp = c.req.header("cf-connecting-ip") || (fwd ? fwd.split(",").pop()?.trim() : null) || c.req.header("x-real-ip") || "unknown";
   if (!checkGlobalRateLimit(clientIp)) {
     return c.json({ error: "Too many requests. Please try again later." }, 429);
   }
@@ -324,7 +325,7 @@ app.post("/api/webhooks/paymob", async (c) => {
           }
 
           await db.update(payments).set({
-            status: "paid",
+            status: "completed",
             gatewayTxnId: params.id,
             paidAt: new Date(),
           }).where(eq(payments.transactionId, merchantOrderId));

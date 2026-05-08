@@ -4,12 +4,15 @@ const __dirname = import.meta.dirname
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 import { VitePWA } from 'vite-plugin-pwa'
+import viteCompression from 'vite-plugin-compression'
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     devServer({ entry: "api/boot.ts", exclude: [/^\/(?!api\/).*$/] }),
     react(),
+    viteCompression({ algorithm: 'gzip', threshold: 1024 }),
+    viteCompression({ algorithm: 'brotliCompress', threshold: 1024, ext: '.br' }),
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {

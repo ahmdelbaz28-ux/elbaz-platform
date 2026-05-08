@@ -15,8 +15,12 @@ import { env } from "./env";
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 const VIDEO_URL_EXPIRY_SECONDS = 1800; // 30 minutes
-// ✅ SECURITY FIX: No default fallback — required() will throw in production if missing
+
+// SECURITY: Validate WATERMARK_SECRET at module load time
 const WATERMARK_SECRET = env.watermarkSecret;
+if (!WATERMARK_SECRET) {
+  console.warn("[SECURITY WARNING] WATERMARK_SECRET is not set. Video watermark tokens will be insecure. Set this env var in production.");
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
