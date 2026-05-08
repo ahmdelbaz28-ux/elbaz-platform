@@ -291,7 +291,7 @@ export default function ChatBot() {
                 </div>
 
                 {/* ─── Messages Area ─── */}
-                <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4 chatbot-messages">
+                <div role="log" aria-label={lang === "ar" ? "رسائل المحادثة" : "Chat messages"} aria-live="polite" className="flex-1 overflow-y-auto px-4 py-3 space-y-4 chatbot-messages">
                   {messages.map((msg) => (
                     <div
                       key={msg.id}
@@ -400,6 +400,7 @@ export default function ChatBot() {
                         }
                         rows={1}
                         disabled={isLoading}
+                        aria-label={lang === "ar" ? "اكتب رسالتك" : "Type your message"}
                         className="w-full px-3.5 py-2.5 bg-[#111827] border border-[#1e2d3d] rounded-xl text-[13.5px] text-[#e8f0fe] placeholder:text-slate-500 resize-none focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all disabled:opacity-50"
                         style={{ minHeight: "40px", maxHeight: "120px" }}
                       />

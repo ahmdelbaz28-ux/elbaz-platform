@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useLocation } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "@/hooks/useTranslation";
 import {
-  Zap, Menu, X, LayoutDashboard, Headphones,
+  Menu, X, LayoutDashboard, Headphones,
   Shield, LogOut, User, BookOpen, ChevronDown,
   UserCog,
 } from "lucide-react";
@@ -16,6 +16,8 @@ export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const location = useLocation();
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   // Scroll detection for navbar glass effect upgrade
   useEffect(() => {
@@ -27,12 +29,72 @@ export default function Navbar() {
   // Close mobile menu on route change
   useEffect(() => setMobileOpen(false), [location.pathname]);
 
+  // Focus trap for mobile menu
+  useEffect(() => {
+    if (!mobileOpen) return;
+
+    // Focus close button when menu opens
+    closeButtonRef.current?.focus();
+
+    const handleTab = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setMobileOpen(false);
+        return;
+      }
+      if (e.key !== "Tab" || !mobileMenuRef.current) return;
+
+      const focusable = mobileMenuRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button, [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleTab);
+    // Prevent body scroll when mobile menu is open
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.removeEventListener("keydown", handleTab);
+      document.body.style.overflow = "";
+    };
+  }, [mobileOpen]);
+
+  // Close user menu on outside click
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-user-menu]")) {
+        setUserMenuOpen(false);
+      }
+    };
+    document.addEventListener("click", handleClick);
+    return () => document.removeEventListener("click", handleClick);
+  }, [userMenuOpen]);
+
   const isActive = (path: string) =>
     path === "/" ? location.pathname === "/" : location.pathname.startsWith(path);
+
+  const isAuthPage = location.pathname === "/login" || location.pathname === "/register";
+
+  if (isAuthPage) return null;
 
   return (
     <>
       <nav
+        role="navigation"
+        aria-label={lang === "ar" ? "التنقل الرئيسي" : "Main navigation"}
         className={`fixed top-0 left-0 right-0 z-50 h-16 transition-all duration-300 ${
           scrolled
             ? "border-b border-[#1e2d3d] bg-[rgba(7,11,18,0.95)] shadow-[0_4px_32px_rgba(0,0,0,0.4)] backdrop-blur-xl"
@@ -43,12 +105,18 @@ export default function Navbar() {
 
           {/* ── Brand Mark ── */}
           <Link to="/" className="group flex items-center gap-3 outline-none">
-            {/* Logo icon */}
-            <div className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#06b6d4] to-[#0284c7] shadow-[0_0_16px_rgba(6,182,212,0.35)]">
-              <Zap className="h-4 w-4 text-white" strokeWidth={2.5} />
-              {/* Pulse ring */}
-              <div className="absolute inset-0 rounded-lg border border-[#06b6d4] opacity-0 transition-opacity group-hover:opacity-100 group-hover:animate-ping" />
-            </div>
+            {/* Logo image with transparent background */}
+            <img
+              src="/logo.png"
+              alt=""
+              className="h-9 w-9 object-contain drop-shadow-[0_0_8px_rgba(6,182,212,0.3)] transition-transform duration-300 group-hover:scale-110"
+              width={36}
+              height={36}
+              loading="eager"
+              aria-hidden="true"
+            />
+            {/* Pulse ring behind logo */}
+            <div className="absolute left-[18px] top-[14px] h-9 w-9 rounded-full border border-[#06b6d4] opacity-0 transition-opacity group-hover:opacity-100 group-hover:animate-ping" />
 
             {/* Text */}
             <div className="flex flex-col leading-none">
@@ -70,6 +138,7 @@ export default function Navbar() {
               <Link
                 key={link.path}
                 to={link.path}
+                aria-current={isActive(link.path) ? "page" : undefined}
                 className={`relative flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-150 ${
                   isActive(link.path)
                     ? "bg-[rgba(6,182,212,0.1)] text-[#06b6d4]"
@@ -87,6 +156,7 @@ export default function Navbar() {
             {isAuthenticated && (
               <Link
                 to="/dashboard"
+                aria-current={isActive("/dashboard") ? "page" : undefined}
                 className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-150 ${
                   isActive("/dashboard")
                     ? "bg-[rgba(6,182,212,0.1)] text-[#06b6d4]"
@@ -104,6 +174,7 @@ export default function Navbar() {
             {/* Language toggle */}
             <button
               onClick={() => setLang(lang === "en" ? "ar" : "en")}
+              aria-label={lang === "en" ? "Switch to Arabic" : "Switch to English"}
               className="rounded-lg border border-[#1e2d3d] bg-[#0d1420] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#64748b] transition-all hover:border-[#06b6d4] hover:text-[#06b6d4]"
             >
               {lang === "en" ? "عربي" : "EN"}
@@ -111,10 +182,12 @@ export default function Navbar() {
 
             {isAuthenticated ? (
               /* User dropdown */
-              <div className="relative">
+              <div className="relative" data-user-menu>
                 <button
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
-                  onBlur={() => setTimeout(() => setUserMenuOpen(false), 150)}
+                  aria-expanded={userMenuOpen}
+                  aria-haspopup="true"
+                  aria-label={lang === "ar" ? "قائمة المستخدم" : "User menu"}
                   className="flex items-center gap-2 rounded-lg border border-[#1e2d3d] bg-[#0d1420] px-3 py-1.5 text-[13px] transition-all hover:border-[#2d3f52]"
                 >
                   <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-[#06b6d4] to-[#0284c7] text-[11px] font-bold text-white">
@@ -127,9 +200,13 @@ export default function Navbar() {
                 </button>
 
                 {userMenuOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-48 overflow-hidden rounded-xl border border-[#1e2d3d] bg-[#0d1420] shadow-[0_16px_48px_rgba(0,0,0,0.5)]">
+                  <div
+                    role="menu"
+                    className="absolute right-0 top-full mt-2 w-48 overflow-hidden rounded-xl border border-[#1e2d3d] bg-[#0d1420] shadow-[0_16px_48px_rgba(0,0,0,0.5)]"
+                  >
                     <Link
                       to="/profile"
+                      role="menuitem"
                       className="flex items-center gap-2 px-4 py-3 text-[13px] text-[#94a3b8] transition-colors hover:bg-[rgba(6,182,212,0.08)] hover:text-[#06b6d4]"
                     >
                       <UserCog className="h-4 w-4" />
@@ -138,6 +215,7 @@ export default function Navbar() {
                     {isAdmin && (
                       <Link
                         to="/admin"
+                        role="menuitem"
                         className="flex items-center gap-2 px-4 py-3 text-[13px] text-[#94a3b8] transition-colors hover:bg-[rgba(6,182,212,0.08)] hover:text-[#06b6d4]"
                       >
                         <Shield className="h-4 w-4" />
@@ -146,13 +224,15 @@ export default function Navbar() {
                     )}
                     <Link
                       to="/support"
+                      role="menuitem"
                       className="flex items-center gap-2 px-4 py-3 text-[13px] text-[#94a3b8] transition-colors hover:bg-[rgba(255,255,255,0.04)] hover:text-[#e8f0fe]"
                     >
                       <Headphones className="h-4 w-4" />
                       {lang === "ar" ? "الدعم الفني" : "Support"}
                     </Link>
-                    <div className="mx-4 h-px bg-[#1e2d3d]" />
+                    <div className="mx-4 h-px bg-[#1e2d3d]" role="separator" />
                     <button
+                      role="menuitem"
                       onClick={() => { logout(); setUserMenuOpen(false); }}
                       className="flex w-full items-center gap-2 px-4 py-3 text-[13px] text-[#64748b] transition-colors hover:bg-[rgba(239,68,68,0.08)] hover:text-[#f87171]"
                     >
@@ -189,15 +269,20 @@ export default function Navbar() {
           <button
             className="rounded-lg p-2 text-[#94a3b8] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#e8f0fe] md:hidden"
             onClick={() => setMobileOpen(!mobileOpen)}
-            aria-label="Toggle menu"
+            aria-label={lang === "ar" ? "فتح القائمة" : "Toggle menu"}
+            aria-expanded={mobileOpen}
           >
             {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
         </div>
       </nav>
 
-      {/* ── Mobile Menu (full-screen overlay) ── */}
+      {/* ── Mobile Menu (full-screen overlay with focus trap) ── */}
       <div
+        ref={mobileMenuRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={lang === "ar" ? "قائمة التنقل" : "Navigation menu"}
         className={`fixed inset-0 z-40 transition-all duration-300 md:hidden ${
           mobileOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
         } mobile-menu-backdrop`}
@@ -216,6 +301,7 @@ export default function Navbar() {
             <Link
               key={link.path}
               to={link.path}
+              aria-current={isActive(link.path) ? "page" : undefined}
               className={`text-2xl font-bold transition-colors ${
                 isActive(link.path) ? "text-[#06b6d4]" : "text-[#94a3b8] hover:text-[#e8f0fe]"
               }`}
@@ -248,6 +334,17 @@ export default function Navbar() {
               </Link>
             )}
           </div>
+
+          {/* Hidden close button for focus management */}
+          <button
+            ref={closeButtonRef}
+            className="sr-only"
+            onClick={() => setMobileOpen(false)}
+            tabIndex={-1}
+            aria-hidden="true"
+          >
+            Close menu
+          </button>
         </div>
       </div>
     </>

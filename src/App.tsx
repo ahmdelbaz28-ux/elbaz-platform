@@ -10,6 +10,7 @@ import ChatBot from "@/components/ChatBot";
 import ScrollToTop from "@/components/ScrollToTop";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { NotificationProvider } from "@/components/NotificationToast";
 
 const Home = lazy(() => import("./pages/Home"));
 const Courses = lazy(() => import("./pages/Courses"));
@@ -41,11 +42,11 @@ function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-[#070b12]">
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:rounded-lg focus:bg-[#06b6d4] focus:px-4 focus:py-2 focus:text-[#0a0e17] focus:font-semibold focus:outline-none focus:ring-2 focus:ring-[#06b6d4]">
-        {typeof window !== 'undefined' && document.documentElement.dir === 'rtl' ? 'تخطي إلى المحتوى' : 'Skip to main content'}
+        Skip to main content
       </a>
       <Navbar />
       <ScrollToTop />
-      <main id="main-content" className="pb-20 md:pb-0"><Suspense fallback={<PageLoader />}>{children}</Suspense></main>
+      <main id="main-content" tabIndex={-1} className="pb-20 md:pb-0"><Suspense fallback={<PageLoader />}>{children}</Suspense></main>
       {!isAuthPage && <Footer />}
       <MobileBottomNav />
       <WhatsAppButton />
@@ -58,38 +59,40 @@ function Layout({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <ErrorBoundary>
-      <Toaster theme="dark" richColors position="top-center" />
-      <Layout>
-        <Routes>
-          {/* ── Public Routes ── */}
-          <Route path="/" element={<Home />} />
-          <Route path="/courses" element={<Courses />} />
-          <Route path="/courses/:slug" element={<CourseDetail />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/terms" element={<TermsOfService />} />
-          <Route path="/privacy" element={<PrivacyPolicy />} />
-          <Route path="/refund" element={<RefundPolicy />} />
+      <NotificationProvider>
+        <Toaster theme="dark" richColors position="top-center" />
+        <Layout>
+          <Routes>
+            {/* ── Public Routes ── */}
+            <Route path="/" element={<Home />} />
+            <Route path="/courses" element={<Courses />} />
+            <Route path="/courses/:slug" element={<CourseDetail />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/terms" element={<TermsOfService />} />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/refund" element={<RefundPolicy />} />
 
-          {/* ── Protected Routes (requires login) ── */}
-          <Route path="/dashboard" element={
-            <ProtectedRoute><Dashboard /></ProtectedRoute>
-          } />
-          <Route path="/profile" element={
-            <ProtectedRoute><Profile /></ProtectedRoute>
-          } />
-          <Route path="/support" element={
-            <ProtectedRoute><Support /></ProtectedRoute>
-          } />
+            {/* ── Protected Routes (requires login) ── */}
+            <Route path="/dashboard" element={
+              <ProtectedRoute><Dashboard /></ProtectedRoute>
+            } />
+            <Route path="/profile" element={
+              <ProtectedRoute><Profile /></ProtectedRoute>
+            } />
+            <Route path="/support" element={
+              <ProtectedRoute><Support /></ProtectedRoute>
+            } />
 
-          {/* ── Admin Route (requires admin role) ── */}
-          <Route path="/admin" element={
-            <ProtectedRoute requireAdmin><Admin /></ProtectedRoute>
-          } />
+            {/* ── Admin Route (requires admin role) ── */}
+            <Route path="/admin" element={
+              <ProtectedRoute requireAdmin><Admin /></ProtectedRoute>
+            } />
 
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </Layout>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Layout>
+      </NotificationProvider>
     </ErrorBoundary>
   );
 }

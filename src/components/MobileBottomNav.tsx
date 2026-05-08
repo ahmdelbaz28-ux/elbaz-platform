@@ -4,7 +4,7 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { Home, BookOpen, LayoutDashboard, User, LogIn } from "lucide-react";
 
 export default function MobileBottomNav() {
-  const { t, lang } = useTranslation();
+  const { lang } = useTranslation();
   const { isAuthenticated, isLoading } = useAuth();
   const location = useLocation();
 
@@ -28,7 +28,11 @@ export default function MobileBottomNav() {
       ];
 
   return (
-    <nav className="mobile-bottom-nav fixed bottom-0 left-0 right-0 z-50 md:hidden">
+    <nav
+      role="navigation"
+      aria-label={lang === "ar" ? "التنقل السفلي" : "Bottom navigation"}
+      className="mobile-bottom-nav fixed bottom-0 left-0 right-0 z-50 md:hidden"
+    >
       {/* Ambient top glow line */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 h-px w-1/3 bg-gradient-to-r from-transparent via-[rgba(6,182,212,0.4)] to-transparent" />
 
@@ -43,7 +47,8 @@ export default function MobileBottomNav() {
             <Link
               key={tab.path}
               to={tab.path}
-              className="relative flex flex-col items-center gap-0.5 px-3 py-1.5 min-w-[60px]"
+              aria-current={active ? "page" : undefined}
+              className="relative flex flex-col items-center gap-0.5 px-3 py-1.5 min-w-[60px] outline-none focus-visible:ring-2 focus-visible:ring-[#06b6d4] focus-visible:rounded-lg"
             >
               {/* Active indicator dot */}
               {active && (

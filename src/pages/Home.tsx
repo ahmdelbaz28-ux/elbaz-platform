@@ -19,6 +19,7 @@ import {
   GraduationCap,
   X,
   Clock,
+  Wrench,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect, useRef } from "react";
@@ -360,12 +361,41 @@ export default function Home() {
             {lang === "en" ? "Software & Tools You Will Master" : "البرامج والأدوات التي ستتقنها"}
           </p>
           <div className="flex flex-wrap items-center justify-center gap-8 opacity-50">
-            {["ETAP", "SKM", "PowerFactory", "PVSyst", "AutoCAD", "MATLAB"].map((tool) => (
+            {[
+              {
+                icon: <Zap className="h-5 w-5 text-[#06b6d4]" />,
+                name: "ETAP",
+              },
+              {
+                icon: <CircuitBoard className="h-5 w-5 text-[#06b6d4]" />,
+                name: "SKM",
+              },
+              {
+                icon: <Cpu className="h-5 w-5 text-[#06b6d4]" />,
+                name: "PowerFactory",
+              },
+              {
+                icon: <FileCheck className="h-5 w-5 text-[#06b6d4]" />,
+                name: "PVSyst",
+              },
+              {
+                icon: <Wrench className="h-5 w-5 text-[#06b6d4]" />,
+                name: "AutoCAD",
+              },
+              {
+                icon: <Cpu className="h-5 w-5 text-[#06b6d4]" />,
+                name: "MATLAB",
+              },
+            ].map((tool, i) => (
               <span
-                key={tool}
-                className="text-lg font-semibold tracking-wide text-[#94a3b8] transition-all hover:text-[#06b6d4] hover:opacity-100 hover:drop-shadow-[0_0_8px_rgba(6,182,212,0.3)]"
+                key={tool.name}
+                className="flex items-center gap-1.5 text-lg font-semibold tracking-wide text-[#94a3b8] transition-all hover:text-[#06b6d4] hover:opacity-100 hover:drop-shadow-[0_0_8px_rgba(6,182,212,0.3)]"
+                style={{ animationDelay: `${i * 100}ms` }}
               >
-                {tool}
+                <span className="animate-float-icon" style={{ animationDelay: `${i * 200}ms` }}>
+                  {tool.icon}
+                </span>
+                {tool.name}
               </span>
             ))}
           </div>
@@ -496,9 +526,9 @@ export default function Home() {
             ].map((feature, i) => (
               <SectionReveal key={i}>
                 <div className={`flex flex-col items-center gap-10 lg:flex-row ${i % 2 === 1 ? "lg:flex-row-reverse" : ""}`}>
-                  {/* Visual */}
+                  {/* Visual — with floating icon animation */}
                   <div className="flex flex-1 items-center justify-center">
-                    <div className="flex h-48 w-48 items-center justify-center rounded-2xl border border-[#1f2d44] bg-[#1a2233]">
+                    <div className="flex h-48 w-48 items-center justify-center rounded-2xl border border-[#1f2d44] bg-[#1a2233] animate-float-icon">
                       {feature.icon}
                     </div>
                   </div>

@@ -19,6 +19,9 @@ const VIDEO_URL_EXPIRY_SECONDS = 1800; // 30 minutes
 // SECURITY: Validate WATERMARK_SECRET at module load time
 const WATERMARK_SECRET = env.watermarkSecret;
 if (!WATERMARK_SECRET) {
+  if (env.isProduction) {
+    throw new Error("[CRITICAL] WATERMARK_SECRET is not set in production. Video protection is disabled. This is a security risk. Set the WATERMARK_SECRET environment variable to a strong random value (32+ characters).");
+  }
   console.warn("[SECURITY WARNING] WATERMARK_SECRET is not set. Video watermark tokens will be insecure. Set this env var in production.");
 }
 

@@ -13,19 +13,21 @@ body {
   color: var(--color-text);
   margin: 0;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* ── Hero glow effect (replaces inline style) ── */
+/* ── Hero glow effect ── */
 .hero-glow {
   background: radial-gradient(ellipse at 20% 30%, rgba(6,182,212,0.08) 0%, transparent 50%);
 }
 
-/* ── CTA gradient banner (replaces inline style) ── */
+/* ── CTA gradient banner ── */
 .cta-gradient {
   background: linear-gradient(135deg, rgba(6,182,212,0.08) 0%, rgba(16,185,129,0.05) 100%);
 }
 
-/* ── Promo pattern overlay (replaces inline style) ── */
+/* ── Promo pattern overlay ── */
 .promo-pattern {
   background-image: radial-gradient(circle at 25% 50%, rgba(255,255,255,0.3) 0%, transparent 50%),
     radial-gradient(circle at 75% 50%, rgba(255,255,255,0.2) 0%, transparent 50%);
@@ -39,13 +41,45 @@ body {
   background-clip: text;
 }
 
-/* ── Floating animation ── */
+/* ════════════════════════════════════════════════════════════════════
+   FLOATING ANIMATIONS — Lightweight CSS-only (GPU-accelerated)
+   ════════════════════════════════════════════════════════════════════ */
+
 @keyframes float {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-10px); }
 }
 .animate-float {
   animation: float 3s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes floatSlow {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  33% { transform: translateY(-6px) rotate(1deg); }
+  66% { transform: translateY(-3px) rotate(-1deg); }
+}
+.animate-float-slow {
+  animation: floatSlow 5s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes floatIcon {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-5px) scale(1.05); }
+}
+.animate-float-icon {
+  animation: floatIcon 2.5s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* ── Pulse glow for icons ── */
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 8px rgba(6,182,212,0.2); }
+  50% { box-shadow: 0 0 20px rgba(6,182,212,0.4), 0 0 40px rgba(6,182,212,0.1); }
+}
+.animate-pulse-glow {
+  animation: pulseGlow 3s ease-in-out infinite;
 }
 
 /* ── Grid pattern for sections ── */
@@ -60,14 +94,25 @@ body {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in-up {
+  animation: fadeInUp 0.6s ease-out forwards;
+}
 
 /* ── Glow button effect ── */
 .glow-btn {
   box-shadow: 0 0 20px rgba(6,182,212,0.3);
-  transition: box-shadow 0.3s ease;
+  transition: box-shadow 0.3s ease, transform 0.2s ease;
 }
 .glow-btn:hover {
   box-shadow: 0 0 30px rgba(6,182,212,0.5), 0 0 60px rgba(6,182,212,0.2);
+  transform: translateY(-1px);
+}
+.glow-btn:active {
+  transform: translateY(0);
 }
 
 /* ── Hero background image ── */
@@ -97,6 +142,7 @@ body {
 .hero-image-wrapper {
   position: relative;
   animation: heroFloat 4s ease-in-out infinite;
+  will-change: transform;
 }
 .hero-image-glow-ring {
   position: relative;
@@ -136,14 +182,53 @@ body {
   pointer-events: none;
 }
 
-/* ── Mobile menu backdrop (replaces inline style) ── */
+/* ── Mobile menu backdrop ── */
 .mobile-menu-backdrop {
   background: rgba(7,11,18,0.97);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
 }
 
-/* ── Scrollbar styling ── */
+/* ── Mobile bottom nav ── */
+.mobile-bottom-nav {
+  scrollbar-width: none;
+}
+
+/* ── WhatsApp FAB animations ── */
+.whatsapp-fab {
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
+}
+.whatsapp-fab:active {
+  transform: scale(0.92);
+}
+.whatsapp-pulse {
+  animation: whatsappPulse 2s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes whatsappPulse {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+/* ── Notification toast entrance/exit ── */
+.notification-toast {
+  will-change: transform, opacity;
+  animation: notificationSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes notificationSlideIn {
+  from {
+    transform: translateY(12px) scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   SCROLLBAR STYLING
+   ════════════════════════════════════════════════════════════════════ */
 ::-webkit-scrollbar {
   width: 6px;
 }
@@ -158,10 +243,28 @@ body {
   background: #2d3f52;
 }
 
-/* ── Focus visible for accessibility ── */
+/* ════════════════════════════════════════════════════════════════════
+   ACCESSIBILITY
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Focus visible for all interactive elements */
 *:focus-visible {
   outline: 2px solid #06b6d4;
   outline-offset: 2px;
+}
+
+/* Remove default focus for mouse users */
+*:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Skip nav link */
+.skip-link:focus {
+  clip: auto !important;
+  width: auto !important;
+  height: auto !important;
+  margin: 0 !important;
+  padding: 8px 16px !important;
 }
 
 /* ── Reduced motion preference ── */
@@ -172,5 +275,33 @@ body {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+  .animate-float,
+  .animate-float-slow,
+  .animate-float-icon,
+  .animate-pulse-glow,
+  .whatsapp-pulse {
+    animation: none !important;
+  }
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   PERFORMANCE: Smooth scrolling & render optimization
+   ════════════════════════════════════════════════════════════════════ */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Contain layout paint for heavy sections */
+section {
+  contain: layout style;
+}
+
+/* GPU-accelerated transitions for interactive elements */
+a, button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Image placeholder while loading */
+img[loading="lazy"] {
+  background: #111827;
+}

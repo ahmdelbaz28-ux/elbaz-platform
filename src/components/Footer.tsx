@@ -1,6 +1,6 @@
 import { Link } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
-import { Zap, Youtube, Linkedin, Mail, Phone } from "lucide-react";
+import { Youtube, Linkedin, Mail, Phone } from "lucide-react";
 
 export default function Footer() {
   const { lang } = useTranslation();
@@ -32,9 +32,15 @@ export default function Footer() {
           {/* Brand column */}
           <div className="lg:col-span-1">
             <Link to="/" className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#06b6d4] to-[#0284c7] shadow-[0_0_16px_rgba(6,182,212,0.3)]">
-                <Zap className="h-4 w-4 text-white" strokeWidth={2.5} />
-              </div>
+              <img
+                src="/logo.png"
+                alt=""
+                className="h-9 w-9 object-contain drop-shadow-[0_0_8px_rgba(6,182,212,0.3)]"
+                width={36}
+                height={36}
+                loading="lazy"
+                aria-hidden="true"
+              />
               <div>
                 <div className="text-[13px] font-extrabold text-[#e8f0fe]">
                   {lang === "ar" ? "أحمد الباز" : "Eng. Ahmed Elbaz"}
