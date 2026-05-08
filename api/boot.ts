@@ -464,49 +464,108 @@ app.post("/api/webhooks/paymob", async (c) => {
 });
 
 // ══════════════════════════════════════════════════════════════════
-// ✅ OPTIMIZED: Static file serving with aggressive caching
+// ✅ FIXED: Static file serving with aggressive caching
 // Hashed filenames (.js, .css) get 1-year cache, HTML gets no-cache
+//
+// CRITICAL FIX: The SPA fallback MUST NOT serve index.html for requests
+// that have a file extension (like /assets/index-xxx.js). Previously,
+// if dist/public was missing or the file path was wrong, ALL asset
+// requests fell through to the SPA fallback and returned index.html
+// (HTML content with JS content-type), which the browser rejected
+// due to X-Content-Type-Options: nosniff → WHITE SCREEN.
 // ══════════════════════════════════════════════════════════════════
-const CACHEABLE_EXTENSIONS = new Set([".js", ".css", ".woff", ".woff2", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico"]);
+const CACHEABLE_EXTENSIONS = new Set([".js", ".css", ".woff", ".woff2", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico", ".br", ".gz"]);
+const STATIC_EXTENSIONS = new Set([".js", ".css", ".woff", ".woff2", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico", ".br", ".gz", ".html", ".json", ".xml", ".txt", ".pdf", ".woff2", ".map"]);
+
+// Check if dist/public directory exists at startup
+let distPublicExists = false;
+try {
+  distPublicExists = fs.existsSync(DIST_PUBLIC) && fs.statSync(DIST_PUBLIC).isDirectory();
+} catch (e) { /* not found */ }
+
+if (!distPublicExists) {
+  console.warn("[STATIC] WARNING: dist/public directory not found at: " + DIST_PUBLIC);
+  console.warn("[STATIC] Static files will NOT be served. Build the frontend first with: npm run build");
+}
 
 app.use("*", async (c, next) => {
-  var p = c.req.path;
-  if (p.startsWith("/api")) return next();
-  var fp = path.join(DIST_PUBLIC, p);
+  const requestPath = c.req.path;
+
+  // Skip API routes entirely
+  if (requestPath.startsWith("/api")) return next();
+
+  // SECURITY: Block path traversal attempts (../, ..\, %2e%2e)
+  if (requestPath.includes("..") || requestPath.includes("\0")) {
+    return c.text("Not Found", 404);
+  }
+
+  // Resolve the file path safely
+  const filePath = path.join(DIST_PUBLIC, requestPath);
+
+  // SECURITY: Ensure resolved path is within DIST_PUBLIC (prevent directory traversal)
+  const resolvedPath = path.resolve(filePath);
+  if (!resolvedPath.startsWith(path.resolve(DIST_PUBLIC) + path.sep) && resolvedPath !== path.resolve(DIST_PUBLIC)) {
+    return c.text("Not Found", 404);
+  }
+
   try {
-    // ✅ FIX: Use async fs methods to avoid blocking the event loop under load
-    const stat = await fs.promises.stat(fp).catch(() => null);
+    const stat = await fs.promises.stat(resolvedPath).catch(() => null);
     if (stat && stat.isFile()) {
-      var ext = path.extname(fp).toLowerCase();
-      var headers: Record<string, string> = {
+      const ext = path.extname(resolvedPath).toLowerCase();
+      const headers: Record<string, string> = {
         "Content-Type": MIME[ext] || "application/octet-stream",
       };
-      // ✅ OPTIMIZED: Aggressive caching for static assets with content hashes
+
+      // Aggressive caching for static assets with content hashes
       if (CACHEABLE_EXTENSIONS.has(ext)) {
         headers["Cache-Control"] = "public, max-age=31536000, immutable";
       }
-      return new Response(await fs.promises.readFile(fp), { headers });
+
+      // Proper Content-Encoding header for pre-compressed files
+      if (ext === ".br") {
+        headers["Content-Encoding"] = "br";
+        // Remove .br extension to get original content type
+        const originalExt = path.extname(resolvedPath.slice(0, -3)).toLowerCase();
+        headers["Content-Type"] = MIME[originalExt] || "application/octet-stream";
+      } else if (ext === ".gz") {
+        headers["Content-Encoding"] = "gzip";
+        const originalExt = path.extname(resolvedPath.slice(0, -3)).toLowerCase();
+        headers["Content-Type"] = MIME[originalExt] || "application/octet-stream";
+      }
+
+      return new Response(await fs.promises.readFile(resolvedPath), { headers });
     }
-  } catch (e) { /* ignore */ }
+  } catch (e) { /* ignore — file not found */ }
+
+  // File not found — continue to next handler
   return next();
 });
 
-// SPA fallback - serve index.html for all non-API routes
+// SPA fallback — ONLY serve index.html for routes that look like page navigation
+// NOT for requests with static file extensions (those should 404 if not found)
 app.get("*", async (c) => {
-  var ip = path.join(DIST_PUBLIC, "index.html");
+  const requestPath = c.req.path;
+
+  // CRITICAL: If the request has a static file extension, return 404 instead of index.html
+  // This prevents the white screen bug where index.html was served as application/javascript
+  const ext = path.extname(requestPath).toLowerCase();
+  if (ext && STATIC_EXTENSIONS.has(ext)) {
+    return c.text("Not Found", 404);
+  }
+
+  const indexPath = path.join(DIST_PUBLIC, "index.html");
   try {
-    // ✅ FIX: Async file serving for SPA fallback
-    const idxStat = await fs.promises.stat(ip).catch(() => null);
+    const idxStat = await fs.promises.stat(indexPath).catch(() => null);
     if (idxStat && idxStat.isFile()) {
-      return new Response(await fs.promises.readFile(ip, "utf-8"), {
+      return new Response(await fs.promises.readFile(indexPath, "utf-8"), {
         headers: {
           "Content-Type": "text/html; charset=utf-8",
-          // ✅ OPTIMIZED: HTML should never be cached by browser
           "Cache-Control": "no-cache, no-store, must-revalidate",
         },
       });
     }
   } catch (e) { /* ignore */ }
+
   return c.text("Starting...", 503);
 });
 
