@@ -35,11 +35,7 @@ function sanitizeDatabaseUrl(rawUrl: string): string {
       }
     }
     if (stripped) {
-      console.warn("[DB] Sanitized DATABASE_URL: removed invalid mysql2 query params (ssl-mode, acquireTimeout). Using ssl: true for secure connections.");
-      // If we removed ssl-mode but no ssl param exists, add ssl=true for secure Aiven connections
-      if (!params.has("ssl")) {
-        params.set("ssl", "true");
-      }
+      console.warn("[DB] Sanitized DATABASE_URL: removed invalid mysql2 query params (ssl-mode, acquireTimeout).");
     }
     return url.toString();
   } catch {
@@ -56,6 +52,8 @@ export function getDb() {
     const cleanUrl = sanitizeDatabaseUrl(env.databaseUrl);
     pool = mysql.createPool({
       uri: cleanUrl,
+      // ✅ FIX: SSL as proper object (mysql2 requires object, not boolean)
+      ssl: { rejectUnauthorized: false },
       // ✅ OPTIMIZED: Connection pool tuned for Aiven free-1-1gb (max_connections=76)
       waitForConnections: true,
       connectionLimit: env.isProduction ? 15 : 5,
