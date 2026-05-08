@@ -7,8 +7,8 @@
   "background_color": "#070b12",
   "theme_color": "#06b6d4",
   "orientation": "portrait-primary",
-  "lang": "ar",
-  "dir": "rtl",
+  "lang": "en",
+  "dir": "ltr",
   "categories": ["education", "lifestyle"],
   "icons": [
     {

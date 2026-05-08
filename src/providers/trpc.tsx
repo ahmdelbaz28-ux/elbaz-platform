@@ -17,13 +17,25 @@ const queryClient = new QueryClient({
   },
 });
 
+/**
+ * Base URL for API calls.
+ * - In browser: uses relative path (same origin)
+ * - In Capacitor/mobile: uses VITE_API_URL env variable
+ * - Falls back to production URL if env var is not set
+ */
+function getApiBaseUrl(): string {
+  const capacitor = (window as any).Capacitor;
+  if (capacitor?.isNativePlatform?.()) {
+    return import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io";
+  }
+  return "";
+}
+
 const trpcClient = trpc.createClient({
   links: [
     httpBatchLink({
-      url: "/api/trpc",
+      url: getApiBaseUrl() + "/api/trpc",
       transformer: superjson,
-      // Auth is handled via HttpOnly cookie (credentials: "include")
-      // No need for localStorage token injection
       fetch(input, init) {
         return globalThis.fetch(input, {
           ...(init ?? {}),

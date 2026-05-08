@@ -201,7 +201,8 @@ export function useWatchTracker({
             watchedSeconds: Math.min(watchedSeconds, 120),
             lastPosition: currentPosition,
           })], { type: "application/json" });
-          navigator.sendBeacon?.("/api/trpc/course.heartbeat", blob);
+          const baseUrl = (window as any).Capacitor?.isNativePlatform?.() ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io") : "";
+          navigator.sendBeacon?.(`${baseUrl}/api/trpc/course.heartbeat`, blob);
         }
       }
     };

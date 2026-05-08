@@ -198,7 +198,7 @@ export default function ChatBot() {
       // ─── Try streaming endpoint first ───
       var streamSuccess = false;
       try {
-        var streamResponse = await fetch("/api/chatbot/stream", {
+        var streamResponse = await fetch((window.Capacitor?.isNativePlatform() ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io") : "") + "/api/chatbot/stream", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(requestBody),
@@ -300,7 +300,7 @@ export default function ChatBot() {
       // ─── Fallback: regular /api/chatbot ───
       if (!streamSuccess) {
         setStreamingContent("");
-        var response = await fetch("/api/chatbot", {
+        var response = await fetch((window.Capacitor?.isNativePlatform() ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io") : "") + "/api/chatbot", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(requestBody),
@@ -484,7 +484,7 @@ export default function ChatBot() {
                       {/* Clear chat button */}
                       <button
                         onClick={clearChat}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                        className="p-2.5 rounded-lg text-slate-400 hover:text-red-400 min-h-[44px] min-w-[44px] flex items-center justify-center hover:bg-red-400/10 transition-colors"
                         title={lang === "ar" ? "\u0645\u0633\u062d \u0627\u0644\u0645\u062d\u0627\u062f\u062b\u0629" : "Clear chat"}
                       >
                         <Trash2 className="w-4 h-4" />
@@ -500,7 +500,7 @@ export default function ChatBot() {
                       {/* Close button */}
                       <button
                         onClick={() => setIsOpen(false)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                        className="p-2.5 rounded-lg text-slate-400 hover:text-red-400 min-h-[44px] min-w-[44px] flex items-center justify-center hover:bg-red-400/10 transition-colors"
                         title={lang === "ar" ? "\u0625\u063a\u0644\u0627\u0642" : "Close"}
                       >
                         <X className="w-4 h-4" />
@@ -553,7 +553,7 @@ export default function ChatBot() {
                           {msg.role === "assistant" && !msg.isError && msg.id !== "welcome" && (
                             <button
                               onClick={() => copyMessage(msg.id, msg.content)}
-                              className="absolute top-1.5 right-1.5 p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity text-slate-500 hover:text-cyan-400 hover:bg-white/5"
+                              className="absolute top-1.5 right-1.5 p-1 rounded-md opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity text-slate-500 hover:text-cyan-400 hover:bg-white/5"
                               title={lang === "ar" ? "\u0646\u0633\u062e" : "Copy"}
                             >
                               <Copy className="w-3 h-3" />

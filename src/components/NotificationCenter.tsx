@@ -395,7 +395,8 @@ export function useRealtimeNotifications(
       if (lastEventIdRef.current) {
         params.set("after", lastEventIdRef.current);
       }
-      const res = await fetch(`/api/notifications/poll?${params.toString()}`);
+      const baseUrl = (window as any).Capacitor?.isNativePlatform?.() ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io") : "";
+      const res = await fetch(`${baseUrl}/api/notifications/poll?${params.toString()}`);
       if (!res.ok) {
         // Not found / not implemented — this is acceptable for now
         if (res.status === 404) return;

@@ -270,6 +270,91 @@ body {
   background: #2d3f52;
 }
 
+
+
+/* ════════════════════════════════════════════════════════════════════
+   RTL / ARABIC SUPPORT
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Arabic font family for RTL */
+[dir="rtl"] body {
+  font-family: 'Cairo', 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Disable uppercase and tracking for Arabic (no concept of uppercase) */
+[dir="rtl"] .uppercase {
+  text-transform: none !important;
+}
+[dir="rtl"] .tracking-wider,
+[dir="rtl"] .tracking-widest,
+[dir="rtl"] .tracking-wide {
+  letter-spacing: 0 !important;
+}
+
+/* Mirror hero glow for RTL */
+[dir="rtl"] .hero-glow {
+  background: radial-gradient(ellipse at 80% 30%, rgba(6,182,212,0.08) 0%, transparent 50%);
+}
+
+/* Mirror shimmer direction for RTL */
+[dir="rtl"] .hero-image-shimmer {
+  background: linear-gradient(270deg, transparent, rgba(6,182,212,0.5), transparent);
+}
+@keyframes heroShimmerRtl {
+  0% { transform: translateX(100%); }
+  50% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+[dir="rtl"] .hero-image-shimmer {
+  animation-name: heroShimmerRtl;
+}
+
+/* Safe area insets for notch phones */
+html {
+  --sat: env(safe-area-inset-top);
+  --sab: env(safe-area-inset-bottom);
+  --sal: env(safe-area-inset-left);
+  --sar: env(safe-area-inset-right);
+}
+
+/* Ensure proper touch targets on mobile */
+@media (pointer: coarse) {
+  button, a, [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+
+/* ChatBot RTL positioning */
+[dir="rtl"] .chatbot-window,
+[dir="rtl"] [class*="fixed bottom-"][class*="right-"] {
+  right: auto !important;
+  left: 1rem;
+}
+[dir="rtl"] [class*="fixed bottom-"][class*="md:right-"] {
+  right: auto !important;
+  left: 2rem;
+}
+@media (min-width: 768px) {
+  [dir="rtl"] [class*="fixed"][class*="md:right-"] {
+    right: auto !important;
+    left: 2rem;
+  }
+}
+
+/* ScrollToTop RTL */
+[dir="rtl"] [class*="fixed"][class*="right-"] {
+  right: auto !important;
+  left: 1.5rem;
+}
+@media (min-width: 768px) {
+  [dir="rtl"] [class*="fixed"][class*="md:right-"] {
+    right: auto !important;
+    left: 1.5rem;
+  }
+}
+
 /* ════════════════════════════════════════════════════════════════════
    ACCESSIBILITY
    ════════════════════════════════════════════════════════════════════ */

@@ -165,7 +165,7 @@ function PromoBanner({ promotion }: { promotion: any }) {
 
       <div className="relative mx-auto flex max-w-7xl flex-col items-center gap-4 px-4 py-5 sm:flex-row sm:justify-between lg:px-6">
         {/* Left: Title & subtitle */}
-        <div className="flex flex-1 flex-col items-center gap-1 text-center sm:items-start sm:text-left">
+        <div className="flex flex-1 flex-col items-center gap-1 text-center sm:items-start sm:text-start">
           <div className="flex flex-wrap items-center justify-center gap-3 sm:justify-start">
             {promotion.discountText && (
               <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-bold uppercase tracking-wider backdrop-blur-sm">
@@ -291,7 +291,7 @@ export default function Home() {
 
         <div className="relative z-10 mx-auto flex max-w-7xl flex-col items-center px-4 py-20 lg:flex-row lg:px-6 lg:py-28">
           {/* Left Content */}
-          <div className="flex-1 text-center lg:text-left">
+          <div className="flex-1 text-center lg:text-start">
             <div className="flex items-center justify-center gap-2 lg:justify-start">
               <Zap className="h-3 w-3 text-[#06b6d4]" />
               <span className="text-xs font-medium uppercase tracking-[0.1em] text-[#06b6d4]">
@@ -533,7 +533,7 @@ export default function Home() {
                     </div>
                   </div>
                   {/* Text */}
-                  <div className="flex-1 text-center lg:text-left">
+                  <div className="flex-1 text-center lg:text-start">
                     <h3 className="text-xl font-bold text-[#f0f4f8] lg:text-2xl">
                       {feature.title}
                     </h3>
@@ -571,7 +571,7 @@ export default function Home() {
 
             <div className="flex flex-col items-center gap-12 lg:flex-row lg:items-start">
               {/* Left - Avatar & Bio */}
-              <div className="flex-1 text-center lg:text-left">
+              <div className="flex-1 text-center lg:text-start">
                 <div className="mx-auto mb-6 flex h-28 w-28 items-center justify-center rounded-2xl border border-[#1f2d44] bg-[#1a2233] lg:mx-0">
                   <User className="h-14 w-14 text-[#06b6d4]" />
                 </div>
@@ -730,7 +730,7 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
     <div className="border-b border-[#1f2d44]">
       <button
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between py-6 text-left"
+        className="flex w-full items-center justify-between py-6 text-start"
       >
         <span className="text-base font-semibold text-[#f0f4f8] transition-colors hover:text-[#06b6d4]">
           {question}

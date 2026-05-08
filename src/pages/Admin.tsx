@@ -462,7 +462,7 @@ export default function Admin() {
             <div className="rounded-xl border border-[#1f2d44] bg-[#111827] p-6">
               <h2 className="mb-4 text-lg font-semibold text-[#f0f4f8]">{t("totalUsers")}</h2>
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
+                <table className="w-full text-start text-sm">
                   <thead>
                     <tr className="border-b border-[#1f2d44]">
                       <th className="pb-3 text-[#94a3b8]">{t("username")}</th>
@@ -598,7 +598,7 @@ export default function Admin() {
                 {isRTL ? "سجل المدفوعات" : "Payment History"}
               </h2>
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
+                <table className="w-full text-start text-sm">
                   <thead>
                     <tr className="border-b border-[#1f2d44]">
                       <th className="pb-3 text-[#94a3b8]">ID</th>
@@ -1093,7 +1093,7 @@ export default function Admin() {
               <div className="rounded-xl border border-[#1f2d44] bg-[#111827] overflow-hidden">
                 {promosLoading ? renderLoader() : (
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
+                    <table className="w-full text-start text-sm">
                       <thead>
                         <tr className="border-b border-[#1f2d44]">
                           <th className="p-4 text-[#94a3b8]">{isRTL ? "الكود" : "Code"}</th>

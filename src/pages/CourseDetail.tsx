@@ -918,7 +918,7 @@ export default function CourseDetail() {
                           setShowQuiz(false);
                         }
                       }}
-                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
+                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-start transition-colors ${
                         isActive
                           ? "bg-[rgba(6,182,212,0.1)] border border-[rgba(6,182,212,0.2)]"
                           : canAccess
@@ -1098,7 +1098,7 @@ export default function CourseDetail() {
                     key={method.key}
                     onClick={() => handlePayment(method.key)}
                     disabled={enrollMutation.isPending || paymentStep === "redirecting" || paymentStep === "processing"}
-                    className="flex w-full items-center gap-3 rounded-lg border border-[#1f2d44] p-4 text-left transition-colors hover:border-[#06b6d4] hover:bg-[rgba(6,182,212,0.05)] disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex w-full items-center gap-3 rounded-lg border border-[#1f2d44] p-4 text-start transition-colors hover:border-[#06b6d4] hover:bg-[rgba(6,182,212,0.05)] disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <div className="flex h-8 w-8 items-center justify-center rounded bg-[#1a2233]">
                       <Icon className="h-4 w-4 text-[#06b6d4]" />

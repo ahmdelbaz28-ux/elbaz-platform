@@ -2,7 +2,7 @@
 <html lang="en" dir="ltr">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
     <!-- Primary Meta Tags -->
     <title>Eng Ahmed Elbaz | Electrical Engineering Courses</title>
@@ -38,7 +38,7 @@
     <!-- Google Fonts - Inter (optimized: only 4 weights actually used) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cairo:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
     <!-- PWA Manifest -->
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -80,6 +80,19 @@
     <link rel="preload" as="image" href="/hero-main.webp" type="image/webp" />
   </head>
   <body>
+    <!-- Early RTL detection to prevent FOUC -->
+    <script>
+      (function() {
+        try {
+          var lang = localStorage.getItem("language") || "en";
+          document.documentElement.lang = lang;
+          document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
+          document.documentElement.style.fontFamily = lang === "ar"
+            ? "'Cairo', 'Inter', system-ui, sans-serif"
+            : "'Inter', system-ui, sans-serif";
+        } catch(e) {}
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

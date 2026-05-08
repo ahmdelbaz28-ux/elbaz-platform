@@ -25,7 +25,8 @@ export default {
         },
       },
       fontFamily: {
-        sans: ["Inter", "system-ui", "-apple-system", "sans-serif"],
+        sans: ["Inter", "Cairo", "system-ui", "-apple-system", "sans-serif"],
+        arabic: ["Cairo", "Inter", "system-ui", "sans-serif"],
       },
       animation: {
         float: "float 3s ease-in-out infinite",

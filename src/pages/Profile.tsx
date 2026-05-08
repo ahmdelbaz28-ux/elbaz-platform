@@ -177,7 +177,7 @@ export default function Profile() {
             </div>
 
             {/* User Info */}
-            <div className="flex-1 text-center sm:text-left">
+            <div className="flex-1 text-center sm:text-start">
               <h2 className="text-2xl font-bold text-[#f0f4f8]">
                 {user.name || user.username}
               </h2>
@@ -488,7 +488,7 @@ export default function Profile() {
         <div className="grid gap-4 sm:grid-cols-2">
           <button
             onClick={() => navigate("/dashboard")}
-            className="flex items-center gap-3 rounded-xl border border-[#1f2d44] bg-[#111827] p-5 text-left transition-all hover:border-[#06b6d4] hover:shadow-[0_8px_24px_rgba(6,182,212,0.06)]"
+            className="flex items-center gap-3 rounded-xl border border-[#1f2d44] bg-[#111827] p-5 text-start transition-all hover:border-[#06b6d4] hover:shadow-[0_8px_24px_rgba(6,182,212,0.06)]"
           >
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[rgba(6,182,212,0.1)]">
               <GraduationCap className="h-5 w-5 text-[#06b6d4]" />
@@ -502,7 +502,7 @@ export default function Profile() {
           </button>
           <button
             onClick={() => navigate("/support")}
-            className="flex items-center gap-3 rounded-xl border border-[#1f2d44] bg-[#111827] p-5 text-left transition-all hover:border-[#06b6d4] hover:shadow-[0_8px_24px_rgba(6,182,212,0.06)]"
+            className="flex items-center gap-3 rounded-xl border border-[#1f2d44] bg-[#111827] p-5 text-start transition-all hover:border-[#06b6d4] hover:shadow-[0_8px_24px_rgba(6,182,212,0.06)]"
           >
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[rgba(6,182,212,0.1)]">
               <Zap className="h-5 w-5 text-[#06b6d4]" />

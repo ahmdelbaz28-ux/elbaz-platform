@@ -171,7 +171,7 @@ export default function Support() {
                 <div key={ticket.id} className="rounded-xl border border-[#1f2d44] bg-[#111827] p-5">
                   <button
                     onClick={() => setExpandedTicket(expandedTicket === ticket.id ? null : ticket.id)}
-                    className="flex w-full items-start justify-between text-left"
+                    className="flex w-full items-start justify-between text-start"
                   >
                     <div className="flex-1">
                       <div className="flex items-center gap-2">

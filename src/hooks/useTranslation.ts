@@ -369,7 +369,7 @@ const translations: Translations = {
     coursesTaught: "كورس تم تدريسه",
     studentsReached: "طالب وصل إليهم",
     instructorRole: "مهندس أنظمة قوى",
-    instructorRoleAr: "Power Systems Engineer",
+    instructorRoleAr: "مهندس أنظمة قوى",
     // Profile page
     myProfile: "الملف الشخصي",
     editProfile: "تعديل الملف الشخصي",
