@@ -1,16 +1,17 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "@/hooks/useTranslation";
+import Logo3D from "@/components/Logo3D";
 import {
   Menu, X, LayoutDashboard, Headphones,
-  Shield, LogOut, User, BookOpen, ChevronDown,
+  Shield, LogOut, BookOpen, ChevronDown,
   UserCog,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function Navbar() {
-  const { t, lang, setLang } = useTranslation();
+  const { lang, setLang } = useTranslation();
   const { user, isAuthenticated, isAdmin, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -105,18 +106,8 @@ export default function Navbar() {
 
           {/* ── Brand Mark ── */}
           <Link to="/" className="group flex items-center gap-3 outline-none">
-            {/* Logo image with transparent background */}
-            <img
-              src="/logo.png"
-              alt=""
-              className="h-9 w-9 object-contain drop-shadow-[0_0_8px_rgba(6,182,212,0.3)] transition-transform duration-300 group-hover:scale-110"
-              width={36}
-              height={36}
-              loading="eager"
-              aria-hidden="true"
-            />
-            {/* Pulse ring behind logo */}
-            <div className="absolute left-[18px] top-[14px] h-9 w-9 rounded-full border border-[#06b6d4] opacity-0 transition-opacity group-hover:opacity-100 group-hover:animate-ping" />
+            {/* 3D Auto-Rotating Logo — rotates every 5 seconds */}
+            <Logo3D size="md" interactive={true} />
 
             {/* Text */}
             <div className="flex flex-col leading-none">

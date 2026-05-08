@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
-import { Youtube, Linkedin, Mail, Phone } from "lucide-react";
+import Logo3D from "@/components/Logo3D";
+import { Youtube, Linkedin, Mail } from "lucide-react";
 
 export default function Footer() {
   const { lang } = useTranslation();
@@ -32,26 +33,18 @@ export default function Footer() {
           {/* Brand column */}
           <div className="lg:col-span-1">
             <Link to="/" className="flex items-center gap-2.5">
-              <img
-                src="/logo.png"
-                alt=""
-                className="h-9 w-9 object-contain drop-shadow-[0_0_8px_rgba(6,182,212,0.3)]"
-                width={36}
-                height={36}
-                loading="lazy"
-                aria-hidden="true"
-              />
+              <Logo3D size="md" interactive={true} />
               <div>
-                <div className="text-[13px] font-extrabold text-[#e8f0fe]">
+                <div className="footer-glow-text text-[13px] font-extrabold text-[#e8f0fe]">
                   {lang === "ar" ? "أحمد الباز" : "Eng. Ahmed Elbaz"}
                 </div>
-                <div className="text-[10px] font-medium uppercase tracking-widest text-[#06b6d4]">
+                <div className="footer-glow-text text-[10px] font-medium uppercase tracking-widest text-[#06b6d4]">
                   {lang === "ar" ? "هندسة كهربية" : "Electrical Engineering"}
                 </div>
               </div>
             </Link>
 
-            <p className="mt-4 text-[13px] leading-relaxed text-[#64748b]">
+            <p className="footer-glow-text mt-4 text-[13px] leading-relaxed text-[#64748b]">
               {lang === "ar"
                 ? "منصة تعليمية متخصصة في برامج تصميم الطاقة الكهربية للمهندسين العرب."
                 : "Specialized platform for power system design software, built for serious electrical engineers."}
@@ -134,7 +127,7 @@ export default function Footer() {
 
         {/* ── Bottom bar ── */}
         <div className="flex flex-col items-center justify-between gap-3 border-t border-[#1e2d3d] py-6 sm:flex-row">
-          <p className="text-[12px] text-[#475569]">
+          <p className="footer-glow-text text-[12px] text-[#475569]">
             © {currentYear}{" "}
             <span className="text-[#64748b]">
               {lang === "ar" ? "أحمد الباز" : "Ahmed Elbaz"}

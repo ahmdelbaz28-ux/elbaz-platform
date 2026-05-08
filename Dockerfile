@@ -3,7 +3,7 @@
 #  Optimized for: layer caching, security, minimal image size
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-# ── Stage 1: Install dependencies (cached layer) ──
+# ── Stage 1: Install ALL dependencies (build needs dev deps) ──
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -17,6 +17,12 @@ COPY . .
 # Build frontend (Vite) + generate types
 RUN npm run build
 
+# ── Stage 2.5: Production dependencies only ──
+FROM node:20-alpine AS prod-deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --prefer-offline --no-audit --no-fund 2>&1 | tail -3
+
 # ── Stage 3: Production runtime (minimal image) ──
 FROM node:20-alpine AS production
 WORKDIR /app
@@ -26,13 +32,13 @@ RUN addgroup -g 1001 -S appgroup && \
     adduser -S appuser -u 1001 -G appgroup
 
 # Install dumb-init for proper signal handling (SIGTERM → graceful shutdown)
-RUN apk add --no-cache dumb-init tini
+RUN apk add --no-cache dumb-init
 
 ENV NODE_ENV=production
-ENV NODE_OPTIONS="--max-old-space-size=768"
+ENV NODE_OPTIONS="--max-old-space-size=1024"
 
-# Copy only what's needed for runtime (not devDependencies)
-COPY --from=build --chown=appuser:appgroup /app/node_modules ./node_modules
+# Copy only production dependencies (not devDependencies)
+COPY --from=prod-deps --chown=appuser:appgroup /app/node_modules ./node_modules
 COPY --from=build --chown=appuser:appgroup /app/dist ./dist
 COPY --from=build --chown=appuser:appgroup /app/api ./api
 COPY --from=build --chown=appuser:appgroup /app/db ./db
