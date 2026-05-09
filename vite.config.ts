@@ -16,11 +16,17 @@ export default defineConfig({
     viteCompression({ algorithm: 'brotliCompress', threshold: 1024, ext: '.br' }),
     VitePWA({
       registerType: 'autoUpdate',
+      // CRITICAL: Prevent browser from caching sw.js itself.
+      // Without this, the browser serves stale sw.js → stale precache → white screen.
+      updateViaCache: 'none',
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff2}'],
-        // ✅ FIX: navigationPreload must respond within the fetch handler.
-        // Setting to false prevents the cancelled preload warning.
-        // The precache handles navigation requests anyway.
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff2,json}'],
+        // Skip waiting: new SW activates immediately instead of waiting for old tabs to close
+        skipWaiting: true,
+        // Clients claim: new SW takes control of all open pages immediately
+        clientsClaim: true,
+        // Maximum file size for precache (skip large files like HLS)
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         navigationPreload: false,
         runtimeCaching: [
           {

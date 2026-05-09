@@ -1,5 +1,33 @@
-node_modules
-dist
-.git
+# Dependencies (installed via npm ci in Docker)
+node_modules/
+
+# Build output — must be built INSIDE Docker, not copied from host
+dist/
+
+# Environment files (secrets come from HF Space variables, not files)
+.env
+.env.local
+.env.production
+.env.*.local
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
 *.swp
-*.log
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Upload temp directory
+upload/
+
+# Documentation (not needed in production image)
+*.md
+infra/
+scripts/

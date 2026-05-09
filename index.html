@@ -57,6 +57,10 @@
     <link rel="preload" as="image" href="/hero-main.webp" type="image/webp" />
   </head>
   <body>
+    <!-- ⚠️ CRITICAL: Cache-nuke MUST run first — before React and Service Worker.
+         Detects version changes, clears stale caches, and force-reloads.
+         Prevents white screen after every deployment. -->
+    <script src="/cache-nuke.js"></script>
     <!-- Early RTL detection to prevent FOUC (external file to satisfy CSP script-src) -->
     <script src="/rtl-detect.js"></script>
     <div id="root"></div>

@@ -99,17 +99,17 @@ app.use("*", async (c, next) => {
   // ═══════════════════════════════════════════════════════════════
   c.header("Content-Security-Policy",
     "default-src 'self';"
-    + " script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.clarity.ms https://cdn.jsdelivr.net;"
+    + " script-src 'self' https://www.clarity.ms https://cdn.jsdelivr.net;"
     + " style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;"
     + " img-src 'self' data: https: blob:;"
     + " font-src 'self' https://fonts.gstatic.com data:;"
-    + " connect-src 'self' https://openrouter.ai https://*.openrouter.ai https://*.paymob.com https://www.clarity.ms https://*.sentry.io https://fonts.googleapis.com https://fonts.gstatic.com https://api.github.com wss://*.slack.com;"
+    + " connect-src 'self' https://openrouter.ai https://*.openrouter.ai https://*.paymob.com https://www.clarity.ms https://*.sentry.io https://fonts.googleapis.com https://fonts.gstatic.com https://api.github.com "
     + " frame-ancestors 'none';"
     + " base-uri 'self';"
     + " form-action 'self' https://*.paymob.com;"
   );
   // ✅ X-App-Version: helps debug whether the live site is running latest code
-  c.header("X-App-Version", "2026.05.09-v5");
+  c.header("X-App-Version", "2026.05.09-v6");
   // Prevent clickjacking — CSP frame-ancestors 'none' is the modern replacement.
   // Cloudflare may override this to SAMEORIGIN, but CSP frame-ancestors takes
   // precedence in all modern browsers (Chrome/Firefox/Safari/Edge).
@@ -157,7 +157,7 @@ const MIME: Record<string, string> = {
 // Version endpoint — lightweight, no DB hit. Used by clients and service
 // worker to detect new deployments and trigger cache refresh.
 app.get("/api/version", async (c) => {
-  return c.json({ version: "2026.05.09-v5" });
+  return c.json({ version: "2026.05.09-v6" });
 });
 
 app.get("/api/health", async (c) => {
