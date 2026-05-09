@@ -108,6 +108,8 @@ app.use("*", async (c, next) => {
     + " base-uri 'self';"
     + " form-action 'self' https://*.paymob.com;"
   );
+  // ✅ X-App-Version: helps debug whether the live site is running latest code
+  c.header("X-App-Version", "2026.05.09-v4");
   // Prevent clickjacking — CSP frame-ancestors 'none' is the modern replacement.
   // Cloudflare may override this to SAMEORIGIN, but CSP frame-ancestors takes
   // precedence in all modern browsers (Chrome/Firefox/Safari/Edge).
