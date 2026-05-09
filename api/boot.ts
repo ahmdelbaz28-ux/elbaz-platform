@@ -667,7 +667,12 @@ app.get("*", async (c) => {
     return new Response(idxContent, {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
-        "Cache-Control": "no-store, must-revalidate",
+        // ✅ CRITICAL: Never cache HTML — prevents stale content after deployments
+        // no-store: browser MUST NOT store. proxy-revalidate: CDN MUST revalidate.
+        // CDN-Cache-Control: Cloudflare-specific override for edge caching.
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        "CDN-Cache-Control": "no-store",
+        "Surrogate-Control": "no-store",
         "ETag": idxEtag,
         "Last-Modified": idxLastModified,
       },

@@ -17,7 +17,10 @@ export default defineConfig({
       registerType: 'autoUpdate',
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff2}'],
-        navigationPreload: true,
+        // ✅ FIX: navigationPreload must respond within the fetch handler.
+        // Setting to false prevents the cancelled preload warning.
+        // The precache handles navigation requests anyway.
+        navigationPreload: false,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
