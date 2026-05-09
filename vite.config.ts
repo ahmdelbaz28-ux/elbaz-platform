@@ -8,6 +8,7 @@ import viteCompression from 'vite-plugin-compression'
 
 // https://vite.dev/config/
 export default defineConfig({
+  root: __dirname,
   plugins: [
     devServer({ entry: "api/boot.ts", exclude: [/^\/(?!api\/).*$/] }),
     react(),
@@ -69,7 +70,8 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          'react-vendor': ['react', 'react-dom'],
+          // NOTE: 'react-vendor' removed — Vite 7 inlines React into the main bundle
+          // and creates an orphan 1-byte chunk. Let Vite handle React chunking automatically.
           'trpc-vendor': ['@trpc/client', '@trpc/react-query', '@tanstack/react-query'],
           'ui-vendor': ['sonner', 'superjson'],
         },

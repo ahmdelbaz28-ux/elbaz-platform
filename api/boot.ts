@@ -109,7 +109,7 @@ app.use("*", async (c, next) => {
     + " form-action 'self' https://*.paymob.com;"
   );
   // ✅ X-App-Version: helps debug whether the live site is running latest code
-  c.header("X-App-Version", "2026.05.09-v4");
+  c.header("X-App-Version", "2026.05.09-v5");
   // Prevent clickjacking — CSP frame-ancestors 'none' is the modern replacement.
   // Cloudflare may override this to SAMEORIGIN, but CSP frame-ancestors takes
   // precedence in all modern browsers (Chrome/Firefox/Safari/Edge).
@@ -154,6 +154,12 @@ const MIME: Record<string, string> = {
 // Returns: status, db connectivity, uptime, memory usage, version
 // Used by HuggingFace Spaces health probe and monitoring
 // ══════════════════════════════════════════════════════════════════
+// Version endpoint — lightweight, no DB hit. Used by clients and service
+// worker to detect new deployments and trigger cache refresh.
+app.get("/api/version", async (c) => {
+  return c.json({ version: "2026.05.09-v5" });
+});
+
 app.get("/api/health", async (c) => {
   let dbStatus = "ok";
   let dbLatencyMs = 0;
@@ -508,8 +514,8 @@ const CACHEABLE_EXTENSIONS = new Set([
 const STATIC_EXTENSIONS = new Set([
   ".js", ".css", ".woff", ".woff2", ".png", ".jpg", ".jpeg",
   ".gif", ".svg", ".webp", ".ico", ".map", ".html", ".json",
-  ".xml", ".txt", ".pdf",
-]);
+  ".xml", ".txt", ".pdf", ".webmanifest",
+});
 
 // Pre-computed resolved DIST_PUBLIC for path security checks
 const DIST_PUBLIC_RESOLVED = path.resolve(DIST_PUBLIC);
@@ -623,7 +629,14 @@ app.use("*", async (c, next) => {
 
   // Aggressive caching for hashed static assets (1 year, immutable)
   if (CACHEABLE_EXTENSIONS.has(ext)) {
-    headers["Cache-Control"] = "public, max-age=31536000, immutable";
+    // CRITICAL: Service Worker MUST NOT be cached — browser must always fetch
+    // the latest sw.js to detect new precache manifest after deployments.
+    // Without this, old SW serves stale assets → white screen after deploy.
+    if (requestPath === "/sw.js" || requestPath.endsWith("/sw.js")) {
+      headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+    } else {
+      headers["Cache-Control"] = "public, max-age=31536000, immutable";
+    }
   }
 
   // Content-Encoding for pre-compressed files

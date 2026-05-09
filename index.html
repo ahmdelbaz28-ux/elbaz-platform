@@ -50,30 +50,8 @@
     <script src="/clarity.js" defer></script>
     <script src="/pii-mask.js" defer></script>
 
-    <!-- JSON-LD Structured Data (for Google Rich Results) -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "EducationalOrganization",
-      "name": "Eng Ahmed Elbaz",
-      "url": "https://ahmedelbaz.qzz.io",
-      "logo": "https://ahmedelbaz.qzz.io/logo.png",
-      "description": "Professional electrical engineering courses in ETAP, SKM, PowerFactory, PVSyst, and more.",
-      "sameAs": [],
-      "founder": {
-        "@type": "Person",
-        "name": "Eng Ahmed Elbaz",
-        "jobTitle": "Power Systems Engineer"
-      },
-      "offers": {
-        "@type": "AggregateOffer",
-        "lowPrice": "0",
-        "highPrice": "99",
-        "priceCurrency": "EGP",
-        "offerCount": "6"
-      }
-    }
-    </script>
+    <!-- JSON-LD Structured Data — external file to satisfy strict CSP (no 'unsafe-inline') -->
+    <script type="application/ld+json" src="/structured-data.json"></script>
 
     <!-- CSP is enforced via HTTP header in boot.ts (not meta tag — avoids double-policy conflicts) -->
     <link rel="preload" as="image" href="/hero-main.webp" type="image/webp" />
