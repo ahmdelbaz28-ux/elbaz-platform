@@ -4,7 +4,7 @@
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 # ── Stage 1: Install ALL dependencies (build needs dev deps) ──
-FROM node:20-alpine AS deps
+FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --prefer-offline --no-audit --no-fund 2>&1 | tail -3
@@ -18,13 +18,13 @@ COPY . .
 RUN npm run build
 
 # ── Stage 2.5: Production dependencies only ──
-FROM node:20-alpine AS prod-deps
+FROM node:22-alpine AS prod-deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --prefer-offline --no-audit --no-fund 2>&1 | tail -3
 
 # ── Stage 3: Production runtime (minimal image) ──
-FROM node:20-alpine AS production
+FROM node:22-alpine AS production
 WORKDIR /app
 
 # Security: run as non-root user
