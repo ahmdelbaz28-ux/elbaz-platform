@@ -6,38 +6,40 @@ import { TRPCProvider } from "@/providers/trpc"
 import App from './App.tsx'
 
 // Register PWA Service Worker with aggressive update strategy
+// Note: cache-nuke.js handles VERSION changes (full cleanup + reload).
+// Here we handle IN-PLACE SW updates (new precache manifest, same version).
 if ('serviceWorker' in navigator && !(window as any).Capacitor?.isNativePlatform?.()) {
   import('virtual:pwa-register').then(({ registerSW }) => {
     registerSW({
       immediate: true,
       onNeedRefresh() {
-        // New content available — force reload immediately.
-        // This is better than showing a prompt because:
-        // 1. The cache-nuke.js script already handles graceful version detection
-        // 2. Stale content causes white screen, not just outdated UI
-        // 3. Users don't need to manually click "update"
+        // New SW downloaded but waiting to activate.
+        // Don't prompt — just reload immediately.
+        // cache-nuke.js handles the big version-change cleanup.
         console.log('[PWA] New content available — reloading');
-        window.location.reload();
+        if (navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' });
+        }
+        setTimeout(function() { window.location.reload(); }, 300);
       },
       onOfflineReady() {
         console.log('[PWA] App ready for offline use');
       },
-      onRegisteredSW(swUrl, registration) {
-        // Check for updates every 60 seconds (aggressive — catches deploys fast)
+      onRegisteredSW(_swUrl, registration) {
         if (registration) {
-          const updateInterval = setInterval(() => {
-            registration.update();
+          // Check for updates every 60 seconds
+          const interval = setInterval(() => {
+            registration.update().catch(() => {});
           }, 60 * 1000);
-          // Cleanup interval on page unload
-          window.addEventListener('beforeunload', () => clearInterval(updateInterval));
+          window.addEventListener('beforeunload', () => clearInterval(interval));
         }
       },
       onRegisterError(error) {
-        console.warn('[PWA] Service worker registration error — site works without it:', error);
+        console.warn('[PWA] Service worker registration failed — site works without it');
       },
     });
   }).catch(() => {
-    // PWA registration failed — non-critical, site works without it
+    // PWA not available — non-critical
   });
 }
 

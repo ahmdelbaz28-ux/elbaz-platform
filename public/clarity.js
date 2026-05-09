@@ -13,4 +13,3 @@ clarity('setup', {
   trackInteraction: true,
   allowInstrumentation: true
 });
-clarity('revoke');
