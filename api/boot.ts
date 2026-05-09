@@ -515,7 +515,7 @@ const STATIC_EXTENSIONS = new Set([
   ".js", ".css", ".woff", ".woff2", ".png", ".jpg", ".jpeg",
   ".gif", ".svg", ".webp", ".ico", ".map", ".html", ".json",
   ".xml", ".txt", ".pdf", ".webmanifest",
-});
+]);
 
 // Pre-computed resolved DIST_PUBLIC for path security checks
 const DIST_PUBLIC_RESOLVED = path.resolve(DIST_PUBLIC);
