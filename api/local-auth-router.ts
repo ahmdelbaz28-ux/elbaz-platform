@@ -1,4 +1,5 @@
 import { z } from "zod";
+import crypto from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { eq, sql } from "drizzle-orm";
 import { users, enrollments, lessonProgress, payments, certificates, supportTickets } from "@db/schema";
@@ -117,8 +118,9 @@ export const localAuthRouter = createRouter({
         .where(eq(users.username, input.username))
         .limit(1);
 
-      // ✅ Always run verifyPassword even if user not found (timing attack prevention)
-      const dummyHash = "$2a$12$dummy.hash.to.prevent.timing.attacks.xxxxxxxxxxxxxxxxx";
+      // ✅ FIX: Generate random dummy hash per request to prevent timing-based user enumeration
+      // A fixed hash allows pre-computed rainbow table attacks to distinguish "user not found" vs "wrong password"
+      const dummyHash = "$2a$12$" + crypto.randomBytes(16).toString("hex") + ".xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
       const valid = user
         ? await verifyPassword(input.password, user.passwordHash)
         : await verifyPassword(input.password, dummyHash).then(() => false);

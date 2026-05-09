@@ -32,7 +32,11 @@ function requireRole(role: string) {
 }
 
 const globalRateLimit = t.middleware(async (opts) => {
-  const ip = opts.ctx.req?.headers?.get("cf-connecting-ip") || opts.ctx.req?.headers?.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  // ✅ FIX: Use rightmost IP from X-Forwarded-For (set by last trusted proxy)
+  // Leftmost IPs can be spoofed by clients; rightmost is from Cloudflare/proxy
+  const forwarded = opts.ctx.req?.headers?.get("x-forwarded-for");
+  const cfIp = opts.ctx.req?.headers?.get("cf-connecting-ip");
+  const ip = cfIp || (forwarded ? forwarded.split(",").pop()?.trim() || "unknown" : "unknown");
   await checkRateLimit(ip, "api");
   return opts.next();
 });

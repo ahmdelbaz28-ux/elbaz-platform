@@ -39,7 +39,7 @@ ENV NODE_OPTIONS="--max-old-space-size=1024"
 
 # Copy only production dependencies (not devDependencies)
 COPY --from=prod-deps --chown=appuser:appgroup /app/node_modules ./node_modules
-COPY --from=build --chown=appuser:appgroup /app/dist ./dist
+COPY --from=build --chown=appuser:appgroup /app/dist/public ./dist/public
 COPY --from=build --chown=appuser:appgroup /app/api ./api
 COPY --from=build --chown=appuser:appgroup /app/db ./db
 COPY --from=build --chown=appuser:appgroup /app/contracts ./contracts
