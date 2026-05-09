@@ -109,7 +109,7 @@ app.use("*", async (c, next) => {
     + " form-action 'self' https://*.paymob.com;"
   );
   // ✅ X-App-Version: helps debug whether the live site is running latest code
-  c.header("X-App-Version", "2026.05.09-v6");
+  c.header("X-App-Version", "2026.05.09-v7");
   // Prevent clickjacking — CSP frame-ancestors 'none' is the modern replacement.
   // Cloudflare may override this to SAMEORIGIN, but CSP frame-ancestors takes
   // precedence in all modern browsers (Chrome/Firefox/Safari/Edge).
@@ -157,7 +157,7 @@ const MIME: Record<string, string> = {
 // Version endpoint — lightweight, no DB hit. Used by clients and service
 // worker to detect new deployments and trigger cache refresh.
 app.get("/api/version", async (c) => {
-  return c.json({ version: "2026.05.09-v6" });
+  return c.json({ version: "2026.05.09-v7" });
 });
 
 app.get("/api/health", async (c) => {

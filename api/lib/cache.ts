@@ -88,8 +88,6 @@ class MemoryLRUCache {
 class RedisCache {
   private client: any = null;
   private connected = false;
-  private retryAttempts = 0;
-  private maxRetries = 5;
 
   private async getClient(): Promise<any> {
     if (this.client && this.connected) return this.client;
@@ -112,7 +110,6 @@ class RedisCache {
 
       this.client.on("connect", () => {
         this.connected = true;
-        this.retryAttempts = 0;
         console.log("[Cache] Redis connected");
       });
 

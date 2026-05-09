@@ -89,8 +89,6 @@ export function getR2Client(): S3Client {
     },
     // Required for R2
     forcePathStyle: false,
-    // Disable checksum validation for R2 compatibility
-    checksumValidation: false,
   });
 
   return r2Client;
@@ -128,8 +126,6 @@ export async function generateR2PresignedUrl(options: PresignedVideoOptions): Pr
     Key: objectKey,
     ResponseContentType: "video/mp4",
     ResponseContentDisposition: `${disposition}; filename="video.mp4"`,
-    // Cache-Control: no-store prevents browser caching of video chunks
-    CacheControl: "no-store",
   });
 
   const signedUrl = await getSignedUrl(client, command, { expiresIn });

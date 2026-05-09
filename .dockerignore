@@ -13,6 +13,7 @@ dist/
 # Git
 .git/
 .gitignore
+.gitattributes
 
 # IDE
 .vscode/
@@ -31,3 +32,10 @@ upload/
 *.md
 infra/
 scripts/
+
+# Test files
+vitest.config.ts
+coverage/
+
+# Source maps (security: don't ship debug files)
+*.map

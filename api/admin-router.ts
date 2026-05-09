@@ -141,7 +141,7 @@ export const adminRouter = createRouter({
   // Update ticket status (trpc.admin.updateTicketStatus.useMutation)
   updateTicketStatus: adminQuery
     .input(z.object({ id: z.number(), status: z.enum(["open", "in_progress", "resolved", "closed"]) }))
-    .mutation(async ({ ctx, input }) => {
+    .mutation(async ({ input }) => {
       const db = getDb();
       await db
         .update(supportTickets)

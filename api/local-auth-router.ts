@@ -6,11 +6,9 @@ import { users, enrollments, lessonProgress, payments, certificates, supportTick
 import { createRouter, publicQuery, authedQuery, checkRateLimit, clearRateLimit } from "./middleware";
 import { getDb } from "./queries/connection";
 import { hashPassword, verifyPassword } from "./lib/password";
-import { createToken, verifyToken } from "./lib/jwt";
+import { createToken } from "./lib/jwt";
 import { initiatePasswordReset, completePasswordReset, initiateEmailVerification, completeEmailVerification } from "./lib/email";
-// ✅ SECURITY FIX: Import auth cookie helpers for httpOnly cookie auth
-import { serializeAuthCookie, serializeAuthFlagCookie, clearAuthCookie, AUTH_COOKIE_NAME } from "./lib/cookies";
-import { parse } from "cookie";
+import { serializeAuthCookie, serializeAuthFlagCookie, clearAuthCookie } from "./lib/cookies";
 
 export const localAuthRouter = createRouter({
   register: publicQuery

@@ -75,12 +75,10 @@ export default defineConfig({
     cssMinify: 'esbuild',
     rollupOptions: {
       output: {
-        manualChunks: {
-          // NOTE: 'react-vendor' removed — Vite 7 inlines React into the main bundle
-          // and creates an orphan 1-byte chunk. Let Vite handle React chunking automatically.
-          'trpc-vendor': ['@trpc/client', '@trpc/react-query', '@tanstack/react-query'],
-          'ui-vendor': ['sonner', 'superjson'],
-        },
+        // ⚠️ Vite 7 CRITICAL: Do NOT use manualChunks.
+        // Vite 7's tree-shaking inlines imports that manualChunks references.
+        // This creates orphan 1-byte chunks that break the Service Worker precache.
+        // Let Vite handle all chunking automatically.
       },
       treeshake: {
         moduleSideEffects: false,

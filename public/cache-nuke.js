@@ -13,7 +13,7 @@
 (function() {
   'use strict';
 
-  var CURRENT_VERSION = '2026.05.09-v6';
+  var CURRENT_VERSION = '2026.05.09-v7';
   var VERSION_KEY = 'elbaz-app-version';
 
   function getStoredVersion() {
