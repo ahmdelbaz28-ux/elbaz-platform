@@ -99,11 +99,11 @@ app.use("*", async (c, next) => {
   // ═══════════════════════════════════════════════════════════════
   c.header("Content-Security-Policy",
     "default-src 'self';"
-    + " script-src 'self' https://www.clarity.ms https://cdn.jsdelivr.net;"
+    + " script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.clarity.ms https://cdn.jsdelivr.net;"
     + " style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;"
     + " img-src 'self' data: https: blob:;"
     + " font-src 'self' https://fonts.gstatic.com data:;"
-    + " connect-src 'self' https://openrouter.ai https://*.openrouter.ai https://*.paymob.com https://www.clarity.ms https://*.sentry.io https://fonts.googleapis.com https://fonts.gstatic.com https://api.github.com;"
+    + " connect-src 'self' https://openrouter.ai https://*.openrouter.ai https://*.paymob.com https://www.clarity.ms https://*.sentry.io https://fonts.googleapis.com https://fonts.gstatic.com https://api.github.com wss://*.slack.com;"
     + " frame-ancestors 'none';"
     + " base-uri 'self';"
     + " form-action 'self' https://*.paymob.com;"
@@ -135,6 +135,7 @@ const MIME: Record<string, string> = {
   ".js": "application/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".json": "application/json",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
