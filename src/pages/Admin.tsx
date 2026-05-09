@@ -181,6 +181,7 @@ export default function Admin() {
       setReplyingTo(null);
       utils.admin.tickets.invalidate();
     },
+    onError: (err) => console.warn("[Admin] replyTicket failed:", err.message),
   });
 
   /* ─── CMS state ─── */
@@ -230,6 +231,7 @@ export default function Admin() {
       utils.settings.listThemes.invalidate();
       utils.settings.getActiveTheme.invalidate();
     },
+    onError: (err) => console.warn("[Admin] activateTheme failed:", err.message),
   });
   const updateTheme = trpc.settings.updateTheme.useMutation({
     onSuccess: () => {
@@ -238,6 +240,7 @@ export default function Admin() {
       setThemeDialogOpen(false);
       setEditingTheme(null);
     },
+    onError: (err) => console.warn("[Admin] updateTheme failed:", err.message),
   });
   const deleteTheme = trpc.settings.deleteTheme.useMutation({
     onSuccess: () => {
@@ -245,6 +248,7 @@ export default function Admin() {
       utils.settings.getActiveTheme.invalidate();
       setDeleteConfirmId(null);
     },
+    onError: (err) => console.warn("[Admin] deleteTheme failed:", err.message),
   });
 
   const [themeDialogOpen, setThemeDialogOpen] = useState(false);
@@ -290,6 +294,7 @@ export default function Admin() {
   const { data: promoCodes, isLoading: promosLoading } = trpc.promo.list.useQuery(undefined, { enabled: !!isAdmin });
   const createPromo = trpc.promo.create.useMutation({
     onSuccess: () => utils.promo.list.invalidate(),
+    onError: (err) => console.warn("[Admin] createPromo failed:", err.message),
   });
   const updatePromo = trpc.promo.update.useMutation({
     onSuccess: () => utils.promo.list.invalidate(),
