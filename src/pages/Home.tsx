@@ -3,7 +3,8 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { trpc } from "@/providers/trpc";
 import CourseCard from "@/components/CourseCard";
 import SEO from "@/components/SEO";
-import { StaggerContainer, StaggerItem, FadeIn, HoverSpring, NeonGlow } from "@/components/ui/motion";
+import { StaggerContainer, StaggerItem, FadeIn, NeonGlow } from "@/components/ui/motion";
+
 
 import SingleLineDiagram from "@/components/ui/SingleLineDiagram";
 import ScadaGauge from "@/components/ui/ScadaGauge";
@@ -69,26 +70,6 @@ type Stats = {
 
 // ───────────────────────────────────────────────────────────────────────────────
 
-function useCountUp(end: number, duration: number = 2000, start: boolean = false) {
-  const [count, setCount] = useState(0);
-  useEffect(() => {
-    if (!start) return;
-    let startTime: number;
-    let frameId: number;
-    const step = (timestamp: number) => {
-      if (!startTime) startTime = timestamp;
-      const progress = Math.min((timestamp - startTime) / duration, 1);
-      setCount(Math.floor(progress * end));
-      if (progress < 1) {
-        frameId = requestAnimationFrame(step);
-      }
-    };
-    frameId = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(frameId);
-  }, [end, duration, start]);
-  return count;
-}
-
 const sharedObserver = typeof IntersectionObserver !== 'undefined'
   ? new IntersectionObserver(
       (entries) => entries.forEach((e) => {
@@ -120,19 +101,9 @@ function useRevealOnce() {
   return [ref, visible] as const;
 }
 
-function AnimatedCounter({ end, label }: { end: number; label: string }) {
-  const [ref, isVisible] = useRevealOnce();
-  const count = useCountUp(end, 2000, isVisible);
 
-  return (
-    <div ref={ref} className="text-center">
-      <div className="text-2xl font-bold text-[#06b6d4]">
-        {count.toLocaleString()}+
-      </div>
-      <div className="mt-1 text-xs uppercase tracking-wider text-[#64748b]">{label}</div>
-    </div>
-  );
-}
+
+
 
 function SectionReveal({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   const [ref, visible] = useRevealOnce();
