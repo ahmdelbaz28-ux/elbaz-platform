@@ -86,10 +86,14 @@ type AppVariables = {
   requestId: string;
 };
 
+import { shieldMiddleware } from "./middleware/shield.js";
+
 const app = new Hono<{ Variables: AppVariables }>({ strict: false });
 
 app.use("*", logger());
+app.use("*", shieldMiddleware); // 🛡️ Elite Shield: First line of defense
 app.use("*", securityMiddleware);
+
 
 const corsOrigins = env.CORS_ORIGINS
   ? env.CORS_ORIGINS.split(",").map((o) => o.trim())
