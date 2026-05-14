@@ -288,19 +288,19 @@ const categoryIcons: Record<string, React.ReactNode> = {
   Zap: <Zap className="h-5 w-5 text-[#06b6d4]" />,
 };
 
-// Real software logos from official CDNs
+// Real software logos from verified official/reliable sources
 const SOFTWARE_LOGOS = [
   {
     name: "ETAP",
-    logo: "https://www.etap.com/images/ETAP-logo.svg",
+    logo: "https://upload.wikimedia.org/wikipedia/en/c/c3/ETAP_logo.png",
   },
   {
     name: "SKM",
-    logo: "https://www.skm.com/wp-content/themes/skm/images/skm-logo.svg",
+    logo: "https://www.skm.com/wp-content/uploads/2021/06/skm-logo.png",
   },
   {
     name: "PowerFactory",
-    logo: "https://www.digsilent.de/en/images/digsilent-logo.svg",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/1/1a/DIgSILENT_Logo.png",
   },
   {
     name: "PVSyst",
@@ -308,13 +308,14 @@ const SOFTWARE_LOGOS = [
   },
   {
     name: "AutoCAD",
-    logo: "https://damassets.autodesk.net/content/dam/autodesk/www/products/autocad/lockup/lockup-autocad-2024.svg",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/af/Autodesk_AutoCAD_logo.svg/512px-Autodesk_AutoCAD_logo.svg.png",
   },
   {
     name: "MATLAB",
     logo: "https://upload.wikimedia.org/wikipedia/commons/2/21/Matlab_Logo.png",
   },
 ];
+
 
 const FALLBACK_STATS = { totalStudents: 2400, satisfactionRate: 98, totalCourses: 35 };
 
@@ -487,13 +488,17 @@ export default function Home() {
                 title={tool.name}
               >
                 <div className="flex h-12 w-28 items-center justify-center rounded-lg border border-[#1f2d44] bg-[#0a0e17] px-3 py-2 transition-all group-hover:border-[rgba(6,182,212,0.4)] group-hover:bg-[rgba(6,182,212,0.04)]">
-                  <img
-                    src={tool.logo}
-                    alt={tool.name}
-                    className="max-h-8 max-w-full object-contain"
-                    onError={(e) => { e.currentTarget.style.display = 'none'; (e.currentTarget.nextElementSibling as HTMLElement)!.style.display = 'block'; }}
-                  />
-                  <span className="hidden text-sm font-bold text-[#06b6d4]">{tool.name}</span>
+                    <img
+                      src={tool.logo}
+                      alt={tool.name}
+                      className="max-h-8 max-w-full object-contain filter brightness-110 contrast-125 transition-all group-hover:scale-110"
+                      onError={(e) => { 
+                        e.currentTarget.style.display = 'none'; 
+                        if (e.currentTarget.nextElementSibling) (e.currentTarget.nextElementSibling as HTMLElement).style.display = 'block'; 
+                      }}
+                    />
+                    <span className="hidden text-sm font-bold text-[#06b6d4]">{tool.name}</span>
+
                 </div>
                 <span className="text-[10px] font-medium uppercase tracking-widest text-[#475569] group-hover:text-[#06b6d4] transition-colors">{tool.name}</span>
               </div>
