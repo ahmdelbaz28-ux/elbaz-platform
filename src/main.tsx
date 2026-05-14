@@ -43,8 +43,9 @@ if ('serviceWorker' in navigator && !(window as any).Capacitor?.isNativePlatform
             if (!document.hidden) {
               registration.update().catch(() => {});
             }
-          }, 5 * 60 * 1000);
+          }, 1 * 60 * 1000); // 🚀 Elite: Check for updates every 1 minute
           window.addEventListener('beforeunload', () => clearInterval(interval));
+
         }
       },
       onRegisterError(error: unknown) {
