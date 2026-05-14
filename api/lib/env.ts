@@ -108,6 +108,23 @@ function validateEnv(): EnvWithMeta {
 
 const env = validateEnv();
 
+/**
+ * 🚀 Elite: Smart URL Detection
+ * If the configured FRONTEND_URL doesn't match the current request (detected at runtime),
+ * this helper allows the system to adapt.
+ */
+function getActiveFrontendUrl(currentRequestUrl?: string): string {
+  if (!currentRequestUrl) return env.FRONTEND_URL;
+  try {
+    const url = new URL(currentRequestUrl);
+    // If we're on a .hf.space or .qzz.io domain, trust the current host over the hardcoded secret
+    if (url.hostname.includes("hf.space") || url.hostname.includes("qzz.io")) {
+      return `${url.protocol}//${url.host}`;
+    }
+  } catch { /* ignore */ }
+  return env.FRONTEND_URL;
+}
+
 function getPublicEnvKeys(): Record<string, string> {
   return {
     NODE_ENV: env.NODE_ENV,
@@ -117,4 +134,5 @@ function getPublicEnvKeys(): Record<string, string> {
   };
 }
 
-export { env, getPublicEnvKeys };
+export { env, getPublicEnvKeys, getActiveFrontendUrl };
+
