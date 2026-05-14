@@ -1,0 +1,212 @@
+{
+  "description": "SIEM and Audit Logging Configuration for Ahmed El-Baz LMS Platform",
+  "platform": "ahmedelbaz-lms",
+  "account_id": "951840a21847d5c55c8284d4ded7cffc",
+  "zone_id": "93ccd466aeba31bc1f8bac061ab168e2",
+  "log_sources": [
+    {
+      "name": "Cloudflare",
+      "enabled": true,
+      "datasets": [
+        {
+          "name": "HTTP Requests",
+          "fields": ["timestamp", "clientIP", "method", "path", "status", "userAgent", "country", "rayId", "responseTime", "cacheStatus", "edgeResponseStatus"]
+        },
+        {
+          "name": "WAF Events",
+          "fields": ["timestamp", "clientIP", "rayId", "ruleId", "action", "match", "uri", "method", "country"]
+        },
+        {
+          "name": "Firewall Rules",
+          "fields": ["timestamp", "clientIP", "rayId", "action", "ruleId", "match", "source", "uri"]
+        }
+      ]
+    },
+    {
+      "name": "Application",
+      "enabled": true,
+      "datasets": [
+        {
+          "name": "Authentication Events",
+          "fields": ["timestamp", "userId", "action", "ip", "method", "path", "statusCode", "userAgent", "sessionId"]
+        },
+        {
+          "name": "Data Access",
+          "fields": ["timestamp", "userId", "resource", "action", "ip", "method", "statusCode", "dataClassification"]
+        },
+        {
+          "name": "Application Errors",
+          "fields": ["timestamp", "level", "message", "stackTrace", "userId", "path", "statusCode", "requestId"]
+        }
+      ]
+    },
+    {
+      "name": "Database",
+      "enabled": true,
+      "datasets": [
+        {
+          "name": "Query Logs",
+          "fields": ["timestamp", "user", "database", "query", "duration", "rowsAffected", "sourceIp"]
+        },
+        {
+          "name": "Schema Changes",
+          "fields": ["timestamp", "user", "database", "operation", "object", "statement", "sourceIp"]
+        }
+      ]
+    },
+    {
+      "name": "Kubernetes",
+      "enabled": true,
+      "datasets": [
+        {
+          "name": "Audit Logs",
+          "fields": ["timestamp", "verb", "user", "resource", "namespace", "name", "responseStatus", "stage", "requestURI"]
+        },
+        {
+          "name": "Cluster Events",
+          "fields": ["timestamp", "type", "reason", "message", "namespace", "name", "kind", "source"]
+        }
+      ]
+    },
+    {
+      "name": "Infrastructure",
+      "enabled": true,
+      "datasets": [
+        {
+          "name": "Resource Metrics",
+          "fields": ["timestamp", "node", "cpu_usage_percent", "memory_usage_percent", "disk_usage_percent", "network_in_bytes", "network_out_bytes"]
+        }
+      ]
+    }
+  ],
+  "logpush": {
+    "enabled": true,
+    "destination": {
+      "type": "r2",
+      "bucket": "ahmedelbaz-logs",
+      "path": "cloudflare/{DATE}/{ZONE_ID}/{DATASET}",
+      "region": "auto"
+    },
+    "batch": {
+      "max_duration_seconds": 300,
+      "max_size_mb": 100,
+      "max_rows": 100000
+    },
+    "fields": [
+      "ClientRequestTimestamp",
+      "ClientIP",
+      "ClientRequestHTTPMethod",
+      "ClientRequestURI",
+      "EdgeResponseStatus",
+      "EdgeResponseBytes",
+      "ClientRequestUserAgent",
+      "ClientCountry",
+      "RayID",
+      "WAFAction",
+      "WAFRuleID",
+      "EdgeStartTimestamp",
+      "EdgeEndTimestamp",
+      "OriginResponseTime",
+      "CacheStatus",
+      "ClientASN"
+    ],
+    "format": "json",
+    "compression": "gzip",
+    "partition_by": ["date", "hour"]
+  },
+  "correlation_rules": [
+    {
+      "name": "Brute Force Detection",
+      "enabled": true,
+      "description": "Detect 5 or more failed login attempts within 10 minutes from the same IP address",
+      "conditions": {
+        "source": "Application.Authentication Events",
+        "aggregation": "count",
+        "field": "statusCode",
+        "filter": "statusCode == 401",
+        "group_by": "ip",
+        "time_window_seconds": 600,
+        "threshold": 5
+      },
+      "severity": "high",
+      "action": ["alert", "block_ip", "notify"],
+      "notification_channel": "security-alerts"
+    },
+    {
+      "name": "Data Exfiltration Detection",
+      "enabled": true,
+      "description": "Detect queries returning more than 1000 records from a single user within 5 minutes",
+      "conditions": {
+        "source": "Database.Query Logs",
+        "aggregation": "sum",
+        "field": "rowsAffected",
+        "group_by": "user",
+        "time_window_seconds": 300,
+        "threshold": 1000,
+        "filter": "operation == 'SELECT'"
+      },
+      "severity": "critical",
+      "action": ["alert", "suspend_user", "notify"],
+      "notification_channel": "security-alerts-critical"
+    },
+    {
+      "name": "Privilege Escalation Detection",
+      "enabled": true,
+      "description": "Detect RBAC role or binding changes in Kubernetes",
+      "conditions": {
+        "source": "Kubernetes.Audit Logs",
+        "filter": "verb in ['create','update','delete'] AND resource in ['roles','rolebindings','clusterroles','clusterrolebindings']",
+        "group_by": "user",
+        "time_window_seconds": 3600
+      },
+      "severity": "critical",
+      "action": ["alert", "notify", "create_ticket"],
+      "notification_channel": "security-alerts-critical"
+    },
+    {
+      "name": "DDoS Pattern Detection",
+      "enabled": true,
+      "description": "Detect sustained high request rate exceeding normal baseline by 500%",
+      "conditions": {
+        "source": "Cloudflare.HTTP Requests",
+        "aggregation": "rate",
+        "field": "RayID",
+        "group_by": "ClientIP",
+        "time_window_seconds": 60,
+        "threshold_type": "anomaly",
+        "baseline_window_seconds": 3600,
+        "threshold_multiplier": 5.0
+      },
+      "severity": "high",
+      "action": ["alert", "enable_under_attack_mode", "notify"],
+      "notification_channel": "security-alerts-ddos"
+    },
+    {
+      "name": "Configuration Tampering Detection",
+      "enabled": true,
+      "description": "Detect modifications to security configurations including network policies, secrets, and RBAC",
+      "conditions": {
+        "source": "Kubernetes.Audit Logs",
+        "filter": "verb in ['update','delete','patch'] AND (resource in ['networkpolicies','secrets'] OR resource in ['roles','rolebindings','clusterroles','clusterrolebindings'])",
+        "time_window_seconds": 3600
+      },
+      "severity": "critical",
+      "action": ["alert", "notify", "snapshot_state", "create_ticket"],
+      "notification_channel": "security-alerts-critical"
+    }
+  ],
+  "retention": {
+    "soc2": {
+      "duration_months": 13,
+      "description": "SOC 2 Type II requires minimum 12 months of log retention plus current month"
+    },
+    "iso27001": {
+      "duration_months": 36,
+      "description": "ISO 27001:2022 requires 3 years of audit log retention"
+    },
+    "hot_storage_days": 30,
+    "warm_storage_days": 90,
+    "cold_storage_provider": "r2",
+    "archive_after_days": 90
+  }
+}

@@ -1,0 +1,164 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: auto-recovery-config
+  namespace: ahmedelbaz
+  labels:
+    app: auto-recovery
+data:
+  recovery-actions.yml: |
+    pod_crash:
+      name: PodCrashRecovery
+      triggers:
+        - alert: PodCrashLooping
+          condition: restart_count > 5
+          window: 15m
+      actions:
+        - order: 1
+          type: log
+          message: "Pod crash recovery initiated for {{ .pod }}"
+        - order: 2
+          type: kubectl
+          command: "kubectl logs {{ .pod }} -n ahmedelbaz --previous > /var/log/crash-recovery/{{ .pod }}-{{ .timestamp }}.log"
+          timeout: 30s
+        - order: 3
+          type: kubectl
+          command: "kubectl delete pod {{ .pod }} -n ahmedelbaz --grace-period=0"
+          timeout: 60s
+        - order: 4
+          type: wait
+          condition: "pod_ready"
+          timeout: 300s
+        - order: 5
+          type: alert
+          severity: warning
+          message: "Pod {{ .pod }} recovered via auto-restart"
+
+    oom_kill:
+      name: OOMKillRecovery
+      triggers:
+        - alert: PodOOMKilled
+          condition: oom_kill_count > 2
+          window: 30m
+      actions:
+        - order: 1
+          type: log
+          message: "OOM kill recovery initiated for {{ .pod }}"
+        - order: 2
+          type: scale
+          resource: deployment/{{ .deployment }}
+          replicas: "+1"
+          namespace: ahmedelbaz
+        - order: 3
+          type: patch
+          resource: deployment/{{ .deployment }}
+          patch: |
+            {"spec":{"template":{"spec":{"containers":[{"name":"{{ .container }}","resources":{"limits":{"memory":"{{ .current_memory_2x }}"}}}]}}}}
+        - order: 4
+          type: alert
+          severity: warning
+          message: "OOM recovery: scaled {{ .deployment }} and increased memory limit"
+
+    probe_failure:
+      name: ProbeFailureRecovery
+      triggers:
+        - alert: ServiceDown
+          condition: probe_failed > 3
+          window: 5m
+      actions:
+        - order: 1
+          type: log
+          message: "Probe failure recovery for {{ .service }}"
+        - order: 2
+          type: kubectl
+          command: "kubectl rollout restart deployment/{{ .deployment }} -n ahmedelbaz"
+          timeout: 60s
+        - order: 3
+          type: wait
+          condition: "rollout_complete"
+          timeout: 300s
+        - order: 4
+          type: verify
+          check: "curl -sf http://{{ .service }}/api/health"
+          timeout: 30s
+
+    db_connection_exhaustion:
+      name: DatabaseConnectionRecovery
+      triggers:
+        - alert: DatabaseConnectionPoolExhausted
+          condition: connections > 180
+          window: 5m
+      actions:
+        - order: 1
+          type: log
+          message: "Database connection recovery initiated"
+        - order: 2
+          type: query
+          target: mysql
+          query: "SHOW PROCESSLIST"
+          timeout: 10s
+        - order: 3
+          type: query
+          target: mysql
+          query: "KILL CONNECTION {{ .longest_running_connection }}"
+          timeout: 10s
+        - order: 4
+          type: kubectl
+          command: "kubectl rollout restart deployment/backend -n ahmedelbaz"
+          timeout: 60s
+        - order: 5
+          type: alert
+          severity: warning
+          message: "DB connection recovery: killed long-running queries and restarted backend"
+
+    high_latency:
+      name: HighLatencyRecovery
+      triggers:
+        - alert: HighLatencyP99Critical
+          condition: latency > 5s
+          window: 5m
+      actions:
+        - order: 1
+          type: log
+          message: "High latency recovery initiated"
+        - order: 2
+          type: scale
+          resource: deployment/backend
+          replicas: "+2"
+          namespace: ahmedelbaz
+        - order: 3
+          type: query
+          target: mysql
+          query: "SET GLOBAL slow_query_log = ON; SET GLOBAL long_query_time = 2;"
+          timeout: 10s
+        - order: 4
+          type: alert
+          severity: warning
+          message: "High latency recovery: scaled backend +2 replicas"
+
+    disk_full:
+      name: DiskFullRecovery
+      triggers:
+        - alert: NodeDiskPressure
+          condition: disk_usage > 85%
+          window: 10m
+      actions:
+        - order: 1
+          type: log
+          message: "Disk pressure recovery initiated on {{ .node }}"
+        - order: 2
+          type: exec
+          command: "docker system prune -af --volumes"
+          timeout: 120s
+        - order: 3
+          type: exec
+          command: "find /var/log -name '*.gz' -mtime +7 -delete"
+          timeout: 30s
+        - order: 4
+          type: verify
+          check: "df -h / | awk 'NR==2{print $5}'"
+          timeout: 10s
+        - order: 5
+          type: alert
+          severity: info
+          message: "Disk cleanup completed on {{ .node }}"

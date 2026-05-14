@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <!-- Primary Meta Tags -->
+    <title>Eng Ahmed Elbaz | Electrical Engineering Courses</title>
+    <meta name="title" content="Eng Ahmed Elbaz | Electrical Engineering Courses" />
+    <meta name="description" content="Master electrical engineering with professional courses in ETAP, SKM, PowerFactory, PVSyst, and more. Learn from industry expert Eng. Ahmed Elbaz with lifetime access and verified certificates." />
+    <meta name="description" lang="ar" content="أتقن الهندسة الكهربية مع كورسات احترافية في ETAP وSKM وPowerFactory وPVSyst والمزيد. تعلم من الخبير الصناعي مهندس أحمد الباز مع وصول مدى الحياة وشهادات موثقة." />
+
+    <!-- Theme Color -->
+    <meta name="theme-color" content="#06b6d4" />
+    <meta name="msapplication-TileColor" content="#06b6d4" />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://ahmedelbaz.qzz.io/" />
+    <meta property="og:title" content="Eng Ahmed Elbaz | Electrical Engineering Courses" />
+    <meta property="og:description" content="Master electrical engineering with professional courses in ETAP, SKM, PowerFactory, PVSyst, and more. Learn from industry expert Eng. Ahmed Elbaz." />
+    <meta property="og:image" content="https://ahmedelbaz.qzz.io/hero-main.webp" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="ar_AR" />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://ahmedelbaz.qzz.io/" />
+    <meta property="twitter:title" content="Eng Ahmed Elbaz | Electrical Engineering Courses" />
+    <meta property="twitter:description" content="Master electrical engineering with professional courses in ETAP, SKM, PowerFactory, PVSyst, and more." />
+    <meta property="twitter:image" content="https://ahmedelbaz.qzz.io/hero-main.webp" />
+
+    <!-- Google Fonts - Inter + Cairo (loaded normally to avoid CSP inline handler issues) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Cairo:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600&family=Amiri:wght@400;700&display=swap" rel="stylesheet" />
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Elbaz Courses" />
+
+    <!-- 🛡️ Elite Self-Healing: Catch ChunkLoadErrors early -->
+    <script>
+      window.addEventListener('error', function(e) {
+        var msg = (e.message || "").toLowerCase();
+        var isChunkError = msg.indexOf('chunk') > -1 || msg.indexOf('loading') > -1;
+        if (isChunkError && typeof window.__nukeAndReload === 'function') {
+          console.error('[Self-Healing] Asset failed to load. Triggering recovery...');
+          window.__nukeAndReload('asset_load_failure', 'automatic recovery');
+        }
+      }, true);
+    </script>
+
+    <!-- Google Identity Services — loaded only when needed by auth pages via window.__loadGsi() -->
+    <!-- This avoids a 40-60ms penalty on every non-auth page load -->
+    <script>
+      // Expose a lazy loader so auth pages can trigger it on demand
+      window.__loadGsi = function() {
+        if (document.querySelector('script[src*="accounts.google.com"]')) return;
+        var s = document.createElement('script');
+        s.src = 'https://accounts.google.com/gsi/client';
+        s.async = true; s.defer = true;
+        document.head.appendChild(s);
+      };
+    </script>
+
+    <!-- Microsoft Clarity Analytics — GDPR-Compliant with PII Protection -->
+    <script src="clarity.js" defer></script>
+    <script src="pii-mask.js" defer></script>
+
+    <!-- JSON-LD Structured Data — inlined so search engines can read it -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "EducationalOrganization",
+      "name": "Eng Ahmed Elbaz",
+      "url": "https://ahmedelbaz.qzz.io",
+      "logo": "https://ahmedelbaz.qzz.io/logo.png",
+      "description": "Professional electrical engineering courses in ETAP, SKM, PowerFactory, PVSyst, and more. Lifetime access and verified certificates.",
+      "sameAs": [
+        "https://www.youtube.com/@AhmedElbazEng",
+        "https://www.facebook.com/AhmedElbazEng",
+        "https://www.linkedin.com/in/ahmed-elbaz-eng",
+        "https://t.me/AhmedElbazEng"
+      ],
+      "founder": {
+        "@type": "Person",
+        "name": "Eng Ahmed Elbaz",
+        "jobTitle": "Power Systems Engineer",
+        "sameAs": [
+          "https://www.youtube.com/@AhmedElbazEng",
+          "https://www.linkedin.com/in/ahmed-elbaz-eng"
+        ]
+      },
+      "offers": {
+        "@type": "AggregateOffer",
+        "lowPrice": "0",
+        "highPrice": "999",
+        "priceCurrency": "EGP",
+        "offerCount": "%%OFFER_COUNT%%"
+      }
+    }
+    </script>
+
+    <!-- CSP is enforced via HTTP header in boot.ts (not meta tag — avoids double-policy conflicts) -->
+    <link rel="preload" as="image" href="hero-main.webp" type="image/webp" />
+  </head>
+  <body>
+    <!-- ⚠️ CRITICAL: Cache-nuke MUST run first — before React and Service Worker.
+         Detects version changes, clears stale caches, and force-reloads.
+         Prevents white screen after every deployment.
+         The ?v=%%CACHE_BUST%% placeholder is replaced at build time by buildIdPlugin
+         to bust Cloudflare/CDN caches on every deploy. -->
+    <script src="cache-nuke.js?v=%%CACHE_BUST%%"></script>
+    <!-- Early RTL detection to prevent FOUC (external file to satisfy CSP script-src) -->
+    <script src="rtl-detect.js?v=%%CACHE_BUST%%"></script>
+    <div id="root"></div>
+    <script type="module" src="src/main.tsx"></script>
+  </body>
+</html>

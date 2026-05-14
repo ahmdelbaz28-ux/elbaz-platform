@@ -1,0 +1,393 @@
+{
+  "zone": {
+    "id": "93ccd466aeba31bc1f8bac061ab168e2",
+    "name": "ahmedelbaz.qzz.io",
+    "status": "active",
+    "paused": false,
+    "name_servers": [
+      "dave.ns.cloudflare.com",
+      "luna.ns.cloudflare.com"
+    ],
+    "plan": {
+      "id": "0fe0c12c4cb0415db73f253c58e5ec47",
+      "name": "Pro",
+      "price": 20,
+      "currency": "USD",
+      "frequency": "monthly",
+      "is_subscribed": true,
+      "can_subscribe": true
+    }
+  },
+  "settings": {
+    "ssl": {
+      "id": "ssl",
+      "value": "full_strict",
+      "editable": true,
+      "modified_on": null
+    },
+    "min_tls_version": {
+      "id": "min_tls_version",
+      "value": "1.2",
+      "editable": true,
+      "modified_on": null
+    },
+    "always_use_https": {
+      "id": "always_use_https",
+      "value": "on",
+      "editable": true,
+      "modified_on": null
+    },
+    "automatic_https_rewrites": {
+      "id": "automatic_https_rewrites",
+      "value": "on",
+      "editable": true,
+      "modified_on": null
+    },
+    "tls_1_3": {
+      "id": "tls_1_3",
+      "value": "zrt",
+      "editable": true,
+      "modified_on": null
+    },
+    "h2_prioritization": {
+      "id": "h2_prioritization",
+      "value": "on",
+      "editable": true,
+      "modified_on": null
+    },
+    "http2": {
+      "id": "http2",
+      "value": "on",
+      "editable": true,
+      "modified_on": null
+    },
+    "http3": {
+      "id": "http3",
+      "value": "on",
+      "editable": true,
+      "modified_on": null
+    },
+    "early_hints": {
+      "id": "early_hints",
+      "value": "on",
+      "editable": true,
+      "modified_on": null
+    },
+    "auto_minify": {
+      "id": "auto_minify",
+      "value": {
+        "javascript": "on",
+        "css": "on",
+        "html": "on"
+      },
+      "editable": true,
+      "modified_on": null
+    },
+    "brotli": {
+      "id": "brotli",
+      "value": "on",
+      "editable": true,
+      "modified_on": null
+    },
+    "rocket_loader": {
+      "id": "rocket_loader",
+      "value": "off",
+      "editable": true,
+      "modified_on": null
+    },
+    "mirage": {
+      "id": "mirage",
+      "value": "on",
+      "editable": true,
+      "modified_on": null
+    },
+    "polish": {
+      "id": "polish",
+      "value": "lossless",
+      "editable": true,
+      "modified_on": null
+    },
+    "webp": {
+      "id": "webp",
+      "value": "on",
+      "editable": true,
+      "modified_on": null
+    },
+    "email_obfuscation": {
+      "id": "email_obfuscation",
+      "value": "on",
+      "editable": true,
+      "modified_on": null
+    },
+    "server_side_exclude": {
+      "id": "server_side_exclude",
+      "value": "on",
+      "editable": true,
+      "modified_on": null
+    },
+    "hotlink_protection": {
+      "id": "hotlink_protection",
+      "value": "on",
+      "editable": true,
+      "modified_on": null
+    },
+    "security_level": {
+      "id": "security_level",
+      "value": "medium",
+      "editable": true,
+      "modified_on": null
+    },
+    "challenge_ttl": {
+      "id": "challenge_ttl",
+      "value": 1800,
+      "editable": true,
+      "modified_on": null
+    },
+    "privacy_pass": {
+      "id": "privacy_pass",
+      "value": "on",
+      "editable": true,
+      "modified_on": null
+    },
+    "bot_fight_mode": {
+      "id": "bot_fight_mode",
+      "value": "on",
+      "editable": true,
+      "modified_on": null
+    },
+    "waf": {
+      "id": "waf",
+      "value": "on",
+      "editable": true,
+      "modified_on": null
+    },
+    "max_upload": {
+      "id": "max_upload",
+      "value": 100,
+      "editable": true,
+      "modified_on": null
+    },
+    "development_mode": {
+      "id": "development_mode",
+      "value": "off",
+      "editable": true,
+      "modified_on": null
+    },
+    "ipv6": {
+      "id": "ipv6",
+      "value": "on",
+      "editable": true,
+      "modified_on": null
+    },
+    "response_buffering": {
+      "id": "response_buffering",
+      "value": "on",
+      "editable": true,
+      "modified_on": null
+    },
+    "caching": {
+      "id": "caching",
+      "value": {
+        "caching_level": "standard",
+        "browser_cache_ttl": 14400,
+        "serve_stale_while_revalidate": 86400,
+        "serve_stale_while_error": 3600
+      },
+      "editable": true,
+      "modified_on": null
+    },
+    "zero_rtt": {
+      "id": "zero_rtt",
+      "value": "on",
+      "editable": true,
+      "modified_on": null
+    },
+    " opportunistic_onion": {
+      "id": "opportunistic_onion",
+      "value": "on",
+      "editable": true,
+      "modified_on": null
+    },
+    "ip_geolocation": {
+      "id": "ip_geolocation",
+      "value": "on",
+      "editable": true,
+      "modified_on": null
+    },
+    "true_client_ip_header": {
+      "id": "true_client_ip_header",
+      "value": "on",
+      "editable": true,
+      "modified_on": null
+    }
+  },
+  "page_rules": [
+    {
+      "id": "page_rule_cache_html",
+      "status": "active",
+      "priority": 1,
+      "expression": "ahmedelbaz.qzz.io/*",
+      "actions": [
+        {
+          "id": "cache_level",
+          "value": "standard"
+        },
+        {
+          "id": "browser_cache_ttl",
+          "value": 14400
+        }
+      ]
+    },
+    {
+      "id": "page_rule_security_headers",
+      "status": "active",
+      "priority": 2,
+      "expression": "ahmedelbaz.qzz.io/*",
+      "actions": [
+        {
+          "id": "security_level",
+          "value": "medium"
+        }
+      ]
+    },
+    {
+      "id": "page_rule_api_no_cache",
+      "status": "active",
+      "priority": 3,
+      "expression": "ahmedelbaz.qzz.io/api/*",
+      "actions": [
+        {
+          "id": "cache_level",
+          "value": "bypass"
+        }
+      ]
+    }
+  ],
+  "firewall": {
+    "access_rules": [
+      {
+        "id": "firewall_rule_block_tor",
+        "mode": "block",
+        "configuration": {
+          "target": "ip",
+          "value": "tor"
+        },
+        "notes": "Block Tor exit nodes"
+      },
+      {
+        "id": "firewall_rule_block_abuse_ch",
+        "mode": "block",
+        "configuration": {
+          "target": "ip",
+          "value": "abuse_ch"
+        },
+        "notes": "Block abuse.ch threat intelligence IPs"
+      }
+    ],
+    "rulesets": {
+      "managed": {
+        "enabled": [
+          {
+            "id": "cf_managed_owasp",
+            "name": "Cloudflare OWASP Core Ruleset",
+            "description": "OWASP ModSecurity Core Rule Set deployed by Cloudflare"
+          },
+          {
+            "id": "cf_managed_cloudflare_bot_management",
+            "name": "Cloudflare Managed Bot Rules",
+            "description": "Cloudflare-managed rules for known bot signatures"
+          },
+          {
+            "id": "cf_managed_rate_limiting",
+            "name": "Cloudflare Rate Limiting Rules",
+            "description": "Managed rate limiting rules for common attack patterns"
+          }
+        ]
+      },
+      "custom": {
+        "description": "Custom firewall rules for ahmedelbaz.qzz.io - deployed via waf-rules-v2-owasp10.json"
+      }
+    },
+    "bot_management": {
+      "enable_js": true,
+      "challenge_passed_ttl": 1800,
+      "challenge_failed_ttl": 3600,
+      "fight_mode": true,
+      "suppress_alive_session_rate_limit": false,
+      "enabled_for_zone": true,
+      "bot_detection_search_engine_bots": true,
+      "bot_detection_automated_bots": true,
+      "bot_detection_verified_bots": true
+    }
+  },
+  "security_headers": {
+    "strict_transport_security": {
+      "enabled": true,
+      "max_age": 31536000,
+      "include_subdomains": true,
+      "preload": true,
+      "nosniff": true
+    },
+    "content_type_options": {
+      "enabled": true
+    },
+    "frame_options": {
+      "enabled": true,
+      "value": "DENY"
+    },
+    "xss_protection": {
+      "enabled": true,
+      "value": "1; mode=block"
+    },
+    "referrer_policy": {
+      "enabled": true,
+      "value": "strict-origin-when-cross-origin"
+    },
+    "permissions_policy": {
+      "enabled": true,
+      "value": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=(), ambient-light-sensor=(), autoplay=(), encrypted-media=(), picture-in-picture=()"
+    },
+    "cross_origin_opener_policy": {
+      "enabled": true,
+      "value": "same-origin"
+    },
+    "cross_origin_resource_policy": {
+      "enabled": true,
+      "value": "same-origin"
+    },
+    "cross_origin_embedder_policy": {
+      "enabled": true,
+      "value": "require-corp"
+    }
+  },
+  "analytics": {
+    "universal_ssl": {
+      "enabled": true,
+      "status": "active_certificate",
+      "certificates": [
+        {
+          "id": "universal_ssl_primary",
+          "type": "primary",
+          "status": "active",
+          "issuer": "Let's Encrypt",
+          "expires_on": "2025-09-15T00:00:00Z"
+        }
+      ]
+    }
+  },
+  "argo": {
+    "smart_routing": {
+      "enabled": true
+    },
+    "tiered_caching": {
+      "enabled": true
+    }
+  },
+  "load_balancing": {
+    "enabled": false
+  },
+  "audit_log": {
+    "enabled": true,
+    "retention_days": 90
+  }
+}

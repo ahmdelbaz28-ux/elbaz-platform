@@ -1,0 +1,123 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cronjob-db-backup-alt
+  namespace: ahmedelbaz
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 3
+  backoffLimit: 2
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: db-backup-sa
+          restartPolicy: Never
+          initContainers:
+            - name: db-dump
+              image: mysql:8.0
+              env:
+                - name: DATABASE_HOST
+                  valueFrom:
+                    configMapKeyRef:
+                      name: ahmedelbaz-config
+                      key: DATABASE_HOST
+                - name: DATABASE_PORT
+                  valueFrom:
+                    configMapKeyRef:
+                      name: ahmedelbaz-config
+                      key: DATABASE_PORT
+                - name: DATABASE_NAME
+                  valueFrom:
+                    configMapKeyRef:
+                      name: ahmedelbaz-config
+                      key: DATABASE_NAME
+                - name: DATABASE_USER
+                  valueFrom:
+                    configMapKeyRef:
+                      name: ahmedelbaz-config
+                      key: DATABASE_USER
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -e
+                  TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+                  BACKUP_FILE="/shared/db_backup_${TIMESTAMP}.sql.gz"
+                  mysqldump \
+                    -h "${DATABASE_HOST}" \
+                    -P "${DATABASE_PORT}" \
+                    -u "${DATABASE_USER}" \
+                    --ssl-mode=VERIFY_IDENTITY \
+                    --single-transaction \
+                    --routines \
+                    --triggers \
+                    "${DATABASE_NAME}" | gzip > "${BACKUP_FILE}"
+                  echo "Backup created: ${BACKUP_FILE}"
+                  echo "${TIMESTAMP}" > /shared/latest_backup.txt
+              volumeMounts:
+                - name: shared-backup
+                  mountPath: /shared
+          containers:
+            - name: r2-upload
+              image: amazon/aws-cli:2.15.0
+              env:
+                - name: R2_BUCKET
+                  valueFrom:
+                    configMapKeyRef:
+                      name: ahmedelbaz-config
+                      key: R2_BUCKET
+                - name: R2_ENDPOINT
+                  valueFrom:
+                    configMapKeyRef:
+                      name: ahmedelbaz-config
+                      key: R2_ENDPOINT
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: ahmedelbaz-secrets
+                      key: R2_ACCESS_KEY
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: ahmedelbaz-secrets
+                      key: R2_SECRET_KEY
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -e
+                  if [ -f /shared/latest_backup.txt ]; then
+                    TIMESTAMP=$(cat /shared/latest_backup.txt)
+                    BACKUP_FILE="/shared/db_backup_${TIMESTAMP}.sql.gz"
+                    echo "Uploading ${BACKUP_FILE} to R2..."
+                    aws s3 cp "${BACKUP_FILE}" "s3://${R2_BUCKET}/backups/db_backup_${TIMESTAMP}.sql.gz" \
+                      --endpoint-url "${R2_ENDPOINT}"
+                    echo "Backup uploaded to R2 successfully"
+                    aws s3 ls "s3://${R2_BUCKET}/backups/" \
+                      --endpoint-url "${R2_ENDPOINT}" || true
+                  else
+                    echo "No backup file found"
+                    exit 1
+                  fi
+              volumeMounts:
+                - name: shared-backup
+                  mountPath: /shared
+            - name: cleanup
+              image: busybox:1.36
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  find /shared -name "db_backup_*.sql.gz" -mtime +7 -delete
+                  echo "Old backups cleaned up"
+                  ls -la /shared/ || true
+              volumeMounts:
+                - name: shared-backup
+                  mountPath: /shared
+          volumes:
+            - name: shared-backup
+              emptyDir:
+                sizeLimit: 2Gi

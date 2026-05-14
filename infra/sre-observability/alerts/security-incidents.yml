@@ -1,0 +1,101 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: security-incidents-alerts
+  namespace: ahmedelbaz
+  labels:
+    prometheus: ahmedelbaz
+    role: alert-rules
+spec:
+  groups:
+    - name: security-incidents
+      interval: 15s
+      rules:
+        - alert: BruteForceAttackDetected
+          expr: |
+            sum by (ip) (rate(auth_failed_logins_total{namespace="ahmedelbaz"}[5m])) > 10
+          for: 2m
+          labels:
+            severity: critical
+            team: security
+          annotations:
+            summary: "Brute force attack detected from {{ $labels.ip }}"
+            description: "{{ $value }} failed login attempts per second from IP {{ $labels.ip }}"
+            runbook: "https://wiki.ahmedelbaz.dev/runbooks/brute-force"
+
+        - alert: HighRateOfBlockedRequests
+          expr: |
+            sum(rate(security_blocked_requests_total{namespace="ahmedelbaz"}[5m])) > 100
+          for: 5m
+          labels:
+            severity: warning
+            team: security
+          annotations:
+            summary: "High rate of blocked requests"
+            description: "{{ $value }} requests being blocked per second"
+
+        - alert: SSLCertExpiry
+          expr: |
+            probe_ssl_earliest_cert_expiry - time() < 7 * 24 * 3600
+          for: 1h
+          labels:
+            severity: warning
+            team: security
+          annotations:
+            summary: "SSL certificate expiring in less than 7 days"
+            description: "Certificate for {{ $labels.instance }} expires in {{ $value }} seconds"
+
+        - alert: SSLCertExpiryCritical
+          expr: |
+            probe_ssl_earliest_cert_expiry - time() < 24 * 3600
+          for: 1m
+          labels:
+            severity: critical
+            team: security
+          annotations:
+            summary: "SSL certificate expiring in less than 24 hours"
+            description: "Certificate for {{ $labels.instance }} expires in {{ $value }} seconds"
+
+        - alert: SuspiciousUserActivity
+          expr: |
+            sum by (user_id) (rate(security_events_total{namespace="ahmedelbaz", event_type="suspicious_activity"}[1h])) > 5
+          for: 5m
+          labels:
+            severity: warning
+            team: security
+          annotations:
+            summary: "Suspicious activity from user {{ $labels.user_id }}"
+            description: "{{ $value }} suspicious events in the last hour"
+
+        - alert: RateLimitExhaustion
+          expr: |
+            sum(rate(rate_limit_hits_total{namespace="ahmedelbaz"}[5m])) by (endpoint) > 50
+          for: 5m
+          labels:
+            severity: warning
+            team: security
+          annotations:
+            summary: "Rate limit frequently hit on {{ $labels.endpoint }}"
+            description: "{{ $value }} rate limit hits per second on {{ $labels.endpoint }}"
+
+        - alert: UnauthorizedAccessAttempt
+          expr: |
+            sum(increase(security_events_total{namespace="ahmedelbaz", event_type="unauthorized_access"}[1h])) > 20
+          for: 5m
+          labels:
+            severity: critical
+            team: security
+          annotations:
+            summary: "Multiple unauthorized access attempts"
+            description: "{{ $value }} unauthorized access attempts in the last hour"
+
+        - alert: GeoBlockThresholdExceeded
+          expr: |
+            sum by (country) (increase(security_blocked_requests_total{namespace="ahmedelbaz", reason="geo_block"}[1h])) > 1000
+          for: 10m
+          labels:
+            severity: warning
+            team: security
+          annotations:
+            summary: "High geo-block activity from {{ $labels.country }}"
+            description: "{{ $value }} requests blocked from {{ $labels.country }} in the last hour"

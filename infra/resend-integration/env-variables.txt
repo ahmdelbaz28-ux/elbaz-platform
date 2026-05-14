@@ -1,0 +1,7 @@
+RESEND_API_KEY=re_3rD6CbEN_N91Fr6xZWhiMtVy84AzZ7ujm
+RESEND_FROM_EMAIL=onboarding@resend.dev
+RESEND_FROM_NAME=Ahmed Elbaz Platform
+EMAIL_PROVIDER=resend
+EMAIL_FROM=onboarding@resend.dev
+DOMAIN=ahmedelbaz.qzz.io
+OPENROUTER_API_KEY=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

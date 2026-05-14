@@ -1,0 +1,61 @@
+# ── Dependencies ──
+node_modules/
+
+# ── Build output ──
+.next/
+dist/
+build/
+*.tsbuildinfo
+
+# ── Environment ──
+.env
+.env.local
+.env.production
+.env.*.local
+
+# ── Logs ──
+*.log
+npm-debug.log*
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+
+# ── Project-specific ──
+upload/
+skills/
+download/
+worklog.md
+
+# ── Testing / Coverage ──
+coverage/
+.turbo/
+.vercel/
+
+# ── Cache ──
+.cache/
+.eslintcache
+*.cache
+
+# ── Large binary files (prevent accidental commits) ──
+*.tar.gz
+*.zip
+*.rar
+*.7z
+*.dmg
+*.iso
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.wav
+*.mp3
+*.flac
+*.aac
+*.psd
+*.ai
+*.svgz
+
+# ── LFS (managed by .gitattributes) ──
+# Add any binary that must be tracked via git-lfs here

@@ -1,0 +1,156 @@
+{
+  "description": "Cloudflare Zero Trust Configuration for Ahmed El-Baz LMS Platform",
+  "account_id": "951840a21847d5c55c8284d4ded7cffc",
+  "zone_id": "93ccd466aeba31bc1f8bac061ab168e2",
+  "zero_trust_application": {
+    "name": "Ahmed El-Baz LMS - Admin Panel Protection",
+    "domain": "admin.ahmedelbaz.qzz.io",
+    "type": "self_hosted",
+    "session_duration": "24h",
+    "logo_url": "https://ahmedelbaz.qzz.io/logo.png",
+    "landing_page_design": {
+      "background_color": "#1a1a2e",
+      "button_text": "Login to LMS Admin",
+      "footer_links": [
+        { "text": "Privacy Policy", "url": "https://ahmedelbaz.qzz.io/privacy" },
+        { "text": "Terms of Service", "url": "https://ahmedelbaz.qzz.io/terms" }
+      ]
+    }
+  },
+  "access_policies": [
+    {
+      "name": "Admin Access - Email + Egypt VPN with MFA",
+      "decision": "allow",
+      "precedence": 1,
+      "include": [
+        {
+          "email": {
+            "domain": "ahmedelbaz.qzz.io"
+          }
+        }
+      ],
+      "require": [
+        {
+          "identity_provider_id": "c9de46f1f1c65b3b1f09a6fe3fa80a54"
+        },
+        {
+          "geo": {
+            "country_codes": ["EG"]
+          }
+        },
+        {
+          "email_otp": {
+            "enabled": true
+          }
+        },
+        {
+          "authentication_ttl": "24h"
+        }
+      ],
+      "exclude": [],
+      "session_duration": "24h"
+    },
+    {
+      "name": "Service Token - Internal API Access",
+      "decision": "allow",
+      "precedence": 2,
+      "include": [
+        {
+          "service_token": {
+            "token_id": "svc_a7b3c9d2e4f6g8h0j2k4l6m8n0p2r4"
+          }
+        }
+      ],
+      "require": [],
+      "exclude": [],
+      "session_duration": "720h"
+    }
+  ],
+  "page_shield": {
+    "enabled": true,
+    "policies": [
+      {
+        "description": "Monitor admin panel for malicious scripts",
+        "domain": "admin.ahmedelbaz.qzz.io",
+        "use_hostnames": ["admin.ahmedelbaz.qzz.io"],
+        "javascript_sdk_url": "https://ahmedelbaz.qzz.io/page-shield-sdk.js",
+        "enabled": true
+      }
+    ]
+  },
+  "super_bot_fight_mode": {
+    "enabled": true,
+    "fight_mode": "enabled",
+    "optimize_for": "dynamic_content",
+    "session_duration": "300s",
+    "challenge_sensitivity": "medium",
+    "rules": [
+      {
+        "name": "Block Automated Bots on API",
+        "expression": "(http.request.uri.path contains \"/api/\" and cf.bot_management.score lt 30 and http.request.method eq \"POST\")",
+        "action": "block"
+      },
+      {
+        "name": "Challenge Suspicious Bots",
+        "expression": "cf.bot_management.score lt 15",
+        "action": "challenge"
+      },
+      {
+        "name": "Allow Verified Bots",
+        "expression": "cf.bot_management.verified_bot eq true",
+        "action": "skip"
+      }
+    ]
+  },
+  "gateway": {
+    "enabled": true,
+    "dns_filtering": {
+      "enabled": true,
+      "policies": [
+        {
+          "name": "Security Threat Categories",
+          "enabled": true,
+          "categories": {
+            "malware": true,
+            "phishing": true,
+            "command_and_control": true,
+            "cryptomining": true
+          },
+          "action": "block"
+        },
+        {
+          "name": "Block Risky TLDs",
+          "enabled": true,
+          "blocked_tlds": [
+            ".xyz",
+            ".top",
+            ".click",
+            ".win",
+            ".bid",
+            ".stream",
+            ".download",
+            ".racing",
+            ".jp",
+            ".tk",
+            ".ml",
+            ".ga",
+            ".cf",
+            ".gq"
+          ],
+          "action": "block"
+        }
+      ],
+      "safesearch": {
+        "enabled": true,
+        "engines": ["google", "bing", "duckduckgo"]
+      },
+      "dns_over_https": true,
+      "dns_over_tls": true,
+      "logging": {
+        "enabled": true,
+        "log_all_dns_queries": false,
+        "log_blocked_queries": true
+      }
+    }
+  }
+}

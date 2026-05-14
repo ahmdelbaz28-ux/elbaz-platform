@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Elbaz Courses</string>
+    <string name="title_activity_main">Elbaz Courses</string>
+    <string name="package_name">com.elbaz.platform</string>
+    <string name="custom_url_scheme">com.elbaz.platform</string>
+</resources>

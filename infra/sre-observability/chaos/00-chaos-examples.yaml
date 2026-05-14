@@ -1,0 +1,128 @@
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: pod-kill-chaos
+  namespace: ahmedelbaz
+spec:
+  appinfo:
+    appns: ahmedelbaz
+    applabel: "app=backend"
+    appkind: deployment
+  chaosServiceAccount: litmus-admin
+  experiments:
+    - name: pod-delete
+      spec:
+        components:
+          env:
+            - name: TOTAL_CHAOS_DURATION
+              value: "60"
+            - name: CHAOS_INTERVAL
+              value: "10"
+            - name: FORCE
+              value: "false"
+            - name: RANDOM_COUNT
+              value: "1"
+---
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: network-latency-chaos
+  namespace: ahmedelbaz
+spec:
+  appinfo:
+    appns: ahmedelbaz
+    applabel: "app=backend"
+    appkind: deployment
+  chaosServiceAccount: litmus-admin
+  experiments:
+    - name: network-chaos
+      spec:
+        components:
+          env:
+            - name: TOTAL_CHAOS_DURATION
+              value: "120"
+            - name: NETWORK_INTERFACE
+              value: "eth0"
+            - name: NETWORK_DELAY
+              value: "200ms"
+            - name: JITTER
+              value: "50ms"
+            - name: TARGET_CONTAINER
+              value: "backend"
+            - name: NETWORK_PACKET_LOSS
+              value: "0"
+---
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: cpu-stress-chaos
+  namespace: ahmedelbaz
+spec:
+  appinfo:
+    appns: ahmedelbaz
+    applabel: "app=backend"
+    appkind: deployment
+  chaosServiceAccount: litmus-admin
+  experiments:
+    - name: node-cpu-hog
+      spec:
+        components:
+          env:
+            - name: TOTAL_CHAOS_DURATION
+              value: "120"
+            - name: CPU_CORES
+              value: "2"
+            - name: NODES_AFFECTED_PERC
+              value: "100"
+---
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: memory-stress-chaos
+  namespace: ahmedelbaz
+spec:
+  appinfo:
+    appns: ahmedelbaz
+    applabel: "app=backend"
+    appkind: deployment
+  chaosServiceAccount: litmus-admin
+  experiments:
+    - name: node-memory-hog
+      spec:
+        components:
+          env:
+            - name: TOTAL_CHAOS_DURATION
+              value: "120"
+            - name: MEMORY_CONSUMPTION_PERCENTAGE
+              value: "80"
+            - name: NODES_AFFECTED_PERC
+              value: "100"
+---
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: dependency-failure-chaos
+  namespace: ahmedelbaz
+spec:
+  appinfo:
+    appns: ahmedelbaz
+    applabel: "app=backend"
+    appkind: deployment
+  chaosServiceAccount: litmus-admin
+  experiments:
+    - name: pod-delete
+      spec:
+        components:
+          env:
+            - name: TOTAL_CHAOS_DURATION
+              value: "60"
+            - name: CHAOS_INTERVAL
+              value: "30"
+            - name: FORCE
+              value: "false"
+            - name: TARGET_PODS
+              value: "redis-master-0"
+            - name: APP_LABEL
+              value: "app=redis"
+            - name: APP_NS
+              value: "ahmedelbaz"

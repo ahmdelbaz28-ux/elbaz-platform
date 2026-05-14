@@ -1,0 +1,168 @@
+apiVersion: apps/v1
+kind: CronJob
+metadata:
+  name: elbaz-platform-health-probe
+  namespace: ahmedelbaz
+  labels:
+    app: health-probe
+    tier: sre
+spec:
+  schedule: "*/3 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  startingDeadlineSeconds: 60
+  jobTemplate:
+    metadata:
+      labels:
+        app: health-probe
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 120
+      template:
+        metadata:
+          labels:
+            app: health-probe
+        spec:
+          serviceAccountName: prometheus
+          restartPolicy: Never
+          securityContext:
+            runAsUser: 65534
+            runAsGroup: 65534
+          containers:
+            - name: health-probe
+              image: curlimages/curl:8.9.1
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -euo pipefail
+                  ENDPOINT="https://ahmedelbaz.qzz.io/api/health"
+                  START_TIME=$(date +%s%N)
+                  HTTP_CODE=$(curl -sk -o /tmp/health_response.json -w "%{http_code}" --max-time 15 --connect-timeout 5 --retry 2 --retry-delay 3 "$ENDPOINT" 2>&1) || true
+                  END_TIME=$(date +%s%N)
+                  LATENCY_MS=$(( (END_TIME - START_TIME) / 1000000 ))
+                  BODY=$(cat /tmp/health_response.json 2>/dev/null || echo '{}')
+                  STATUS=$(echo "$BODY" | grep -o '"status"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | grep -o '"[^"]*"$' | tr -d '"')
+                  if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ] && [ "$STATUS" = "healthy" ]; then
+                    curl -sk -X POST "http://prometheus:9091/metrics/job/health_probe" \
+                      -d "elbaz_health_probe_status{endpoint=\"api\",target=\"$ENDPOINT\"} 1" 2>/dev/null || true
+                    curl -sk -X POST "http://prometheus:9091/metrics/job/health_probe" \
+                      -d "elbaz_health_probe_latency_ms{endpoint=\"api\",target=\"$ENDPOINT\"} $LATENCY_MS" 2>/dev/null || true
+                    echo "HEALTHY: $ENDPOINT HTTP=$HTTP_CODE LATENCY=${LATENCY_MS}ms STATUS=$STATUS"
+                    exit 0
+                  fi
+                  curl -sk -X POST "http://prometheus:9091/metrics/job/health_probe" \
+                    -d "elbaz_health_probe_status{endpoint=\"api\",target=\"$ENDPOINT\"} 0" 2>/dev/null || true
+                  curl -sk -X POST "http://prometheus:9091/metrics/job/health_probe" \
+                    -d "elbaz_health_probe_latency_ms{endpoint=\"api\",target=\"$ENDPOINT\"} $LATENCY_MS" 2>/dev/null || true
+                  echo "UNHEALTHY: $ENDPOINT HTTP=$HTTP_CODE LATENCY=${LATENCY_MS}ms STATUS=$STATUS"
+                  exit 1
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  cpu: 50m
+                  memory: 64Mi
+              securityContext:
+                runAsUser: 65534
+                readOnlyRootFilesystem: true
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 16Mi
+---
+apiVersion: apps/v1
+kind: CronJob
+metadata:
+  name: elbaz-platform-auto-heal
+  namespace: ahmedelbaz
+  labels:
+    app: auto-heal
+    tier: sre
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 10
+  startingDeadlineSeconds: 120
+  jobTemplate:
+    metadata:
+      labels:
+        app: auto-heal
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 180
+      template:
+        metadata:
+          labels:
+            app: auto-heal
+        spec:
+          serviceAccountName: prometheus
+          restartPolicy: Never
+          securityContext:
+            runAsUser: 65534
+            runAsGroup: 65534
+          containers:
+            - name: auto-heal
+              image: bitnami/kubectl:1.30
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -euo pipefail
+                  NAMESPACE="ahmedelbaz"
+                  echo "=== Elbaz Platform Auto-Heal $(date -u) ==="
+                  RESTART_THRESHOLD=5
+                  for POD in $(kubectl get pods -n "$NAMESPACE" --no-headers -o custom-columns=:metadata.name); do
+                    RESTART_COUNT=$(kubectl get pod "$POD" -n "$NAMESPACE" -o jsonpath='{.status.containerStatuses[*].restartCount}' 2>/dev/null || echo "0")
+                    TOTAL_RESTARTS=0
+                    for RC in $RESTART_COUNT; do TOTAL_RESTARTS=$((TOTAL_RESTARTS + RC)); done
+                    if [ "$TOTAL_RESTARTS" -gt "$RESTART_THRESHOLD" ]; then
+                      PHASE=$(kubectl get pod "$POD" -n "$NAMESPACE" -o jsonpath='{.status.phase}')
+                      echo "[WARN] Pod $POD has $TOTAL_RESTARTS restarts (threshold=$RESTART_THRESHOLD) phase=$PHASE"
+                      kubectl delete pod "$POD" -n "$NAMESPACE" --grace-period=0 --force 2>/dev/null || true
+                      echo "[FIX] Deleted crashing pod $POD for rescheduling"
+                    fi
+                  done
+                  for DEPLOY in $(kubectl get deploy -n "$NAMESPACE" --no-headers -o custom-columns=:metadata.name); do
+                    READY=$(kubectl get deploy "$DEPLOY" -n "$NAMESPACE" -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+                    SPEC=$(kubectl get deploy "$DEPLOY" -n "$NAMESPACE" -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "0")
+                    if [ "$READY" != "$SPEC" ]; then
+                      echo "[WARN] Deployment $DEPLOY: ready=$READY spec=$SPEC"
+                      ROLLOUT=$(kubectl rollout status deploy "$DEPLOY" -n "$NAMESPACE" --timeout=60s 2>&1 || true)
+                      if echo "$ROLLOUT" | grep -q "timed out"; then
+                        kubectl rollout restart deploy "$DEPLOY" -n "$NAMESPACE" 2>/dev/null || true
+                        echo "[FIX] Restarted stalled deployment $DEPLOY"
+                      fi
+                    fi
+                  done
+                  for PVCLAIM in $(kubectl get pvc -n "$NAMESPACE" --no-headers -o custom-columns=:metadata.name); do
+                    PVC_STATUS=$(kubectl get pvc "$PVCLAIM" -n "$NAMESPACE" -o jsonpath='{.status.phase}')
+                    if [ "$PVC_STATUS" != "Bound" ]; then
+                      echo "[WARN] PVC $PVCLAIM is in $PVC_STATUS state"
+                    fi
+                  done
+                  echo "=== Auto-Heal Complete ==="
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  cpu: 100m
+                  memory: 128Mi
+              securityContext:
+                runAsUser: 65534
+                readOnlyRootFilesystem: true
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
