@@ -3,11 +3,14 @@ import { Link, useLocation } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "@/hooks/useTranslation";
 import Logo3D from "@/components/Logo3D";
+import { motion } from "framer-motion";
+import { Magnetic } from "@/components/ui/motion";
 import {
   Menu, X, LayoutDashboard, Headphones,
   Shield, LogOut, BookOpen, ChevronDown,
   UserCog,
 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { EngineeringModeToggle } from "@/components/ui/EngineeringMode";
 
@@ -128,23 +131,28 @@ export default function Navbar() {
               { path: "/", label: lang === "ar" ? "الرئيسية" : "Home" },
               { path: "/courses", label: lang === "ar" ? "الكورسات" : "Courses", icon: <BookOpen className="h-3.5 w-3.5" /> },
             ].map((link) => (
-              <Link
-                key={link.path}
-                to={link.path}
-                aria-current={isActive(link.path) ? "page" : undefined}
-                className={`relative flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-150 ${
-                  isActive(link.path)
-                    ? "bg-[rgba(6,182,212,0.1)] text-[#06b6d4]"
-                    : "text-[#94a3b8] hover:bg-[rgba(255,255,255,0.04)] hover:text-[#e8f0fe]"
-                }`}
-              >
-                {link.icon}
-                {link.label}
-                {isActive(link.path) && (
-                  <span className="absolute -bottom-0.5 left-3 right-3 h-0.5 rounded-full bg-[#06b6d4]" />
-                )}
-              </Link>
+              <Magnetic key={link.path}>
+                <Link
+                  to={link.path}
+                  aria-current={isActive(link.path) ? "page" : undefined}
+                  className={`relative flex items-center gap-1.5 rounded-lg px-4 py-2 text-[13px] font-medium transition-all duration-200 ${
+                    isActive(link.path)
+                      ? "bg-[rgba(6,182,212,0.1)] text-[#06b6d4]"
+                      : "text-[#94a3b8] hover:text-[#e8f0fe]"
+                  }`}
+                >
+                  {link.icon}
+                  {link.label}
+                  {isActive(link.path) && (
+                    <motion.span 
+                      layoutId="nav-underline"
+                      className="absolute -bottom-0.5 left-3 right-3 h-0.5 rounded-full bg-[#06b6d4]" 
+                    />
+                  )}
+                </Link>
+              </Magnetic>
             ))}
+
 
             {isAuthenticated && (
               <Link
