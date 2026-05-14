@@ -113,6 +113,11 @@
     }
     </script>
 
+    <!-- 🛡️ Elite Cache Suppression: Force browser to check for new index.html on every load -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+
     <!-- CSP is enforced via HTTP header in boot.ts (not meta tag — avoids double-policy conflicts) -->
     <link rel="preload" as="image" href="hero-main.webp" type="image/webp" />
   </head>
@@ -126,6 +131,9 @@
     <!-- Early RTL detection to prevent FOUC (external file to satisfy CSP script-src) -->
     <script src="rtl-detect.js?v=%%CACHE_BUST%%"></script>
     <div id="root"></div>
-    <script type="module" src="src/main.tsx"></script>
+    <!-- 🚀 Elite: Cache-busting the main entry point to ensure JS updates propagate instantly -->
+    <script type="module" src="src/main.tsx?v=%%CACHE_BUST%%"></script>
   </body>
 </html>
+
+
