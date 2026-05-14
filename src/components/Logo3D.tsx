@@ -199,26 +199,42 @@ export default function Logo3D({
           alignItems: 'center',
           justifyContent: 'center',
           /* Only mouse-driven tilt — NO auto rotateY so logo stays centered */
-          transform: `rotateY(${tilt.y}deg) rotateX(${tilt.x}deg) scale3d(${isHovered ? 1.08 : 1}, ${isHovered ? 1.08 : 1}, 1)`,
-          transition: tilt.x === 0 && tilt.y === 0 ? 'transform 0.3s cubic-bezier(.25,.46,.45,.94)' : 'none',
+          transform: `rotateY(${tilt.y}deg) rotateX(${tilt.x}deg) scale3d(${isHovered ? 1.15 : 1}, ${isHovered ? 1.15 : 1}, 1)`,
+          transition: tilt.x === 0 && tilt.y === 0 ? 'transform 0.4s cubic-bezier(.175, .885, .32, 1.275)' : 'none',
           willChange: 'transform',
           transformStyle: 'preserve-3d',
-          /* 3D depth / bevel shadows */
+          /* 3D depth / bevel shadows with "Electrical Blue" glow */
           boxShadow: `
-            0 ${shadowSpread}px ${glowBlur}px rgba(${ACCENT_RGB}, ${isHovered ? 0.6 : 0.35}),
-            ${Math.round(px * 0.1)}px ${Math.round(px * 0.1)}px ${Math.round(px * 0.15)}px rgba(0,0,0,0.4),
-            inset 0 ${Math.round(px * 0.015)}px ${Math.round(px * 0.05)}px rgba(255,255,255,0.12),
-            inset 0 -${Math.round(px * 0.02)}px ${Math.round(px * 0.05)}px rgba(0,0,0,0.4)
+            0 ${shadowSpread}px ${glowBlur}px rgba(${ACCENT_RGB}, ${isHovered ? 0.8 : 0.4}),
+            ${Math.round(px * 0.1)}px ${Math.round(px * 0.1)}px ${Math.round(px * 0.15)}px rgba(0,0,0,0.5),
+            inset 0 ${Math.round(px * 0.015)}px ${Math.round(px * 0.05)}px rgba(255,255,255,0.2),
+            inset 0 -${Math.round(px * 0.02)}px ${Math.round(px * 0.05)}px rgba(0,0,0,0.6)
           `,
-          /* 3D bevel gradient */
+          /* 3D bevel gradient — More metallic / premium */
           background: `
-            radial-gradient(circle at 30% 25%, rgba(255,255,255,0.1) 0%, transparent 50%),
-            linear-gradient(160deg, rgba(255,255,255,0.06) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.4) 100%),
+            radial-gradient(circle at 30% 25%, rgba(255,255,255,0.15) 0%, transparent 50%),
+            linear-gradient(160deg, rgba(255,255,255,0.1) 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0.6) 100%),
             ${DARK_BG}
           `,
-          border: `1.5px solid rgba(${ACCENT_RGB}, ${isHovered ? 0.4 : 0.2})`,
+          border: `2px solid rgba(${ACCENT_RGB}, ${isHovered ? 0.6 : 0.3})`,
         }}
       >
+        {/* Holographic light sweep effect */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: '50%',
+            background: 'linear-gradient(135deg, transparent 45%, rgba(255,255,255,0.2) 50%, transparent 55%)',
+            backgroundSize: '250% 250%',
+            backgroundPosition: isHovered ? '0% 0%' : '100% 100%',
+            transition: 'background-position 0.6s ease-in-out',
+            pointerEvents: 'none',
+            zIndex: 3,
+          }}
+        />
+
         {/* Inner bevel ring */}
         <div
           aria-hidden="true"
@@ -227,45 +243,47 @@ export default function Logo3D({
             inset: 1.5,
             borderRadius: '50%',
             boxShadow:
-              'inset 0 1px 3px rgba(255,255,255,0.08), inset 0 -1px 4px rgba(0,0,0,0.3)',
+              'inset 0 1px 3px rgba(255,255,255,0.12), inset 0 -1px 4px rgba(0,0,0,0.4)',
             pointerEvents: 'none',
           }}
         />
 
-        {/* Logo image — STATIC (no counter-rotation needed since disc doesn't auto-rotate) */}
+        {/* Logo image — Enhanced with professional drop-shadow */}
         <img
           src="/logo.png"
           alt="Elbaz Platform Logo"
           aria-hidden="true"
-          width={Math.round(px * 0.78)}
-          height={Math.round(px * 0.78)}
+          width={Math.round(px * 0.85)}
+          height={Math.round(px * 0.85)}
           draggable={false}
           style={{
             position: 'relative',
             zIndex: 2,
             filter: isHovered
-              ? 'drop-shadow(0 0 8px rgba(6,182,212,0.6))'
-              : 'drop-shadow(0 0 3px rgba(6,182,212,0.25))',
-            transition: 'filter 0.3s ease',
+              ? 'drop-shadow(0 0 12px rgba(6,182,212,0.8))'
+              : 'drop-shadow(0 0 4px rgba(6,182,212,0.3))',
+            transition: 'all 0.4s ease',
             objectFit: 'contain',
+            transform: `translateZ(${px * 0.2}px)`, // 3D pop effect
           }}
         />
       </div>
 
-      {/* ── Pulsing glow ring ── */}
+      {/* ── Pulsing "Electrical" glow ring ── */}
       <div
         aria-hidden="true"
         style={{
           position: 'absolute',
-          inset: 2,
+          inset: -2,
           borderRadius: '50%',
-          boxShadow: `0 0 ${isHovered ? hoverGlowBlur : glowBlur}px ${isHovered ? Math.round(px * 0.14) : Math.round(px * 0.08)}px rgba(${ACCENT_RGB}, ${isHovered ? 0.4 : 0.18})`,
-          transition: 'box-shadow 0.4s ease',
+          boxShadow: `0 0 ${isHovered ? hoverGlowBlur + 10 : glowBlur + 4}px ${isHovered ? Math.round(px * 0.18) : Math.round(px * 0.1)}px rgba(${ACCENT_RGB}, ${isHovered ? 0.5 : 0.25})`,
+          transition: 'all 0.4s ease',
           willChange: 'box-shadow',
           pointerEvents: 'none',
-          animation: 'logo3d-glow-pulse 3s ease-in-out infinite',
+          animation: isHovered ? 'none' : 'logo3d-glow-pulse 2s ease-in-out infinite',
         }}
       />
+
     </div>
   );
 }
