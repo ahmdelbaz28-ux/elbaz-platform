@@ -35,9 +35,15 @@ const envSchema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().min(1, "GOOGLE_CLIENT_SECRET is required"),
 
   RESEND_API_KEY: z.string().min(1, "RESEND_API_KEY is required"),
-  RESEND_FROM_EMAIL: z.string().email().default("noreply@ahmedelbaz.qzz.io"),
+  RESEND_FROM_EMAIL: z.string().transform(v => {
+    // If empty or invalid, fallback to the official domain email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!v || !emailRegex.test(v)) return "noreply@ahmedelbaz.qzz.io";
+    return v;
+  }).default("noreply@ahmedelbaz.qzz.io"),
 
   // Admin initial password (set on first deploy — auto-generated if empty)
+
   ADMIN_PASSWORD: z.string().min(8, "ADMIN_PASSWORD must be at least 8 characters").optional(),
 
   SENTRY_DSN: z.string().url().optional(),

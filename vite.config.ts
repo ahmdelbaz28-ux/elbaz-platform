@@ -94,9 +94,10 @@ export default defineConfig({
         skipWaiting: true,
         // Clients claim: new SW takes control of all open pages immediately
         clientsClaim: true,
-        // Maximum file size for precache (skip large files like HLS videos)
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        // Maximum file size for precache (Increased to 25MB for engineering assets)
+        maximumFileSizeToCacheInBytes: 25 * 1024 * 1024,
         navigationPreload: false,
+
         // PWA offline fallback page
         navigateFallback: '/index.html',
         runtimeCaching: [
