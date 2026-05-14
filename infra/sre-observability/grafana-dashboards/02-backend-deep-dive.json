@@ -1,0 +1,49 @@
+{
+  "uid": "backend-deep-dive",
+  "title": "Backend Deep Dive",
+  "tags": ["backend"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "ds",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "selected": true, "text": "Prometheus", "value": "Prometheus" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Request Duration by Endpoint",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace=\"ahmedelbaz\"}[5m])) by (le, endpoint))", "legendFormat": "{{endpoint}}" }],
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2 } } }
+    },
+    {
+      "id": 2,
+      "title": "Active Requests",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "targets": [{ "expr": "sum(http_requests_in_progress{namespace=\"ahmedelbaz\"})", "legendFormat": "Active" }],
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 100 }, { "color": "red", "value": 500 }] } } }
+    },
+    {
+      "id": 3,
+      "title": "Event Loop Lag",
+      "type": "timeseries",
+      "gridPos": { "h": 4, "w": 16, "x": 8, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "targets": [{ "expr": "nodejs_eventloop_lag_seconds{namespace=\"ahmedelbaz\"}", "legendFormat": "Event Loop Lag" }],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    }
+  ]
+}

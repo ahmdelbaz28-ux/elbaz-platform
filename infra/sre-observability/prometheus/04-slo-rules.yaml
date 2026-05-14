@@ -1,0 +1,170 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-slo-rules
+  namespace: ahmedelbaz
+  labels:
+    app: prometheus
+data:
+  slo-rules.yml: |
+    groups:
+      - name: slo-availability
+        interval: 30s
+        rules:
+          - record: slo:availability:ratio:5m
+            expr: |
+              1 - (
+                sum(rate(http_requests_total{status=~"5..", namespace="ahmedelbaz"}[5m]))
+                /
+                sum(rate(http_requests_total{namespace="ahmedelbaz"}[5m]))
+              )
+            labels:
+              slo_name: api-availability
+              target: "99.9"
+
+          - record: slo:availability:ratio:30m
+            expr: |
+              1 - (
+                sum(rate(http_requests_total{status=~"5..", namespace="ahmedelbaz"}[30m]))
+                /
+                sum(rate(http_requests_total{namespace="ahmedelbaz"}[30m]))
+              )
+            labels:
+              slo_name: api-availability
+              target: "99.9"
+
+          - record: slo:availability:ratio:1h
+            expr: |
+              1 - (
+                sum(rate(http_requests_total{status=~"5..", namespace="ahmedelbaz"}[1h]))
+                /
+                sum(rate(http_requests_total{namespace="ahmedelbaz"}[1h]))
+              )
+            labels:
+              slo_name: api-availability
+              target: "99.9"
+
+          - record: slo:availability:ratio:6h
+            expr: |
+              1 - (
+                sum(rate(http_requests_total{status=~"5..", namespace="ahmedelbaz"}[6h]))
+                /
+                sum(rate(http_requests_total{namespace="ahmedelbaz"}[6h]))
+              )
+            labels:
+              slo_name: api-availability
+              target: "99.9"
+
+          - record: slo:availability:ratio:1d
+            expr: |
+              1 - (
+                sum(rate(http_requests_total{status=~"5..", namespace="ahmedelbaz"}[1d]))
+                /
+                sum(rate(http_requests_total{namespace="ahmedelbaz"}[1d]))
+              )
+            labels:
+              slo_name: api-availability
+              target: "99.9"
+
+      - name: slo-latency
+        interval: 30s
+        rules:
+          - record: slo:latency:p99:ratio:5m
+            expr: |
+              1 - (
+                sum(rate(http_request_duration_seconds_bucket{le="0.5", namespace="ahmedelbaz"}[5m]))
+                /
+                sum(rate(http_request_duration_seconds_count{namespace="ahmedelbaz"}[5m]))
+              )
+            labels:
+              slo_name: api-latency-p99
+              target: "<500ms"
+
+          - record: slo:latency:p99:ratio:30m
+            expr: |
+              1 - (
+                sum(rate(http_request_duration_seconds_bucket{le="0.5", namespace="ahmedelbaz"}[30m]))
+                /
+                sum(rate(http_request_duration_seconds_count{namespace="ahmedelbaz"}[30m]))
+              )
+            labels:
+              slo_name: api-latency-p99
+              target: "<500ms"
+
+          - record: slo:latency:p99:ratio:1h
+            expr: |
+              1 - (
+                sum(rate(http_request_duration_seconds_bucket{le="0.5", namespace="ahmedelbaz"}[1h]))
+                /
+                sum(rate(http_request_duration_seconds_count{namespace="ahmedelbaz"}[1h]))
+              )
+            labels:
+              slo_name: api-latency-p99
+              target: "<500ms"
+
+          - record: slo:latency:p99:ratio:6h
+            expr: |
+              1 - (
+                sum(rate(http_request_duration_seconds_bucket{le="0.5", namespace="ahmedelbaz"}[6h]))
+                /
+                sum(rate(http_request_duration_seconds_count{namespace="ahmedelbaz"}[6h]))
+              )
+            labels:
+              slo_name: api-latency-p99
+              target: "<500ms"
+
+          - record: slo:latency:p99:ratio:1d
+            expr: |
+              1 - (
+                sum(rate(http_request_duration_seconds_bucket{le="0.5", namespace="ahmedelbaz"}[1d]))
+                /
+                sum(rate(http_request_duration_seconds_count{namespace="ahmedelbaz"}[1d]))
+              )
+            labels:
+              slo_name: api-latency-p99
+              target: "<500ms"
+
+      - name: slo-error-budget-burn-rate
+        interval: 30s
+        rules:
+          - record: slo:error_budget_burn_rate:5m
+            expr: |
+              (1 - slo:availability:ratio:5m{target="99.9"}) / (1 - 0.999)
+            labels:
+              slo_name: api-availability
+
+          - record: slo:error_budget_burn_rate:30m
+            expr: |
+              (1 - slo:availability:ratio:30m{target="99.9"}) / (1 - 0.999)
+            labels:
+              slo_name: api-availability
+
+          - record: slo:error_budget_burn_rate:1h
+            expr: |
+              (1 - slo:availability:ratio:1h{target="99.9"}) / (1 - 0.999)
+            labels:
+              slo_name: api-availability
+
+          - record: slo:error_budget_burn_rate:6h
+            expr: |
+              (1 - slo:availability:ratio:6h{target="99.9"}) / (1 - 0.999)
+            labels:
+              slo_name: api-availability
+
+          - record: slo:error_budget_burn_rate:1d
+            expr: |
+              (1 - slo:availability:ratio:1d{target="99.9"}) / (1 - 0.999)
+            labels:
+              slo_name: api-availability
+
+          - record: slo:latency_burn_rate:5m
+            expr: |
+              (1 - slo:latency:p99:ratio:5m) / (1 - 0.99)
+            labels:
+              slo_name: api-latency-p99
+
+          - record: slo:latency_burn_rate:1h
+            expr: |
+              (1 - slo:latency:p99:ratio:1h) / (1 - 0.99)
+            labels:
+              slo_name: api-latency-p99

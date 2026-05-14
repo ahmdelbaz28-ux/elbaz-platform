@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backup-pvc
+  namespace: ahmedelbaz
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ssd-storageclass
+  resources:
+    requests:
+      storage: 20Gi

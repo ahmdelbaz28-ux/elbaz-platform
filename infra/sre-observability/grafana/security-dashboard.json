@@ -1,0 +1,173 @@
+{
+  "uid": "security-dashboard",
+  "title": "Security Dashboard",
+  "tags": ["security", "overview"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "selected": true, "text": "Prometheus", "value": "Prometheus" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Blocked Requests",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "sum(rate(security_blocked_requests_total{namespace=\"ahmedelbaz\"}[5m])) by (reason)",
+          "legendFormat": "{{reason}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 2 }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Failed Logins",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "sum(rate(auth_failed_logins_total{namespace=\"ahmedelbaz\"}[5m]))",
+          "legendFormat": "Failed Logins/min"
+        },
+        {
+          "expr": "sum(rate(auth_successful_logins_total{namespace=\"ahmedelbaz\"}[5m]))",
+          "legendFormat": "Successful Logins/min"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2 }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Geographic Attack Distribution",
+      "type": "geomap",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "sum by (country) (increase(security_blocked_requests_total{namespace=\"ahmedelbaz\", reason=\"geo_block\"}[1h]))",
+          "legendFormat": "{{country}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Bot vs Human Traffic",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "sum(increase(http_requests_total{namespace=\"ahmedelbaz\", client_type=\"bot\"}[1h]))",
+          "legendFormat": "Bot"
+        },
+        {
+          "expr": "sum(increase(http_requests_total{namespace=\"ahmedelbaz\", client_type=\"human\"}[1h]))",
+          "legendFormat": "Human"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Top Blocked IPs",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "topk(10, sum by (ip) (increase(security_blocked_requests_total{namespace=\"ahmedelbaz\"}[1h])))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "align": "auto" }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Rate Limit Hits",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "sum(rate(rate_limit_hits_total{namespace=\"ahmedelbaz\"}[5m])) by (endpoint)",
+          "legendFormat": "{{endpoint}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 0 }
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Security Events",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "increase(security_events_total{namespace=\"ahmedelbaz\"}[1h]) > 0",
+          "format": "table",
+          "instant": true,
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "align": "auto" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

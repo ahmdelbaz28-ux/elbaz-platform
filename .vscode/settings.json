@@ -1,0 +1,10 @@
+{
+  "css.lint.unknownAtRules": "ignore",
+  "css.lint.validAtRules": ["tailwind", "tailwindcss", "apply", "variants", "responsive", "screen"],
+  "json.schemas": [],
+  "json.validate.enable": true,
+  "files.exclude": {
+    "**/node_modules": true
+  },
+  "typescript.disableAutomaticTypeAcquisition": true
+}

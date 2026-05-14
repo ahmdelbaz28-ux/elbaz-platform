@@ -1,0 +1,67 @@
+{
+  "uid": "redis-overview",
+  "title": "Redis Overview",
+  "tags": ["redis"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "ds",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "selected": true, "text": "Prometheus", "value": "Prometheus" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Memory Usage",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "targets": [{ "expr": "redis_memory_used_bytes", "legendFormat": "Used" }, { "expr": "redis_memory_max_bytes", "legendFormat": "Max" }],
+      "fieldConfig": { "defaults": { "unit": "decbytes", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2 } } }
+    },
+    {
+      "id": 2,
+      "title": "Ops/sec",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "targets": [{ "expr": "sum(rate(redis_commands_processed_total[5m]))", "legendFormat": "Commands/sec" }],
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2 } } }
+    },
+    {
+      "id": 3,
+      "title": "Connected Clients",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "targets": [{ "expr": "redis_connected_clients", "legendFormat": "Clients" }],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "id": 4,
+      "title": "Hit Rate",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "targets": [{ "expr": "rate(redis_keyspace_hits_total[5m]) / (rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m])) * 100", "legendFormat": "Cache Hit %" }],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 80 }, { "color": "green", "value": 95 }] } } }
+    },
+    {
+      "id": 5,
+      "title": "Blocked Clients",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "targets": [{ "expr": "redis_blocked_clients", "legendFormat": "Blocked" }],
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 10 }] } } }
+    }
+  ]
+}

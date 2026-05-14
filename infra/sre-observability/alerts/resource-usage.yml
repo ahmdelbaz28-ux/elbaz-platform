@@ -1,0 +1,105 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: resource-usage-alerts
+  namespace: ahmedelbaz
+  labels:
+    prometheus: ahmedelbaz
+    role: alert-rules
+spec:
+  groups:
+    - name: resource-usage
+      interval: 15s
+      rules:
+        - alert: HighMemoryUsage
+          expr: |
+            container_memory_working_set_bytes{namespace="ahmedelbaz"} / container_spec_memory_limit_bytes{namespace="ahmedelbaz"} > 0.85
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "High memory usage on {{ $labels.container }} in {{ $labels.pod }}"
+            description: "Container {{ $labels.container }} is using {{ $value | humanizePercentage }} of its memory limit"
+            runbook: "https://wiki.ahmedelbaz.dev/runbooks/high-memory"
+
+        - alert: CriticalMemoryUsage
+          expr: |
+            container_memory_working_set_bytes{namespace="ahmedelbaz"} / container_spec_memory_limit_bytes{namespace="ahmedelbaz"} > 0.95
+          for: 2m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "Critical memory usage on {{ $labels.container }} in {{ $labels.pod }}"
+            description: "Container {{ $labels.container }} is using {{ $value | humanizePercentage }} of its memory limit, OOMKill imminent"
+            runbook: "https://wiki.ahmedelbaz.dev/runbooks/critical-memory"
+
+        - alert: HighCPUUsage
+          expr: |
+            sum(rate(container_cpu_usage_seconds_total{namespace="ahmedelbaz"}[5m])) by (pod, container)
+            / sum(kube_pod_container_resource_limits{resource="cpu", namespace="ahmedelbaz"}) by (pod, container) > 0.85
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "High CPU usage on {{ $labels.container }} in {{ $labels.pod }}"
+            description: "Container is using {{ $value | humanizePercentage }} of its CPU limit"
+
+        - alert: CriticalCPUUsage
+          expr: |
+            sum(rate(container_cpu_usage_seconds_total{namespace="ahmedelbaz"}[5m])) by (pod, container)
+            / sum(kube_pod_container_resource_limits{resource="cpu", namespace="ahmedelbaz"}) by (pod, container) > 0.95
+          for: 2m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "Critical CPU usage on {{ $labels.container }} in {{ $labels.pod }}"
+            description: "Container is using {{ $value | humanizePercentage }} of its CPU limit"
+
+        - alert: NodeMemoryPressure
+          expr: |
+            (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 0.9
+          for: 5m
+          labels:
+            severity: critical
+            team: infrastructure
+          annotations:
+            summary: "Node {{ $labels.instance }} under memory pressure"
+            description: "Node is using {{ $value | humanizePercentage }} of total memory"
+
+        - alert: NodeDiskPressure
+          expr: |
+            (1 - (node_filesystem_avail_bytes{fstype=~"ext4|xfs"} / node_filesystem_size_bytes{fstype=~"ext4|xfs"})) > 0.85
+          for: 10m
+          labels:
+            severity: warning
+            team: infrastructure
+          annotations:
+            summary: "Node {{ $labels.instance }} disk pressure"
+            description: "Disk {{ $labels.mountpoint }} is {{ $value | humanizePercentage }} full"
+
+        - alert: NodeCPUHighLoad
+          expr: |
+            100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+          for: 10m
+          labels:
+            severity: warning
+            team: infrastructure
+          annotations:
+            summary: "Node {{ $labels.instance }} high CPU load"
+            description: "Node CPU utilization is {{ $value }}%"
+
+        - alert: PodOOMKilled
+          expr: |
+            kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace="ahmedelbaz"} == 1
+          for: 1m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "Pod {{ $labels.pod }} was OOMKilled"
+            description: "Container {{ $labels.container }} in pod {{ $labels.pod }} was killed due to out of memory"
+            runbook: "https://wiki.ahmedelbaz.dev/runbooks/oom-kill"

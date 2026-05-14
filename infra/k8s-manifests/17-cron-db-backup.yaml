@@ -1,0 +1,100 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cron-db-backup
+  namespace: ahmedelbaz
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 3
+  backoffLimit: 2
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: db-backup-sa
+          restartPolicy: Never
+          containers:
+            - name: mysqldump
+              image: mysql:8.0
+              env:
+                - name: DATABASE_HOST
+                  valueFrom:
+                    configMapKeyRef:
+                      name: ahmedelbaz-config
+                      key: DATABASE_HOST
+                - name: DATABASE_PORT
+                  valueFrom:
+                    configMapKeyRef:
+                      name: ahmedelbaz-config
+                      key: DATABASE_PORT
+                - name: DATABASE_NAME
+                  valueFrom:
+                    configMapKeyRef:
+                      name: ahmedelbaz-config
+                      key: DATABASE_NAME
+                - name: DATABASE_USER
+                  valueFrom:
+                    configMapKeyRef:
+                      name: ahmedelbaz-config
+                      key: DATABASE_USER
+                - name: DATABASE_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: ahmedelbaz-secrets
+                      key: DATABASE_URL
+                - name: R2_BUCKET
+                  valueFrom:
+                    configMapKeyRef:
+                      name: ahmedelbaz-config
+                      key: R2_BUCKET
+                - name: R2_ENDPOINT
+                  valueFrom:
+                    configMapKeyRef:
+                      name: ahmedelbaz-config
+                      key: R2_ENDPOINT
+                - name: R2_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: ahmedelbaz-secrets
+                      key: R2_ACCESS_KEY
+                - name: R2_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: ahmedelbaz-secrets
+                      key: R2_SECRET_KEY
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -e
+                  TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+                  BACKUP_FILE="/backup/db_backup_${TIMESTAMP}.sql.gz"
+                  mysqldump \
+                    -h "${DATABASE_HOST}" \
+                    -P "${DATABASE_PORT}" \
+                    -u "${DATABASE_USER}" \
+                    --ssl-mode=VERIFY_IDENTITY \
+                    --single-transaction \
+                    --routines \
+                    --triggers \
+                    "${DATABASE_NAME}" | gzip > "${BACKUP_FILE}"
+                  echo "Backup created: ${BACKUP_FILE}"
+                  aws s3 cp "${BACKUP_FILE}" "s3://${R2_BUCKET}/backups/db_backup_${TIMESTAMP}.sql.gz" \
+                    --endpoint-url "${R2_ENDPOINT}" \
+                    --no-verify-ssl 2>/dev/null || \
+                  curl -X PUT \
+                    -T "${BACKUP_FILE}" \
+                    "${R2_ENDPOINT}/${R2_BUCKET}/backups/db_backup_${TIMESTAMP}.sql.gz" \
+                    -H "Authorization: Bearer $(echo -n ${R2_ACCESS_KEY}:${R2_SECRET_KEY} | base64)"
+                  echo "Backup uploaded to R2"
+                  find /backup -name "db_backup_*.sql.gz" -mtime +7 -delete
+                  echo "Old backups cleaned up"
+              volumeMounts:
+                - name: backup-volume
+                  mountPath: /backup
+          volumes:
+            - name: backup-volume
+              persistentVolumeClaim:
+                claimName: backup-pvc

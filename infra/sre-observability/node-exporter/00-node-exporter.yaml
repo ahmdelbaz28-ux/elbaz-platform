@@ -1,0 +1,192 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+  namespace: ahmedelbaz
+  labels:
+    app: node-exporter
+spec:
+  selector:
+    matchLabels:
+      app: node-exporter
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: node-exporter
+      securityContext:
+        runAsUser: 65534
+        runAsGroup: 65534
+      hostNetwork: false
+      hostPID: true
+      containers:
+        - name: node-exporter
+          image: prom/node-exporter:v1.8.2
+          args:
+            - --web.listen-address=0.0.0.0:9100
+            - --path.procfs=/host/proc
+            - --path.sysfs=/host/sys
+            - --path.rootfs=/host/root
+            - --path.udev.data=/host/udev/data
+            - --no-collector.wifi
+            - --no-collector.fibrechannel
+            - --no-collector.infiniband
+            - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+)($|/)
+            - --collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|cgroup|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|smb|sysfs|tmpfs|tracefs)$
+            - --collector.netclass.ignored-devices=^(veth.*|br-.+|docker.+|virbr.+|cbr.+)$
+            - --collector.systemd
+            - --collector.processes
+            - --collector.arp
+            - --collector.bcache
+            - --collector.bonding
+            - --collector.conntrack
+            - --collector.cpu
+            - --compiler.cpufreq
+            - --collector.diskstats
+            - --collector.edac
+            - --collector.entropy
+            - --collector.filefd
+            - --collector.filesystem
+            - --collector.hwmon
+            - --collector.ipvs
+            - --collector.loadavg
+            - --collector.mdadm
+            - --collector.meminfo
+            - --collector.meminfo_numa
+            - --collector.mountstats
+            - --collector.netdev
+            - --collector.netstat
+            - --collector.nfs
+            - --collector.nfsd
+            - --collector.ntp
+            - --collector.powersupplyclass
+            - --collector.rapl
+            - --collector.schedstat
+            - --collector.sockstat
+            - --collector.softnet
+            - --collector.stat
+            - --collector.tcpstat
+            - --collector.textfile
+            - --collector.thermal_zone
+            - --collector.time
+            - --collector.timex
+            - --collector.udp_queues
+            - --collector.uname
+            - --collector.vmstat
+            - --collector.xfs
+            - --collector.zfs
+            - --collector.node_network_info_with_device_names
+          ports:
+            - name: metrics
+              containerPort: 9100
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          securityContext:
+            runAsUser: 65534
+            runAsGroup: 65534
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - SYS_TIME
+          volumeMounts:
+            - name: proc
+              mountPath: /host/proc
+              readOnly: true
+            - name: sys
+              mountPath: /host/sys
+              readOnly: true
+            - name: root
+              mountPath: /host/root
+              mountPropagation: HostToContainer
+              readOnly: true
+            - name: udev
+              mountPath: /host/udev
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 9100
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 9100
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: proc
+          hostPath:
+            path: /proc
+            type: Directory
+        - name: sys
+          hostPath:
+            path: /sys
+            type: Directory
+        - name: root
+          hostPath:
+            path: /
+            type: Directory
+        - name: udev
+          hostPath:
+            path: /run/udev/data
+            type: DirectoryOrCreate
+        - name: tmp
+          emptyDir: {}
+      tolerations:
+        - key: node-role.kubernetes.io/master
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/control-plane
+          effect: NoSchedule
+        - key: CriticalAddonsOnly
+          operator: Exists
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: node-exporter
+  namespace: ahmedelbaz
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-exporter
+  namespace: ahmedelbaz
+  labels:
+    app: node-exporter
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9100"
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: metrics
+      port: 9100
+      targetPort: 9100
+      protocol: TCP
+  selector:
+    app: node-exporter

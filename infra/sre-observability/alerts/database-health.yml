@@ -1,0 +1,116 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: database-health-alerts
+  namespace: ahmedelbaz
+  labels:
+    prometheus: ahmedelbaz
+    role: alert-rules
+spec:
+  groups:
+    - name: database-health
+      interval: 15s
+      rules:
+        - alert: DatabaseConnectionPoolExhausted
+          expr: |
+            mysql_global_status_threads_connected > 180
+          for: 5m
+          labels:
+            severity: critical
+            team: database
+          annotations:
+            summary: "MySQL connection pool near exhaustion"
+            description: "{{ $value }} active connections out of max"
+            runbook: "https://wiki.ahmedelbaz.dev/runbooks/db-connections"
+
+        - alert: DatabaseHighSlowQueries
+          expr: |
+            rate(mysql_global_status_slow_queries[5m]) > 5
+          for: 10m
+          labels:
+            severity: warning
+            team: database
+          annotations:
+            summary: "High number of slow queries"
+            description: "{{ $value }} slow queries per second"
+            runbook: "https://wiki.ahmedelbaz.dev/runbooks/slow-queries"
+
+        - alert: DatabaseReplicationLag
+          expr: |
+            mysql_slave_seconds_behind_master > 30
+          for: 5m
+          labels:
+            severity: warning
+            team: database
+          annotations:
+            summary: "MySQL replication lag detected"
+            description: "Replica is {{ $value }}s behind primary"
+
+        - alert: DatabaseBufferPoolLow
+          expr: |
+            mysql_global_status_innodb_buffer_pool_read_requests /
+            (mysql_global_status_innodb_buffer_pool_read_requests + mysql_global_status_innodb_buffer_pool_reads) < 0.95
+          for: 15m
+          labels:
+            severity: warning
+            team: database
+          annotations:
+            summary: "InnoDB buffer pool hit rate low"
+            description: "Buffer pool hit rate is {{ $value | humanizePercentage }}"
+
+        - alert: DatabaseDown
+          expr: |
+            mysql_up == 0
+          for: 1m
+          labels:
+            severity: critical
+            team: database
+          annotations:
+            summary: "MySQL exporter cannot connect to database"
+            description: "MySQL instance may be down or unreachable"
+            runbook: "https://wiki.ahmedelbaz.dev/runbooks/mysql-down"
+
+        - alert: DatabaseTableSizeWarning
+          expr: |
+            mysql_info_schema_table_size_bytes > 10 * 1024 * 1024 * 1024
+          for: 30m
+          labels:
+            severity: info
+            team: database
+          annotations:
+            summary: "Large table detected: {{ $labels.table }}"
+            description: "Table {{ $labels.table }} in {{ $labels.schema }} is {{ $value | humanize1024 }}"
+
+        - alert: RedisHighMemory
+          expr: |
+            redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "Redis memory usage high"
+            description: "Redis is using {{ $value | humanizePercentage }} of max memory"
+
+        - alert: RedisLowHitRate
+          expr: |
+            rate(redis_keyspace_hits_total[5m]) /
+            (rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m])) < 0.8
+          for: 15m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "Redis cache hit rate low"
+            description: "Cache hit rate is {{ $value | humanizePercentage }}"
+
+        - alert: RedisBlockedClients
+          expr: |
+            redis_blocked_clients > 100
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "High number of blocked Redis clients"
+            description: "{{ $value }} clients are blocked"

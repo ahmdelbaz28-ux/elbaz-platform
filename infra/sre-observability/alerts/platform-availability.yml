@@ -1,0 +1,134 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-availability-alerts
+  namespace: ahmedelbaz
+  labels:
+    prometheus: ahmedelbaz
+    role: alert-rules
+spec:
+  groups:
+    - name: platform-availability
+      interval: 15s
+      rules:
+        - alert: HighErrorRate
+          expr: |
+            (
+              sum(rate(http_requests_total{status=~"5..", namespace="ahmedelbaz"}[5m]))
+              /
+              sum(rate(http_requests_total{namespace="ahmedelbaz"}[5m]))
+            ) > 0.05
+          for: 5m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "High error rate detected: {{ $value | humanizePercentage }}"
+            description: "The API error rate has exceeded 5% for the past 5 minutes"
+            runbook: "https://wiki.ahmedelbaz.dev/runbooks/high-error-rate"
+
+        - alert: HighErrorRate4xx
+          expr: |
+            (
+              sum(rate(http_requests_total{status=~"4..", namespace="ahmedelbaz"}[5m]))
+              /
+              sum(rate(http_requests_total{namespace="ahmedelbaz"}[5m]))
+            ) > 0.15
+          for: 10m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "High 4xx error rate: {{ $value | humanizePercentage }}"
+            description: "The 4xx client error rate has exceeded 15% for the past 10 minutes"
+
+        - alert: HighLatencyP99
+          expr: |
+            histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{namespace="ahmedelbaz"}[5m])) by (le, endpoint)) > 2
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "High P99 latency on {{ $labels.endpoint }}"
+            description: "P99 latency is {{ $value }}s (threshold: 2s)"
+
+        - alert: HighLatencyP99Critical
+          expr: |
+            histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{namespace="ahmedelbaz"}[5m])) by (le, endpoint)) > 5
+          for: 2m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "Critical P99 latency on {{ $labels.endpoint }}"
+            description: "P99 latency is {{ $value }}s (threshold: 5s)"
+
+        - alert: PodCrashLooping
+          expr: |
+            rate(kube_pod_container_status_restarts_total{namespace="ahmedelbaz"}[15m]) > 0.1
+          for: 15m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "Pod {{ $labels.pod }} is crash looping"
+            description: "Pod {{ $labels.pod }} has restarted {{ $value }} times in the last 15 minutes"
+            runbook: "https://wiki.ahmedelbaz.dev/runbooks/pod-crash-loop"
+
+        - alert: ServiceDown
+          expr: |
+            up{namespace="ahmedelbaz"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "Service {{ $labels.job }} is down"
+            description: "The {{ $labels.job }} service on {{ $labels.instance }} is unreachable"
+            runbook: "https://wiki.ahmedelbaz.dev/runbooks/service-down"
+
+        - alert: PaymentGatewayDown
+          expr: |
+            probe_success{job="blackbox-exporter", target=~".*payment.*"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            team: payments
+          annotations:
+            summary: "Payment gateway is down"
+            description: "Payment gateway health check has been failing for 2 minutes"
+            runbook: "https://wiki.ahmedelbaz.dev/runbooks/payment-gateway-down"
+
+        - alert: APIHealthCheckFailing
+          expr: |
+            probe_http_status_code{job="blackbox-exporter"} != 200
+          for: 2m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "API health check failing for {{ $labels.instance }}"
+            description: "Health check returning status code {{ $value }}"
+
+        - alert: HighRequestLatencySLO
+          expr: |
+            slo:error_budget_burn_rate:5m{slo_name="api-availability"} > 14.4
+          for: 2m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "SLO error budget burning fast"
+            description: "API availability SLO error budget burn rate is {{ $value }}x"
+
+        - alert: SLONearExhaustion
+          expr: |
+            slo:error_budget_burn_rate:1h{slo_name="api-availability"} > 6
+          for: 15m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "SLO error budget depleting"
+            description: "API availability SLO error budget burn rate is {{ $value }}x over the past hour"

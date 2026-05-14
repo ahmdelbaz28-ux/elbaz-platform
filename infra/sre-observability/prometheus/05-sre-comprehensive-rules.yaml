@@ -1,0 +1,233 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-sre-rules
+  namespace: ahmedelbaz
+  labels:
+    prometheus: ahmedelbaz
+    role: alert-rules
+data:
+  node-health-alerts.yml: |
+    groups:
+      - name: elbaz-platform-node-health
+        rules:
+          - alert: ElbazNodeCpuHighSaturation
+            expr: |
+              (
+                count without (cpu) (node_cpu_seconds_total{mode="idle"}) -
+                avg without (cpu) (rate(node_cpu_seconds_total{mode="idle"}[5m]))
+              ) / count without (cpu) (node_cpu_seconds_total{mode="idle"}) > 0.9
+            for: 15m
+            labels:
+              severity: warning
+              tier: node
+              runbook_url: https://wiki.ahmedelbaz.dev/runbooks/node-cpu-high
+            annotations:
+              summary: "Node CPU saturation above 90% for 15 minutes"
+              description: "Node {{ $labels.instance }} CPU utilization is at {{ $value | humanizePercentage }}. Consider scaling horizontally or investigating CPU-intensive workloads."
+          - alert: ElbazNodeMemoryPressureWarning
+            expr: |
+              (
+                node_memory_MemAvailable_bytes /
+                node_memory_MemTotal_bytes
+              ) < 0.15
+            for: 10m
+            labels:
+              severity: warning
+              tier: node
+              runbook_url: https://wiki.ahmedelbaz.dev/runbooks/node-memory-pressure
+            annotations:
+              summary: "Node memory available below 15%"
+              description: "Node {{ $labels.instance }} has only {{ $value | humanizePercentage }} memory available. Evict pods or add capacity."
+          - alert: ElbazNodeMemoryPressureCritical
+            expr: |
+              (
+                node_memory_MemAvailable_bytes /
+                node_memory_MemTotal_bytes
+              ) < 0.05
+            for: 5m
+            labels:
+              severity: critical
+              tier: node
+              runbook_url: https://wiki.ahmedelbaz.dev/runbooks/node-memory-critical
+            annotations:
+              summary: "Node memory available below 5% — immediate action required"
+              description: "Node {{ $labels.instance }} has critical memory pressure at {{ $value | humanizePercentage }}. Risk of OOM kills. Immediate capacity addition required."
+          - alert: ElbazNodeDiskSpaceWarning
+            expr: |
+              (
+                node_filesystem_avail_bytes{mountpoint="/"} /
+                node_filesystem_size_bytes{mountpoint="/"}
+              ) < 0.2
+            for: 30m
+            labels:
+              severity: warning
+              tier: node
+              runbook_url: https://wiki.ahmedelbaz.dev/runbooks/node-disk-space
+            annotations:
+              summary: "Node root disk space below 20%"
+              description: "Node {{ $labels.instance }} root filesystem has {{ $value | humanizePercentage }} free space. Clean up logs or expand disk."
+          - alert: ElbazNodeDiskSpaceCritical
+            expr: |
+              (
+                node_filesystem_avail_bytes{mountpoint="/"} /
+                node_filesystem_size_bytes{mountpoint="/"}
+              ) < 0.1
+            for: 15m
+            labels:
+              severity: critical
+              tier: node
+              runbook_url: https://wiki.ahmedelbaz.dev/runbooks/node-disk-critical
+            annotations:
+              summary: "Node root disk space below 10% — risk of disk exhaustion"
+              description: "Node {{ $labels.instance }} root filesystem at {{ $value | humanizePercentage }}. Immediate cleanup required."
+          - alert: ElbazNodeDiskInodesWarning
+            expr: |
+              (
+                node_filesystem_files_free{mountpoint="/"} /
+                node_filesystem_files{mountpoint="/"}
+              ) < 0.2
+            for: 30m
+            labels:
+              severity: warning
+              tier: node
+            annotations:
+              summary: "Node inode utilization above 80%"
+              description: "Node {{ $labels.instance }} has fewer than 20% inodes remaining."
+          - alert: ElbazNodeNetworkReceiveErrors
+            expr: |
+              rate(node_network_receive_errs_total[5m]) > 10
+            for: 10m
+            labels:
+              severity: warning
+              tier: node
+            annotations:
+              summary: "Node experiencing network receive errors"
+              description: "Node {{ $labels.instance }} interface {{ $labels.device }} has {{ $value }} receive errors/sec."
+          - alert: ElbazNodeNetworkTransmitErrors
+            expr: |
+              rate(node_network_transmit_errs_total[5m]) > 10
+            for: 10m
+            labels:
+              severity: warning
+              tier: node
+            annotations:
+              summary: "Node experiencing network transmit errors"
+              description: "Node {{ $labels.instance }} interface {{ $labels.device }} has {{ $value }} transmit errors/sec."
+          - alert: ElbazNodeClockSkewDetected
+            expr: |
+              abs(node_timex_offset_seconds) > 0.05
+            for: 10m
+            labels:
+              severity: critical
+              tier: node
+            annotations:
+              summary: "Node clock skew detected — NTP synchronization issue"
+              description: "Node {{ $labels.instance }} clock offset is {{ $value }}s. Clock skew can cause authentication failures and inconsistent timestamps."
+          - alert: ElbazNodeUnreachable
+            expr: up{job="node-exporter"} == 0
+            for: 5m
+            labels:
+              severity: critical
+              tier: node
+            annotations:
+              summary: "Node exporter unreachable — node may be down"
+              description: "Node {{ $labels.instance }} has been unreachable for 5 minutes. Check node health and network connectivity."
+      - name: elbaz-platform-kubernetes-health
+        rules:
+          - alert: ElbazPodCrashLooping
+            expr: |
+              rate(kube_pod_container_status_restarts_total{namespace="ahmedelbaz"}[15m]) * 60 * 5 > 0
+            for: 15m
+            labels:
+              severity: critical
+              tier: pod
+              runbook_url: https://wiki.ahmedelbaz.dev/runbooks/pod-crash-loop
+            annotations:
+              summary: "Pod is crash-looping"
+              description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} container {{ $labels.container }} is restarting repeatedly. Check logs via Loki or kubectl."
+          - alert: ElbazPodNotRunning
+            expr: |
+              kube_pod_status_phase{namespace="ahmedelbaz", phase!="Running", phase!="Succeeded"} == 1
+            for: 10m
+            labels:
+              severity: warning
+              tier: pod
+              annotations:
+              summary: "Pod is not in Running state"
+              description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has been in {{ $labels.phase }} state for 10 minutes."
+          - alert: ElbazDeploymentReplicasMismatch
+            expr: |
+              kube_deployment_spec_replicas{namespace="ahmedelbaz"} != kube_deployment_status_available_replicas{namespace="ahmedelbaz"}
+            for: 15m
+            labels:
+              severity: warning
+              tier: deployment
+              runbook_url: https://wiki.ahmedelbaz.dev/runbooks/replica-mismatch
+            annotations:
+              summary: "Deployment has replica count mismatch"
+              description: "Deployment {{ $labels.namespace }}/{{ $labels.deployment }} wants {{ $labels.spec }} replicas but has {{ $labels.available }} available."
+          - alert: ElbazPersistentVolumePending
+            expr: |
+              kube_persistentvolumeclaim_status_phase{namespace="ahmedelbaz",phase="Pending"} == 1
+            for: 15m
+            labels:
+              severity: warning
+              tier: storage
+              runbook_url: https://wiki.ahmedelbaz.dev/runbooks/pvc-pending
+            annotations:
+              summary: "PersistentVolumeClaim stuck in Pending state"
+              description: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} has been pending for 15 minutes. Check storage class availability."
+          - alert: ElbazHPAMaxedOut
+            expr: |
+              kube_hpa_status_current_replicas{namespace="ahmedelbaz"} >= kube_hpa_spec_max_replicas{namespace="ahmedelbaz"} - 1
+            for: 30m
+            labels:
+              severity: warning
+              tier: scaling
+              runbook_url: https://wiki.ahmedelbaz.dev/runbooks/hpa-maxed
+            annotations:
+              summary: "HPA has reached maximum replica count"
+              description: "HPA {{ $labels.namespace }}/{{ $labels.horizontalpodautoscaler }} is at {{ $value }} replicas (near max). Consider raising max_replicas."
+          - alert: ElbazKubeletTooManyPods
+            expr: |
+              max by(instance) (kubelet_running_pod_count) / max by(instance) (kubelet_pod_startup_latency_seconds) > 0.95
+            for: 15m
+            labels:
+              severity: warning
+              tier: node
+              annotations:
+              summary: "Kubelet approaching pod capacity limit"
+              description: "Node {{ $labels.instance }} is approaching its maximum pod capacity."
+      - name: elbaz-platform-log-based-alerts
+        rules:
+          - alert: ElbazHighErrorLogRate
+            expr: |
+              sum(rate({app="backend", level="error"} |= "error" [5m])) by (pod, namespace) > 10
+            for: 10m
+            labels:
+              severity: warning
+              tier: application
+            annotations:
+              summary: "High error log rate detected"
+              description: "Pod {{ $labels.pod }} is logging errors at a rate of {{ $value }}/s. Investigate application logs in Grafana Loki."
+          - alert: ElbazDatabaseConnectionPoolExhaustion
+            expr: |
+              sum(rate({app="backend"} |= "pool" |= "exhausted" [5m])) by (pod) > 1
+            for: 5m
+            labels:
+              severity: critical
+              tier: database
+            annotations:
+              summary: "Database connection pool exhaustion detected in logs"
+              description: "Pod {{ $labels.pod }} is reporting connection pool exhaustion. Increase pool size or investigate connection leaks."
+          - alert: ElbazOutOfMemoryErrorsDetected
+            expr: |
+              sum(rate({app="backend"} |= "OOM" |~ "out of memory" [5m])) by (pod) > 0
+            for: 5m
+            labels:
+              severity: critical
+              tier: pod
+            annotations:
+              summary: "Out of memory errors detected in application logs"
+              description: "Pod {{ $labels.pod }} is logging OOM errors. Increase memory limits or investigate memory leaks."

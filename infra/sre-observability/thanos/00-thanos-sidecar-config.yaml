@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: thanos-sidecar
+  namespace: ahmedelbaz
+  labels:
+    app: thanos-sidecar
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: thanos-sidecar
+  template:
+    metadata:
+      labels:
+        app: thanos-sidecar
+    spec:
+      serviceAccountName: prometheus
+      securityContext:
+        runAsUser: 65534
+        runAsGroup: 65534
+      containers:
+        - name: thanos-sidecar
+          image: thanosio/thanos:v0.32.0
+          args:
+            - sidecar
+            - --prometheus.url=http://prometheus:9090
+            - --tsdb.path=/prometheus
+            - --grpc-address=0.0.0.0:10901
+            - --http-address=0.0.0.0:10902
+            - --objstore.config-file=/etc/thanos/objstore.yml
+            - --relabel.config-file=/etc/thanos/relabel.yml
+          ports:
+            - name: grpc
+              containerPort: 10901
+              protocol: TCP
+            - name: http
+              containerPort: 10902
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            runAsUser: 65534
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            - name: prometheus-data
+              mountPath: /prometheus
+              readOnly: true
+            - name: config
+              mountPath: /etc/thanos
+      volumes:
+        - name: prometheus-data
+          persistentVolumeClaim:
+            claimName: prometheus-data
+            readOnly: true
+        - name: config
+          configMap:
+            name: thanos-sidecar-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: thanos-sidecar-config
+  namespace: ahmedelbaz
+  labels:
+    app: thanos-sidecar
+data:
+  objstore.yml: |
+    type: S3
+    config:
+      bucket: ahmedelbaz-thanos
+      endpoint: s3.amazonaws.com
+      region: us-east-1
+      access_key: "${S3_ACCESS_KEY}"
+      secret_key: "${S3_SECRET_KEY}"
+  relabel.yml: |
+    - source_labels: [__name__]
+      regex: go_.*
+      action: drop
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: thanos-sidecar
+  namespace: ahmedelbaz
+  labels:
+    app: thanos-sidecar
+spec:
+  type: ClusterIP
+  ports:
+    - name: grpc
+      port: 10901
+      targetPort: 10901
+      protocol: TCP
+    - name: http
+      port: 10902
+      targetPort: 10902
+      protocol: TCP
+  selector:
+    app: thanos-sidecar

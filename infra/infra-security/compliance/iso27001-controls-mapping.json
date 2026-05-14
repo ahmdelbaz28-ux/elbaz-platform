@@ -1,0 +1,392 @@
+{
+  "standard": "ISO 27001:2022",
+  "organization": "Ahmed El-Baz LMS Platform",
+  "last_updated": "2025-01-01",
+  "next_audit": "2026-01-01",
+  "controls": [
+    {
+      "id": "A.5.1",
+      "name": "Policies for information security",
+      "category": "A.5 Organizational",
+      "description": "Management direction and support for information security through defined policies. Security policies are documented, reviewed, and communicated to all personnel.",
+      "status": "Implemented",
+      "evidence": [
+        "Information security policy document",
+        "Policy review meeting minutes",
+        "Employee acknowledgment records"
+      ]
+    },
+    {
+      "id": "A.5.2",
+      "name": "Information security roles and responsibilities",
+      "category": "A.5 Organizational",
+      "description": "Information security responsibilities are allocated and defined. Separation of duties is enforced where required.",
+      "status": "Implemented",
+      "evidence": [
+        "k8s-rbac-v2.yaml",
+        "iam-policies.json",
+        "RACI matrix",
+        "Role definitions document"
+      ]
+    },
+    {
+      "id": "A.5.3",
+      "name": "Segregation of duties",
+      "category": "A.5 Organizational",
+      "description": "Conflicting duties and responsibilities are separated to reduce opportunities for unauthorized or unintentional modification of assets.",
+      "status": "Implemented",
+      "evidence": [
+        "RBAC role definitions",
+        "Separation of duties matrix",
+        "Audit trail of role assignments"
+      ]
+    },
+    {
+      "id": "A.5.4",
+      "name": "Management responsibilities",
+      "category": "A.5 Organizational",
+      "description": "Management requires personnel to apply information security in accordance with established policies. Security awareness training is mandatory.",
+      "status": "Implemented",
+      "evidence": [
+        "Security training completion records",
+        "Management directives",
+        "Quarterly security briefings"
+      ]
+    },
+    {
+      "id": "A.5.5",
+      "name": "Contact with authorities and special interest groups",
+      "category": "A.5 Organizational",
+      "description": "Appropriate contacts with relevant authorities are maintained. Membership in security communities is maintained for threat intelligence.",
+      "status": "Implemented",
+      "evidence": [
+        "Authority contact list",
+        "CERT/CSIRT membership",
+        "Threat intelligence feeds"
+      ]
+    },
+    {
+      "id": "A.5.6",
+      "name": "Threat intelligence",
+      "category": "A.5 Organizational",
+      "description": "Information about information security threats is collected and analyzed to produce threat intelligence. Intelligence is used to inform risk decisions.",
+      "status": "Implemented",
+      "evidence": [
+        "Cloudflare threat intelligence",
+        "Vulnerability scanning results",
+        "Threat assessment reports"
+      ]
+    },
+    {
+      "id": "A.5.7",
+      "name": "Information security in project lifecycle",
+      "category": "A.5 Organizational",
+      "description": "Information security is integrated into the project lifecycle. Security requirements are defined during project initiation.",
+      "status": "Implemented",
+      "evidence": [
+        "ci-security-pipeline.yml",
+        "Security requirements templates",
+        "Project security checklists"
+      ]
+    },
+    {
+      "id": "A.6.1",
+      "name": "Screening",
+      "category": "A.6 People",
+      "description": "Background verification checks are carried out on personnel before employment. Checks are proportionate to business requirements and legal requirements.",
+      "status": "Implemented",
+      "evidence": [
+        "Background check policy",
+        "Verification records",
+        "Legal compliance documentation"
+      ]
+    },
+    {
+      "id": "A.6.2",
+      "name": "Terms and conditions of employment",
+      "category": "A.6 People",
+      "description": "Employment agreements define information security responsibilities. Agreements include confidentiality, acceptable use, and data protection clauses.",
+      "status": "Implemented",
+      "evidence": [
+        "Employment contracts",
+        "NDA agreements",
+        "Acceptable use policy"
+      ]
+    },
+    {
+      "id": "A.6.3",
+      "name": "Information security awareness, education and training",
+      "category": "A.6 People",
+      "description": "Personnel receive appropriate information security awareness education and training. Training is updated regularly and completion is tracked.",
+      "status": "Implemented",
+      "evidence": [
+        "Security training program",
+        "Completion tracking system",
+        "Phishing simulation results"
+      ]
+    },
+    {
+      "id": "A.6.4",
+      "name": "Disciplinary process",
+      "category": "A.6 People",
+      "description": "A disciplinary process is established and communicated for personnel who commit information security policy violations.",
+      "status": "Implemented",
+      "evidence": [
+        "Disciplinary policy",
+        "Incident escalation procedures",
+        "Violation tracking records"
+      ]
+    },
+    {
+      "id": "A.6.5",
+      "name": "Responsibilities after termination",
+      "category": "A.6 People",
+      "description": "Information security responsibilities and duties that remain active after termination are defined and communicated.",
+      "status": "Implemented",
+      "evidence": [
+        "Offboarding checklist",
+        "Access revocation procedures",
+        "Continuing obligations documentation"
+      ]
+    },
+    {
+      "id": "A.7.1",
+      "name": "Physical security perimeters",
+      "category": "A.7 Physical",
+      "description": "Physical security perimeters are defined and used to protect areas containing information and information processing facilities.",
+      "status": "Implemented",
+      "evidence": [
+        "Cloud infrastructure security (AWS/GCP physical security)",
+        "Data center compliance reports",
+        "Physical access policies"
+      ]
+    },
+    {
+      "id": "A.7.2",
+      "name": "Physical entry",
+      "category": "A.7 Physical",
+      "description": "Secure entry points to areas containing information and information processing facilities. Access is restricted to authorized personnel only.",
+      "status": "Implemented",
+      "evidence": [
+        "Cloud provider physical access controls",
+        "Facility access logs",
+        "Visitor management procedures"
+      ]
+    },
+    {
+      "id": "A.7.3",
+      "name": "Securing offices, rooms and facilities",
+      "category": "A.7 Physical",
+      "description": "Physical security of offices, rooms, and facilities is designed and applied. Physical entry controls include authentication mechanisms.",
+      "status": "Implemented",
+      "evidence": [
+        "Office security standards",
+        "Environmental monitoring",
+        "Physical security assessments"
+      ]
+    },
+    {
+      "id": "A.8.1",
+      "name": "User endpoint devices",
+      "category": "A.8 Technological",
+      "description": "Information stored on, processed by, or accessible via user endpoint devices is protected. Endpoint detection and response is deployed.",
+      "status": "Implemented",
+      "evidence": [
+        "Endpoint protection configuration",
+        "MDM policy",
+        "Device compliance reports"
+      ]
+    },
+    {
+      "id": "A.8.2",
+      "name": "Privileged access rights",
+      "category": "A.8 Technological",
+      "description": "Allocation and use of privileged access rights is restricted and managed. Just-in-time access is implemented where feasible.",
+      "status": "Implemented",
+      "evidence": [
+        "iam-policies.json",
+        "k8s-rbac-v2.yaml",
+        "Privileged access management logs",
+        "Vault admin policies"
+      ]
+    },
+    {
+      "id": "A.8.3",
+      "name": "Information access restriction",
+      "category": "A.8 Technological",
+      "description": "Access to information and application system functions is restricted in accordance with the access control policy. Principle of least privilege is enforced.",
+      "status": "Implemented",
+      "evidence": [
+        "network-policies-v2.yaml",
+        "k8s-rbac-v2.yaml",
+        "application access controls",
+        "Access control reviews"
+      ]
+    },
+    {
+      "id": "A.8.4",
+      "name": "Access to source code",
+      "category": "A.8 Technological",
+      "description": "Access to source code is restricted to authorized personnel only. Code review is mandatory for all changes.",
+      "status": "Implemented",
+      "evidence": [
+        "GitHub branch protection rules",
+        "Code review requirements",
+        "Repository access controls"
+      ]
+    },
+    {
+      "id": "A.8.5",
+      "name": "Secure authentication",
+      "category": "A.8 Technological",
+      "description": "Secure authentication technologies and procedures are implemented for all systems. MFA is required for administrative access.",
+      "status": "Implemented",
+      "evidence": [
+        "access-policies.json",
+        "waf-rules-v3-supplemental.json",
+        "Authentication configuration",
+        "Session management policies"
+      ]
+    },
+    {
+      "id": "A.8.6",
+      "name": "Capacity management",
+      "category": "A.8 Technological",
+      "description": "Resource usage is monitored, adjusted, and projected to meet capacity requirements. Auto-scaling is configured for critical services.",
+      "status": "Implemented",
+      "evidence": [
+        "Resource monitoring dashboards",
+        "Capacity planning documents",
+        "Auto-scaling configurations"
+      ]
+    },
+    {
+      "id": "A.8.7",
+      "name": "Protection against malware",
+      "category": "A.8 Technological",
+      "description": "Protection against malware is implemented and supported by appropriate user awareness. Automated scanning is integrated into CI/CD.",
+      "status": "Implemented",
+      "evidence": [
+        "ci-security-pipeline.yml",
+        "trivy-config.yaml",
+        "Container image scanning",
+        "Endpoint protection"
+      ]
+    },
+    {
+      "id": "A.8.8",
+      "name": "Management of technical vulnerabilities",
+      "category": "A.8 Technological",
+      "description": "Technical vulnerabilities are identified, evaluated, and addressed in a timely manner. Vulnerability scanning is performed continuously.",
+      "status": "Implemented",
+      "evidence": [
+        "trivy-config.yaml",
+        "snyk-policy.yml",
+        "zap-baseline-scan.yaml",
+        "Vulnerability remediation SLA"
+      ]
+    },
+    {
+      "id": "A.8.9",
+      "name": "Configuration management",
+      "category": "A.8 Technological",
+      "description": "Hardware, software, services, and networks are configured securely. Infrastructure as code is used with version control.",
+      "status": "Implemented",
+      "evidence": [
+        "pod-security-policy.yaml",
+        "network-policies-v2.yaml",
+        "GitOps configuration",
+        "Configuration drift detection"
+      ]
+    },
+    {
+      "id": "A.8.10",
+      "name": "Information deletion",
+      "category": "A.8 Technological",
+      "description": "Information stored on information systems, devices, or in any other storage medium is deleted when no longer needed.",
+      "status": "Implemented",
+      "evidence": [
+        "Data retention policy",
+        "Deletion procedures",
+        "Secure deletion verification"
+      ]
+    },
+    {
+      "id": "A.8.11",
+      "name": "Data masking",
+      "category": "A.8 Technological",
+      "description": "Data masking is applied to limit the exposure of sensitive information. PII is redacted in logs and non-production environments.",
+      "status": "Implemented",
+      "evidence": [
+        "application-audit-middleware.ts",
+        "audit-logging-config.json",
+        "Data masking configuration",
+        "Non-production data sanitization"
+      ]
+    },
+    {
+      "id": "A.8.12",
+      "name": "Data leakage prevention",
+      "category": "A.8 Technological",
+      "description": "Data leakage prevention measures are applied to systems, networks, and other devices. DLP rules monitor and block sensitive data exfiltration.",
+      "status": "Implemented",
+      "evidence": [
+        "audit-logging-config.json (correlation rules)",
+        "waf-rules-v3-supplemental.json",
+        "Network egress controls",
+        "DLP policy configuration"
+      ]
+    },
+    {
+      "id": "A.8.13",
+      "name": "Information backup",
+      "category": "A.8 Technological",
+      "description": "Backup copies of information, software, and systems are maintained and regularly tested. Backups follow the 3-2-1 principle.",
+      "status": "Implemented",
+      "evidence": [
+        "k8s-rbac-v2.yaml (db-backup role)",
+        "Backup schedule configuration",
+        "Restore test results",
+        "Aiven backup settings"
+      ]
+    },
+    {
+      "id": "A.8.14",
+      "name": "Redundancy of information processing facilities",
+      "category": "A.8 Technological",
+      "description": "Information processing facilities are implemented with redundancy sufficient to meet availability requirements.",
+      "status": "Implemented",
+      "evidence": [
+        "pod-security-policy.yaml (replicas, topologySpreadConstraints)",
+        "Multi-AZ deployment",
+        "Failover test results"
+      ]
+    },
+    {
+      "id": "A.8.15",
+      "name": "Logging",
+      "category": "A.8 Technological",
+      "description": "Logs that record activities, exceptions, faults, and other relevant events are produced, stored, protected, and analyzed.",
+      "status": "Implemented",
+      "evidence": [
+        "audit-logging-config.json",
+        "kubernetes-audit-policy.yaml",
+        "application-audit-middleware.ts",
+        "Log aggregation configuration"
+      ]
+    },
+    {
+      "id": "A.8.16",
+      "name": "Monitoring activities",
+      "category": "A.8 Technological",
+      "description": "Networks, systems, and applications are monitored for anomalous behavior. Alerting is configured for security-relevant events.",
+      "status": "Implemented",
+      "evidence": [
+        "audit-logging-config.json (correlation rules)",
+        "ddos-protection.json",
+        "Monitoring dashboards",
+        "Alert runbooks"
+      ]
+    }
+  ]
+}

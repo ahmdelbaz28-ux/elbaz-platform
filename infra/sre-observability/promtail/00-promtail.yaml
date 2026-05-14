@@ -1,0 +1,172 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: promtail-config
+  namespace: ahmedelbaz
+  labels:
+    app: promtail
+data:
+  promtail.yaml: |
+    server:
+      http_listen_port: 3101
+      grpc_listen_port: 0
+      log_level: info
+    positions:
+      filename: /run/promtail/positions.yaml
+    clients:
+      - url: http://loki:3100/loki/api/v1/push
+        tenant_id: ahmedelbaz
+        backoff_config:
+          min_period: 500ms
+          max_period: 5m
+          max_retries: 10
+        batchwait: 1s
+        batchsize: 1048576
+        timeout: 30s
+        external_labels:
+          cluster: ahmedelbaz
+          environment: production
+    scrape_configs:
+      - job_name: kubernetes-pods
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - ahmedelbaz
+        pipeline_stages:
+          - docker: {}
+          - json:
+              expressions:
+                level: level
+                msg: msg
+                trace_id: trace_id
+                span_id: span_id
+                timestamp: time
+                service: service
+                method: method
+                path: path
+                status_code: status
+                duration_ms: duration_ms
+                user_id: userId
+                error: error
+          - labels:
+              level:
+              service:
+              method:
+          - timestamp:
+              source: timestamp
+              format: RFC3339Nano
+          - logfmt:
+              mapping:
+                trace_id: trace_id
+                span_id: span_id
+        relabel_configs:
+          - source_labels:
+              - __meta_kubernetes_pod_label_app
+            target_label: app
+          - source_labels:
+              - __meta_kubernetes_pod_label_component
+            target_label: component
+          - source_labels:
+              - __meta_kubernetes_namespace
+            target_label: namespace
+          - source_labels:
+              - __meta_kubernetes_pod_name
+            target_label: pod
+          - source_labels:
+              - __meta_kubernetes_pod_container_name
+            target_label: container
+          - source_labels:
+              - __meta_kubernetes_pod_node_name
+            target_label: node
+          - source_labels:
+              - __meta_kubernetes_pod_label_chaos
+            regex: "true"
+            action: drop
+          - source_labels:
+              - __meta_kubernetes_pod_annotation_prometheus_io_scrape
+            regex: "false"
+            action: drop
+      - job_name: kubernetes-pods-app
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - ahmedelbaz
+        pipeline_stages:
+          - docker: {}
+          - json:
+              expressions:
+                level: level
+                message: msg
+                timestamp: time
+          - labels:
+              level:
+          - timestamp:
+              source: timestamp
+              format: RFC3339Nano
+        relabel_configs:
+          - source_labels:
+              - __meta_kubernetes_pod_label_app
+            regex: backend
+            action: keep
+          - source_labels:
+              - __meta_kubernetes_pod_label_app
+            target_label: app
+          - source_labels:
+              - __meta_kubernetes_namespace
+            target_label: namespace
+          - source_labels:
+              - __meta_kubernetes_pod_name
+            target_label: pod
+          - source_labels:
+              - __meta_kubernetes_pod_container_name
+            target_label: container
+          - target_label: __path__
+            replacement: /var/log/pods/*/*/*.log
+      - job_name: kubernetes-pods-errors
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - ahmedelbaz
+        pipeline_stages:
+          - docker: {}
+          - json:
+              expressions:
+                level: level
+                error: error
+                stack: stack
+                message: msg
+          - labels:
+              level:
+          - match:
+              selector: '{level="error"}'
+              stages:
+                - metrics:
+                    error_total:
+                      type: Counter
+                      description: "Total number of error log entries"
+                      config:
+                        action: inc
+                - output:
+                    source: error
+        relabel_configs:
+          - source_labels:
+              - __meta_kubernetes_pod_label_app
+            target_label: app
+          - source_labels:
+              - __meta_kubernetes_namespace
+            target_label: namespace
+          - source_labels:
+              - __meta_kubernetes_pod_name
+            target_label: pod
+          - source_labels:
+              - __meta_kubernetes_pod_container_name
+            target_label: container
+    limits_config:
+      readline_max_size: 256KB
+      label_name: __name__
+      label_value: __value__
+      max_streams: 0
+      max_stream_lines: 0

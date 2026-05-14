@@ -1,0 +1,7 @@
+{
+  "payments": true,
+  "certificates": true,
+  "testimonials": true,
+  "caching": true,
+  "rateLimiting": true
+}

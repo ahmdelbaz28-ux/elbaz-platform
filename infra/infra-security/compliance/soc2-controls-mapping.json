@@ -1,0 +1,188 @@
+{
+  "standard": "SOC 2 Type II",
+  "organization": "Ahmed El-Baz LMS Platform",
+  "last_updated": "2025-01-01",
+  "next_audit": "2026-01-01",
+  "controls": [
+    {
+      "id": "SC-001",
+      "name": "Access Control Management",
+      "category": "Security",
+      "description": "Implement role-based access controls (RBAC) across all systems. Users are granted minimum necessary privileges based on their role. Access is reviewed quarterly.",
+      "status": "Implemented",
+      "evidence": [
+        "k8s-rbac-v2.yaml",
+        "iam-policies.json",
+        "vault-secret-engines.hcl",
+        "Quarterly access review reports"
+      ],
+      "responsible": "Platform Security Team",
+      "review_frequency": "Quarterly"
+    },
+    {
+      "id": "SC-002",
+      "name": "Network Security and Segmentation",
+      "category": "Security",
+      "description": "Network policies enforce micro-segmentation between application tiers. Cross-namespace traffic is restricted. All inter-service communication is encrypted with mTLS.",
+      "status": "Implemented",
+      "evidence": [
+        "network-policies-v2.yaml",
+        "Cloudflare SSL/TLS configuration",
+        "Network traffic flow diagrams"
+      ],
+      "responsible": "Infrastructure Team",
+      "review_frequency": "Monthly"
+    },
+    {
+      "id": "SC-003",
+      "name": "Encryption at Rest and in Transit",
+      "category": "Security",
+      "description": "All data is encrypted using AES-256 at rest and TLS 1.2+ in transit. Database connections use SSL. Secrets are managed through HashiCorp Vault with auto-rotation.",
+      "status": "Implemented",
+      "evidence": [
+        "vault-config.hcl",
+        "vault-secret-engines.hcl",
+        "Aiven SSL configuration",
+        "Cloudflare SSL settings"
+      ],
+      "responsible": "Security Engineering",
+      "review_frequency": "Quarterly"
+    },
+    {
+      "id": "SC-004",
+      "name": "Vulnerability Management",
+      "category": "Security",
+      "description": "Automated vulnerability scanning runs on every code push. Container images are scanned before deployment. Critical and high vulnerabilities must be resolved within 48 hours.",
+      "status": "Implemented",
+      "evidence": [
+        "ci-security-pipeline.yml",
+        "trivy-config.yaml",
+        "snyk-policy.yml",
+        "zap-baseline-scan.yaml",
+        "Vulnerability remediation logs"
+      ],
+      "responsible": "DevSecOps Team",
+      "review_frequency": "Continuous"
+    },
+    {
+      "id": "SC-005",
+      "name": "Intrusion Detection and Prevention",
+      "category": "Security",
+      "description": "WAF rules block common attack vectors including XSS, SQLi, XXE, and prototype pollution. DDoS protection is active at L3/L4 and L7. SIEM provides real-time threat monitoring.",
+      "status": "Implemented",
+      "evidence": [
+        "waf-rules-v3-supplemental.json",
+        "ddos-protection.json",
+        "audit-logging-config.json",
+        "Cloudflare security dashboard"
+      ],
+      "responsible": "Security Operations",
+      "review_frequency": "Weekly"
+    },
+    {
+      "id": "SC-006",
+      "name": "Audit Logging and Monitoring",
+      "category": "Security",
+      "description": "All system actions are logged with structured audit trails. Logs include user identity, action performed, timestamp, and source IP. Kubernetes audit policy captures secrets access and RBAC changes.",
+      "status": "Implemented",
+      "evidence": [
+        "audit-logging-config.json",
+        "kubernetes-audit-policy.yaml",
+        "application-audit-middleware.ts",
+        "Log retention configuration"
+      ],
+      "responsible": "Security Engineering",
+      "review_frequency": "Monthly"
+    },
+    {
+      "id": "SC-007",
+      "name": "Secrets Management",
+      "category": "Security",
+      "description": "All application secrets are stored in HashiCorp Vault. No secrets exist in source code or environment variables. Secret rotation is automated with maximum TTL of 720 hours.",
+      "status": "Implemented",
+      "evidence": [
+        "vault-secret-engines.hcl",
+        "trivy-secret-config.yaml",
+        "ci-security-pipeline.yml (secret scanning)",
+        "Vault audit logs"
+      ],
+      "responsible": "Platform Security",
+      "review_frequency": "Monthly"
+    },
+    {
+      "id": "SC-008",
+      "name": "Incident Response Plan",
+      "category": "Security",
+      "description": "Documented incident response procedures with defined severity levels, escalation paths, and communication plans. Regular tabletop exercises are conducted quarterly.",
+      "status": "Implemented",
+      "evidence": [
+        "Incident response runbooks",
+        "Escalation matrix",
+        "Tabletop exercise reports",
+        "Post-incident review documents"
+      ],
+      "responsible": "Security Operations Lead",
+      "review_frequency": "Quarterly"
+    },
+    {
+      "id": "AV-001",
+      "name": "High Availability Architecture",
+      "category": "Availability",
+      "description": "Application is deployed across multiple availability zones with pod anti-affinity rules. Health checks ensure automatic failover. SLA target is 99.9% uptime.",
+      "status": "Implemented",
+      "evidence": [
+        "pod-security-policy.yaml (topologySpreadConstraints)",
+        "network-policies-v2.yaml (allow-health-checks)",
+        "Cloudflare CDN configuration",
+        "Uptime monitoring dashboards"
+      ],
+      "responsible": "Infrastructure Team",
+      "review_frequency": "Monthly"
+    },
+    {
+      "id": "AV-002",
+      "name": "Backup and Disaster Recovery",
+      "category": "Availability",
+      "description": "Automated daily database backups with 30-day retention. Disaster recovery procedures tested quarterly. Recovery Time Objective (RTO) is 4 hours, Recovery Point Objective (RPO) is 1 hour.",
+      "status": "Implemented",
+      "evidence": [
+        "k8s-rbac-v2.yaml (db-backup role)",
+        "Aiven backup configuration",
+        "DR test reports",
+        "Backup restoration logs"
+      ],
+      "responsible": "Infrastructure Team",
+      "review_frequency": "Quarterly"
+    },
+    {
+      "id": "CO-001",
+      "name": "Data Classification and Handling",
+      "category": "Confidentiality",
+      "description": "Data is classified into Public, Internal, Confidential, and Restricted categories. PII is redacted in audit logs. Financial data is tagged as PCI-scope.",
+      "status": "Implemented",
+      "evidence": [
+        "application-audit-middleware.ts (PII redaction)",
+        "audit-logging-config.json",
+        "Data classification policy",
+        "Access control mappings"
+      ],
+      "responsible": "Compliance Team",
+      "review_frequency": "Quarterly"
+    },
+    {
+      "id": "CO-002",
+      "name": "Multi-Factor Authentication",
+      "category": "Confidentiality",
+      "description": "MFA is enforced for all administrative access. Cloudflare Zero Trust requires MFA for admin panel access. Service tokens are used for internal API authentication.",
+      "status": "Implemented",
+      "evidence": [
+        "access-policies.json",
+        "waf-rules-v3-supplemental.json (MFA Bypass Prevention)",
+        "Cloudflare Zero Trust configuration",
+        "User MFA enrollment reports"
+      ],
+      "responsible": "Identity and Access Management",
+      "review_frequency": "Monthly"
+    }
+  ]
+}

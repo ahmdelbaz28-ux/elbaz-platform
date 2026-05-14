@@ -1,0 +1,225 @@
+{
+  "waf_version": "3.0-elite",
+  "description": "Elbaz Platform LMS - OWASP Top 10 hardened WAF rules with API-safe extensions",
+  "last_updated": "2025-01-10",
+  "rules": [
+    {
+      "rule_id": "WAF-001",
+      "name": "block_sql_injection",
+      "enabled": true,
+      "action": "block",
+      "description": "Block SQL injection patterns in query parameters and body",
+      "patterns": [
+        "(?i)(\\b(union|select|insert|update|delete|drop|alter|create|exec|execute|xp_cmdshell|sp_executesql)\\b.*\\b(from|into|where|set|table|database)\\b)",
+        "(?i)(--|;|\\/\\*|\\*\\/|@@|char\\s*\\(|nchar\\s*\\(|varchar\\s*\\(|cast\\s*\\(|convert\\s*\\()",
+        "(?i)(\\bOR\\b\\s+\\d+\\s*=\\s*\\d+|\\bAND\\b\\s+\\d+\\s*=\\s*\\d+|\\bOR\\b\\s+'[^']*'\\s*=\\s*'[^']*')",
+        "(?i)(sleep\\s*\\(\\s*\\d+|benchmark\\s*\\(|waitfor\\s+delay\\s+'|pg_sleep\\s*\\()"
+      ],
+      "exceptions": [
+        {
+          "path": "/api/.*",
+          "content_type": "application/json",
+          "reason": "API endpoints handle their own input sanitization via parameterized queries"
+        }
+      ]
+    },
+    {
+      "rule_id": "WAF-002",
+      "name": "block_xss",
+      "enabled": true,
+      "action": "block",
+      "description": "Block reflected and stored XSS patterns",
+      "patterns": [
+        "(?i)<\\s*script[^>]*>[\\s\\S]*?<\\s*\\/\\s*script\\s*>",
+        "(?i)on(error|load|click|mouseover|focus|blur|submit|change|keyup|keydown)\\s*=",
+        "(?i)javascript\\s*:",
+        "(?i)vbscript\\s*:",
+        "(?i)expression\\s*\\(",
+        "(?i)url\\s*\\(\\s*['\"]?\\s*javascript:",
+        "(?i)<\\s*(iframe|object|embed|link|style|img|svg|math)\\s+[^>]*(src|href|data|action)\\s*=",
+        "(?i)document\\.(cookie|domain|write|location|referrer)",
+        "(?i)eval\\s*\\(|Function\\s*\\("
+      ],
+      "exceptions": []
+    },
+    {
+      "rule_id": "WAF-003",
+      "name": "block_path_traversal",
+      "enabled": true,
+      "action": "block",
+      "description": "Block directory traversal and sensitive file access",
+      "patterns": [
+        "(\\.\\./|\\.\\.\\\\|%2e%2e[%/\\\\]|%252e%252e|\\.{3,})",
+        "(?i)(\\/etc\\/|\\/proc\\/|\\/var\\/|\\/dev\\/|\\/sys\\/|\\/boot\\/)",
+        "(?i)(\\.env|\\.git|\\.htaccess|\\.htpasswd|\\.DS_Store|Thumbs\\.db|desktop\\.ini|web\\.config)",
+        "(?i)(wp-admin|wp-login|wp-config|xmlrpc\\.php|phpmyadmin|adminer|mysql|phpinfo)",
+        "(?i)(\\.bak|\\.old|\\.orig|\\.save|\\.swp|\\.swo|~|\\.sql|\\.log|\\.conf|\\.cfg)",
+        "(?i)(server-status|server-info|\\.well-known/security\\.txt)",
+        "(?i)(\\/\\.svn|\\/\\.hg|\\/\\.bzr)"
+      ],
+      "exceptions": [
+        {
+          "path": "/api/.well-known/.*",
+          "reason": "Well-known paths for app configuration"
+        }
+      ]
+    },
+    {
+      "rule_id": "WAF-004",
+      "name": "block_command_injection",
+      "enabled": true,
+      "action": "block",
+      "description": "Block OS command injection attempts",
+      "patterns": [
+        "(;|\\||`|\\$\\(|\\$\\{|&&|\\|\\|)\\s*(cat|ls|dir|pwd|whoami|id|uname|wget|curl|nc|bash|sh|zsh|python|perl|ruby|php|cmd|powershell|reg|net|systemctl|service)",
+        "(?i)(/bin/(sh|bash|zsh|dash|ksh)|/usr/bin/(python|perl|ruby|php|wget|curl|nc))",
+        "(?i)(exec\\s*\\(|system\\s*\\(|passthru\\s*\\(|shell_exec\\s*\\(|popen\\s*\\(|proc_open\\s*\\()"
+      ],
+      "exceptions": []
+    },
+    {
+      "rule_id": "WAF-005",
+      "name": "rate_limiting",
+      "enabled": true,
+      "action": "challenge",
+      "description": "Rate limiting per IP and per endpoint",
+      "config": {
+        "global": {
+          "requests_per_minute": 300,
+          "requests_per_10_minutes": 1500,
+          "action": "challenge"
+        },
+        "endpoints": {
+          "/api/auth/login": {
+            "requests_per_minute": 10,
+            "requests_per_5_minutes": 30,
+            "action": "block"
+          },
+          "/api/auth/register": {
+            "requests_per_minute": 5,
+            "requests_per_hour": 20,
+            "action": "block"
+          },
+          "/api/auth/forgot-password": {
+            "requests_per_minute": 3,
+            "requests_per_hour": 10,
+            "action": "block"
+          },
+          "/api/promo/apply": {
+            "requests_per_minute": 20,
+            "action": "block"
+          },
+          "/api/payments/webhook": {
+            "requests_per_minute": 100,
+            "action": "none"
+          }
+        }
+      }
+    },
+    {
+      "rule_id": "WAF-006",
+      "name": "block_bot_scraping",
+      "enabled": true,
+      "action": "challenge",
+      "description": "Block known bad bots and scraping tools",
+      "user_agent_patterns": [
+        "(?i)(masscan|nmap|nikto|sqlmap|burpsuite|zap|acunetix|nessus|openvas|w3af|arachni|dirbuster|gobuster|ffuf|feroxbuster)",
+        "(?i)(wget|curl|python-requests|httpclient|java\\/|go-http|node-fetch)\\s+\\(.*scrape",
+        "(?i)(semrushbot|ahrefsbot|majestic|mj12bot|dotbot|blexbot|ahrefs|screaming frog)",
+        "(?i)(googlebot|bingbot|baiduspider|yandexbot|duckduckbot|slurp)",
+        "(?i)(petalbot|bytespider|applebot|gptbot|ccbot|facebookexternalhit|twitterbot|linkedinbot|discordbot)"
+      ],
+      "allowed_bots": [
+        "Googlebot/2.1",
+        "Bingbot/2.0",
+        "Slurp",
+        "DuckDuckBot/1.0",
+        "Baiduspider/2.0",
+        "YandexBot/3.0"
+      ]
+    },
+    {
+      "rule_id": "WAF-007",
+      "name": "geo_allowlist",
+      "enabled": true,
+      "action": "block",
+      "description": "Allow only Egypt and selected countries for admin endpoints",
+      "config": {
+        "admin_paths": ["/admin", "/api/admin"],
+        "allowed_countries": ["EG", "SA", "AE", "KW", "QA", "BH", "OM"],
+        "log_only_countries": ["US", "DE", "GB", "FR"]
+      }
+    },
+    {
+      "rule_id": "WAF-008",
+      "name": "content_type_validation",
+      "enabled": true,
+      "action": "block",
+      "description": "Validate Content-Type for state-changing methods",
+      "config": {
+        "enforced_methods": ["POST", "PUT", "PATCH", "DELETE"],
+        "allowed_content_types": [
+          "application/json",
+          "multipart/form-data",
+          "application/x-www-form-urlencoded"
+        ],
+        "excluded_paths": ["/api/payments/webhook"]
+      }
+    },
+    {
+      "rule_id": "WAF-009",
+      "name": "request_size_limit",
+      "enabled": true,
+      "action": "block",
+      "description": "Limit request body size by endpoint",
+      "config": {
+        "default_max_bytes": 1048576,
+        "limits": {
+          "/api/upload": 52428800,
+          "/api/auth/login": 10240,
+          "/api/promo/apply": 2048,
+          "/api/payments/webhook": 65536
+        }
+      }
+    },
+    {
+      "rule_id": "WAF-010",
+      "name": "http_method_enforcement",
+      "enabled": true,
+      "action": "block",
+      "description": "Block dangerous HTTP methods",
+      "blocked_methods": ["TRACE", "TRACK", "DEBUG", "CONNECT", "PATCH"],
+      "exceptions": {
+        "/api/.*": ["PATCH"]
+      }
+    },
+    {
+      "rule_id": "WAF-011",
+      "name": "security_headers",
+      "enabled": true,
+      "action": "modify_response",
+      "description": "Inject security headers into all responses",
+      "headers": {
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "X-XSS-Protection": "1; mode=block",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload"
+      }
+    },
+    {
+      "rule_id": "WAF-012",
+      "name": "sensitive_response_filtering",
+      "enabled": true,
+      "action": "block_response",
+      "description": "Prevent sensitive data leakage in responses",
+      "patterns": [
+        "(?i)(password|secret|token|api_key|private_key|access_key)\\s*[:=]\\s*['\"][^'\"]{8,}",
+        "(?i)(BEGIN (RSA |DSA |EC )?PRIVATE KEY)",
+        "(?i)(jdbc:mysql|mongodb://|redis://|postgresql://)://[^:]+:[^@]+@",
+        "(?i)(AKIA[0-9A-Z]{16})"
+      ]
+    }
+  ]
+}

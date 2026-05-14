@@ -1,0 +1,98 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-loki-dashboard
+  namespace: ahmedelbaz
+  labels:
+    grafana_dashboard: "1"
+data:
+  loki-logs-dashboard.json: |
+    {
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "links": [],
+      "panels": [
+        {
+          "datasource": { "type": "loki", "uid": "${datasource}" },
+          "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 20 }] } }, "overrides": [] },
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+          "id": 1,
+          "options": { "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
+          "targets": [{ "datasource": { "type": "loki", "uid": "${datasource}" }, "expr": "{app=\"backend\", namespace=\"ahmedelbaz\"} |= `` | json", "legendFormat": "", "maxLines": 500, "refId": "A" }],
+          "title": "Backend Application Logs",
+          "type": "logs"
+        },
+        {
+          "datasource": { "type": "loki", "uid": "${datasource}" },
+          "fieldConfig": { "defaults": { "color": { "fixed": "red" }, "unit": "short" }, "overrides": [] },
+          "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+          "id": 2,
+          "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "single", "sort": "none" } },
+          "targets": [{ "datasource": { "type": "loki", "uid": "${datasource}" }, "expr": "sum(count_over_time({app=\"backend\", namespace=\"ahmedelbaz\", level=\"error\"} |= `` [$__rate_interval])) by (pod)", "legendFormat": "{{pod}}", "refId": "A" }],
+          "title": "Error Logs by Pod",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "loki", "uid": "${datasource}" },
+          "fieldConfig": { "defaults": { "color": { "fixed": "orange" }, "unit": "short" }, "overrides": [] },
+          "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
+          "id": 3,
+          "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "single", "sort": "none" } },
+          "targets": [{ "datasource": { "type": "loki", "uid": "${datasource}" }, "expr": "sum(count_over_time({app=\"backend\", namespace=\"ahmedelbaz\", level=\"warn\"} |= `` [$__rate_interval])) by (pod)", "legendFormat": "{{pod}}", "refId": "A" }],
+          "title": "Warning Logs by Pod",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "loki", "uid": "${datasource}" },
+          "fieldConfig": { "defaults": { "color": { "fixed": "blue" }, "unit": "short" }, "overrides": [] },
+          "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+          "id": 4,
+          "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "single", "sort": "none" } },
+          "targets": [{ "datasource": { "type": "loki", "uid": "${datasource}" }, "expr": "sum(count_over_time({app=\"backend\", namespace=\"ahmedelbaz\"} |= `` [$__rate_interval])) by (level)", "legendFormat": "{{level}}", "refId": "A" }],
+          "title": "All Logs by Level",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "loki", "uid": "${datasource}" },
+          "fieldConfig": { "defaults": { "color": { "fixed": "red" }, "unit": "short" }, "overrides": [] },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+          "id": 5,
+          "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "single", "sort": "none" } },
+          "targets": [{ "datasource": { "type": "loki", "uid": "${datasource}" }, "expr": "sum(count_over_time({app=\"backend\", namespace=\"ahmedelbaz\"} |~ \"(?i)(error|exception|fail|crash|timeout|OOM|ECONNREFUSED)\" [$__rate_interval])) by (pod)", "legendFormat": "{{pod}}", "refId": "A" }],
+          "title": "Critical Keywords Frequency",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "loki", "uid": "${datasource}" },
+          "fieldConfig": { "defaults": { "color": { "fixed": "purple" }, "unit": "short" }, "overrides": [] },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+          "id": 6,
+          "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "single", "sort": "none" } },
+          "targets": [{ "datasource": { "type": "loki", "uid": "${datasource}" }, "expr": "sum(count_over_time({app=\"backend\", namespace=\"ahmedelbaz\"} |~ \"(?i)(pool|connection|mysql|redis)\" |~ \"(?i)(error|fail|timeout|exhaust)\" [$__rate_interval])) by (pod)", "legendFormat": "{{pod}}", "refId": "A" }],
+          "title": "Database/Redis Connection Errors",
+          "type": "timeseries"
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 39,
+      "tags": ["elbaz", "loki", "logs", "sre"],
+      "templating": { "list": [{ "current": {}, "hide": 0, "label": "Datasource", "name": "datasource", "options": [], "query": "loki", "refresh": 1, "regex": "", "skipUrlSync": false, "type": "datasource" }] },
+      "time": { "from": "now-1h", "to": "now" },
+      "title": "Elbaz Platform — Loki Log Analytics",
+      "uid": "elbaz-loki-logs"
+    }

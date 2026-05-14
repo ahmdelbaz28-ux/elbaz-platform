@@ -1,0 +1,126 @@
+{
+  "description": "Cloudflare DDoS Protection Configuration for Ahmed El-Baz LMS Platform",
+  "account_id": "951840a21847d5c55c8284d4ded7cffc",
+  "zone_id": "93ccd466aeba31bc1f8bac061ab168e2",
+  "l3_l4_protection": {
+    "auto_mitigation": {
+      "enabled": true,
+      "description": "Automatically mitigate Layer 3 and Layer 4 volumetric attacks"
+    },
+    "protocol_attack_protection": {
+      "enabled": true,
+      "protocols": {
+        "syn_flood": true,
+        "udp_flood": true,
+        "amplification": true,
+        "fragmentation": true,
+        "icmp_flood": true,
+        "gre_flood": true,
+        "ipsec_flood": true
+      }
+    },
+    "essentials": {
+      "ipv4": true,
+      "ipv6": true
+    }
+  },
+  "l7_protection": {
+    "http_ddos": {
+      "enabled": true,
+      "adaptive_protection": {
+        "enabled": true,
+        "sensitivity": "medium",
+        "mitigation_mode": "challenged",
+        "action": "challenge",
+        "learning_days": 7,
+        "rules": [
+          {
+            "name": "High Rate Challenge",
+            "expression": "http.request.uri.path contains \"/api/\" and cf.rate_limit.rate gt 200",
+            "action": "challenge",
+            "description": "Challenge requests exceeding 200 requests per second on API endpoints"
+          },
+          {
+            "name": "Rapid POST Blocking",
+            "expression": "http.request.method eq \"POST\" and cf.rate_limit.rate gt 100",
+            "action": "block",
+            "description": "Block rapid POST requests exceeding 100 per second"
+          },
+          {
+            "name": "API Frequency Limit",
+            "expression": "(http.request.uri.path contains \"/api/auth/login\" or http.request.uri.path contains \"/api/auth/register\") and cf.rate_limit.rate gt 30",
+            "action": "challenge",
+            "description": "Limit authentication endpoint requests to 30 per second"
+          },
+          {
+            "name": "Connection Limit",
+            "expression": "cf.bot_management.score lt 5 and cf.rate_limit.rate gt 50",
+            "action": "block",
+            "description": "Block low bot scores with high request rates"
+          },
+          {
+            "name": "Geo Threat",
+            "expression": "cf.threat_score gt 30 and not ip.geoip.country eq \"EG\"",
+            "action": "block",
+            "description": "Block high threat scores from non-Egypt origins"
+          },
+          {
+            "name": "Circuit Breaker",
+            "expression": "cf.rate_limit.rate gt 500 and http.request.uri.path contains \"/api/\"",
+            "action": "block",
+            "description": "Circuit breaker - block all API traffic above 500 rps"
+          }
+        ]
+      }
+    }
+  },
+  "under_attack_mode": {
+    "enabled": false,
+    "activation": "manual",
+    "description": "Under Attack mode requires manual activation during active DDoS events"
+  },
+  "rate_limiting": {
+    "rules": [
+      {
+        "name": "API General Rate Limit",
+        "expression": "http.request.uri.path contains \"/api/\"",
+        "period": 60,
+        "requests_per_period": 300,
+        "action": "block",
+        "duration": 120
+      },
+      {
+        "name": "Login Rate Limit",
+        "expression": "http.request.uri.path eq \"/api/auth/login\"",
+        "period": 300,
+        "requests_per_period": 10,
+        "action": "block",
+        "duration": 900
+      },
+      {
+        "name": "Registration Rate Limit",
+        "expression": "http.request.uri.path eq \"/api/auth/register\"",
+        "period": 3600,
+        "requests_per_period": 5,
+        "action": "block",
+        "duration": 3600
+      },
+      {
+        "name": "Password Reset Rate Limit",
+        "expression": "http.request.uri.path eq \"/api/auth/forgot-password\"",
+        "period": 3600,
+        "requests_per_period": 3,
+        "action": "block",
+        "duration": 3600
+      },
+      {
+        "name": "File Upload Rate Limit",
+        "expression": "http.request.uri.path contains \"/api/upload\" and http.request.method eq \"POST\"",
+        "period": 60,
+        "requests_per_period": 10,
+        "action": "block",
+        "duration": 300
+      }
+    ]
+  }
+}

@@ -1,0 +1,118 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+        max_recv_msg_size_mib: 64
+      http:
+        endpoint: 0.0.0.0:4318
+  jaeger:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:14250
+      thrift_http:
+        endpoint: 0.0.0.0:14268
+      thrift_compact:
+        endpoint: 0.0.0.0:6831
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+    send_batch_max_size: 2048
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+    sweep_interval: 10s
+  k8s_attributes:
+    extract:
+      metadata:
+        - k8s.namespace.name
+        - k8s.deployment.name
+        - k8s.pod.name
+        - k8s.pod.uid
+        - k8s.container.name
+        - k8s.node.name
+      labels:
+        - tag_name: app
+          key: app
+          from: pod
+        - tag_name: component
+          key: component
+          from: pod
+      annotations:
+        - tag_name: prometheus.io/scrape
+          key: prometheus.io/scrape
+          from: pod
+    pod_association:
+      - sources:
+          - from: resource_attribute
+            name: k8s.pod.ip
+      passthrough: false
+  filter:
+    error_mode: ignore
+    traces:
+      span:
+        - 'attributes["http.target"] == "/healthz"'
+        - 'attributes["http.target"] == "/metrics"'
+        - 'attributes["http.target"] == "/ready"'
+    metrics:
+      metric:
+        - 'name == "http.client.request.duration" and attributes["http.url"] matches ".*healthz.*"'
+  transform:
+    trace_statements:
+      - context: span
+        statements:
+          - set(attributes["deployment.environment"], "production") where attributes["deployment.environment"] == nil
+          - set(attributes["service.namespace"], "ahmedelbaz") where attributes["service.namespace"] == nil
+
+exporters:
+  jaeger:
+    endpoint: jaeger:14250
+    tls:
+      insecure: true
+    timeout: 10s
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    resource_to_telemetry_conversion:
+      enabled: true
+    send_timestamps: true
+    metric_expiration: 180m
+    namespace: ahmedelbaz
+    const_labels:
+      cluster: production
+  logging:
+    loglevel: info
+    sampling_initial: 10
+    sampling_thereafter: 100
+
+connectors:
+  spanmetrics:
+    histogram:
+      type: explicit
+      unit: s
+    dimensions:
+      - name: http.method
+      - name: http.status_code
+      - name: namespace
+    exemplars:
+      enabled: true
+    dimensions_cache_size: 1000
+    aggregation_temporality: "AGGREGATION_TEMPORALITY_CUMULATIVE"
+    metrics_flush_interval: 15s
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp, jaeger]
+      processors: [memory_limiter, k8s_attributes, filter, transform, batch]
+      exporters: [jaeger, spanmetrics, logging]
+    metrics:
+      receivers: [otlp, spanmetrics]
+      processors: [memory_limiter, k8s_attributes, transform, batch]
+      exporters: [prometheus, logging]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, k8s_attributes, batch]
+      exporters: [logging]

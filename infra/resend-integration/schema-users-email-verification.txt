@@ -1,0 +1,11 @@
+Email Verification Columns in users table:
+- emailVerified BOOLEAN DEFAULT FALSE
+- emailVerifyToken VARCHAR(64) NULL
+- emailVerifyExpires TIMESTAMP NULL
+
+Verification Flow:
+1. User registers → emailVerifyToken generated (64-char random hex)
+2. Email sent via Resend with verification link: /verify-email?token={token}
+3. User clicks link → token validated (not expired, matches DB)
+4. emailVerified set to TRUE, token cleared
+5. Token expires after 24 hours

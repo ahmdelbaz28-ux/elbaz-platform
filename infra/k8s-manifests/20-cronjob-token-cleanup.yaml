@@ -1,0 +1,54 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cronjob-token-cleanup
+  namespace: ahmedelbaz
+spec:
+  schedule: "0 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 2
+  backoffLimit: 2
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: backend-app-sa
+          restartPolicy: Never
+          containers:
+            - name: token-cleanup
+              image: ahmdelbaz28/ahmdrtap:latest
+              envFrom:
+                - configMapRef:
+                    name: ahmedelbaz-config
+                - secretRef:
+                    name: ahmedelbaz-secrets
+              command:
+                - node
+                - -e
+                - |
+                  const { PrismaClient } = require('@prisma/client');
+                  const prisma = new PrismaClient();
+                  async function cleanup() {
+                    const now = new Date();
+                    console.log('Starting expired token cleanup at:', now.toISOString());
+                    const emailResult = await prisma.emailVerificationToken.deleteMany({
+                      where: { expires: { lt: now } }
+                    });
+                    console.log('Deleted expired email verification tokens:', emailResult.count);
+                    const passwordResult = await prisma.passwordResetToken.deleteMany({
+                      where: { expires: { lt: now } }
+                    });
+                    console.log('Deleted expired password reset tokens:', passwordResult.count);
+                    const refreshTokenResult = await prisma.refreshToken.deleteMany({
+                      where: { expires: { lt: now } }
+                    });
+                    console.log('Deleted expired refresh tokens:', refreshTokenResult.count);
+                    const total = emailResult.count + passwordResult.count + refreshTokenResult.count;
+                    console.log('Total expired tokens cleaned up:', total);
+                    await prisma.$disconnect();
+                  }
+                  cleanup().catch(e => {
+                    console.error('Cleanup failed:', e);
+                    process.exit(1);
+                  });

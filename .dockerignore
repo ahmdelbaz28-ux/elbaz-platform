@@ -1,0 +1,49 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+.next
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment (secrets must NOT be in image)
+.env
+.env.*
+!.env.example
+
+# Git
+.git
+.gitignore
+
+# Infrastructure docs (not needed at runtime)
+infra
+docs
+README.md
+LICENSE
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Test artifacts
+coverage
+test-results
+
+# Cache
+.cache
+.parcel-cache
+
+# Misc
+*.log
+*.tgz
+.npmrc

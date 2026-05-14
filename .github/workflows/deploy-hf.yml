@@ -1,0 +1,99 @@
+# Deploy to HuggingFace Spaces on push to main
+# Uses HF Hub API (instead of git push) to handle binary files (XET policy)
+name: Deploy to HF Spaces
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # ══════════════════════════════════════════════════════════
+  # GATE: Run tests BEFORE deploying — prevent broken code from reaching production
+  # 84 unit tests covering: JWT, Password, RateLimiter, Cache, Chatbot
+  # CRITICAL: If tests fail, deployment MUST be blocked. No continue-on-error.
+  # ══════════════════════════════════════════════════════════
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Update lockfile (if needed)
+        run: |
+          if ! npm ci --dry-run 2>/dev/null; then
+            npm install --package-lock-only --no-audit --no-fund
+          fi
+
+      - name: Run unit tests
+        env:
+          NODE_ENV: test
+          APP_SECRET: test-secret-not-for-production-minimum-32-chars
+          OPENROUTER_API_KEY: sk-or-v1-test-key-for-ci-only
+          DATABASE_URL: mysql2://test:test@localhost:3306/test
+        run: npx vitest run --reporter=verbose
+
+  # ══════════════════════════════════════════════════════════
+  # DEPLOY: Only runs if tests pass (needs: test = hard gate)
+  # If ANY test fails, this job will NOT run — broken code stays out
+  # ══════════════════════════════════════════════════════════
+  deploy:
+    needs: test
+    if: success()    # Extra safety: only deploy if test job succeeded
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Deploy to HF Spaces via API
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          SHA: ${{ github.sha }}
+        run: |
+          pip install huggingface_hub --quiet
+          python3 << 'PYEOF'
+          import os
+          from huggingface_hub import HfApi
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          sha = os.environ["SHA"]
+          api.upload_folder(
+              folder_path=".",
+              repo_id="ahmdelbaz28/AHMDRTAP",
+              repo_type="space",
+              commit_message=f"deploy: {sha}",
+              delete_patterns=[
+                "skills/", "download/", "upload/", "worklog.md",
+                "BUILD_TRIGGER.md", "TRIGGER_REBUILD.md", "info.md",
+                ".github/.github/",
+                "api/routes/",
+                "api/lib/auth.ts", "api/lib/validation.ts", "api/lib/logger.ts",
+                "api/middleware/logger.ts",
+                "infra/ml-explainability/",
+                "infra/security-audit/waf-rules-v2-owasp10.json",
+                "infra/security-audit/worker-v6-hardened.js",
+                "infra/security-audit/deploy-security-v2.sh",
+                "infra/infra-security/network-policies-v2.yaml",
+                "db/migration_step8_cms_promo.sql",
+                "db/migration_step9_bugfixes.sql",
+                "db/migration_step10_email_verification.sql",
+                "db/migration_step11_composite_indexes.sql",
+                "db/migration_step12_pending_email.sql",
+                "elbaz-push/", "elbaz-platform/", "hf-verify/", "hf-space-check/", "final-*/",
+              ],
+          )
+          print("Deploy complete!")
+          PYEOF
+
+      - name: Deployment Status
+        if: always()
+        run: echo "Deployment completed. Check https://huggingface.co/spaces/ahmdelbaz28/AHMDRTAP for build status."
