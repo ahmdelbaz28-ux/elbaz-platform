@@ -64,37 +64,35 @@ async function validateApiKey(): Promise<boolean> {
 
 const AI_MODELS = [
   // ─── Tier 1: Best quality — highest parameter count & reasoning ───
-  { id: "nvidia/nemotron-3-super-120b-a12b:free",      ctx: 262144, tier: 1 },
   { id: "inclusionai/ring-2.6-1t:free",                ctx: 262144, tier: 1 },
-  { id: "nvidia/nemotron-3-nano-30b-a3b:free",          ctx: 256000, tier: 1 },
-  { id: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", ctx: 256000, tier: 1 },
+  { id: "nvidia/nemotron-3-super-120b-a12b:free",      ctx: 262144, tier: 1 },
+  { id: "deepseek/deepseek-v4-flash:free",             ctx: 131072, tier: 1 },
   { id: "minimax/minimax-m2.5:free",                    ctx: 196608, tier: 1 },
   { id: "z-ai/glm-4.5-air:free",                        ctx: 131072, tier: 1 },
+  { id: "arcee-ai/trinity-large-thinking:free",         ctx: 131072, tier: 1 },
 
   // ─── Tier 2: Strong models — rate-limited but accessible ───
-  { id: "nousresearch/hermes-3-llama-3.1-405b:free",   ctx: 131072, tier: 2 },
-  { id: "openai/gpt-oss-120b:free",                     ctx: 131072, tier: 2 },
   { id: "qwen/qwen3-coder:free",                        ctx: 262000, tier: 2 },
+  { id: "google/gemma-4-31b-it:free",                   ctx: 262144, tier: 2 },
+  { id: "google/gemma-4-26b-a4b-it:free",               ctx: 262144, tier: 2 },
+  { id: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", ctx: 256000, tier: 2 },
   { id: "qwen/qwen3-next-80b-a3b-instruct:free",        ctx: 262144, tier: 2 },
-  { id: "google/gemma-3-27b-it:free",                   ctx: 131072, tier: 2 },
-  { id: "poolside/laguna-m.1:free",                     ctx: 131072, tier: 2 },
-  { id: "openai/gpt-oss-20b:free",                      ctx: 131072, tier: 2 },
   { id: "meta-llama/llama-3.3-70b-instruct:free",       ctx: 65536,  tier: 2 },
 
   // ─── Tier 3: Medium models — often available, good for Arabic ───
   { id: "baidu/cobuddy:free",                            ctx: 131072, tier: 3 },
+  { id: "poolside/laguna-m.1:free",                     ctx: 131072, tier: 3 },
   { id: "poolside/laguna-xs.2:free",                    ctx: 131072, tier: 3 },
   { id: "meta-llama/llama-3.2-3b-instruct:free",        ctx: 131072, tier: 3 },
-  { id: "nvidia/nemotron-nano-12b-v2-vl:free",          ctx: 128000, tier: 3 },
-  { id: "nvidia/nemotron-nano-9b-v2:free",              ctx: 128000, tier: 3 },
-  { id: "cognitivecomputations/dolphin-mistral-24b-venice-edition:free", ctx: 32768, tier: 3 },
+  { id: "nvidia/nemotron-3-nano-30b-a3b:free",          ctx: 256000, tier: 3 },
 
   // ─── Tier 4: Last resort — smaller models, geo-restricted ───
-  { id: "google/gemma-4-31b-it:free",                   ctx: 262144, tier: 4 },
-  { id: "google/gemma-4-26b-a4b-it:free",               ctx: 262144, tier: 4 },
+  { id: "nvidia/nemotron-nano-12b-v2-vl:free",          ctx: 128000, tier: 4 },
+  { id: "nvidia/nemotron-nano-9b-v2:free",              ctx: 128000, tier: 4 },
   { id: "liquid/lfm-2.5-1.2b-thinking:free",            ctx: 32768,  tier: 4 },
   { id: "liquid/lfm-2.5-1.2b-instruct:free",            ctx: 32768,  tier: 4 },
 ];
+
 
 // Smart tracking: remember which models work to optimize future requests
 const modelSuccessCount: Record<string, number> = {};
