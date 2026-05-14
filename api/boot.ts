@@ -309,14 +309,20 @@ app.get("*", async (c) => {
   }
 });
 
-app.onError((err, c) => {
+app.onError(async (err, c) => {
   const requestId = c.get("requestId") ?? crypto.randomUUID();
   console.error(`[${requestId}] Unhandled error:`, err);
 
-  if (env.SENTRY_DSN && env.NODE_ENV === "production") {
-    import("./lib/sentry.js").then(({ captureException }) => {
-      captureException(err, { tags: { requestId } });
+  // 🧠 Elite AI Diagnosis: Analyze the crash in background
+  if (env.NODE_ENV === "production") {
+    import("./lib/ai-diagnostics.js").then(({ diagnoseError }) => {
+      diagnoseError(err, `Request ID: ${requestId} | Path: ${c.req.path}`);
     });
+  }
+
+  if (env.SENTRY_DSN && env.NODE_ENV === "production") {
+    const { captureException } = await import("./lib/sentry.js");
+    captureException(err, { tags: { requestId } });
   }
 
   return c.json(
@@ -327,6 +333,7 @@ app.onError((err, c) => {
     500
   );
 });
+
 
 async function start() {
   // ── Load build ID from build-id.json ──
