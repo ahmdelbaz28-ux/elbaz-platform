@@ -12,12 +12,12 @@ export function cn(...inputs: ClassValue[]) {
 
 export const FADE_UP_ANIMATION_VARIANTS = {
   hidden: { opacity: 0, y: 30 },
-  show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } },
+  show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } as const },
 };
 
 export const FADE_IN_ANIMATION_VARIANTS = {
   hidden: { opacity: 0, filter: "blur(10px)" },
-  show: { opacity: 1, filter: "blur(0px)", transition: { duration: 0.5, ease: "easeOut" } },
+  show: { opacity: 1, filter: "blur(0px)", transition: { duration: 0.5, ease: "easeOut" } as const },
 };
 
 // ─── Components ───
@@ -35,7 +35,7 @@ export function FadeUp({
       viewport={{ once: true, margin: "-50px" }}
       variants={{
         hidden: { opacity: 0, y: 30 },
-        show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24, delay } },
+        show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24, delay } as const },
       }}
       className={className}
       {...props}
@@ -58,7 +58,7 @@ export function FadeIn({
       viewport={{ once: true, margin: "-50px" }}
       variants={{
         hidden: { opacity: 0, filter: "blur(10px)" },
-        show: { opacity: 1, filter: "blur(0px)", transition: { duration: 0.6, ease: "easeOut", delay } },
+        show: { opacity: 1, filter: "blur(0px)", transition: { duration: 0.6, ease: "easeOut", delay } as const },
       }}
       className={className}
       {...props}
@@ -113,7 +113,7 @@ export function HoverSpring({ children, className, ...props }: React.HTMLAttribu
     <motion.div
       whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
-      transition={{ type: "spring", stiffness: 400, damping: 17 }}
+      transition={{ type: "spring", stiffness: 400, damping: 17 } as const}
       className={className}
       {...props}
     >
