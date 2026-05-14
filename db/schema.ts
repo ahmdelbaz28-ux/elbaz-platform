@@ -623,33 +623,6 @@ export const softwareDownloads = mysqlTable(
     createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
   }
 );
-
-export const certificates = mysqlTable(
-  "certificates",
-  {
-    id: bigint("id", { mode: "number", unsigned: true }).primaryKey().autoincrement(),
-    certId: varchar("certId", { length: 100 }).notNull().unique(), // The public verification ID (e.g., UUID or short ID)
-    userId: bigint("userId", { mode: "number", unsigned: true }).notNull(),
-    courseId: bigint("courseId", { mode: "number", unsigned: true }).notNull(),
-    issuedAt: timestamp("issuedAt", { mode: "date" }).notNull().defaultNow(),
-    grade: varchar("grade", { length: 50 }),
-  },
-  (table) => [
-    index("cert_user_idx").on(table.userId),
-    index("cert_course_idx").on(table.courseId),
-    index("cert_verify_idx").on(table.certId),
-    foreignKey({
-      columns: [table.userId],
-      foreignColumns: [users.id],
-      name: "fk_cert_user_id",
-    }).onDelete("cascade").onUpdate("cascade"),
-    foreignKey({
-      columns: [table.courseId],
-      foreignColumns: [courses.id],
-      name: "fk_cert_course_id",
-    }).onDelete("cascade").onUpdate("cascade"),
-  ]
-);
-
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
+
