@@ -19,6 +19,7 @@ function createPoolConfig(): mysql.PoolOptions {
     namedPlaceholders: true,
     maxIdle: 5,
     idleTimeout: 60000,
+    multipleStatements: true,
   };
 
   if (env.NODE_ENV === "production" || env.DATABASE_URL?.includes("aivencloud.com")) {
