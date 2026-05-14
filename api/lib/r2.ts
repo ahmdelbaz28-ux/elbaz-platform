@@ -16,7 +16,7 @@ import { env } from "./env";
 
 // ─── File Size Validation Constants ──────────────────────────────────────────
 
-const MAX_FILE_SIZE_BYTES = 500 * 1024 * 1024; // 500 MB
+const MAX_FILE_SIZE_BYTES = 1024 * 1024 * 1024; // 1 GB (Practical for high-quality engineering videos)
 const ALLOWED_CONTENT_TYPES = new Set([
   "video/mp4",
   "video/webm",
