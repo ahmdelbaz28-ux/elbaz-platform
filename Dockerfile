@@ -36,13 +36,17 @@ RUN apk add --no-cache \
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --prefer-offline --no-audit --no-fund
 
-# ── Stage 4: Production runtime (minimal image) ──
+# Stage 4: Production runtime (minimal image)
 FROM node:24-alpine AS production
 WORKDIR /app
+
+# ✅ FIX: Install tini in the production stage (required for ENTRYPOINT)
+RUN apk add --no-cache tini
 
 # Security: run as non-root user (Node image already provides 'node' user)
 RUN addgroup -g 1001 -S appgroup && \
     adduser -S appuser -u 1001 -G appgroup
+
 
 ENV NODE_ENV=production
 ENV NODE_OPTIONS="--max-old-space-size=512"
