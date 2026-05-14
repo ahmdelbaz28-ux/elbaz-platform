@@ -64,16 +64,16 @@ describe("JWT Module", () => {
       expect(payload.aud).toBe("elbaz-platform-users");
     });
 
-    it("sets expiration claim (24h from now)", async () => {
+    it("sets expiration claim (30 days from now)", async () => {
       const now = Date.now() / 1000;
       const token = await createToken(TEST_PAYLOAD);
       const parts = token.split(".");
       const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
       expect(payload.exp).toBeDefined();
       expect(typeof payload.exp).toBe("number");
-      // Should expire ~24h from now (allow 1s tolerance)
-      expect(payload.exp).toBeGreaterThan(now + 23 * 60 * 60);
-      expect(payload.exp).toBeLessThanOrEqual(now + 24 * 60 * 60 + 1);
+      // Should expire ~30 days from now (30 * 24 * 3600 = 2592000 seconds)
+      expect(payload.exp).toBeGreaterThan(now + 29 * 24 * 60 * 60);
+      expect(payload.exp).toBeLessThanOrEqual(now + 30 * 24 * 60 * 60 + 5);
     });
 
     it("sets issued-at claim", async () => {
@@ -210,9 +210,9 @@ describe("JWT Module", () => {
       expect(payload).not.toBeNull();
 
       const remaining = getTokenRemainingSeconds(payload!);
-      // Token should have ~24h remaining (24 * 3600 = 86400 seconds)
-      expect(remaining).toBeGreaterThan(23 * 60 * 60); // > 23 hours
-      expect(remaining).toBeLessThanOrEqual(24 * 60 * 60 + 1); // <= 24 hours + 1s tolerance
+      // Token should have ~30 days remaining
+      expect(remaining).toBeGreaterThan(29 * 24 * 60 * 60);
+      expect(remaining).toBeLessThanOrEqual(30 * 24 * 60 * 60 + 5);
     });
 
     it("returns 0 for already-expired tokens", () => {
