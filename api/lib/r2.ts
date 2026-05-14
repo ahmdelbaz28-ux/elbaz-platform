@@ -29,7 +29,18 @@ const ALLOWED_CONTENT_TYPES = new Set([
   "application/pdf",
   "text/plain",
   "application/json",
+  "application/zip",
+  "application/x-rar-compressed",
+  "application/x-7z-compressed",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/octet-stream", // Fallback for binary data
 ]);
+
 
 /**
  * Validate file size and content type before upload.
