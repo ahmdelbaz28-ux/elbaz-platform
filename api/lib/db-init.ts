@@ -69,7 +69,7 @@ export async function ensureDatabase(): Promise<void> {
     // ── Step 2: Create all tables ──
     const schemaPath = join(__dirname, "..", "..", "db", "init-schema.sql");
     const schemaSql = readFileSync(schemaPath, "utf-8");
-    await conn.execute(schemaSql);
+    await conn.query(schemaSql);
     console.log("[DB] ✅ All 22 tables created");
 
     // ── Step 3: Seed admin user + categories + courses + testimonials ──
