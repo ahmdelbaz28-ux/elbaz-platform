@@ -1,0 +1,69 @@
+[
+  {
+    "type": "TXT",
+    "name": "ahmedelbaz.qzz.io",
+    "content": "v=spf1 include:_spf.google.com include:sendgrid.net include:resend.com -all",
+    "ttl": 3600,
+    "priority": 10,
+    "proxied": false,
+    "comment": "SPF record - Authorizes Google Workspace, SendGrid, and Resend to send emails on behalf of ahmedelbaz.qzz.io"
+  },
+  {
+    "type": "TXT",
+    "name": "_dmarc.ahmedelbaz.qzz.io",
+    "content": "v=DMARC1; p=reject; rua=mailto:dmarc@ahmedelbaz.qzz.io; ruf=mailto:dmarc-forensic@ahmedelbaz.qzz.io; pct=100; adkim=s; aspf=s; ri=86400",
+    "ttl": 3600,
+    "priority": 10,
+    "proxied": false,
+    "comment": "DMARC record - Rejects unauthorized emails, sends aggregate reports to rua and forensic reports to ruf"
+  },
+  {
+    "type": "CAA",
+    "name": "ahmedelbaz.qzz.io",
+    "data": {
+      "flags": 0,
+      "tag": "issue",
+      "value": "letsencrypt.org"
+    },
+    "ttl": 3600,
+    "priority": 10,
+    "proxied": false,
+    "comment": "CAA record - Restricts certificate issuance to Let's Encrypt only"
+  },
+  {
+    "type": "TXT",
+    "name": "_mta-sts.ahmedelbaz.qzz.io",
+    "content": "v=STSv1; id=20240101000000Z",
+    "ttl": 3600,
+    "priority": 10,
+    "proxied": false,
+    "comment": "MTA-STS TXT record - Enables SMTP TLS reporting and enforcement policy ID"
+  },
+  {
+    "type": "A",
+    "name": "mta-sts.ahmedelbaz.qzz.io",
+    "content": "198.51.45.68",
+    "ttl": 3600,
+    "priority": 10,
+    "proxied": false,
+    "comment": "MTA-STS A record - Points to Cloudflare-hosted MTA-STS policy endpoint"
+  },
+  {
+    "type": "TXT",
+    "name": "_smtp._tls.ahmedelbaz.qzz.io",
+    "content": "v=TLSRPTv1; rua=mailto:tls-reports@ahmedelbaz.qzz.io",
+    "ttl": 3600,
+    "priority": 10,
+    "proxied": false,
+    "comment": "SMTP TLS-RPT record - Enables TLS reporting for email delivery to this domain"
+  },
+  {
+    "type": "TXT",
+    "name": "resend._domainkey.ahmedelbaz.qzz.io",
+    "content": "v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCmnVOmQRjfjF1R0FJ8YzYHdOqXCDbZqPVKjNr6Xp3jK2mL4FGvUYBvBPJHZtGnmDdUB2WLqOXUKTqS5HKZgP5MbGRF9LzWbO5Q9bNqkSRzRCXkLvALdT6zF4cHnRqPCVMaPjB3LQx7EkcRGMYWLHdSfR5ZcVLGNv6O8JbP3QXwIDAQAB",
+    "ttl": 3600,
+    "priority": 10,
+    "proxied": false,
+    "comment": "DKIM record for Resend email service - Public key for email signing verification"
+  }
+]

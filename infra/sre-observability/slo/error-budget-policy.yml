@@ -1,0 +1,71 @@
+error_budget_policy:
+  name: Ahmed El-Baz LMS Platform Error Budget Policy
+  version: "1.0"
+
+  windows:
+    - name: 30d-rolling
+      display_name: 30-Day Rolling
+      duration: 720h
+      description: All SLOs use a 30-day rolling window for error budget calculation
+
+  burn_rate_thresholds:
+    page_immediate:
+      multi_window:
+        short:
+          burn_rate: 14.4
+          window: 5m
+          alert_after: 2m
+        long:
+          burn_rate: 6.0
+          window: 30m
+          alert_after: 15m
+
+    page_during_business_hours:
+      multi_window:
+        short:
+          burn_rate: 6.0
+          window: 5m
+          alert_after: 5m
+        long:
+          burn_rate: 1.0
+          window: 6h
+          alert_after: 30m
+
+    ticket:
+      multi_window:
+        short:
+          burn_rate: 1.0
+          window: 5m
+          alert_after: 15m
+        long:
+          burn_rate: 0.5
+          window: 6h
+          alert_after: 1h
+
+  budget_exhaustion_actions:
+    exhausted:
+      action: "Stop all feature deploys. All engineering capacity shifts to reliability. Incident review required before feature work resumes."
+      escalation: "VP Engineering"
+    at_risk:
+      threshold: 80
+      action: "Reduce feature deploy frequency. Prioritize reliability fixes over features."
+      escalation: "Engineering Manager"
+    healthy:
+      threshold: 50
+      action: "Normal operations. Continue feature development with standard reliability practices."
+
+  sli_weighting:
+    availability:
+      weight: 50
+      description: "50% of composite SLO based on API availability (99.9%)"
+    latency:
+      weight: 30
+      description: "30% of composite SLO based on P99 latency (<500ms)"
+    critical_flows:
+      weight: 20
+      description: "20% of composite SLO based on critical flows (login 99.5%, payment <3s)"
+
+  review_cadence:
+    error_budget_report: weekly
+    slo_review: monthly
+    policy_review: quarterly

@@ -1,0 +1,103 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: business-metrics-alerts
+  namespace: ahmedelbaz
+  labels:
+    prometheus: ahmedelbaz
+    role: alert-rules
+spec:
+  groups:
+    - name: business-metrics
+      interval: 15s
+      rules:
+        - alert: LowActiveUsers
+          expr: |
+            sum(active_users_total{namespace="ahmedelbaz"}) < 10
+          for: 30m
+          labels:
+            severity: warning
+            team: product
+          annotations:
+            summary: "Active user count is unusually low"
+            description: "Only {{ $value }} active users detected in the last 30 minutes"
+
+        - alert: HighEnrollmentErrors
+          expr: |
+            sum(rate(enrollment_errors_total{namespace="ahmedelbaz"}[1h])) > 10
+          for: 15m
+          labels:
+            severity: warning
+            team: product
+          annotations:
+            summary: "High enrollment error rate"
+            description: "{{ $value }} enrollment errors per hour"
+
+        - alert: PaymentProcessingFailures
+          expr: |
+            sum(rate(payment_failures_total{namespace="ahmedelbaz"}[5m])) > 5
+          for: 2m
+          labels:
+            severity: critical
+            team: payments
+          annotations:
+            summary: "Payment processing failures detected"
+            description: "{{ $value }} payment failures per second"
+            runbook: "https://wiki.ahmedelbaz.dev/runbooks/payment-failures"
+
+        - alert: CourseContentDeliveryFailures
+          expr: |
+            sum(rate(content_delivery_errors_total{namespace="ahmedelbaz"}[5m])) > 10
+          for: 10m
+          labels:
+            severity: warning
+            team: product
+          annotations:
+            summary: "Course content delivery failures"
+            description: "{{ $value }} content delivery errors per second"
+
+        - alert: VideoStreamingLatency
+          expr: |
+            histogram_quantile(0.95, sum(rate(video_stream_duration_seconds_bucket{namespace="ahmedelbaz"}[5m])) by (le)) > 5
+          for: 10m
+          labels:
+            severity: warning
+            team: product
+          annotations:
+            summary: "Video streaming latency high"
+            description: "P95 video streaming latency is {{ $value }}s"
+
+        - alert: CertificateGenerationFailures
+          expr: |
+            sum(rate(certificate_generation_errors_total{namespace="ahmedelbaz"}[1h])) > 5
+          for: 15m
+          labels:
+            severity: warning
+            team: product
+          annotations:
+            summary: "Certificate generation failures"
+            description: "{{ $value }} certificate generation errors per hour"
+
+        - alert: LowCourseCompletionRate
+          expr: |
+            sum(rate(course_completions_total{namespace="ahmedelbaz"}[24h])) /
+            sum(rate(course_enrollments_total{namespace="ahmedelbaz"}[24h])) < 0.01
+          for: 1h
+          labels:
+            severity: info
+            team: product
+          annotations:
+            summary: "Course completion rate is very low"
+            description: "Less than 1% of enrolled students are completing courses"
+
+        - alert: ForumActivityAnomaly
+          expr: |
+            abs(sum(rate(forum_posts_total{namespace="ahmedelbaz"}[1h])) - avg_over_time(sum(rate(forum_posts_total{namespace="ahmedelbaz"}[1h]))[7d:1h])) /
+            avg_over_time(sum(rate(forum_posts_total{namespace="ahmedelbaz"}[1h]))[7d:1h]) > 2
+          for: 2h
+          labels:
+            severity: info
+            team: product
+          annotations:
+            summary: "Forum activity anomaly detected"
+            description: "Forum post rate deviates more than 200% from 7-day average"

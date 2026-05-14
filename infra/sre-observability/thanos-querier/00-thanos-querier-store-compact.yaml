@@ -1,0 +1,381 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: thanos-querier-config
+  namespace: ahmedelbaz
+  labels:
+    app: thanos-querier
+data:
+  query.yml: |
+    addresses:
+      - 0.0.0.0:10902
+    grpc_address: 0.0.0.0:10901
+    http_address: 0.0.0.0:19192
+    log_level: info
+    query_timeout: 5m
+    max_concurrent_queries: 20
+    query_replica_labels:
+      - replica
+    store:
+      - --store=thanos-sidecar:10901
+      - --store=thanos-store:10901
+    store_sd_files: []
+    store_sd_config: []
+    selector_labels: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: thanos-querier
+  namespace: ahmedelbaz
+  labels:
+    app: thanos-querier
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: thanos-querier
+  template:
+    metadata:
+      labels:
+        app: thanos-querier
+    spec:
+      serviceAccountName: prometheus
+      securityContext:
+        runAsUser: 65534
+        runAsGroup: 65534
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - thanos-querier
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: thanos-querier
+          image: thanosio/thanos:v0.32.0
+          args:
+            - query
+            - --http-address=0.0.0.0:19192
+            - --grpc-address=0.0.0.0:10901
+            - --query.replica-label=replica
+            - --store=thanos-sidecar:10901
+            - --store=thanos-store:10901
+            - --query.timeout=5m
+            - --query.max-concurrent=20
+            - --labels.partial_response.strategy=abort
+            - --web.route-prefix=/
+            - --log.level=info
+          ports:
+            - name: http
+              containerPort: 19192
+              protocol: TCP
+            - name: grpc
+              containerPort: 10901
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            runAsUser: 65534
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 19192
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 19192
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: thanos-querier
+  namespace: ahmedelbaz
+  labels:
+    app: thanos-querier
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 19192
+      targetPort: 19192
+      protocol: TCP
+    - name: grpc
+      port: 10901
+      targetPort: 10901
+      protocol: TCP
+  selector:
+    app: thanos-querier
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: thanos-store-config
+  namespace: ahmedelbaz
+  labels:
+    app: thanos-store
+data:
+  store.yml: |
+    data_dir: /data
+    objstore:
+      type: S3
+      config:
+        bucket: ahmedelbaz-thanos
+        endpoint: s3.amazonaws.com
+        region: us-east-1
+        access_key: "${S3_ACCESS_KEY}"
+        secret_key: "${S3_SECRET_KEY}"
+    index_header_format: v2
+    chunk_pool_size: 2GB
+    max_concurrent_downloads: 20
+    sync_block_duration: 3m
+    compact_retention_period: 0s
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: thanos-store
+  namespace: ahmedelbaz
+  labels:
+    app: thanos-store
+spec:
+  serviceName: thanos-store
+  replicas: 1
+  selector:
+    matchLabels:
+      app: thanos-store
+  template:
+    metadata:
+      labels:
+        app: thanos-store
+    spec:
+      serviceAccountName: prometheus
+      securityContext:
+        runAsUser: 65534
+        runAsGroup: 65534
+      containers:
+        - name: thanos-store
+          image: thanosio/thanos:v0.32.0
+          args:
+            - store
+            - --data-dir=/data
+            - --objstore.config-file=/etc/thanos/store.yml
+            - --grpc-address=0.0.0.0:10901
+            - --http-address=0.0.0.0:10902
+            - --index-header-format=v2
+            - --chunk-pool-size=2GB
+            - --sync-block-duration=3m
+            - --log.level=info
+          ports:
+            - name: grpc
+              containerPort: 10901
+              protocol: TCP
+            - name: http
+              containerPort: 10902
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+          securityContext:
+            runAsUser: 65534
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: thanos-secrets
+                  key: s3-access-key
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: thanos-secrets
+                  key: s3-secret-key
+          volumeMounts:
+            - name: config
+              mountPath: /etc/thanos
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 10902
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 10902
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: config
+          configMap:
+            name: thanos-store-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app: thanos-store
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: ssd
+        resources:
+          requests:
+            storage: 30Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: thanos-store
+  namespace: ahmedelbaz
+  labels:
+    app: thanos-store
+spec:
+  type: ClusterIP
+  ports:
+    - name: grpc
+      port: 10901
+      targetPort: 10901
+      protocol: TCP
+    - name: http
+      port: 10902
+      targetPort: 10902
+      protocol: TCP
+  selector:
+    app: thanos-store
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: thanos-compact
+  namespace: ahmedelbaz
+  labels:
+    app: thanos-compact
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: thanos-compact
+  template:
+    metadata:
+      labels:
+        app: thanos-compact
+    spec:
+      serviceAccountName: prometheus
+      securityContext:
+        runAsUser: 65534
+        runAsGroup: 65534
+      containers:
+        - name: thanos-compact
+          image: thanosio/thanos:v0.32.0
+          args:
+            - compact
+            - --data-dir=/data
+            - --objstore.config-file=/etc/thanos/objstore.yml
+            - --http-address=0.0.0.0:10902
+            - --log.level=info
+            - --compact.consistency-delay=30m
+            - --retention.resolution-raw=30d
+            - --retention.resolution-5m=90d
+            - --retention.resolution-1h=180d
+            - --downsampling.disable
+            - --wait-active-index-duration=10m
+          ports:
+            - name: http
+              containerPort: 10902
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+          securityContext:
+            runAsUser: 65534
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: thanos-secrets
+                  key: s3-access-key
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: thanos-secrets
+                  key: s3-secret-key
+          volumeMounts:
+            - name: config
+              mountPath: /etc/thanos
+            - name: data
+              mountPath: /data
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 10902
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: config
+          configMap:
+            name: thanos-sidecar-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: thanos-compact
+  namespace: ahmedelbaz
+  labels:
+    app: thanos-compact
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 10902
+      targetPort: 10902
+      protocol: TCP
+  selector:
+    app: thanos-compact

@@ -1,0 +1,127 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-alerting-rules
+  namespace: ahmedelbaz
+  labels:
+    app: prometheus
+data:
+  alerting-rules.yml: |
+    groups:
+      - name: lms-platform-alerts
+        interval: 15s
+        rules:
+          - alert: HighErrorRate
+            expr: |
+              (
+                sum(rate(http_requests_total{status=~"5..", namespace="ahmedelbaz"}[5m]))
+                /
+                sum(rate(http_requests_total{namespace="ahmedelbaz"}[5m]))
+              ) > 0.05
+            for: 5m
+            labels:
+              severity: critical
+              team: platform
+            annotations:
+              summary: "High error rate detected"
+              description: "Error rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+
+          - alert: HighLatencyP99
+            expr: |
+              histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{namespace="ahmedelbaz"}[5m])) by (le, endpoint)) > 2
+            for: 5m
+            labels:
+              severity: warning
+              team: platform
+            annotations:
+              summary: "High P99 latency detected"
+              description: "P99 latency is {{ $value }}s (threshold: 2s)"
+
+          - alert: HighMemoryUsage
+            expr: |
+              container_memory_working_set_bytes{namespace="ahmedelbaz"} / container_spec_memory_limit_bytes{namespace="ahmedelbaz"} > 0.85
+            for: 5m
+            labels:
+              severity: warning
+              team: platform
+            annotations:
+              summary: "High memory usage on {{ $labels.container }}"
+              description: "Memory usage is {{ $value | humanizePercentage }} of limit"
+
+          - alert: HighCPUUsage
+            expr: |
+              sum(rate(container_cpu_usage_seconds_total{namespace="ahmedelbaz"}[5m])) by (pod, container)
+              / sum(kube_pod_container_resource_limits{resource="cpu", namespace="ahmedelbaz"}) by (pod, container) > 0.85
+            for: 5m
+            labels:
+              severity: warning
+              team: platform
+            annotations:
+              summary: "High CPU usage on {{ $labels.container }}"
+              description: "CPU usage is {{ $value | humanizePercentage }} of limit"
+
+          - alert: PodCrashLooping
+            expr: |
+              rate(kube_pod_container_status_restarts_total{namespace="ahmedelbaz"}[15m]) > 0.1
+            for: 15m
+            labels:
+              severity: critical
+              team: platform
+            annotations:
+              summary: "Pod {{ $labels.pod }} is crash looping"
+              description: "Pod {{ $labels.pod }} has restarted {{ $value }} times in the last 15 minutes"
+
+          - alert: DatabaseConnectionPoolExhausted
+            expr: |
+              mysql_global_status_threads_connected > 180
+            for: 5m
+            labels:
+              severity: critical
+              team: database
+            annotations:
+              summary: "MySQL connection pool near exhaustion"
+              description: "{{ $value }} active connections (threshold: 180)"
+
+          - alert: RedisHighMemory
+            expr: |
+              redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+            for: 5m
+            labels:
+              severity: warning
+              team: platform
+            annotations:
+              summary: "Redis memory usage high"
+              description: "Redis using {{ $value | humanizePercentage }} of max memory"
+
+          - alert: DiskSpaceLow
+            expr: |
+              node_filesystem_avail_bytes{fstype=~"ext4|xfs"} / node_filesystem_size_bytes{fstype=~"ext4|xfs"} < 0.15
+            for: 10m
+            labels:
+              severity: warning
+              team: infrastructure
+            annotations:
+              summary: "Low disk space on {{ $labels.instance }}"
+              description: "Only {{ $value | humanizePercentage }} disk space remaining"
+
+          - alert: SSLCertExpiry
+            expr: |
+              probe_ssl_earliest_cert_expiry - time() < 7 * 24 * 3600
+            for: 1h
+            labels:
+              severity: warning
+              team: security
+            annotations:
+              summary: "SSL certificate expiring soon"
+              description: "Certificate for {{ $labels.instance }} expires in {{ $value }} seconds"
+
+          - alert: PaymentGatewayDown
+            expr: |
+              probe_success{job="blackbox-exporter", target=~".*payment.*"} == 0
+            for: 2m
+            labels:
+              severity: critical
+              team: payments
+            annotations:
+              summary: "Payment gateway is down"
+              description: "Payment gateway probe has been failing"

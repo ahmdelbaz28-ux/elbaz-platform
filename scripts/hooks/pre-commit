@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+#
+# Pre-commit hook: Prevent large files and binaries from being committed.
+# This runs BEFORE every commit and blocks files exceeding 500KB.
+#
+# Skip (emergency only): git commit --no-verify
+#
+
+set -euo pipefail
+
+MAX_FILE_SIZE_KB=500
+MAX_TOTAL_SIZE_MB=50
+BLOCKED_PATTERNS="\.tar\.gz$|\.zip$|\.rar$|\.7z$|\.dmg$|\.iso$|\.mp4$|\.mov$|\.avi$|\.mkv$|\.webm$|\.wav$|\.mp3$|\.flac$|\.aac$|\.psd$|\.ai$|\.svgz$"
+
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+# ── 1. Check individual file sizes ──
+oversized_files=()
+for file in $(git diff --cached --name-only --diff-filter=ACM 2>/dev/null); do
+  if [ -f "$file" ]; then
+    size_kb=$(du -k "$file" 2>/dev/null | cut -f1)
+    if [ -n "$size_kb" ] && [ "$size_kb" -gt "$MAX_FILE_SIZE_KB" ]; then
+      oversized_files+=("$file (${size_kb}KB)")
+    fi
+  fi
+done
+
+if [ ${#oversized_files[@]} -gt 0 ]; then
+  echo ""
+  echo -e "${RED}❌ BLOCKED: Files exceed ${MAX_FILE_SIZE_KB}KB limit:${NC}"
+  for f in "${oversized_files[@]}"; do
+    echo -e "${RED}   → $f${NC}"
+  done
+  echo -e "${YELLOW}💡 Use git-lfs, add to .gitignore, or compress.${NC}"
+  echo -e "${YELLOW}   Bypass: git commit --no-verify${NC}"
+  exit 1
+fi
+
+# ── 2. Check blocked binary patterns ──
+blocked_files=()
+for file in $(git diff --cached --name-only --diff-filter=ACM 2>/dev/null); do
+  if echo "$file" | grep -qE "$BLOCKED_PATTERNS"; then
+    blocked_files+=("$file")
+  fi
+done
+
+if [ ${#blocked_files[@]} -gt 0 ]; then
+  echo ""
+  echo -e "${RED}❌ BLOCKED: Binary files (use git-lfs or .gitignore):${NC}"
+  for f in "${blocked_files[@]}"; do
+    echo -e "${RED}   → $f${NC}"
+  done
+  exit 1
+fi
+
+echo "✅ Pre-commit checks passed!"

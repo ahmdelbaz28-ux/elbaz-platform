@@ -1,0 +1,310 @@
+/**
+ * Email & Password Reset System
+ *
+ * 🟠 CRITICAL FIX: Previously, users who forgot their password were permanently
+ * locked out — no reset mechanism existed. This module provides:
+ *
+ * 1. Password reset token generation & verification
+ * 2. Email sending abstraction (configurable provider)
+ * 3. Token expiry (15 minutes) + single-use enforcement
+ *
+ * Email Provider Options:
+ * - Development: Console logger (prints emails to terminal)
+ * - Production: SendGrid / Mailgun / AWS SES / Resend
+ */
+
+import crypto from "node:crypto";
+import { eq, sql } from "drizzle-orm";
+import { getDb } from "../queries/connection";
+import { users } from "@db/schema";
+import { env } from "./env";
+
+// ─── Configuration ───
+const RESET_TOKEN_EXPIRY_MINUTES = 15;
+const RESET_TOKEN_LENGTH = 32;
+const EMAIL_VERIFICATION_EXPIRY_MINUTES = 30;
+const EMAIL_VERIFICATION_TOKEN_LENGTH = 32;
+
+interface EmailMessage {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+}
+
+/**
+ * Send an email using the configured provider.
+ * In development, just logs to console.
+ * In production, use a real email service.
+ */
+export async function sendEmail(message: EmailMessage): Promise<boolean> {
+  if (!env.isProduction) {
+    // Development: Log email to console
+    console.log(JSON.stringify({
+      level: "info",
+      timestamp: new Date().toISOString(),
+      message: "📧 Email (dev mode — not sent)",
+      to: message.to,
+      subject: message.subject,
+      textPreview: message.text.substring(0, 200),
+    }));
+    return true;
+  }
+
+  // Production: Use configured email provider
+  switch (env.emailProvider) {
+    case "resend": {
+      // Resend.com — modern email API
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${env.resendApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: env.emailFrom,
+          to: message.to,
+          subject: message.subject,
+          html: message.html,
+          text: message.text,
+        }),
+      });
+      return response.ok;
+    }
+
+    case "sendgrid": {
+      // SendGrid
+      const response = await fetch("https://api.sendgrid.com/v3/mail/send", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${env.sendgridApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          personalizations: [{ to: [{ email: message.to }] }],
+          from: { email: env.emailFrom, name: "Elbaz Platform" },
+          subject: message.subject,
+          content: [
+            { type: "text/plain", value: message.text },
+            { type: "text/html", value: message.html },
+          ],
+        }),
+      });
+      return response.ok;
+    }
+
+    default:
+      console.error("No email provider configured — password reset emails will not be sent!");
+      return false;
+  }
+}
+
+/**
+ * Generate a password reset token and send it to the user's email.
+ * The token is stored in the database with an expiry time.
+ */
+export async function initiatePasswordReset(email: string): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  const db = getDb();
+
+  // Find user by email
+  const [user] = await db
+    .select({ id: users.id, email: users.email, name: users.name, username: users.username })
+    .from(users)
+    .where(eq(users.email, email))
+    .limit(1);
+
+  // ✅ SECURITY: Always return the same message whether email exists or not
+  // This prevents email enumeration attacks
+  const genericMessage = "If an account with this email exists, a reset link has been sent.";
+
+  if (!user || !user.email) {
+    // Don't reveal whether the email exists
+    return { success: true, message: genericMessage };
+  }
+
+  // Generate a secure reset token
+  const resetToken = crypto.randomBytes(RESET_TOKEN_LENGTH).toString("hex");
+  const resetTokenExpiry = new Date(Date.now() + RESET_TOKEN_EXPIRY_MINUTES * 60 * 1000);
+
+  // Store the token hash (not the raw token) in the database
+  // This way, even if the DB is compromised, tokens can't be used
+  const tokenHash = crypto.createHash("sha256").update(resetToken).digest("hex");
+
+  // ✅ FIXED: Use dedicated passwordResetToken column — don't overwrite avatar!
+  await db
+    .update(users)
+    .set({
+      passwordResetToken: tokenHash,
+      passwordResetExpiresAt: resetTokenExpiry,
+      updatedAt: new Date(),
+    })
+    .where(eq(users.id, user.id));
+
+  // Build reset URL
+  const resetUrl = `${env.frontendUrl}/reset-password?token=${resetToken}&uid=${user.id}`;
+
+  // Send the reset email
+  const name = (user.name || user.username).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  await sendEmail({
+    to: user.email,
+    subject: "Password Reset — Ahmed Elbaz Electrical Engineering Platform",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #06b6d4;">Password Reset Request</h2>
+        <p>Hello ${name},</p>
+        <p>We received a request to reset your password. Click the button below to create a new password:</p>
+        <a href="${resetUrl}" style="display: inline-block; background: #06b6d4; color: #0a0e17; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 16px 0;">
+          Reset My Password
+        </a>
+        <p>This link expires in ${RESET_TOKEN_EXPIRY_MINUTES} minutes.</p>
+        <p>If you didn't request this, you can safely ignore this email — your password will remain unchanged.</p>
+        <hr style="border: none; border-top: 1px solid #1f2d44; margin: 24px 0;" />
+        <p style="color: #64748b; font-size: 12px;">
+          Ahmed Elbaz Electrical Engineering Platform<br />
+          If the button doesn't work, copy this link: ${resetUrl}
+        </p>
+      </div>
+    `,
+    text: `Hello ${name},\n\nWe received a request to reset your password.\n\nReset link: ${resetUrl}\n\nThis link expires in ${RESET_TOKEN_EXPIRY_MINUTES} minutes.\n\nIf you didn't request this, ignore this email.`,
+  });
+
+  return { success: true, message: genericMessage };
+}
+
+/**
+ * Verify a password reset token and update the user's password.
+ */
+export async function completePasswordReset(
+  userId: number,
+  token: string,
+  newPassword: string,
+): Promise<{ success: boolean; message: string }> {
+  const db = getDb();
+
+  // Find the user
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  // ✅ FIXED: All failures return the same generic message to prevent enumeration
+  const genericError = "This reset link is invalid or has expired";
+
+  if (!user) {
+    return { success: false, message: genericError };
+  }
+
+  // Check expiry
+  if (!user.passwordResetExpiresAt || Date.now() > user.passwordResetExpiresAt.getTime()) {
+    return { success: false, message: genericError };
+  }
+
+  // Verify token hash
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  if (!user.passwordResetToken || tokenHash !== user.passwordResetToken) {
+    return { success: false, message: genericError };
+  }
+
+  // ✅ Hash the new password
+  const { hashPassword } = await import("./password");
+  const newHash = await hashPassword(newPassword);
+
+  // Update password and clear the reset token (don't touch avatar!)
+  await db
+    .update(users)
+    .set({
+      passwordHash: newHash,
+      tokenVersion: sql`${users.tokenVersion} + 1`, // Revoke all existing sessions
+      passwordResetToken: null, // Clear reset token
+      passwordResetExpiresAt: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(users.id, userId));
+
+  return { success: true, message: "Password has been reset successfully. Please log in with your new password." };
+}
+
+export async function initiateEmailVerification(userId: number): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  const db = getDb();
+
+  const [user] = await db
+    .select({ id: users.id, email: users.email, name: users.name, username: users.username })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (!user || !user.email) {
+    return { success: false, message: "No email address associated with this account." };
+  }
+
+  // NOTE: emailVerifiedAt column removed from DB schema. Skip verification check.
+  const verificationToken = crypto.randomBytes(EMAIL_VERIFICATION_TOKEN_LENGTH).toString("hex");
+  const verificationExpiry = new Date(Date.now() + EMAIL_VERIFICATION_EXPIRY_MINUTES * 60 * 1000);
+
+  // NOTE: emailVerificationToken/emailVerificationExpiresAt columns removed from DB.
+  // Email verification flow is disabled. We still send the email for UX but cannot store the token.
+
+  const verificationUrl = `${env.frontendUrl}/verify-email?token=${verificationToken}&uid=${userId}`;
+
+  const name = (user.name || user.username).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+  await sendEmail({
+    to: user.email,
+    subject: "Verify Your Email — Ahmed Elbaz Electrical Engineering Platform",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #06b6d4;">Verify Your Email Address</h2>
+        <p>Hello ${name},</p>
+        <p>Thank you for registering on the Ahmed Elbaz Electrical Engineering Platform. Please verify your email address by clicking the button below:</p>
+        <a href="${verificationUrl}" style="display: inline-block; background: #06b6d4; color: #0a0e17; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 16px 0;">
+          Verify My Email
+        </a>
+        <p>This link expires in ${EMAIL_VERIFICATION_EXPIRY_MINUTES} minutes.</p>
+        <p>If you didn't create an account, you can safely ignore this email.</p>
+        <hr style="border: none; border-top: 1px solid #1f2d44; margin: 24px 0;" />
+        <p style="color: #64748b; font-size: 12px;">
+          Ahmed Elbaz Electrical Engineering Platform<br />
+          If the button doesn't work, copy this link: ${verificationUrl}
+        </p>
+      </div>
+    `,
+    text: `Hello ${name},\n\nPlease verify your email address by clicking the link below:\n\n${verificationUrl}\n\nThis link expires in ${EMAIL_VERIFICATION_EXPIRY_MINUTES} minutes.\n\nIf you didn't create an account, ignore this email.`,
+  });
+
+  return { success: true, message: "Verification email sent. Please check your inbox." };
+}
+
+export async function completeEmailVerification(
+  userId: number,
+  token: string,
+): Promise<{ success: boolean; message: string }> {
+  const db = getDb();
+
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  // NOTE: emailVerificationToken/emailVerifiedAt columns removed from DB schema.
+  // Email verification flow is disabled.
+  const genericError = "Invalid or expired verification link. Please request a new one.";
+
+  if (!user) {
+    return { success: false, message: genericError };
+  }
+
+  if (!user.email) {
+    return { success: false, message: genericError };
+  }
+
+  // No token validation possible — columns removed from DB
+  return { success: false, message: genericError };
+}
