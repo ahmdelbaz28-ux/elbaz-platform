@@ -121,3 +121,103 @@ export function HoverSpring({ children, className, ...props }: React.HTMLAttribu
     </motion.div>
   );
 }
+
+// ─── Elite "Master Class" Components ───
+
+/**
+ * 3D Tilt Card Effect
+ * Adds professional depth that follows mouse movement.
+ */
+export function TiltCard({ children, className, ...props }: React.HTMLAttributes<HTMLDivElement> & MotionProps) {
+  const [rotateX, setRotateX] = React.useState(0);
+  const [rotateY, setRotateY] = React.useState(0);
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    const rotateX = ((y - centerY) / centerY) * -10;
+    const rotateY = ((x - centerX) / centerX) * 10;
+
+    setRotateX(rotateX);
+    setRotateY(rotateY);
+  };
+
+  const handleMouseLeave = () => {
+    setRotateX(0);
+    setRotateY(0);
+  };
+
+  return (
+    <motion.div
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      animate={{ rotateX, rotateY }}
+      transition={{ type: "spring", stiffness: 150, damping: 20 }}
+      style={{ perspective: 1000, transformStyle: "preserve-3d" }}
+      className={cn("relative transition-all duration-200", className)}
+      {...props}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+/**
+ * Magnetic Attraction Effect
+ * Elements feel "alive" by subtly gravitating towards the cursor.
+ */
+export function Magnetic({ children, ...props }: { children: React.ReactElement }) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  const [position, setPosition] = React.useState({ x: 0, y: 0 });
+
+  const handleMouseMove = (e: MouseEvent) => {
+    const { clientX, clientY } = e;
+    const { left, top, width, height } = ref.current!.getBoundingClientRect();
+    const x = clientX - (left + width / 2);
+    const y = clientY - (top + height / 2);
+    setPosition({ x: x * 0.2, y: y * 0.2 });
+  };
+
+  const handleMouseLeave = () => {
+    setPosition({ x: 0, y: 0 });
+  };
+
+  return (
+    <motion.div
+      ref={ref}
+      onMouseMove={handleMouseMove as any}
+      onMouseLeave={handleMouseLeave}
+      animate={{ x: position.x, y: position.y }}
+      transition={{ type: "spring", stiffness: 150, damping: 15, mass: 0.1 }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+/**
+ * Electric Pulse Aura
+ * Subtle breathing neon glow for premium elements.
+ */
+export function NeonGlow({ children, className, color = "#06b6d4", ...props }: { children: React.ReactNode, className?: string, color?: string }) {
+  return (
+    <motion.div
+      animate={{ 
+        boxShadow: [
+          `0 0 0px ${color}33`, 
+          `0 0 20px ${color}66`, 
+          `0 0 0px ${color}33`
+        ] 
+      }}
+      transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+      className={cn("rounded-xl", className)}
+      {...props}
+    >
+      {children}
+    </motion.div>
+  );
+}
+

@@ -3,7 +3,8 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { trpc } from "@/providers/trpc";
 import CourseCard from "@/components/CourseCard";
 import SEO from "@/components/SEO";
-import { StaggerContainer, StaggerItem, FadeIn, HoverSpring } from "@/components/ui/motion";
+import { StaggerContainer, StaggerItem, FadeIn, HoverSpring, NeonGlow } from "@/components/ui/motion";
+
 import SingleLineDiagram from "@/components/ui/SingleLineDiagram";
 import ScadaGauge from "@/components/ui/ScadaGauge";
 import ArcFlashButton from "@/components/ui/ArcFlashButton";
@@ -483,16 +484,19 @@ export default function Home() {
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0a0e17]/40 via-transparent to-white/5 pointer-events-none" />
               </div>
               
-              {/* Floating Badge (Star Effect) */}
-              <div className="absolute -bottom-4 -right-4 z-20 hidden lg:flex items-center gap-3 rounded-2xl bg-[#111827] p-4 border border-[#1f2d44] shadow-xl animate-[pulse_3s_ease-in-out_infinite]">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[rgba(6,182,212,0.1)]">
-                  <Star className="h-6 w-6 text-yellow-400 fill-yellow-400" />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-white">Top Rated</p>
-                  <p className="text-xs text-[#94a3b8]">Engineering Expert</p>
-                </div>
+              {/* Floating Badge (Star Effect) - Upgraded to NeonGlow */}
+              <div className="absolute -bottom-4 -right-4 z-20 hidden lg:flex">
+                <NeonGlow color="#06b6d4" className="flex items-center gap-3 rounded-2xl bg-[#111827] p-4 border border-[#1f2d44] shadow-xl">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[rgba(6,182,212,0.1)]">
+                    <Star className="h-6 w-6 text-yellow-400 fill-yellow-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-white">Top Rated</p>
+                    <p className="text-xs text-[#94a3b8]">Engineering Expert</p>
+                  </div>
+                </NeonGlow>
               </div>
+
             </div>
           </FadeIn>
 
