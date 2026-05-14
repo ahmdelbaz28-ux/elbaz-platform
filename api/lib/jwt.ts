@@ -28,40 +28,49 @@ export interface TokenPayload {
   username: string;
   role: string;
   tokenVersion: number;
-  // ✅ SECURITY: Add issuer, audience, and subject for token validation
   sub?: string;
+  fpt?: string; // 🚀 Elite: Subtle Device Fingerprint
 }
 
 const ISSUER = "elbaz-platform";
 const AUDIENCE = "elbaz-platform-users";
 
-// ✅ SECURITY FIX: Extended to 30 days (Remember Me) to improve UX and keep users logged in.
-// Active users get auto-refreshed via sliding session in context.ts
 const ACCESS_TOKEN_TTL = "30d";
 
-export async function createToken(payload: TokenPayload): Promise<string> {
-  return new SignJWT(payload as unknown as Record<string, unknown>)
+export async function createToken(payload: TokenPayload, fingerprint?: string): Promise<string> {
+  const jwt = new SignJWT({ ...payload, fpt: fingerprint } as unknown as Record<string, unknown>)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setIssuer(ISSUER)               // ✅ SECURITY: Bind token to this application
-    .setAudience(AUDIENCE)           // ✅ SECURITY: Prevent token confusion attacks
-    .setSubject(`user:${payload.userId}`) // ✅ SECURITY: Add subject claim
-    .setExpirationTime(ACCESS_TOKEN_TTL)
-    .sign(getSecret());
+    .setIssuer(ISSUER)
+    .setAudience(AUDIENCE)
+    .setSubject(`user:${payload.userId}`)
+    .setExpirationTime(ACCESS_TOKEN_TTL);
+  
+  return jwt.sign(getSecret());
 }
 
-export async function verifyToken(token: string): Promise<TokenPayload | null> {
+export async function verifyToken(token: string, expectedFingerprint?: string): Promise<TokenPayload | null> {
   try {
     const { payload } = await jwtVerify(token, getSecret(), {
-      issuer: ISSUER,                // ✅ SECURITY: Reject tokens from other issuers
-      audience: AUDIENCE,            // ✅ SECURITY: Reject tokens for other audiences
-      clockTolerance: 30,            // 30 seconds clock skew tolerance
+      issuer: ISSUER,
+      audience: AUDIENCE,
+      clockTolerance: 30,
     });
-    return payload as unknown as TokenPayload;
+    
+    const tokenPayload = payload as unknown as TokenPayload;
+    
+    // 🛡️ Elite Security: Verify device fingerprint if provided
+    if (tokenPayload.fpt && expectedFingerprint && tokenPayload.fpt !== expectedFingerprint) {
+      console.warn(`[Security][JWT] Fingerprint mismatch for user ${tokenPayload.userId}. Hijack attempt?`);
+      return null;
+    }
+    
+    return tokenPayload;
   } catch {
     return null;
   }
 }
+
 
 /**
  * ✅ SECURITY: Check how many seconds until the token expires.

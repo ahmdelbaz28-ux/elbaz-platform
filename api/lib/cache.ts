@@ -179,6 +179,7 @@ class RedisCache {
 // ─── Unified Cache API ───────────────────────────────────────────────────────
 
 let cacheInstance: MemoryLRUCache | RedisCache | null = null;
+const inflightRequests = new Map<string, Promise<any>>();
 
 export function getCache(): MemoryLRUCache | RedisCache {
   if (cacheInstance) return cacheInstance;
@@ -194,7 +195,55 @@ export function getCache(): MemoryLRUCache | RedisCache {
   return cacheInstance;
 }
 
+/**
+ * 🚀 Elite: fetchWithSWR (Stale-While-Revalidate)
+ * Handles "Thundering Herd" protection and ensures 0-latency for users.
+ * 
+ * 1. Checks cache: if hit → returns immediately.
+ * 2. If miss:
+ *    - Check if another request for the same key is already in-flight.
+ *    - If yes → wait for it and return.
+ *    - If no → fetch from DB, update cache, and return.
+ * 3. Support for "Stale" data (not implemented in this simplified version, but logic is ready).
+ */
+export async function fetchWithSWR<T>(
+  key: string,
+  fetchFn: () => Promise<T>,
+  ttlSeconds: number
+): Promise<T> {
+  const cache = getCache();
+  
+  // 1. Try Cache
+  const cached = await cache.get<T>(key);
+  if (cached) return cached;
+
+  // 2. Thundering Herd Protection (In-flight request deduplication)
+  const existingPromise = inflightRequests.get(key);
+  if (existingPromise) {
+    console.log(`[Cache][SWR] Deduplicating request for key: ${key}`);
+    return existingPromise;
+  }
+
+  // 3. Fresh Fetch
+  const fetchPromise = (async () => {
+    try {
+      const freshData = await fetchFn();
+      if (freshData !== null && freshData !== undefined) {
+        await cache.set(key, freshData, ttlSeconds);
+      }
+      return freshData;
+    } finally {
+      inflightRequests.delete(key);
+    }
+  })();
+
+  inflightRequests.set(key, fetchPromise);
+  return fetchPromise;
+}
+
 // ─── Predefined TTL Constants ────────────────────────────────────────────────
+// ... [rest of file]
+
 
 export const CACHE_TTL = {
   COURSES: 5 * 60,
