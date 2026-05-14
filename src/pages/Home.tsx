@@ -461,15 +461,41 @@ export default function Home() {
             </StaggerItem>
           </StaggerContainer>
 
-          {/* Right - Hero showcase image with glow card */}
-          <FadeIn delay={0.4} className="mt-12 flex flex-1 justify-center lg:mt-0">
-            <div className="hero-image-wrapper w-full max-w-lg">
-              <div className="hero-image-glow-ring">
-                <img src="hero-main.webp" alt="Master Electrical Engineering with ETAP, SKM, PowerFactory, and PVSyst" className="hero-image-display" loading="eager" fetchPriority="high" decoding="async" width="448" height="448" onError={(e) => { e.currentTarget.src = "/hero-bg.jpg"; e.currentTarget.onerror = null; }} />
+          {/* Right - Hero showcase image with premium glow card */}
+          <FadeIn delay={0.4} className="mt-12 flex flex-1 justify-center lg:mt-0 lg:justify-end">
+            <div className="hero-image-wrapper w-full max-w-xl lg:max-w-3xl relative">
+              {/* Premium Neon Glow Background */}
+              <div className="absolute -inset-4 bg-gradient-to-r from-[#06b6d4]/30 to-[#8b5cf6]/30 blur-2xl opacity-50 rounded-3xl" />
+              
+              <div className="hero-image-glow-ring relative z-10 overflow-hidden rounded-3xl border border-[#1f2d44] bg-[#0a0e17] shadow-2xl">
+                <img 
+                  src="hero-main.webp" 
+                  alt="Master Electrical Engineering with Eng. Ahmed Elbaz" 
+                  className="hero-image-display w-full h-auto object-cover transform hover:scale-105 transition-transform duration-700" 
+                  loading="eager" 
+                  fetchPriority="high" 
+                  decoding="async" 
+                  width="1200" 
+                  height="800" 
+                  onError={(e) => { e.currentTarget.src = "/hero-bg.jpg"; e.currentTarget.onerror = null; }} 
+                />
+                {/* Glossy overlay effect */}
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0a0e17]/40 via-transparent to-white/5 pointer-events-none" />
               </div>
-              <div className="hero-image-shimmer" />
+              
+              {/* Floating Badge (Star Effect) */}
+              <div className="absolute -bottom-4 -right-4 z-20 hidden lg:flex items-center gap-3 rounded-2xl bg-[#111827] p-4 border border-[#1f2d44] shadow-xl animate-[pulse_3s_ease-in-out_infinite]">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[rgba(6,182,212,0.1)]">
+                  <Star className="h-6 w-6 text-yellow-400 fill-yellow-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-white">Top Rated</p>
+                  <p className="text-xs text-[#94a3b8]">Engineering Expert</p>
+                </div>
+              </div>
             </div>
           </FadeIn>
+
         </div>
       </section>
 
