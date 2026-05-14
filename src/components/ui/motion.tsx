@@ -192,9 +192,11 @@ export function Magnetic({ children, ...props }: { children: React.ReactElement 
       onMouseLeave={handleMouseLeave}
       animate={{ x: position.x, y: position.y }}
       transition={{ type: "spring", stiffness: 150, damping: 15, mass: 0.1 }}
+      {...props}
     >
       {children}
     </motion.div>
+
   );
 }
 
