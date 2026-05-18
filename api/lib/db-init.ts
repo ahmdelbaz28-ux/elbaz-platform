@@ -78,9 +78,11 @@ export async function ensureDatabase(): Promise<void> {
     const adminPasswordHash = await hashPassword(adminPassword);
 
     // Admin user — parameterized query to prevent SQL injection
+    // INSERT IGNORE + UPDATE ensures password stays in sync with ADMIN_PASSWORD env var
     await conn.execute(
-      `INSERT IGNORE INTO users (username, passwordHash, name, email, role, preferredLanguage, createdAt, updatedAt, lastSignInAt)
-       VALUES (?, ?, 'Ahmed Elbaz', 'admin@ahmedelbaz.qzz.io', 'admin', 'ar', NOW(), NOW(), NOW())`,
+      `INSERT INTO users (username, passwordHash, name, email, role, preferredLanguage, createdAt, updatedAt, lastSignInAt)
+       VALUES (?, ?, 'Ahmed Elbaz', 'admin@ahmedelbaz.qzz.io', 'admin', 'ar', NOW(), NOW(), NOW())
+       ON DUPLICATE KEY UPDATE passwordHash = VALUES(passwordHash)`,
       ['admin', adminPasswordHash]
     );
 
