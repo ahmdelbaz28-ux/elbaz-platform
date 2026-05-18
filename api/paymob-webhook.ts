@@ -93,6 +93,12 @@ paymobWebhook.post("/webhook", async (c) => {
 
         if (!amountValid) {
           console.error(`[Paymob Webhook] AMOUNT MISMATCH! Expected: ${expectedAmount}, Got: ${webhookAmount}, txn: ${merchantOrderId}`);
+          // Block payment — mark as failed to prevent partial-payment attacks
+          await tx
+            .update(payments)
+            .set({ status: "failed", providerPaymentId: String(obj.id) })
+            .where(eq(payments.transactionId, merchantOrderId));
+          return c.json({ ok: false, error: "Amount mismatch" }, 400);
         }
       }
 
