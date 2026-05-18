@@ -114,7 +114,26 @@ export default function Login() {
           cancel_on_tap_outside: true,
         });
       } else {
-        retryTimer = setTimeout(waitForGoogle, 200);
+        // Load GIS script on demand if not already loaded
+        if (!document.querySelector('script[src*="accounts.google.com/gsi/client"]')) {
+          const s = document.createElement('script');
+          s.src = 'https://accounts.google.com/gsi/client';
+          s.async = true;
+          s.defer = true;
+          s.onload = () => {
+            if (!disposed && window.google?.accounts?.id) {
+              window.google.accounts.id.initialize({
+                client_id: googleClientId,
+                callback: handleGoogleCallback,
+                auto_select: false,
+                cancel_on_tap_outside: true,
+              });
+            }
+          };
+          document.head.appendChild(s);
+        } else {
+          retryTimer = setTimeout(waitForGoogle, 200);
+        }
       }
     };
     waitForGoogle();
