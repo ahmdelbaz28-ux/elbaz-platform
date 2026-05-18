@@ -11,7 +11,7 @@
  * Note: OpenRouter free model availability changes frequently.
  * The system automatically adapts — dead models are skipped after 3 failures,
  * and new models can be added here when they become available.
- * Currently: 24 active free models (all verified May 2026)
+ * Currently: 21 active free models (all verified May 2026)
  */
 
 // Support both CHATBOT_API_KEY (from .env template) and OPENROUTER_API_KEY (legacy)
@@ -58,7 +58,7 @@ async function validateApiKey(): Promise<boolean> {
 }
 
 // ═══════════════════════════════════════════════════════════
-// MODEL POOL - 23 free models, ordered strongest -> weakest
+// MODEL POOL - 21 free models, ordered strongest -> weakest
 // Updated: May 2026 (all verified available on OpenRouter)
 // ═══════════════════════════════════════════════════════════
 

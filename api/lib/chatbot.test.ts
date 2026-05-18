@@ -48,7 +48,7 @@ describe("Chatbot Module", () => {
       const { getChatbotStats } = await importChatbot();
       const stats = getChatbotStats();
 
-      expect(stats.totalModels).toBe(24);
+      expect(stats.totalModels).toBe(21);
       expect(stats.lastWorkingModel).toBe("");
       expect(stats.lastWorkingTimeAgo).toBe("never");
       expect(stats.modelSuccessCounts).toEqual({});
@@ -59,9 +59,9 @@ describe("Chatbot Module", () => {
   // ─── Model pool ────────────────────────────────────────────────────────
 
   describe("model pool", () => {
-    it("has 24 models", async () => {
+    it("has 21 models", async () => {
       const { getChatbotStats } = await importChatbot();
-      expect(getChatbotStats().totalModels).toBe(24);
+      expect(getChatbotStats().totalModels).toBe(21);
     });
 
     it("models are ordered by tier (all tier 1 before tier 2, etc.)", async () => {
@@ -91,30 +91,28 @@ describe("Chatbot Module", () => {
         (args: any[]) => JSON.parse((args[1] as any).body).model
       );
 
-      // Step 2 tries models tier by tier — first 24 calls should be all 24 models
-      // in tier order. Collect the first 24 model IDs.
-      const firstPass = modelIds.slice(0, 24);
-      expect(firstPass).toHaveLength(24);
+      // Step 2 tries models tier by tier — first 21 calls should be all 21 models
+      // in tier order. Collect the first 21 model IDs.
+      const firstPass = modelIds.slice(0, 21);
+      expect(firstPass).toHaveLength(21);
 
       // Known tier 1 model IDs (6 models)
       const tier1Ids = [
-        "nvidia/nemotron-3-super-120b-a12b:free",
         "inclusionai/ring-2.6-1t:free",
-        "nvidia/nemotron-3-nano-30b-a3b:free",
-        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+        "nvidia/nemotron-3-super-120b-a12b:free",
+        "deepseek/deepseek-v4-flash:free",
         "minimax/minimax-m2.5:free",
         "z-ai/glm-4.5-air:free",
+        "arcee-ai/trinity-large-thinking:free",
       ];
 
-      // Known tier 2 model IDs (8 models)
+      // Known tier 2 model IDs (6 models)
       const tier2Ids = [
-        "nousresearch/hermes-3-llama-3.1-405b:free",
-        "openai/gpt-oss-120b:free",
         "qwen/qwen3-coder:free",
+        "google/gemma-4-31b-it:free",
+        "google/gemma-4-26b-a4b-it:free",
+        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
         "qwen/qwen3-next-80b-a3b-instruct:free",
-        "google/gemma-3-27b-it:free",
-        "poolside/laguna-m.1:free",
-        "openai/gpt-oss-20b:free",
         "meta-llama/llama-3.3-70b-instruct:free",
       ];
 
@@ -127,7 +125,7 @@ describe("Chatbot Module", () => {
         .filter((i) => i >= 0);
 
       expect(tier1Indices).toHaveLength(6);
-      expect(tier2Indices).toHaveLength(8);
+      expect(tier2Indices).toHaveLength(6);
       expect(Math.max(...tier1Indices)).toBeLessThan(Math.min(...tier2Indices));
     });
   });
