@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
 import { Clock, Star, Users, Zap, ChevronRight } from "lucide-react";
 import { TiltCard } from "@/components/ui/motion";
+import { motion } from "framer-motion";
 
 interface CourseCardProps {
   course: {
@@ -186,6 +187,11 @@ export default function CourseCard({ course }: CourseCardProps) {
 
           {/* Shimmer line on hover */}
           <div className="absolute bottom-0 start-0 h-[2px] w-0 bg-gradient-to-r from-[#06b6d4] to-[#0891b2] transition-all duration-500 group-hover:w-full" />
+
+          {/* Premium shine sweep effect */}
+          <div className="absolute inset-0 overflow-hidden rounded-2xl pointer-events-none">
+            <div className="shimmer-shine" />
+          </div>
         </article>
       </Link>
     </TiltCard>
