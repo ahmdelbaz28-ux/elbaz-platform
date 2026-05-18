@@ -113,6 +113,7 @@ CREATE TABLE IF NOT EXISTS `lessons` (
   `sortOrder`       INT                    NOT NULL DEFAULT 0,
   `isFree`          BOOLEAN                NOT NULL DEFAULT FALSE,
   `isPublished`     BOOLEAN                NOT NULL DEFAULT FALSE,
+  `attachments`     JSON                   NULL,
   `createdAt`       TIMESTAMP              NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   INDEX `lessons_course_idx` (`courseId`),
@@ -305,7 +306,7 @@ CREATE TABLE IF NOT EXISTS `passwordResetTokens` (
   `createdAt` TIMESTAMP              NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   INDEX `prt_user_idx`       (`userId`),
-  INDEX `prt_token_hash_idx` (`tokenHash`),
+  UNIQUE INDEX `prt_token_hash_idx` (`tokenHash`),
   INDEX `prt_expires_idx`    (`expiresAt`),
   CONSTRAINT `fk_prt_user_id` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -419,7 +420,7 @@ CREATE TABLE IF NOT EXISTS `siteSettings` (
   `updatedAt` TIMESTAMP              NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   INDEX `ss_section_idx`      (`section`),
-  INDEX `ss_section_key_idx`  (`section`, `key`)
+  UNIQUE INDEX `ss_section_key_idx`  (`section`, `key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
@@ -476,6 +477,26 @@ CREATE TABLE IF NOT EXISTS `promotions` (
   INDEX `prom_dates_idx` (`startsAt`, `endsAt`),
   INDEX `prom_promo_code_idx` (`promoCodeId`),
   CONSTRAINT `fk_promo_promo_code_id` FOREIGN KEY (`promoCodeId`) REFERENCES `promoCodes` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
+-- 23. softwareDownloads
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS `softwareDownloads` (
+  `id`              BIGINT UNSIGNED        NOT NULL AUTO_INCREMENT,
+  `titleEn`         VARCHAR(500)           NOT NULL,
+  `titleAr`         VARCHAR(500)           NOT NULL,
+  `descriptionEn`   TEXT                   NULL,
+  `descriptionAr`   TEXT                   NULL,
+  `url`             VARCHAR(1000)          NOT NULL,
+  `iconUrl`         VARCHAR(500)           NULL,
+  `isExternal`      BOOLEAN                NOT NULL DEFAULT TRUE,
+  `sortOrder`       INT                    NOT NULL DEFAULT 0,
+  `isActive`        BOOLEAN                NOT NULL DEFAULT TRUE,
+  `createdAt`       TIMESTAMP              NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `swdl_sort_idx` (`sortOrder`),
+  INDEX `swdl_active_idx` (`isActive`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================

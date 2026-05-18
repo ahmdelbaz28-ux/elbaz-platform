@@ -177,39 +177,23 @@ export const quizRouter = createRouter({
       const percentage = totalPoints > 0 ? Math.round((score / totalPoints) * 100) : 0;
       const passed = percentage >= 70;
 
-      // Update lesson progress
-      const [existing] = await db
-        .select()
-        .from(lessonProgress)
-        .where(
-          and(
-            eq(lessonProgress.userId, userId),
-            eq(lessonProgress.lessonId, input.lessonId)
-          )
-        )
-        .limit(1);
-
-      if (existing) {
-        await db
-          .update(lessonProgress)
-          .set({
-            isCompleted: passed,
-            isQuizPassed: passed,
-            quizScore: percentage,
-            ...(passed ? { completedAt: new Date() } : {}),
-          })
-          .where(eq(lessonProgress.id, existing.id));
-      } else {
-        await db.insert(lessonProgress).values({
-          userId,
-          courseId: lesson.courseId,
-          lessonId: input.lessonId,
+      // Update lesson progress — atomic upsert to prevent race conditions
+      await db.insert(lessonProgress).values({
+        userId,
+        courseId: lesson.courseId,
+        lessonId: input.lessonId,
+        isCompleted: passed,
+        isQuizPassed: passed,
+        quizScore: percentage,
+        ...(passed ? { completedAt: new Date() } : {}),
+      }).onDuplicateKeyUpdate({
+        set: {
           isCompleted: passed,
           isQuizPassed: passed,
           quizScore: percentage,
           ...(passed ? { completedAt: new Date() } : {}),
-        });
-      }
+        },
+      });
 
       // ✅ CRITICAL FIX: Recalculate enrollment progress after quiz submission
       // This auto-marks enrollment as "completed" when all lessons are done
