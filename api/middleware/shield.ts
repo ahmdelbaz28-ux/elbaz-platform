@@ -45,14 +45,13 @@ export const shieldMiddleware = createMiddleware(async (c, next) => {
   }
 
   // ── 2. Payload Size Guard (Anti-OOM) ──
-  // Prevent huge POST/PUT requests (max 10MB for videos/files, 100KB for others)
   const method = c.req.method;
   const contentLength = parseInt(c.req.header("Content-Length") || "0", 10);
-  
+
   if (method === "POST" || method === "PUT" || method === "PATCH") {
     const isFileUpload = path.includes("/upload") || path.includes("/r2");
-    const maxPayload = isFileUpload ? 1024 * 1024 * 1024 : 1024 * 1024; // 1GB for files, 1MB for data
-    
+    const maxPayload = isFileUpload ? 100 * 1024 * 1024 : 1024 * 1024; // 100MB for files, 1MB for data
+
     if (contentLength > maxPayload) {
       console.error(`[Shield] Payload too large from IP: ${ip}. Size: ${contentLength}`);
       return c.json({ error: "Payload Too Large" }, 413);
@@ -60,16 +59,19 @@ export const shieldMiddleware = createMiddleware(async (c, next) => {
   }
 
   // ── 3. Bot / Malicious Agent Filtering ──
+  // Only block unknown bots on sensitive auth/admin paths. Allow known crawlers and tools.
   const ua = c.req.header("User-Agent") || "";
-  const maliciousBots = /bot|spider|crawl|curl|postman|python|go-http-client|java|axios/i;
-  // We allow Clarity and GoogleBot, block others if they hit sensitive paths
-  if (maliciousBots.test(ua) && (path.includes("/api/auth") || path.includes("/api/admin"))) {
-    console.warn(`[Shield] Suspicious Bot detected: ${ua} on path: ${path}`);
+  const isSensitivePath = path.includes("/api/auth") || path.includes("/api/admin");
+  const isKnownBot = /googlebot|bingbot|slurp|duckduckbot|baiduspider|yandexbot|sogou|facebot|ia_archiver/i.test(ua);
+  const isSuspiciousAgent = /^(curl|postman|python-requests|go-http-client|java|axios)\b/i.test(ua);
+  if (isSensitivePath && isSuspiciousAgent && !isKnownBot) {
+    console.warn(`[Shield] Suspicious agent on sensitive path: ${ua} -> ${path}`);
     return c.json({ error: "Access Denied" }, 403);
   }
 
   // ── 4. Automatic System Pressure Relief ──
-  const memoryUsage = process.memoryUsage().heapUsed / process.memoryUsage().heapTotal;
+  const mem = process.memoryUsage();
+  const memoryUsage = mem.heapUsed / mem.heapTotal;
   if (memoryUsage > 0.9) {
     console.warn(`[Shield] High Memory Pressure Detected (90%+). Throttling traffic.`);
     if (path.startsWith("/api/")) {

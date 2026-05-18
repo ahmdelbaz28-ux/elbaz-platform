@@ -70,33 +70,23 @@ type Stats = {
 
 // ───────────────────────────────────────────────────────────────────────────────
 
-const sharedObserver = typeof IntersectionObserver !== 'undefined'
-  ? new IntersectionObserver(
-      (entries) => entries.forEach((e) => {
-        if (e.isIntersecting) {
-          (e.target as HTMLElement).dataset.visible = 'true';
-          sharedObserver?.unobserve(e.target);
-        }
-      }),
-      { threshold: 0.1 }
-    )
-  : null;
-
 function useRevealOnce() {
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (el.dataset.visible === 'true') { setVisible(true); return; }
-    const onIntersect = () => {
-      if (el.dataset.visible === 'true') { setVisible(true); sharedObserver?.unobserve(el); }
-    };
-    const observer = new MutationObserver(onIntersect);
-    observer.observe(el, { attributes: true, attributeFilter: ['data-visible'] });
-    sharedObserver?.observe(el);
-    onIntersect();
-    return () => { sharedObserver?.unobserve(el); observer.disconnect(); };
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.1 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
   }, []);
   return [ref, visible] as const;
 }

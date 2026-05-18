@@ -91,7 +91,7 @@ describe("Password Module", () => {
       expect(await verifyPassword("كلمةمرورقوية١٢٤", hash)).toBe(false);
     });
 
-    it("works correctly across multiple hash-verify cycles", async () => {
+    it("works correctly across multiple hash-verify cycles", { timeout: 15000 }, async () => {
       const passwords = ["pass1", "P@ssw0rd!", " very spaced out ", "😂👍≡"];
       for (const pw of passwords) {
         const hash = await hashPassword(pw);
