@@ -57,5 +57,11 @@ coverage/
 *.ai
 *.svgz
 
+# ── Data snapshots / exports (large, not needed in production) ──
+repo-main.json
+repo-page.json
+repo_main.json
+user_profile.json
+
 # ── LFS (managed by .gitattributes) ──
 # Add any binary that must be tracked via git-lfs here
