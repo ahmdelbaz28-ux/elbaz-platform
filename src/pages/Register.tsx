@@ -85,8 +85,11 @@ export default function Register() {
 
   useEffect(() => {
     if (!googleClientId) return;
-    // Wait for GIS library to load (it's loaded via <script async> in index.html)
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let disposed = false;
+
     const waitForGoogle = () => {
+      if (disposed) return;
       if (window.google?.accounts?.id) {
         window.google.accounts.id.initialize({
           client_id: googleClientId,
@@ -95,11 +98,15 @@ export default function Register() {
           cancel_on_tap_outside: true,
         });
       } else {
-        // GIS not loaded yet, retry after short delay
-        setTimeout(waitForGoogle, 200);
+        retryTimer = setTimeout(waitForGoogle, 200);
       }
     };
     waitForGoogle();
+
+    return () => {
+      disposed = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
   }, [googleClientId, handleGoogleCallback]);
 
   const handleGoogleSignIn = useCallback(() => {

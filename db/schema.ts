@@ -366,7 +366,7 @@ export const passwordResetTokens = mysqlTable(
   },
   (table) => [
     index("prt_user_idx").on(table.userId),
-    index("prt_token_hash_idx").on(table.tokenHash),
+    uniqueIndex("prt_token_hash_idx").on(table.tokenHash),
     index("prt_expires_idx").on(table.expiresAt),
     foreignKey({
       columns: [table.userId],
@@ -518,7 +518,7 @@ export const siteSettings = mysqlTable(
   },
   (table) => [
     index("ss_section_idx").on(table.section),
-    index("ss_section_key_idx").on(table.section, table.key),
+    uniqueIndex("ss_section_key_idx").on(table.section, table.key),
   ]
 );
 

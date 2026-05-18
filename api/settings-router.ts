@@ -173,20 +173,19 @@ export const settingsRouter = createRouter({
       return { success: true, id: Number(theme.insertId) };
     }),
 
-  // Activate a theme (deactivates all others — atomic operation)
+  // Activate a theme (deactivates all others — transactional for atomicity)
   activateTheme: adminQuery
     .input(z.object({ id: z.number().int().positive() }))
     .mutation(async ({ input }) => {
-      const db = getDb();
-      // SECURITY FIX: Atomic operation to prevent race condition
-      // First verify the theme exists
-      const [theme] = await db.select({ id: themes.id }).from(themes).where(eq(themes.id, input.id)).limit(1);
-      if (!theme) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Theme not found" });
-      }
-      // Deactivate all themes, then activate the target (sequential within same DB connection)
-      await db.update(themes).set({ isActive: false });
-      await db.update(themes).set({ isActive: true, updatedAt: new Date() }).where(eq(themes.id, input.id));
+      const { withTransaction } = await import("./queries/connection");
+      await withTransaction(async (tx) => {
+        const [theme] = await tx.select({ id: themes.id }).from(themes).where(eq(themes.id, input.id)).limit(1);
+        if (!theme) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Theme not found" });
+        }
+        await tx.update(themes).set({ isActive: false });
+        await tx.update(themes).set({ isActive: true, updatedAt: new Date() }).where(eq(themes.id, input.id));
+      });
       await invalidateSettingsCache();
       return { success: true };
     }),
@@ -327,6 +326,7 @@ export const settingsRouter = createRouter({
       const cleanUpdates = Object.fromEntries(Object.entries(updates).filter(([_, v]) => v !== undefined));
       if (Object.keys(cleanUpdates).length === 0) return { success: true };
       await db.update(promotions).set(cleanUpdates).where(eq(promotions.id, id));
+      await invalidateSettingsCache();
       return { success: true };
     }),
 
