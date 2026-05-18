@@ -4,12 +4,12 @@ import { trpc } from "@/providers/trpc";
 import CourseCard from "@/components/CourseCard";
 import SEO from "@/components/SEO";
 import { StaggerContainer, StaggerItem, FadeIn, NeonGlow } from "@/components/ui/motion";
-
-
+import ElectricParticles from "@/components/ui/ElectricParticles";
 import SingleLineDiagram from "@/components/ui/SingleLineDiagram";
 import ScadaGauge from "@/components/ui/ScadaGauge";
 import ArcFlashButton from "@/components/ui/ArcFlashButton";
 import { useEngineeringMode } from "@/components/ui/EngineeringMode";
+import { motion } from "framer-motion";
 import "@/engineering-mode.css";
 import {
   PlayCircle,
@@ -346,58 +346,82 @@ export default function Home() {
       {topPromotion && <PromoBanner promotion={topPromotion} />}
 
       {/* ─── Hero ─── */}
-      <section className="relative min-h-screen overflow-hidden pt-24">
+      <section className="relative min-h-screen overflow-hidden pt-20">
         {/* Background: Solid color with gradient overlay */}
         <div className="absolute inset-0 bg-[#0a0e17]">
-          {/* Multi-layer gradient overlay for readability + depth */}
+          {/* Multi-layer gradient overlay */}
           <div className="absolute inset-0 bg-gradient-to-r from-[#0a0e17]/95 via-[#0a0e17]/70 to-[#0a0e17]/40" />
           <div className="absolute inset-0 bg-gradient-to-t from-[#0a0e17] via-transparent to-[#0a0e17]/60" />
-          {/* Subtle cyan glow on left for text area */}
+          {/* Subtle cyan glow */}
           <div className="absolute inset-0 hero-glow" />
+          {/* Electric particles layer */}
+          <ElectricParticles color={isEngMode ? "#00ff88" : "#06b6d4"} intensity="medium" />
           {/* ⚡ Interactive Single-Line Diagram */}
           <SingleLineDiagram color={isEngMode ? "#00ff88" : "#06b6d4"} enabled={sldEnabled} />
         </div>
 
-        <div className="relative z-10 mx-auto flex max-w-7xl flex-col items-center px-4 py-20 lg:flex-row lg:px-6 lg:py-28 gap-12 lg:gap-0">
+        <div className="relative z-10 mx-auto flex max-w-7xl flex-col items-center px-4 py-16 lg:flex-row lg:px-6 lg:py-20 gap-8 lg:gap-0">
           {/* Left Content */}
-          <StaggerContainer className="flex-1 text-center lg:text-start" staggerChildren={0.15}>
+          <StaggerContainer className="flex-1 text-center lg:text-start" staggerChildren={0.12}>
             <StaggerItem>
-              <div className="flex items-center justify-center gap-2 lg:justify-start">
-                <Zap className="h-3 w-3 text-[#06b6d4]" />
-                <span className="text-xs font-medium uppercase tracking-[0.1em] text-[#06b6d4]">
-                  {lang === "en" ? "PREMIUM ELECTRICAL ENGINEERING EDUCATION" : "تعليم هندسي كهربي متميز"}
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.5, type: "spring" }}
+                className="flex items-center justify-center gap-2 lg:justify-start"
+              >
+                <motion.div
+                  animate={{ opacity: [0.5, 1, 0.5], scale: [0.95, 1.05, 0.95] }}
+                  transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                >
+                  <Zap className="h-4 w-4 text-[#06b6d4]" />
+                </motion.div>
+                <span className="text-xs font-medium uppercase tracking-[0.15em] text-[#06b6d4]">
+                  {lang === "en" ? "PREMIUM ELECTRICAL ENGINEERING" : "تعليم هندسي كهربي متميز"}
                 </span>
-              </div>
+              </motion.div>
             </StaggerItem>
 
             <StaggerItem>
-              <h1 className="mt-6 text-4xl font-extrabold leading-[1.08] tracking-tight text-[#f0f4f8] sm:text-5xl lg:text-[56px]">
+              <h1 className="mt-6 text-5xl font-extrabold leading-[1.06] tracking-tight text-[#f0f4f8] sm:text-5xl lg:text-[64px]">
                 {lang === "en" ? "Master the Power" : "أتقن قوة"}
                 <br />
-                <span className="gradient-text">
+                <motion.span
+                  className="gradient-text"
+                  animate={{ textShadow: ["0 0 20px rgba(6,182,212,0.3), 0 0 40px rgba(6,182,212,0.15)", "0 0 40px rgba(6,182,212,0.6), 0 0 80px rgba(6,182,212,0.3)", "0 0 20px rgba(6,182,212,0.3), 0 0 40px rgba(6,182,212,0.15)"] }}
+                  transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                >
                   {lang === "en" ? "of Electrical Engineering" : "الهندسة الكهربية"}
-                </span>
+                </motion.span>
               </h1>
-
-
             </StaggerItem>
 
             <StaggerItem>
-              <p className="mx-auto mt-5 max-w-lg text-base leading-relaxed text-[#94a3b8] lg:mx-0 lg:text-lg">
+              <motion.p
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3, duration: 0.6 }}
+                className="mx-auto mt-5 max-w-lg text-base leading-relaxed text-[#94a3b8] lg:mx-0 lg:text-lg"
+              >
                 {lang === "en"
                   ? "From electrical network design to advanced simulations in ETAP, SKM, PowerFactory, and PVSyst. Learn from an industry expert with real-world project experience."
                   : "من تصميم الشبكات الكهربية إلى المحاكاة المتقدمة في ETAP وSKM وPowerFactory وPVSyst. تعلم من خبير الصناعة ذو الخبرة العملية."}
-              </p>
+              </motion.p>
             </StaggerItem>
 
             <StaggerItem>
-              <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row lg:justify-start">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4, duration: 0.5 }}
+                className="mt-8 flex flex-col items-center gap-4 sm:flex-row lg:justify-start"
+              >
                 <Link to="/courses">
                   <ArcFlashButton
                     variant="primary"
                     onClick={() => trackEvent("cta_click", { button: "explore_courses", page: "hero" })}
                   >
-                    <Zap className="h-4 w-4 mr-2" />
+                    <Zap className="h-4 w-4" />
                     {t("exploreCourses")}
                   </ArcFlashButton>
                 </Link>
@@ -405,48 +429,71 @@ export default function Home() {
                   variant="outline"
                   onClick={() => trackEvent("cta_click", { button: "watch_preview", page: "hero" })}
                 >
-                  <PlayCircle className="h-4 w-4 mr-2" />
+                  <PlayCircle className="h-4 w-4" />
                   {t("watchFreePreview")}
                 </ArcFlashButton>
-              </div>
+              </motion.div>
             </StaggerItem>
 
             {/* Stats — SCADA Gauges */}
             <StaggerItem>
-              <div className="mt-10 flex flex-wrap items-center justify-center gap-6 lg:justify-start">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5, duration: 0.5 }}
+                className="mt-10 flex flex-wrap items-center justify-center gap-6 lg:justify-start"
+              >
                 <ScadaGauge enabled={scadaEnabled} value={resolvedStats.totalStudents} label={t("studentsEnrolled")} color="#06b6d4" />
                 <div className="h-10 w-px bg-[#1f2d44]" />
                 <ScadaGauge enabled={scadaEnabled} value={resolvedStats.satisfactionRate} label={t("satisfactionRate")} suffix="%" color="#10b981" />
                 <div className="h-10 w-px bg-[#1f2d44]" />
                 <ScadaGauge enabled={scadaEnabled} value={resolvedStats.totalCourses} label={t("premiumCourses")} color="#f59e0b" />
-              </div>
+              </motion.div>
             </StaggerItem>
           </StaggerContainer>
 
-          {/* Right - Hero showcase image with premium glow card */}
-          <FadeIn delay={0.4} className="mt-12 flex flex-1 justify-center lg:mt-0 lg:justify-end">
-            <div className="hero-image-wrapper w-full max-w-xl lg:max-w-3xl relative">
-              {/* Premium Neon Glow Background */}
-              <div className="absolute -inset-4 bg-gradient-to-r from-[#06b6d4]/30 to-[#8b5cf6]/30 blur-2xl opacity-50 rounded-3xl" />
-              
-              <div className="hero-image-glow-ring relative z-10 overflow-hidden rounded-3xl border border-[#1f2d44] bg-[#0a0e17] shadow-2xl">
-                <img 
-                  src="hero-main.webp" 
-                  alt="Master Electrical Engineering with Eng. Ahmed Elbaz" 
-                  className="hero-image-display w-full h-auto object-cover transform hover:scale-105 transition-transform duration-700" 
-                  loading="eager" 
-                  fetchPriority="high" 
-                  decoding="async" 
-                  width="1200" 
-                  height="800" 
-                  onError={(e) => { e.currentTarget.src = "/hero-bg.jpg"; e.currentTarget.onerror = null; }} 
+          {/* Right - Hero showcase image — enlarged to fill available space */}
+          <FadeIn delay={0.3} className="mt-8 flex flex-1 justify-center lg:mt-0 lg:justify-end">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, x: 50 }}
+              animate={{ opacity: 1, scale: 1, x: 0 }}
+              transition={{ duration: 0.8, type: "spring", stiffness: 100, damping: 20 }}
+              className="hero-image-wrapper relative w-full max-w-2xl lg:max-w-[600px] xl:max-w-[700px]"
+            >
+              {/* Ambient glow behind image */}
+              <motion.div
+                animate={{ opacity: [0.4, 0.7, 0.4], scale: [1, 1.05, 1] }}
+                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                className="absolute -inset-6 rounded-[2rem] bg-gradient-to-br from-[#06b6d4]/20 via-[#8b5cf6]/10 to-transparent blur-3xl"
+              />
+
+              {/* Neon border ring */}
+              <motion.div
+                animate={{ boxShadow: ["0 0 30px rgba(6,182,212,0.3), 0 0 60px rgba(6,182,212,0.15)", "0 0 50px rgba(6,182,212,0.5), 0 0 100px rgba(6,182,212,0.25)", "0 0 30px rgba(6,182,212,0.3), 0 0 60px rgba(6,182,212,0.15)"] }}
+                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                className="hero-image-glow-ring relative z-10 overflow-hidden rounded-[1.5rem] border border-[#1f2d44] bg-[#0a0e17] shadow-2xl"
+              >
+                <img
+                  src="hero-main.webp"
+                  alt="Master Electrical Engineering with Eng. Ahmed Elbaz"
+                  className="hero-image-display w-full h-auto object-cover max-h-[480px] lg:max-h-[600px] xl:max-h-[680px]"
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
+                  width="1200"
+                  height="800"
+                  onError={(e) => { e.currentTarget.src = "/hero-bg.jpg"; e.currentTarget.onerror = null; }}
                 />
-                {/* Glossy overlay effect */}
+                {/* Glossy overlay */}
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0a0e17]/40 via-transparent to-white/5 pointer-events-none" />
-              </div>
-              
-              {/* Floating Badge (Star Effect) - Upgraded to NeonGlow */}
-              <div className="absolute -bottom-4 -right-4 z-20 hidden lg:flex">
+              </motion.div>
+
+              {/* Floating badges */}
+              <motion.div
+                animate={{ y: [0, -8, 0] }}
+                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                className="absolute -bottom-4 -right-4 z-20 hidden lg:flex"
+              >
                 <NeonGlow color="#06b6d4" className="flex items-center gap-3 rounded-2xl bg-[#111827] p-4 border border-[#1f2d44] shadow-xl">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[rgba(6,182,212,0.1)]">
                     <Star className="h-6 w-6 text-yellow-400 fill-yellow-400" />
@@ -456,44 +503,77 @@ export default function Home() {
                     <p className="text-xs text-[#94a3b8]">Engineering Expert</p>
                   </div>
                 </NeonGlow>
-              </div>
+              </motion.div>
 
-            </div>
+              {/* Second badge - floating top left */}
+              <motion.div
+                animate={{ y: [0, 6, 0] }}
+                transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
+                className="absolute -top-2 -left-2 z-20 hidden lg:flex"
+              >
+                <motion.div
+                  animate={{ boxShadow: ["0 0 15px rgba(16,185,129,0.3)", "0 0 25px rgba(16,185,129,0.5)", "0 0 15px rgba(16,185,129,0.3)"] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                  className="flex items-center gap-2 rounded-xl bg-[#111827] border border-[#1f2d44] px-3 py-2 shadow-xl"
+                >
+                  <Zap className="h-5 w-5 text-[#10b981]" />
+                  <span className="text-xs font-semibold text-white">2,400+ {lang === "ar" ? "طالب" : "Students"}</span>
+                </motion.div>
+              </motion.div>
+            </motion.div>
           </FadeIn>
-
         </div>
+
+        {/* Scroll indicator */}
+        <motion.div
+          animate={{ y: [0, 8, 0], opacity: [0.4, 1, 0.4] }}
+          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute bottom-8 left-1/2 z-20 -translate-x-1/2 flex flex-col items-center gap-2"
+        >
+          <span className="text-[10px] uppercase tracking-widest text-[#64748b]">
+            {lang === "ar" ? "مرر للأسفل" : "Scroll Down"}
+          </span>
+          <div className="flex h-6 w-4 items-start justify-center">
+            <svg width="16" height="24" viewBox="0 0 16 24" fill="none">
+              <path d="M8 0 L8 18 M3 13 L8 18 L13 13" stroke="#06b6d4" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+        </motion.div>
       </section>
 
-      {/* ─── Software Strip — Real Logos ─── */}
-      <section className="border-y border-[#1f2d44] bg-[#111827] py-10">
+      {/* ─── Software Strip — Real Logos with Carousel ─── */}
+      <section className="border-y border-[#1f2d44] bg-[#111827] py-10 overflow-hidden">
         <div className="mx-auto max-w-7xl px-4 lg:px-6">
           <p className="mb-8 text-center text-xs font-semibold uppercase tracking-[0.15em] text-[#64748b]">
             {lang === "en" ? "Industry Software You Will Master" : "البرامج الهندسية التي ستتقنها"}
           </p>
-          <div className="flex flex-wrap items-center justify-center gap-10">
-            {SOFTWARE_LOGOS.map((tool, i) => (
-              <div
-                key={tool.name}
-                className="software-logo-pill group flex flex-col items-center gap-2 cursor-default"
-                style={{ animationDelay: `${i * 80}ms` }}
-                title={tool.name}
-              >
-                <div className="flex h-12 w-28 items-center justify-center rounded-lg border border-[#1f2d44] bg-[#0a0e17] px-3 py-2 transition-all group-hover:border-[rgba(6,182,212,0.4)] group-hover:bg-[rgba(6,182,212,0.04)]">
+          <div className="relative flex overflow-x-auto pb-4 scrollbar-hide">
+            {/* Fade masks */}
+            <div className="absolute start-0 top-0 bottom-0 w-20 bg-gradient-to-r from-[#111827] to-transparent z-10 pointer-events-none shrink-0" />
+            <div className="absolute end-0 top-0 bottom-0 w-20 bg-gradient-to-l from-[#111827] to-transparent z-10 pointer-events-none shrink-0" />
+            <div className="flex gap-10" style={{ animation: "scrollLogos 20s linear infinite", minWidth: "max-content" }}>
+              {[...SOFTWARE_LOGOS, ...SOFTWARE_LOGOS].map((tool, i) => (
+                <div
+                  key={`${tool.name}-${i}`}
+                  className="software-logo-pill group flex flex-col items-center gap-2 cursor-default shrink-0"
+                  title={tool.name}
+                >
+                  <div className="flex h-12 w-28 items-center justify-center rounded-lg border border-[#1f2d44] bg-[#0a0e17] px-3 py-2 transition-all group-hover:border-[rgba(6,182,212,0.4)] group-hover:bg-[rgba(6,182,212,0.04)]">
                     <img
                       src={tool.logo}
                       alt={tool.name}
                       className="max-h-8 max-w-full object-contain filter brightness-110 contrast-125 transition-all group-hover:scale-110"
-                      onError={(e) => { 
-                        e.currentTarget.style.display = 'none'; 
-                        if (e.currentTarget.nextElementSibling) (e.currentTarget.nextElementSibling as HTMLElement).style.display = 'block'; 
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        if (e.currentTarget.nextElementSibling) (e.currentTarget.nextElementSibling as HTMLElement).style.display = 'block';
                       }}
                     />
                     <span className="hidden text-sm font-bold text-[#06b6d4]">{tool.name}</span>
-
+                  </div>
+                  <span className="text-[10px] font-medium uppercase tracking-widest text-[#475569] group-hover:text-[#06b6d4] transition-colors">{tool.name}</span>
                 </div>
-                <span className="text-[10px] font-medium uppercase tracking-widest text-[#475569] group-hover:text-[#06b6d4] transition-colors">{tool.name}</span>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -519,17 +599,27 @@ export default function Home() {
             {(categories || []).map((cat: Category) => (
               <SectionReveal key={cat.id}>
                 <Link to={`/courses?category=${cat.id}`}>
-                  <div className="group rounded-xl border border-[#1f2d44] bg-[#111827] p-8 transition-all hover:-translate-y-1 hover:border-[rgba(6,182,212,0.35)] hover:shadow-[0_12px_32px_rgba(6,182,212,0.08)]">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[rgba(6,182,212,0.1)]">
+                  <motion.div
+                    whileHover={{ y: -6, scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 20 }}
+                    className="group rounded-xl border border-[#1f2d44] bg-[#111827] p-8 transition-all hover:border-[rgba(6,182,212,0.35)] hover:shadow-[0_12px_32px_rgba(6,182,212,0.08)]"
+                  >
+                    <motion.div
+                      whileHover={{ rotate: [0, -5, 5, -3, 3, 0], scale: 1.1 }}
+                      transition={{ duration: 0.4 }}
+                      className="flex h-10 w-10 items-center justify-center rounded-lg bg-[rgba(6,182,212,0.1)]"
+                    >
                       {categoryIcons[cat.icon] || <Zap className="h-5 w-5 text-[#06b6d4]" />}
-                    </div>
+                    </motion.div>
                     <h3 className="mt-4 text-lg font-semibold text-[#f0f4f8]">
                       {lang === "ar" ? cat.nameAr : cat.nameEn}
                     </h3>
                     <p className="mt-2 text-sm leading-relaxed text-[#94a3b8]">
                       {lang === "ar" ? cat.descriptionAr : cat.descriptionEn}
                     </p>
-                  </div>
+                    <motion.div className="mt-4 h-0.5 w-0 bg-gradient-to-r from-[#06b6d4] to-[#0891b2] group-hover:w-16 transition-all duration-500 rounded-full" />
+                  </motion.div>
                 </Link>
               </SectionReveal>
             ))}
@@ -590,7 +680,7 @@ export default function Home() {
           <div className="space-y-20">
             {[
               {
-                icon: <Shield className="h-8 w-8 text-[#06b6d4]" />,
+                icon: <Shield className="h-8 w-8" />,
                 title: t("secureAntiPiracyStreaming"),
                 body: lang === "en"
                   ? "Your premium content stays protected. Our player blocks screen recording, disables right-click downloads, and embeds invisible forensic watermarks unique to each student."
@@ -600,7 +690,7 @@ export default function Home() {
                   : ["حجب التقاط الشاشة على مستوى النظام", "علامة مائية ديناميكية بمعرف المستخدم", "بروتوكول بث HLS مشفر", "لا يوجد مصدر فيديو قابل للتنزيل"],
               },
               {
-                icon: <Award className="h-8 w-8 text-[#06b6d4]" />,
+                icon: <Award className="h-8 w-8" />,
                 title: t("quizzesVerifiedCertificates"),
                 body: lang === "en"
                   ? "Test your knowledge after every lesson with auto-graded quizzes. Earn a blockchain-verifiable certificate upon course completion to showcase on LinkedIn."
@@ -610,7 +700,7 @@ export default function Home() {
                   : ["تقييمات على مستوى الدرس مع تغذية راجعة فورية", "شهادات PDF قابلة للتحميل مع QR", "تكامل مع LinkedIn", "لوحة متابعة التقدم"],
               },
               {
-                icon: <CreditCard className="h-8 w-8 text-[#06b6d4]" />,
+                icon: <CreditCard className="h-8 w-8" />,
                 title: t("flexiblePaymentMethods"),
                 body: lang === "en"
                   ? "Pay however suits you best. All transactions are encrypted, PCI-compliant, and processed through verified local payment gateways with instant access upon confirmation."
@@ -622,11 +712,29 @@ export default function Home() {
             ].map((feature, i) => (
               <SectionReveal key={i}>
                 <div className={`flex flex-col items-center gap-10 lg:flex-row ${i % 2 === 1 ? "lg:flex-row-reverse" : ""}`}>
-                  {/* Visual — with floating icon animation */}
+                  {/* Visual — animated icon panel */}
                   <div className="flex flex-1 items-center justify-center">
-                    <div className="flex h-48 w-48 items-center justify-center rounded-2xl border border-[#1f2d44] bg-[#1a2233] animate-float-icon">
-                      {feature.icon}
-                    </div>
+                    <motion.div
+                      whileHover={{ scale: 1.08 }}
+                      whileTap={{ scale: 0.95 }}
+                      animate={{ y: [0, -6, 0] }}
+                      transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                      className="relative flex h-48 w-48 items-center justify-center rounded-2xl border border-[#1f2d44] bg-[#1a2233]"
+                    >
+                      {/* Glow ring */}
+                      <motion.div
+                        animate={{ boxShadow: ["0 0 20px rgba(6,182,212,0.3), inset 0 0 20px rgba(6,182,212,0.05)", "0 0 40px rgba(6,182,212,0.5), inset 0 0 30px rgba(6,182,212,0.1)", "0 0 20px rgba(6,182,212,0.3), inset 0 0 20px rgba(6,182,212,0.05)"] }}
+                        transition={{ duration: 2, repeat: Infinity }}
+                        className="absolute inset-0 rounded-2xl border border-[rgba(6,182,212,0.3)]"
+                      />
+                      <motion.div
+                        whileHover={{ rotate: [0, -8, 8, -5, 5, 0] }}
+                        transition={{ duration: 0.5 }}
+                        className="relative z-10 text-[#06b6d4]"
+                      >
+                        {feature.icon}
+                      </motion.div>
+                    </motion.div>
                   </div>
                   {/* Text */}
                   <div className="flex-1 text-center lg:text-start">
@@ -638,10 +746,21 @@ export default function Home() {
                     </p>
                     <ul className="mt-5 space-y-2">
                       {(feature.bullets || []).map((b, j) => (
-                        <li key={j} className="flex items-start gap-2 text-sm text-[#94a3b8]">
-                          <span className="mt-0.5 text-[#10b981]">✓</span>
+                        <motion.li
+                          key={j}
+                          initial={{ opacity: 0, x: -10 }}
+                          whileInView={{ opacity: 1, x: 0 }}
+                          transition={{ delay: j * 0.1 }}
+                          className="flex items-start gap-2 text-sm text-[#94a3b8]"
+                        >
+                          <motion.span
+                            whileHover={{ scale: 1.2, color: "#10b981" }}
+                            className="mt-0.5 text-[#10b981]"
+                          >
+                            ✓
+                          </motion.span>
                           {b}
-                        </li>
+                        </motion.li>
                       ))}
                     </ul>
                   </div>
@@ -668,9 +787,18 @@ export default function Home() {
             <div className="flex flex-col items-center gap-12 lg:flex-row lg:items-start">
               {/* Left - Avatar & Bio */}
               <div className="flex-1 text-center lg:text-start">
-                <div className="mx-auto mb-6 flex h-28 w-28 items-center justify-center rounded-2xl border border-[#1f2d44] bg-[#1a2233] lg:mx-0">
-                  <User className="h-14 w-14 text-[#06b6d4]" />
-                </div>
+                <motion.div
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="mx-auto mb-6 flex h-28 w-28 items-center justify-center rounded-2xl border border-[#1f2d44] bg-[#1a2233] lg:mx-0"
+                >
+                  <motion.div
+                    animate={{ filter: ["hue-rotate(0deg)", "hue-rotate(15deg)", "hue-rotate(0deg)"] }}
+                    transition={{ duration: 4, repeat: Infinity }}
+                  >
+                    <User className="h-14 w-14 text-[#06b6d4]" />
+                  </motion.div>
+                </motion.div>
                 <p className="mb-2 text-sm font-medium uppercase tracking-wider text-[#06b6d4]">
                   {lang === "en" ? t("instructorRole") : t("instructorRoleAr")}
                 </p>
@@ -683,36 +811,43 @@ export default function Home() {
               <div className="grid flex-1 grid-cols-2 gap-4 lg:max-w-sm">
                 {[
                   {
-                    icon: <Briefcase className="h-6 w-6 text-[#06b6d4]" />,
+                    icon: <Briefcase className="h-6 w-6" />,
                     value: "10+",
                     label: t("yearsExperience"),
                   },
                   {
-                    icon: <GraduationCap className="h-6 w-6 text-[#06b6d4]" />,
+                    icon: <GraduationCap className="h-6 w-6" />,
                     value: "35+",
                     label: t("coursesTaught"),
                   },
                   {
-                    icon: <User className="h-6 w-6 text-[#06b6d4]" />,
+                    icon: <User className="h-6 w-6" />,
                     value: "2,400+",
                     label: t("studentsReached"),
                   },
                   {
-                    icon: <Award className="h-6 w-6 text-[#06b6d4]" />,
+                    icon: <Award className="h-6 w-6" />,
                     value: "98%",
                     label: t("satisfactionRate"),
                   },
                 ].map((item, i) => (
-                  <div
+                  <motion.div
                     key={i}
-                    className="rounded-xl border border-[#1f2d44] bg-[#0a0e17] p-5 text-center"
+                    whileHover={{ y: -4, scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 20 }}
+                    className="rounded-xl border border-[#1f2d44] bg-[#0a0e17] p-5 text-center cursor-pointer"
                   >
-                    <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-[rgba(6,182,212,0.1)]">
-                      {item.icon}
-                    </div>
+                    <motion.div
+                      whileHover={{ rotate: [0, -10, 10, -5, 5, 0], scale: 1.1 }}
+                      transition={{ duration: 0.4 }}
+                      className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-[rgba(6,182,212,0.1)]"
+                    >
+                      <span className="text-[#06b6d4]">{item.icon}</span>
+                    </motion.div>
                     <p className="text-xl font-bold text-[#f0f4f8]">{item.value}</p>
                     <p className="mt-1 text-xs text-[#64748b]">{item.label}</p>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
             </div>
@@ -735,29 +870,48 @@ export default function Home() {
           </SectionReveal>
 
           <div className="grid gap-6 md:grid-cols-3">
-            {(testimonials || []).map((testimonial: Testimonial) => (
+            {(testimonials || []).map((testimonial: Testimonial, idx: number) => (
               <SectionReveal key={testimonial.id}>
-                <div className="rounded-xl border border-[#1f2d44] bg-[#111827] p-8">
-                  <div className="flex gap-1">
+                <motion.div
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.1, duration: 0.5, type: "spring", stiffness: 200, damping: 20 }}
+                  whileHover={{ y: -6, scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  viewport={{ once: true }}
+                  className="rounded-xl border border-[#1f2d44] bg-[#111827] p-8 cursor-pointer"
+                >
+                  <motion.div
+                    animate={{ scale: [1, 1.05, 1] }}
+                    transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                    className="flex gap-1"
+                  >
                     {Array.from({ length: testimonial.rating || 5 }).map((_, j) => (
                       <Star key={j} className="h-4 w-4 fill-[#f59e0b] text-[#f59e0b]" />
                     ))}
-                  </div>
+                  </motion.div>
                   <p className="mt-4 text-sm leading-relaxed italic text-[#f0f4f8]">
                     "{testimonial.content}"
                   </p>
-                  <div className="mt-6 flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#1a2233] text-sm font-semibold text-[#06b6d4]">
+                  <motion.div
+                    whileHover={{ x: 4 }}
+                    className="mt-6 flex items-center gap-3"
+                  >
+                    <motion.div
+                      whileHover={{ rotate: 360, scale: 1.1 }}
+                      transition={{ duration: 0.5 }}
+                      className="flex h-10 w-10 items-center justify-center rounded-full bg-[#1a2233] text-sm font-semibold text-[#06b6d4]"
+                    >
                       {testimonial.name.charAt(0)}
-                    </div>
+                    </motion.div>
                     <div>
                       <p className="text-sm font-semibold text-[#f0f4f8]">{testimonial.name}</p>
                       <p className="text-xs text-[#64748b]">
                         {testimonial.title} {testimonial.company ? `at ${testimonial.company}` : ""}
                       </p>
                     </div>
-                  </div>
-                </div>
+                  </motion.div>
+                </motion.div>
               </SectionReveal>
             ))}
           </div>
@@ -823,23 +977,40 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="border-b border-[#1f2d44]">
-      <button
+    <motion.div
+      layout
+      className="border-b border-[#1f2d44] overflow-hidden"
+    >
+      <motion.button
         onClick={() => setOpen(!open)}
         className="flex w-full items-center justify-between py-6 text-start"
+        whileTap={{ scale: 0.99 }}
       >
         <span className="text-base font-semibold text-[#f0f4f8] transition-colors hover:text-[#06b6d4]">
           {question}
         </span>
-        {open ? (
-          <ChevronUp className="h-4 w-4 shrink-0 text-[#64748b]" />
-        ) : (
-          <ChevronDown className="h-4 w-4 shrink-0 text-[#64748b]" />
-        )}
-      </button>
-      {open && (
+        <motion.div
+          animate={{ rotate: open ? 180 : 0, color: open ? "#06b6d4" : "#64748b" }}
+          transition={{ duration: 0.3, type: "spring", stiffness: 300, damping: 25 }}
+        >
+          {open ? (
+            <ChevronUp className="h-4 w-4 shrink-0" />
+          ) : (
+            <ChevronDown className="h-4 w-4 shrink-0" />
+          )}
+        </motion.div>
+      </motion.button>
+      <motion.div
+        initial={false}
+        animate={{
+          height: open ? "auto" : 0,
+          opacity: open ? 1 : 0,
+        }}
+        transition={{ duration: 0.4, type: "spring", stiffness: 300, damping: 30 }}
+        className="overflow-hidden"
+      >
         <p className="pb-6 text-sm leading-relaxed text-[#94a3b8]">{answer}</p>
-      )}
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

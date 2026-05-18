@@ -1,8 +1,7 @@
-
-/* ══════════════════════════════════════════════
+/* ════════════════════════════════════════════════════════════════════
    ⚡ ENGINEERING MODE — Matrix/ETAP Theme
    Activated via .engineering-mode on <html>
-═══════════════════════════════════════════════ */
+   ════════════════════════════════════════════════════════════════════ */
 .engineering-mode body {
   background-color: #00050a !important;
   color: #00ff88 !important;
@@ -24,15 +23,48 @@
   z-index: 9999;
 }
 
+.engineering-mode body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image:
+    radial-gradient(circle at 25% 25%, rgba(0,255,136,0.05) 0%, transparent 25%),
+    radial-gradient(circle at 75% 75%, rgba(0,255,136,0.05) 0%, transparent 25%),
+    linear-gradient(rgba(0,255,136,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,255,136,0.03) 1px, transparent 1px);
+  background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
+  pointer-events: none;
+  z-index: 9998;
+}
+
+@keyframes eng-scan {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
 @keyframes waveform-dash {
   to { stroke-dashoffset: -12; }
 }
 
-.software-logo-pill {
+.engineering-mode .software-logo-pill {
   transition: all 0.3s ease;
   filter: grayscale(40%) brightness(0.85) opacity(0.8);
 }
-.software-logo-pill:hover {
+.engineering-mode .software-logo-pill:hover {
   filter: grayscale(0%) brightness(1) opacity(1);
   transform: translateY(-3px) scale(1.08);
+}
+
+@keyframes glitchText {
+  0%, 100% { text-shadow: 2px 0 #ff0040, -2px 0 #00ffff; transform: translate(0); }
+  20% { text-shadow: -2px 0 #ff0040, 2px 0 #00ffff; transform: translate(-2px, 1px); }
+  40% { text-shadow: 2px 0 #ff0040, -2px 0 #00ffff; transform: translate(1px, -1px); }
+  60% { text-shadow: -2px 0 #ff0040, 2px 0 #00ffff; transform: translate(-1px, 2px); }
+  80% { text-shadow: 2px 0 #ff0040, -2px 0 #00ffff; transform: translate(2px, 0); }
+}
+
+.engineering-mode h1,
+.engineering-mode h2,
+.engineering-mode h3 {
+  animation: glitchText 2s infinite;
 }
