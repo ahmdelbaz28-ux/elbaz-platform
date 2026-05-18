@@ -7,37 +7,7 @@ import { users, payments, enrollments, courses, supportTickets, ticketReplies } 
 import type { SafeUser } from "./context";
 
 export const adminRouter = createRouter({
-  // ✅ SECURITY FIX: Exclude passwordHash from getAllUsers response
-  // Previously: db.select().from(users) returned ALL columns including passwordHash
-  getAllUsers: adminQuery
-    .input(z.object({ page: z.number().int().min(1).default(1), limit: z.number().int().min(1).max(100).default(20) }).optional())
-    .query(async ({ input }) => {
-    const db = getDb();
-    const page = input?.page ?? 1;
-    const limit = input?.limit ?? 20;
-    const offset = (page - 1) * limit;
-    const allUsers = await db
-      .select({
-        id: users.id,
-        username: users.username,
-        name: users.name,
-        email: users.email,
-        avatar: users.avatar,
-        role: users.role,
-        preferredLanguage: users.preferredLanguage,
-        tokenVersion: users.tokenVersion,
-        createdAt: users.createdAt,
-        updatedAt: users.updatedAt,
-        lastSignInAt: users.lastSignInAt,
-      })
-      .from(users)
-      .orderBy(desc(users.createdAt))
-      .limit(limit)
-      .offset(offset);
-    return allUsers as SafeUser[];
-  }),
-
-  // Alias used by Admin.tsx frontend (trpc.admin.users.useQuery)
+  // Users list — used by Admin.tsx frontend (trpc.admin.users.useQuery)
   users: adminQuery
     .input(z.object({ page: z.number().int().min(1).default(1), limit: z.number().int().min(1).max(100).default(20) }).optional())
     .query(async ({ input }) => {
@@ -45,8 +15,10 @@ export const adminRouter = createRouter({
     const page = input?.page ?? 1;
     const limit = input?.limit ?? 20;
     const offset = (page - 1) * limit;
-    const allUsers = await db
-      .select({
+
+    const [[{ total }], allUsers] = await Promise.all([
+      db.select({ total: count() }).from(users),
+      db.select({
         id: users.id,
         username: users.username,
         name: users.name,
@@ -54,19 +26,20 @@ export const adminRouter = createRouter({
         avatar: users.avatar,
         role: users.role,
         preferredLanguage: users.preferredLanguage,
-        tokenVersion: users.tokenVersion,
         createdAt: users.createdAt,
         updatedAt: users.updatedAt,
         lastSignInAt: users.lastSignInAt,
       })
-      .from(users)
-      .orderBy(desc(users.createdAt))
-      .limit(limit)
-      .offset(offset);
-    return allUsers as SafeUser[];
+        .from(users)
+        .orderBy(desc(users.createdAt))
+        .limit(limit)
+        .offset(offset),
+    ]);
+
+    return { items: allUsers as SafeUser[], total: total ?? 0 };
   }),
 
-  // Alias used by Admin.tsx frontend (trpc.admin.payments.useQuery)
+  // Payments list with pagination
   payments: adminQuery
     .input(z.object({ page: z.number().int().min(1).default(1), limit: z.number().int().min(1).max(100).default(20), status: z.enum(["pending", "completed", "failed", "refunded", "expired"]).optional() }).optional())
     .query(async ({ input }) => {
@@ -76,11 +49,18 @@ export const adminRouter = createRouter({
     const offset = (page - 1) * limit;
     const conditions = [];
     if (input?.status) conditions.push(eq(payments.status, input.status));
-    return db.select().from(payments)
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(desc(payments.createdAt))
-      .limit(limit)
-      .offset(offset);
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [[{ total }], items] = await Promise.all([
+      db.select({ total: count() }).from(payments).where(whereClause),
+      db.select().from(payments)
+        .where(whereClause)
+        .orderBy(desc(payments.createdAt))
+        .limit(limit)
+        .offset(offset),
+    ]);
+
+    return { items, total: total ?? 0 };
   }),
 
   // Dashboard stats (trpc.admin.stats.useQuery)

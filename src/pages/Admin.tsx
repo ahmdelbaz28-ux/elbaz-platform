@@ -167,9 +167,11 @@ export default function Admin() {
 
   /* ─── existing queries ─── */
   const { data: stats } = trpc.admin.stats.useQuery(undefined, { enabled: !!isAdmin });
-  const { data: allUsers } = trpc.admin.users.useQuery(undefined, { enabled: !!isAdmin });
+  const { data: usersData } = trpc.admin.users.useQuery(undefined, { enabled: !!isAdmin });
+  const allUsers = usersData?.items ?? [];
   const { data: allTickets } = trpc.admin.tickets.useQuery(undefined, { enabled: !!isAdmin });
-  const { data: allPayments } = trpc.admin.payments.useQuery(undefined, { enabled: !!isAdmin });
+  const { data: paymentsData } = trpc.admin.payments.useQuery(undefined, { enabled: !!isAdmin });
+  const allPayments = paymentsData?.items ?? [];
 
   const updateTicket = trpc.admin.updateTicketStatus.useMutation({
     onSuccess: () => utils.admin.tickets.invalidate(),

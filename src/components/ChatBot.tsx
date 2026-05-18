@@ -72,11 +72,13 @@ function loadMessagesFromStorage(_lang: string): Message[] | null {
 // ─── Markdown to HTML (simple regex-based, no library) ───────────────────────
 
 function renderMarkdown(text: string): string {
-  // Escape HTML entities first (but preserve our markdown markers)
+  // Escape HTML entities first (preserve markdown markers)
   let html = text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
 
   // Code blocks (``` ... ```)
   html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, function(_match, _lang, code) {
@@ -87,7 +89,7 @@ function renderMarkdown(text: string): string {
   html = html.replace(/`([^`]+)`/g, '<code class="bg-black/30 border border-[#1e2d3d] px-1.5 py-0.5 rounded text-[12px] text-cyan-300">$1</code>');
 
   // Bold (** ... **)
-  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong class=\"font-semibold text-white\">$1</strong>");
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-semibold text-white">$1</strong>');
 
   // Italic (* ... *)
   html = html.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, "<em>$1</em>");

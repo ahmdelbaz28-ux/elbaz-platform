@@ -148,8 +148,17 @@ app.get("/api/version", (c) => {
 
 // ── Dynamic Sitemap ──
 // Generates sitemap.xml from live DB data so URLs + lastmod are always accurate.
-// This endpoint replaces the static public/sitemap.xml permanently.
+// Cached for 1 hour to avoid DB query on every request.
+let cachedSitemap: string | null = null;
+let sitemapExpiry = 0;
+
 app.get("/sitemap.xml", async (c) => {
+  if (cachedSitemap && Date.now() < sitemapExpiry) {
+    c.header("Content-Type", "application/xml; charset=UTF-8");
+    c.header("Cache-Control", "public, max-age=3600");
+    return c.body(cachedSitemap);
+  }
+
   try {
     const { db } = await import("./queries/connection.js");
     const { courses } = await import("@db/schema");
@@ -193,8 +202,11 @@ app.get("/sitemap.xml", async (c) => {
       '</urlset>',
     ].join("\n");
 
+    cachedSitemap = xml;
+    sitemapExpiry = Date.now() + 60 * 60 * 1000; // Cache for 1 hour
+
     c.header("Content-Type", "application/xml; charset=UTF-8");
-    c.header("Cache-Control", "public, max-age=3600"); // Cache 1 hour
+    c.header("Cache-Control", "public, max-age=3600");
     return c.body(xml);
   } catch (err) {
     console.error("[Sitemap] Error generating sitemap:", err);
@@ -277,14 +289,21 @@ app.use(
 );
 
 // ── SPA fallback: serve index.html for any unmatched route ──
-// Injects the CSP nonce + dynamic offerCount into the HTML
-app.get("*", async (c) => {
-  const { readFile } = await import("node:fs/promises");
-  try {
-    let html = await readFile("./dist/public/index.html", "utf-8");
-    const nonce = c.get("cspNonce") as string | undefined;
+// Caches the HTML template + course count to avoid disk/DB reads on every page load
+let cachedHtmlTemplate: string | null = null;
+let cachedCourseCount = 0;
+let courseCountExpiry = 0;
 
-    // ✅ FIX: Inject real course count into JSON-LD offerCount (prevents stale hardcoded "6")
+async function getHtmlTemplate(): Promise<string> {
+  if (!cachedHtmlTemplate) {
+    const { readFile } = await import("node:fs/promises");
+    cachedHtmlTemplate = await readFile("./dist/public/index.html", "utf-8");
+  }
+  return cachedHtmlTemplate;
+}
+
+async function getCourseCount(): Promise<number> {
+  if (Date.now() > courseCountExpiry) {
     try {
       const { db } = await import("./queries/connection.js");
       const { courses } = await import("@db/schema");
@@ -293,12 +312,22 @@ app.get("*", async (c) => {
         .select({ value: count() })
         .from(courses)
         .where(eq(courses.isPublished, true));
-      const courseCount = result[0]?.value ?? 0;
-      html = html.replace(/"%%OFFER_COUNT%%"/g, `"${courseCount}"`);
+      cachedCourseCount = result[0]?.value ?? 0;
     } catch {
-      // Fallback to a safe default if DB is unavailable
-      html = html.replace(/"%%OFFER_COUNT%%"/g, '"0"');
+      // Keep previous value on error
     }
+    courseCountExpiry = Date.now() + 5 * 60 * 1000; // Refresh every 5 minutes
+  }
+  return cachedCourseCount;
+}
+
+app.get("*", async (c) => {
+  try {
+    let html = await getHtmlTemplate();
+    const nonce = c.get("cspNonce") as string | undefined;
+
+    const courseCount = await getCourseCount();
+    html = html.replace(/"%%OFFER_COUNT%%"/g, `"${courseCount}"`);
 
     if (nonce) {
       const injected = html.replace(

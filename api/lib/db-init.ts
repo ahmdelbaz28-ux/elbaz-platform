@@ -77,10 +77,14 @@ export async function ensureDatabase(): Promise<void> {
     const adminPassword = env.ADMIN_PASSWORD || crypto.randomBytes(16).toString("hex");
     const adminPasswordHash = await hashPassword(adminPassword);
 
-    const seedSql = [
-      // Admin user (password: from ADMIN_PASSWORD env or auto-generated)
+    // Admin user — parameterized query to prevent SQL injection
+    await conn.execute(
       `INSERT IGNORE INTO users (username, passwordHash, name, email, role, preferredLanguage, createdAt, updatedAt, lastSignInAt)
-       VALUES ('admin', '${adminPasswordHash}', 'Ahmed Elbaz', 'admin@ahmedelbaz.qzz.io', 'admin', 'ar', NOW(), NOW(), NOW())`,
+       VALUES (?, ?, 'Ahmed Elbaz', 'admin@ahmedelbaz.qzz.io', 'admin', 'ar', NOW(), NOW(), NOW())`,
+      ['admin', adminPasswordHash]
+    );
+
+    const seedSql = [
 
       // Categories
       `INSERT IGNORE INTO categories (slug, nameEn, nameAr, icon, sortOrder, createdAt) VALUES
