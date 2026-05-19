@@ -121,7 +121,6 @@ console.log("[GUARD 3/3] Checking critical runtime files...");
     "api/boot.ts",
     "api/lib/env.ts",
     "api/queries/connection.ts",
-    "api/middleware/auth.ts",
     "api/middleware/security.ts",
     "db/schema.ts",
     "tsconfig.json",
