@@ -93,7 +93,7 @@ export function useWatchTracker({
 
     heartbeatMutation.mutate({
       lessonId: lessonIdRef.current,
-      watchedSeconds: Math.min(watchedSeconds, 120), // Cap at 2 minutes per heartbeat
+      watchedSeconds: Math.min(watchedSeconds, 300), // Cap at 5 minutes per heartbeat (matches server validation)
       lastPosition: currentPosition,
     });
   }, [videoRef, heartbeatMutation]);

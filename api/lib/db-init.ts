@@ -108,7 +108,7 @@ export async function ensureDatabase(): Promise<void> {
          'A comprehensive introduction to electrical power systems covering generation, transmission, distribution, and load analysis fundamentals.',
          'مقدمة شاملة لأنظمة الطاقة الكهربائية تغطي التوليد والنقل والتوزيع وأساسيات تحليل الأحمال.',
          'Learn power system basics from scratch', 'تعلم أساسيات أنظمة الطاقة من الصفر',
-         '/images/courses/power-basics-thumb.jpg', 'beginner', 0, '0.00', 8, 4.8, 24, 156, 'Eng Ahmed Elbaz', 1, 1, 1, NOW(), NOW())`,
+          '/course-panel.jpg', 'beginner', 0, '0.00', 8, 4.8, 24, 156, 'Eng Ahmed Elbaz', 1, 1, 1, NOW(), NOW())`,
 
       // Course 2: ETAP Full Course (PREMIUM)
       `INSERT IGNORE INTO courses (slug, categoryId, titleEn, titleAr, descriptionEn, descriptionAr, shortDescEn, shortDescAr, thumbnail, level, isPremium, price, originalPrice, durationHours, rating, reviewCount, studentCount, instructorName, isPublished, isFeatured, sortOrder, createdAt, updatedAt)
@@ -117,7 +117,7 @@ export async function ensureDatabase(): Promise<void> {
          'Master ETAP software for power system analysis including load flow, short circuit, arc flash, relay coordination, and harmonic analysis.',
          'أتقن برنامج ETAP لتحليل أنظمة الطاقة بما في ذلك تدفق الأحمال والدوائر القصيرة وقوس الكهرباء وتنسيق الريليه.',
          'Become an ETAP expert', 'أصبح خبير ETAP',
-         '/images/courses/etap-thumb.jpg', 'intermediate', 1, '1999.00', '3499.00', 40, 4.9, 42, 234, 'Eng Ahmed Elbaz', 1, 1, 2, NOW(), NOW())`,
+          '/course-etap.jpg', 'intermediate', 1, '1999.00', '3499.00', 40, 4.9, 42, 234, 'Eng Ahmed Elbaz', 1, 1, 2, NOW(), NOW())`,
 
       // Course 3: Protection & Relay (PREMIUM)
       `INSERT IGNORE INTO courses (slug, categoryId, titleEn, titleAr, descriptionEn, descriptionAr, shortDescEn, shortDescAr, thumbnail, level, isPremium, price, originalPrice, durationHours, rating, reviewCount, studentCount, instructorName, isPublished, isFeatured, sortOrder, createdAt, updatedAt)
@@ -126,7 +126,7 @@ export async function ensureDatabase(): Promise<void> {
          'Learn power system protection design: relay coordination, protective device settings, fault calculations, and IEEE/IEC standards application.',
          'تعلم تصميم حماية أنظمة الطاقة: تنسيق الريليه وإعدادات أجهزة الحماية وحسابات الأعطال وتطبيق معايير IEEE/IEC.',
          'Master protection engineering', 'أتقن هندسة الحماية',
-         '/images/courses/protection-thumb.jpg', 'advanced', 1, '1499.00', '2499.00', 30, 4.7, 18, 98, 'Eng Ahmed Elbaz', 1, 0, 3, NOW(), NOW())`,
+          '/course-skm.jpg', 'advanced', 1, '1499.00', '2499.00', 30, 4.7, 18, 98, 'Eng Ahmed Elbaz', 1, 0, 3, NOW(), NOW())`,
 
       // Course 4: Renewable Energy (PREMIUM)
       `INSERT IGNORE INTO courses (slug, categoryId, titleEn, titleAr, descriptionEn, descriptionAr, shortDescEn, shortDescAr, thumbnail, level, isPremium, price, originalPrice, durationHours, rating, reviewCount, studentCount, instructorName, isPublished, isFeatured, sortOrder, createdAt, updatedAt)
@@ -135,7 +135,7 @@ export async function ensureDatabase(): Promise<void> {
          'Design grid-connected and off-grid solar PV systems, perform energy yield calculations, and understand inverter selection and battery sizing.',
          'تصميم أنظمة الطاقة الشمسية الكهروضوئية المتصلة بالشبكة والمستقلة، حسابات إنتاج الطاقة، واختيار الانفرتر وحجم البطاريات.',
          'Design solar systems professionally', 'صمم أنظمة طاقة شمسية باحتراف',
-         '/images/courses/solar-thumb.jpg', 'intermediate', 1, '999.00', '1799.00', 25, 4.6, 15, 67, 'Eng Ahmed Elbaz', 1, 0, 4, NOW(), NOW())`,
+          '/course-pvsyst.jpg', 'intermediate', 1, '999.00', '1799.00', 25, 4.6, 15, 67, 'Eng Ahmed Elbaz', 1, 0, 4, NOW(), NOW())`,
 
       // Testimonials
       `INSERT IGNORE INTO testimonials (name, title, company, content, rating, isPublished, createdAt) VALUES

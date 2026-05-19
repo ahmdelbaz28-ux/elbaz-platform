@@ -6,9 +6,28 @@ import { rateLimit } from "./lib/rate-limiter.js";
 import { env } from "./lib/env.js";
 import { createHmac, timingSafeEqual } from "crypto";
 import { promoCodes, promoCodeUsage, payments } from "@db/schema";
+import * as cookie from "cookie";
+import { AUTH_COOKIE_NAME } from "./lib/cookies.js";
+import { verifyToken } from "./lib/jwt.js";
 
 interface PromoSession { userId: number; }
-const promoRouter = new Hono<{ Variables: { session: PromoSession } }>();
+const promoRouter = new Hono<{ Variables: { session: PromoSession | null } }>();
+
+promoRouter.use("*", async (c, next) => {
+  const cookieHeader = c.req.header("cookie");
+  const cookies = cookieHeader ? cookie.parse(cookieHeader) : {};
+  const token = cookies[AUTH_COOKIE_NAME];
+  if (token) {
+    const payload = await verifyToken(token);
+    if (payload) {
+      c.set("session", { userId: payload.userId });
+      await next();
+      return;
+    }
+  }
+  c.set("session", null);
+  await next();
+});
 
 const ApplyCodeSchema = z.object({
   code: z.string().min(3).max(50),
@@ -144,9 +163,20 @@ promoRouter.post("/apply", async (c) => {
 
 promoRouter.post("/apply/internal", async (c) => {
   const hmacSignature = c.req.header("x-promo-hmac") ?? "";
-  const rawBody = await c.req.text();
+  let rawBody: string;
+  try {
+    rawBody = await c.req.text();
+  } catch {
+    return c.json({ error: "Invalid request body" }, 400);
+  }
 
-  const payload = JSON.parse(rawBody);
+  let payload: unknown;
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    return c.json({ error: "Invalid JSON payload" }, 400);
+  }
+
   const parsed = INTERNAL_APPLY_SCHEMA.safeParse(payload);
   if (!parsed.success) {
     return c.json({ error: "Invalid payload" }, 400);
