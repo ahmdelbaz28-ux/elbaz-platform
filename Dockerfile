@@ -29,11 +29,12 @@ RUN npm run build
 FROM node:22-alpine AS prod-deps
 WORKDIR /app
 
-# Runtime deps only (dumb-init not needed — use built-in 'node' user)
+# Runtime deps only
 RUN apk add --no-cache \
     ca-certificates
 
 COPY package.json package-lock.json ./
+ENV NODE_OPTIONS="--max-old-space-size=1024"
 RUN npm ci --omit=dev --prefer-offline --no-audit --no-fund
 
 # Stage 4: Production runtime (minimal image)
