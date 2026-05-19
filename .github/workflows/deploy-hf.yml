@@ -1,5 +1,5 @@
 # Deploy to HuggingFace Spaces on push to main
-# Uses HF Hub API (instead of git push) to handle binary files (XET policy)
+# Uses git push with LFS to handle binary files
 name: Deploy to HF Spaces
 
 on:
@@ -55,44 +55,24 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Deploy to HF Spaces via API
+      - name: Setup Git LFS
+        run: |
+          git lfs install
+          git lfs track "*.png" "*.jpg" "*.webp" "*.jpeg" "*.gif" "*.svg" "*.ico" "*.jar" "*.properties"
+
+      - name: Configure Git for HF
+        run: |
+          git remote add hf-space https://ahmdelbaz28:${{ secrets.HF_TOKEN }}@huggingface.co/spaces/ahmdelbaz28/AHMDRTAP.git
+          git config user.email "ahmdelbaz28@users.noreply.github.com"
+          git config user.name "ahmdelbaz28-ux"
+
+      - name: Push to HF Spaces
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           SHA: ${{ github.sha }}
         run: |
-          pip install huggingface_hub --quiet
-          python3 << 'PYEOF'
-          import os
-          from huggingface_hub import HfApi
-          api = HfApi(token=os.environ["HF_TOKEN"])
-          sha = os.environ["SHA"]
-          api.upload_folder(
-              folder_path=".",
-              repo_id="ahmdelbaz28/AHMDRTAP",
-              repo_type="space",
-              commit_message=f"deploy: {sha}",
-              delete_patterns=[
-                "skills/", "download/", "upload/", "worklog.md",
-                "BUILD_TRIGGER.md", "TRIGGER_REBUILD.md", "info.md",
-                ".github/.github/",
-                "api/routes/",
-                "api/lib/auth.ts", "api/lib/validation.ts", "api/lib/logger.ts",
-                "api/middleware/logger.ts",
-                "infra/ml-explainability/",
-                "infra/security-audit/waf-rules-v2-owasp10.json",
-                "infra/security-audit/worker-v6-hardened.js",
-                "infra/security-audit/deploy-security-v2.sh",
-                "infra/infra-security/network-policies-v2.yaml",
-                "db/migration_step8_cms_promo.sql",
-                "db/migration_step9_bugfixes.sql",
-                "db/migration_step10_email_verification.sql",
-                "db/migration_step11_composite_indexes.sql",
-                "db/migration_step12_pending_email.sql",
-                "elbaz-push/", "elbaz-platform/", "hf-verify/", "hf-space-check/", "final-*/",
-              ],
-          )
-          print("Deploy complete!")
-          PYEOF
+          git push hf-space main --force
+          echo "Deploy complete! SHA: ${SHA}"
 
       - name: Deployment Status
         if: always()
