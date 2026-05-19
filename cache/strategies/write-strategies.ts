@@ -85,21 +85,22 @@ class WriteBackStrategy<K extends string, V> {
       clearTimeout(existing.timeoutId);
     }
 
+    const scheduledAt = Date.now();
+
     const timeoutId = setTimeout(async () => {
       try {
         await this.persistFn(key, value);
-        // Only remove from dirty/pending if this is still the latest write
         const current = this.pendingWrites.get(cacheKey);
-        if (current && current.timestamp === Date.now()) {
+        if (current && current.timestamp === scheduledAt) {
           this.dirtyKeys.delete(cacheKey);
           this.pendingWrites.delete(cacheKey);
         }
       } catch {
-        (this.cache as any).metrics.errors++;
+        this.cache.recordError();
       }
     }, this.writeDelay);
 
-    this.pendingWrites.set(cacheKey, { key, value, timestamp: Date.now(), timeoutId });
+    this.pendingWrites.set(cacheKey, { key, value, timestamp: scheduledAt, timeoutId });
   }
 
   async delete(key: K): Promise<void> {

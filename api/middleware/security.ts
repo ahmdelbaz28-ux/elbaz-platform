@@ -2,13 +2,6 @@ import { createMiddleware } from "hono/factory";
 import { env } from "../lib/env.js";
 import { randomBytes } from "node:crypto";
 
-/**
- * Security middleware — sets security headers and CSP with per-request nonce.
- *
- * The nonce is generated fresh for every HTML response and injected into the
- * CSP header. The frontend picks it up from a <meta> tag in index.html.
- */
-
 export const securityMiddleware = createMiddleware(async (c, next) => {
   c.header("X-Content-Type-Options", "nosniff");
   c.header("X-Frame-Options", "DENY");
@@ -17,13 +10,20 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
   c.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
 
   const path = c.req.path;
-  const isApiOrAsset = path.startsWith("/api/") || path.match(/\.(js|css|png|jpg|svg|ico|woff2?|ttf|eot|webmanifest|webp|avif)$/);
+  const isApi = path.startsWith("/api/");
+  const isAsset = path.match(/\.(js|css|png|jpg|svg|ico|woff2?|ttf|eot|webmanifest|webp|avif)$/);
   const accept = c.req.header("accept") ?? "";
   const wantsHtml = accept.includes("text/html");
 
-  // Only generate nonce and set CSP for HTML page requests
-  // API and static asset requests don't need nonces (saves CPU)
-  if (wantsHtml && !isApiOrAsset) {
+  if (isApi) {
+    c.header("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    c.header("Pragma", "no-cache");
+    c.header("Vary", "Authorization, Accept-Language, Accept-Encoding");
+  } else if (isAsset) {
+    c.header("Vary", "Accept-Encoding");
+  }
+
+  if (wantsHtml && !isApi && !isAsset) {
     const nonce = randomBytes(16).toString("base64url");
     c.set("cspNonce", nonce);
 
@@ -47,7 +47,7 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
     // Don't cache HTML pages (they contain dynamic nonces)
     c.header("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
     c.header("Pragma", "no-cache");
-  } else {
+  } else if (!isApi) {
     // For API/assets, set a minimal CSP without nonces (no scripts expected)
     const cspDirectives = [
       "default-src 'self'",
