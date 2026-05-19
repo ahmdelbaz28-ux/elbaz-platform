@@ -16,7 +16,7 @@ export async function findUserByUnionId(unionId: string) {
   const rows = await getDb()
     .select()
     .from(schema.users)
-    .where(eq(schema.users.username, unionId))
+    .where(eq(schema.users.googleId, unionId))
     .limit(1);
   return rows.at(0);
 }

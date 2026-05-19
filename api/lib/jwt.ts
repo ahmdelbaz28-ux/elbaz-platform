@@ -35,7 +35,7 @@ export interface TokenPayload {
 const ISSUER = "elbaz-platform";
 const AUDIENCE = "elbaz-platform-users";
 
-const ACCESS_TOKEN_TTL = "30d";
+const ACCESS_TOKEN_TTL = env.JWT_ACCESS_EXPIRY ?? "15m";
 
 export async function createToken(payload: TokenPayload, fingerprint?: string): Promise<string> {
   const jwt = new SignJWT({ ...payload, fpt: fingerprint } as unknown as Record<string, unknown>)

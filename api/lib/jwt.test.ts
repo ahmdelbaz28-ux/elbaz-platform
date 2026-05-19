@@ -6,6 +6,7 @@ vi.mock("./env", () => ({
   env: {
     appSecret: "test-secret-key-that-is-32-characters!",
     isProduction: false,
+    JWT_ACCESS_EXPIRY: "30d",
   },
 }));
 
