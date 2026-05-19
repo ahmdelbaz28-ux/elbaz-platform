@@ -23,9 +23,11 @@ function setAuthCookies(c: any, token: string): void {
   const headers = c.req.raw.headers as Headers;
   const authCookie = serializeAuthCookie(headers, token);
   const flagCookie = serializeAuthFlagCookie(headers);
-  // Hono supports append via the Response object
-  c.header("set-cookie", authCookie);
-  c.header("set-cookie", flagCookie);
+  // ✅ FIX: Use appendHeader to set multiple Set-Cookie headers
+  // c.header() overwrites, but we need both cookies
+  const existing = c.res.headers.getSetCookie?.() || [];
+  c.res.headers.append("Set-Cookie", authCookie);
+  c.res.headers.append("Set-Cookie", flagCookie);
 }
 
 /**

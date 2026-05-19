@@ -29,15 +29,15 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
 
     const cspDirectives = [
       "default-src 'self'",
-      `script-src 'self' 'nonce-${nonce}' https://cdn.jsdelivr.net https://www.clarity.ms`,
+      `script-src 'self' 'nonce-${nonce}' https://cdn.jsdelivr.net https://www.clarity.ms https://accounts.google.com https://oauth2.googleapis.com`,
       "worker-src 'self'",
       "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
       "img-src 'self' data: blob: https:",
-      "connect-src 'self' https://api.openrouter.ai https://*.aivencloud.com https://www.clarity.ms",
+      "connect-src 'self' https://api.openrouter.ai https://*.aivencloud.com https://www.clarity.ms https://www.googleapis.com https://accounts.google.com",
       "frame-ancestors 'none'",
       "base-uri 'self'",
-      "form-action 'self'",
+      "form-action 'self' https://accounts.google.com",
       "report-uri /api/csp-report",
       `report-to {"endpoints":[{"url":"/api/csp-report"}],"max_age":86400,"group":"csp"}`,
     ].join("; ");
@@ -55,10 +55,10 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
       "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
       "img-src 'self' data: blob: https:",
-      "connect-src 'self' https://api.openrouter.ai https://*.aivencloud.com https://www.clarity.ms",
+      "connect-src 'self' https://api.openrouter.ai https://*.aivencloud.com https://www.clarity.ms https://www.googleapis.com https://accounts.google.com",
       "frame-ancestors 'none'",
       "base-uri 'self'",
-      "form-action 'self'",
+      "form-action 'self' https://accounts.google.com",
       "report-uri /api/csp-report",
       `report-to {"endpoints":[{"url":"/api/csp-report"}],"max_age":86400,"group":"csp"}`,
     ].join("; ");
