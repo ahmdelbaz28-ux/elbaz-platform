@@ -9,6 +9,13 @@ import { adminRouter } from "./admin-router";
 import { settingsRouter } from "./settings-router";
 import { notificationPollRouter } from "./notification-poll-router";
 import { promoRouter } from "./promo-tsrp-router.js";
+import { twoFaRouter } from "./twofa-router";
+import { reviewRouter } from "./review-router";
+import { softwareRouter } from "./software-router";
+import { notesRouter } from "./notes-router";
+import { sessionsRouter } from "./sessions-router";
+import { licenseRouter } from "./license-router";
+import { exportRouter } from "./export-router";
 import { createRouter, publicQuery } from "./middleware";
 
 export const appRouter = createRouter({
@@ -24,6 +31,13 @@ export const appRouter = createRouter({
   settings: settingsRouter,
   notifications: notificationPollRouter,
   promo: promoRouter,
+  twoFa: twoFaRouter,
+  review: reviewRouter,
+  software: softwareRouter,
+  notes: notesRouter,
+  sessions: sessionsRouter,
+  license: licenseRouter,
+  export: exportRouter,
 });
 
 export type AppRouter = typeof appRouter;
