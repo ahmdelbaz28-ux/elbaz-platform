@@ -56,8 +56,9 @@ class SessionCache {
 
   destroySession(sessionId: string): void {
     const entry = this.cache.get<SessionData>(`session:byId:${sessionId}`);
-    if (entry) this.cache.invalidateTags([`tag:session:user:${entry.userId}`]);
-    this.cache.delete(`session:byId:${sessionId}`);
+    if (entry) {
+      this.cache.invalidateTags([`tag:session:user:${entry.userId}`]);
+    }
     this.cache.delete(`session:token:${sessionId}`);
   }
 

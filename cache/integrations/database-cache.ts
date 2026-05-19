@@ -1,4 +1,5 @@
 import mysql from 'mysql2/promise';
+import ElbazCache from '../index';
 import { dbCacheManager } from '../strategies/cache-aside';
 import { userById, courseById, lessonById, quizById, CacheTags, TTLConfig } from '../keys/cache-keys';
 
@@ -72,5 +73,4 @@ class DatabaseQueryCache {
 }
 
 const dbQueryCache = new DatabaseQueryCache();
-import ElbazCache from '../index';
 export { DatabaseQueryCache, dbQueryCache };
