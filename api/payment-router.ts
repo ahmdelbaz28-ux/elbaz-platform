@@ -1,12 +1,12 @@
 import { z } from "zod";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { createRouter, authedQuery, publicQuery } from "./middleware";
 import { getDb, withTransaction } from "./queries/connection";
 import { payments, enrollments, courses, promoCodes } from "@db/schema";
 import { TRPCError } from "@trpc/server";
 import { nanoid } from "nanoid";
 import { initiatePaymobPayment, isPaymobConfigured } from "./lib/paymob";
-import { invalidateStatsCache } from "./lib/cache";
+import { invalidateCourseCache, invalidateStatsCache } from "./lib/cache";
 
 export const paymentRouter = createRouter({
   /**
@@ -127,6 +127,12 @@ export const paymentRouter = createRouter({
             isCompleted: false,
           });
 
+          await tx
+            .update(courses)
+            .set({ studentCount: sql`${courses.studentCount} + 1` })
+            .where(eq(courses.id, input.courseId));
+
+          await invalidateCourseCache();
           await invalidateStatsCache();
 
           return {
