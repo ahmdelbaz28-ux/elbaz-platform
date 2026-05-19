@@ -594,6 +594,36 @@ export const softwareDownloads = mysqlTable(
     createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
   }
 );
+
+export const reviews = mysqlTable(
+  "reviews",
+  {
+    id: bigint("id", { mode: "number", unsigned: true }).primaryKey().autoincrement(),
+    userId: bigint("userId", { mode: "number", unsigned: true }).notNull(),
+    courseId: bigint("courseId", { mode: "number", unsigned: true }).notNull(),
+    rating: int("rating").notNull(),
+    comment: text("comment"),
+    isPublished: boolean("isPublished").notNull().default(true),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("reviews_user_course_unique").on(table.userId, table.courseId),
+    index("reviews_course_idx").on(table.courseId),
+    index("reviews_rating_idx").on(table.rating),
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [users.id],
+      name: "fk_reviews_user_id",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [table.courseId],
+      foreignColumns: [courses.id],
+      name: "fk_reviews_course_id",
+    }).onDelete("cascade").onUpdate("cascade"),
+  ]
+);
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 

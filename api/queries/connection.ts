@@ -80,6 +80,11 @@ async function initializePool(retries = 3, delay = 1000): Promise<mysql.Pool | n
       }
     }
   }
+  // SECURITY: In production, never fall back to mock mode — fail loudly
+  if (env.NODE_ENV === "production") {
+    console.error("[DB] 🛑 FATAL: Cannot connect to database in production. Exiting.");
+    process.exit(1);
+  }
   console.error('[DB] ⚠️ Could not connect to MySQL. Enabling "Elite Sandbox Mode" (In-Memory Data).');
   isMockMode = true;
   return null;
