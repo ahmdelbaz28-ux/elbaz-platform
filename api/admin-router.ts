@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { desc, eq, sql, and, count } from "drizzle-orm";
 import { createRouter, adminQuery } from "./middleware";
 import { getDb } from "./queries/connection";
-import { users, payments, enrollments, courses, supportTickets, ticketReplies } from "@db/schema";
+import { users, payments, enrollments, courses, supportTickets, ticketReplies, categories, lessons } from "@db/schema";
 import type { SafeUser } from "./context";
 
 export const adminRouter = createRouter({
@@ -169,4 +169,104 @@ export const adminRouter = createRouter({
         .where(eq(supportTickets.id, input.ticketId));
       return { success: true };
     }),
+
+  // ═══════════════════ COURSE MANAGEMENT ═══════════════════
+
+  listCourses: adminQuery
+    .input(z.object({ page: z.number().int().min(1).default(1), limit: z.number().int().min(1).max(100).default(20) }).optional())
+    .query(async ({ input }) => {
+      const db = getDb();
+      const page = input?.page ?? 1;
+      const limit = input?.limit ?? 20;
+      const offset = (page - 1) * limit;
+
+      const [[{ total }], items] = await Promise.all([
+        db.select({ total: count() }).from(courses),
+        db.select({
+          id: courses.id,
+          slug: courses.slug,
+          titleEn: courses.titleEn,
+          titleAr: courses.titleAr,
+          descriptionEn: courses.descriptionEn,
+          descriptionAr: courses.descriptionAr,
+          thumbnailUrl: courses.thumbnailUrl,
+          price: courses.price,
+          currency: courses.currency,
+          isFeatured: courses.isFeatured,
+          isPublished: courses.isPublished,
+          level: courses.level,
+          category: courses.categoryId,
+          studentCount: courses.studentCount,
+          createdAt: courses.createdAt,
+          updatedAt: courses.updatedAt,
+        })
+          .from(courses)
+          .orderBy(desc(courses.createdAt))
+          .limit(limit)
+          .offset(offset),
+      ]);
+
+      return { items, total: total ?? 0 };
+    }),
+
+  updateCourse: adminQuery
+    .input(z.object({
+      id: z.number().int().positive(),
+      titleEn: z.string().max(500).optional(),
+      titleAr: z.string().max(500).optional(),
+      descriptionEn: z.string().optional(),
+      descriptionAr: z.string().optional(),
+      thumbnailUrl: z.string().max(1000).optional(),
+      price: z.number().optional(),
+      isFeatured: z.boolean().optional(),
+      isPublished: z.boolean().optional(),
+      level: z.enum(["beginner", "intermediate", "advanced"]).optional(),
+      categoryId: z.number().int().positive().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const db = getDb();
+      const { id, ...updates } = input;
+      const cleanUpdates = Object.fromEntries(Object.entries(updates).filter(([_, v]) => v !== undefined));
+      if (Object.keys(cleanUpdates).length === 0) return { success: true };
+      await db.update(courses).set({ ...cleanUpdates, updatedAt: new Date() }).where(eq(courses.id, id));
+      return { success: true };
+    }),
+
+  // ═══════════════════ USER ROLE MANAGEMENT ═══════════════════
+
+  updateUserRole: adminQuery
+    .input(z.object({ userId: z.number().int().positive(), role: z.enum(["user", "admin"]) }))
+    .mutation(async ({ input }) => {
+      const db = getDb();
+      const [user] = await db.select({ id: users.id }).from(users).where(eq(users.id, input.userId)).limit(1);
+      if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
+      await db.update(users).set({ role: input.role, updatedAt: new Date() }).where(eq(users.id, input.userId));
+      return { success: true };
+    }),
+
+  // ═══════════════════ ANALYTICS ═══════════════════
+
+  analytics: adminQuery.query(async () => {
+    const db = getDb();
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const [recentUsers] = await db.select({ value: count() }).from(users).where(sql`${users.createdAt} >= ${thirtyDaysAgo}`);
+    const [recentEnrollments] = await db.select({ value: count() }).from(enrollments).where(sql`${enrollments.createdAt} >= ${thirtyDaysAgo}`);
+    const [recentRevenue] = await db.select({ total: sql<string>`COALESCE(SUM(CAST(amount AS DECIMAL(12,2))), 0)` }).from(payments).where(and(eq(payments.status, "completed"), sql`${payments.createdAt} >= ${thirtyDaysAgo}`));
+    const [totalLessons] = await db.select({ value: count() }).from(lessons);
+
+    const recentPayments = await db.select({
+      date: sql<string>`DATE(${payments.createdAt})`,
+      amount: sql<string>`COALESCE(SUM(CAST(amount AS DECIMAL(12,2))), 0)`,
+    }).from(payments).where(and(eq(payments.status, "completed"), sql`${payments.createdAt} >= ${thirtyDaysAgo}`)).groupBy(sql`DATE(${payments.createdAt})`).orderBy(sql`DATE(${payments.createdAt})`);
+
+    return {
+      newUsers30d: recentUsers?.value ?? 0,
+      newEnrollments30d: recentEnrollments?.value ?? 0,
+      revenue30d: parseFloat(recentRevenue?.total ?? "0"),
+      totalLessons: totalLessons?.value ?? 0,
+      revenueByDay: recentPayments.map((p: any) => ({ date: p.date, amount: parseFloat(p.amount) })),
+    };
+  }),
 });
