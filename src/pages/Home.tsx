@@ -4,13 +4,19 @@ import { trpc } from "@/providers/trpc";
 import CourseCard from "@/components/CourseCard";
 import SEO from "@/components/SEO";
 import { StaggerContainer, StaggerItem, FadeIn, NeonGlow } from "@/components/ui/motion";
+import AnimatedIcon from "@/components/ui/AnimatedIcon";
+import BentoCard from "@/components/ui/BentoCard";
+import AnimatedCounter from "@/components/ui/AnimatedCounter";
+import ScrollReveal from "@/components/ui/ScrollReveal";
+import MagneticCursor from "@/components/ui/MagneticCursor";
 import ElectricParticles from "@/components/ui/ElectricParticles";
 import SingleLineDiagram from "@/components/ui/SingleLineDiagram";
 import ScadaGauge from "@/components/ui/ScadaGauge";
 import ArcFlashButton from "@/components/ui/ArcFlashButton";
 import { useEngineeringMode } from "@/components/ui/EngineeringMode";
-import { motion } from "framer-motion";
+import { motion, useScroll, useTransform, useMotionValue, useSpring } from "framer-motion";
 import "@/engineering-mode.css";
+import "@/elite-animations.css";
 import {
   PlayCircle,
   Shield,
@@ -25,12 +31,27 @@ import {
   X,
   Clock,
   Zap,
+  Monitor,
+  BookOpen,
+  Globe,
+  Lock,
+  Trophy,
+  Users,
+  Code,
+  Cpu,
+  Layers,
+  BarChart3,
+  Headphones,
+  Sparkles,
+  ArrowRight,
+  CheckCircle2,
+  Rocket,
+  Target,
+  Lightbulb,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { trackEvent } from "@/lib/clarity";
-
-// ─── API Response Types ───────────────────────────────────────────────────────
 
 type Category = {
   id: number;
@@ -58,7 +79,6 @@ type Testimonial = {
 type Promotion = {
   id: number;
   position: string;
-  // other fields exist but only id & position used here
 };
 
 type Stats = {
@@ -68,7 +88,25 @@ type Stats = {
   satisfactionRate: number;
 };
 
-// ───────────────────────────────────────────────────────────────────────────────
+const categoryIcons: Record<string, React.ReactNode> = {
+  Zap: <Zap className="h-5 w-5" />,
+  Cpu: <Cpu className="h-5 w-5" />,
+  Monitor: <Monitor className="h-5 w-5" />,
+  Code: <Code className="h-5 w-5" />,
+  Layers: <Layers className="h-5 w-5" />,
+  BarChart3: <BarChart3 className="h-5 w-5" />,
+};
+
+const SOFTWARE_LOGOS = [
+  { name: "ETAP", logo: "https://upload.wikimedia.org/wikipedia/en/c/c3/ETAP_logo.png" },
+  { name: "SKM", logo: "https://www.skm.com/wp-content/uploads/2021/06/skm-logo.png" },
+  { name: "PowerFactory", logo: "https://upload.wikimedia.org/wikipedia/commons/1/1a/DIgSILENT_Logo.png" },
+  { name: "PVSyst", logo: "https://www.pvsyst.com/wp-content/uploads/2019/05/logo-pvsyst.png" },
+  { name: "AutoCAD", logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/af/Autodesk_AutoCAD_logo.svg/512px-Autodesk_AutoCAD_logo.svg.png" },
+  { name: "MATLAB", logo: "https://upload.wikimedia.org/wikipedia/commons/2/21/Matlab_Logo.png" },
+];
+
+const FALLBACK_STATS = { totalStudents: 2400, satisfactionRate: 98, totalCourses: 35 };
 
 function useRevealOnce() {
   const ref = useRef<HTMLDivElement>(null);
@@ -91,52 +129,21 @@ function useRevealOnce() {
   return [ref, visible] as const;
 }
 
-
-
-
-
-function SectionReveal({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  const [ref, visible] = useRevealOnce();
-
-  return (
-    <div
-      ref={ref}
-      className={`transition-all duration-700 ${
-        visible ? "translate-y-0 opacity-100" : "translate-y-8 opacity-0"
-      } ${className}`}
-    >
-      {children}
-    </div>
-  );
-}
-
 function PromoBanner({ promotion }: { promotion: any }) {
   const { lang } = useTranslation();
-  const [timeLeft, setTimeLeft] = useState({
-    days: 0,
-    hours: 0,
-    minutes: 0,
-    seconds: 0,
-  });
+  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
   const [dismissed, setDismissed] = useState(() => {
     try {
-      const dismissedKey = `dismissed-promo-${promotion.id}`;
-      return !!localStorage.getItem(dismissedKey);
-    } catch {
-      return false;
-    }
+      return !!localStorage.getItem(`dismissed-promo-${promotion.id}`);
+    } catch { return false; }
   });
-
-  // Initialized via useState initializer
 
   useEffect(() => {
     if (dismissed || !promotion.showCountdown) return;
-
     const calcTimeLeft = () => {
       const now = new Date().getTime();
       const end = new Date(promotion.endsAt).getTime();
       const diff = Math.max(0, end - now);
-
       setTimeLeft({
         days: Math.floor(diff / (1000 * 60 * 60 * 24)),
         hours: Math.floor((diff / (1000 * 60 * 60)) % 24),
@@ -144,17 +151,13 @@ function PromoBanner({ promotion }: { promotion: any }) {
         seconds: Math.floor((diff / 1000) % 60),
       });
     };
-
     calcTimeLeft();
     const interval = setInterval(calcTimeLeft, 1000);
     return () => clearInterval(interval);
   }, [dismissed, promotion.endsAt, promotion.showCountdown]);
 
   const handleDismiss = () => {
-    try {
-      const dismissedKey = `dismissed-promo-${promotion.id}`;
-      localStorage.setItem(dismissedKey, "true");
-    } catch { /* localStorage unavailable */ }
+    try { localStorage.setItem(`dismissed-promo-${promotion.id}`, "true"); } catch {}
     setDismissed(true);
   };
 
@@ -166,29 +169,18 @@ function PromoBanner({ promotion }: { promotion: any }) {
   const title = lang === "ar" ? promotion.titleAr : promotion.titleEn;
   const subtitle = lang === "ar" ? promotion.subtitleAr : promotion.subtitleEn;
   const ctaText = lang === "ar" ? promotion.ctaTextAr : promotion.ctaTextEn;
-
   const countdownLabels = {
     days: lang === "ar" ? "أيام" : "days",
     hours: lang === "ar" ? "ساعات" : "hours",
     minutes: lang === "ar" ? "دقائق" : "minutes",
     seconds: lang === "ar" ? "ثواني" : "seconds",
   };
-
   const pad = (n: number) => String(n).padStart(2, "0");
 
   return (
-    <div
-      className="relative w-full animate-[fadeIn_0.5s_ease-out]"
-      style={{
-        background: `linear-gradient(135deg, ${bgFrom}, ${bgTo})`,
-        color: textColor,
-      }}
-    >
-      {/* Subtle pattern overlay */}
+    <div className="relative w-full animate-[fadeIn_0.5s_ease-out]" style={{ background: `linear-gradient(135deg, ${bgFrom}, ${bgTo})`, color: textColor }}>
       <div className="absolute inset-0 opacity-10 promo-pattern" />
-
       <div className="relative mx-auto flex max-w-7xl flex-col items-center gap-4 px-4 py-5 sm:flex-row sm:justify-between lg:px-6">
-        {/* Left: Title & subtitle */}
         <div className="flex flex-1 flex-col items-center gap-1 text-center sm:items-start sm:text-start">
           <div className="flex flex-wrap items-center justify-center gap-3 sm:justify-start">
             {promotion.discountText && (
@@ -198,12 +190,8 @@ function PromoBanner({ promotion }: { promotion: any }) {
             )}
             <span className="text-lg font-bold sm:text-xl">{title}</span>
           </div>
-          {subtitle && (
-            <p className="mt-1 text-sm opacity-90">{subtitle}</p>
-          )}
+          {subtitle && <p className="mt-1 text-sm opacity-90">{subtitle}</p>}
         </div>
-
-        {/* Right: Countdown + CTA */}
         <div className="flex items-center gap-4">
           {promotion.showCountdown && (
             <div className="flex items-center gap-2">
@@ -213,32 +201,19 @@ function PromoBanner({ promotion }: { promotion: any }) {
                   <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-black/20 text-sm font-bold tabular-nums backdrop-blur-sm sm:h-10 sm:w-10 sm:text-base">
                     {pad(timeLeft[unit])}
                   </span>
-                  <span className="hidden text-[10px] uppercase tracking-wider opacity-70 sm:inline">
-                    {countdownLabels[unit]}
-                  </span>
+                  <span className="hidden text-[10px] uppercase tracking-wider opacity-70 sm:inline">{countdownLabels[unit]}</span>
                   {i < 3 && <span className="mx-0.5 text-lg font-light opacity-50">:</span>}
                 </div>
               ))}
             </div>
           )}
-
           {promotion.ctaUrl && ctaText && (
-            <Link
-              to={promotion.ctaUrl}
-              className="shrink-0 rounded-lg bg-white px-5 py-2.5 text-sm font-semibold shadow-lg transition-all hover:scale-105 hover:shadow-xl"
-              style={{ color: bgFrom }}
-            >
+            <Link to={promotion.ctaUrl} className="shrink-0 rounded-lg bg-white px-5 py-2.5 text-sm font-semibold shadow-lg transition-all hover:scale-105 hover:shadow-xl" style={{ color: bgFrom }}>
               {ctaText}
             </Link>
           )}
         </div>
-
-        {/* Dismiss button */}
-        <button
-          onClick={handleDismiss}
-          className="absolute end-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-white/70 transition-all hover:bg-white/20 hover:text-white sm:end-3 sm:top-3"
-          aria-label={lang === "ar" ? "إغلاق" : "Dismiss"}
-        >
+        <button onClick={handleDismiss} className="absolute end-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-white/70 transition-all hover:bg-white/20 hover:text-white sm:end-3 sm:top-3" aria-label={lang === "ar" ? "إغلاق" : "Dismiss"}>
           <X className="h-4 w-4" />
         </button>
       </div>
@@ -246,40 +221,55 @@ function PromoBanner({ promotion }: { promotion: any }) {
   );
 }
 
-const categoryIcons: Record<string, React.ReactNode> = {
-  Zap: <Zap className="h-5 w-5 text-[#06b6d4]" />,
-};
+function ParallaxHeroImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
+  const y = useTransform(scrollYProgress, [0, 1], [0, -100]);
+  const scale = useTransform(scrollYProgress, [0, 1], [1, 0.95]);
 
-// Real software logos from verified official/reliable sources
-const SOFTWARE_LOGOS = [
-  {
-    name: "ETAP",
-    logo: "https://upload.wikimedia.org/wikipedia/en/c/c3/ETAP_logo.png",
-  },
-  {
-    name: "SKM",
-    logo: "https://www.skm.com/wp-content/uploads/2021/06/skm-logo.png",
-  },
-  {
-    name: "PowerFactory",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/1/1a/DIgSILENT_Logo.png",
-  },
-  {
-    name: "PVSyst",
-    logo: "https://www.pvsyst.com/wp-content/uploads/2019/05/logo-pvsyst.png",
-  },
-  {
-    name: "AutoCAD",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/af/Autodesk_AutoCAD_logo.svg/512px-Autodesk_AutoCAD_logo.svg.png",
-  },
-  {
-    name: "MATLAB",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/2/21/Matlab_Logo.png",
-  },
-];
+  return (
+    <motion.div ref={ref} style={{ y, scale }} className={className}>
+      <img src={src} alt={alt} className="w-full h-auto object-cover max-h-[480px] lg:max-h-[600px] xl:max-h-[680px]" loading="eager" fetchPriority="high" decoding="async" width="1200" height="800" onError={(e) => { e.currentTarget.src = "/hero-bg.jpg"; e.currentTarget.onerror = null; }} />
+    </motion.div>
+  );
+}
 
-
-const FALLBACK_STATS = { totalStudents: 2400, satisfactionRate: 98, totalCourses: 35 };
+function SectionHeader({ badge, title, subtitle }: { badge: string; title: string; subtitle?: string }) {
+  return (
+    <ScrollReveal className="mb-16 text-center">
+      <motion.span
+        initial={{ opacity: 0, scale: 0.8 }}
+        whileInView={{ opacity: 1, scale: 1 }}
+        viewport={{ once: true }}
+        transition={{ type: "spring", stiffness: 300, damping: 20 }}
+        className="inline-flex items-center gap-2 rounded-full border border-[rgba(6,182,212,0.2)] bg-[rgba(6,182,212,0.05)] px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.15em] text-[#06b6d4]"
+      >
+        <Sparkles className="h-3 w-3" />
+        {badge}
+      </motion.span>
+      <motion.h2
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+        transition={{ delay: 0.1, duration: 0.6 }}
+        className="mt-4 text-3xl font-bold text-[#f0f4f8] lg:text-5xl section-header-glow"
+      >
+        {title}
+      </motion.h2>
+      {subtitle && (
+        <motion.p
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.2, duration: 0.6 }}
+          className="mx-auto mt-4 max-w-lg text-[#94a3b8]"
+        >
+          {subtitle}
+        </motion.p>
+      )}
+    </ScrollReveal>
+  );
+}
 
 export default function Home() {
   const { t, lang } = useTranslation();
@@ -298,82 +288,48 @@ export default function Home() {
     totalCourses: (ps.totalCourses ?? 0) > 0 ? ps.totalCourses : FALLBACK_STATS.totalCourses,
   };
 
-  // Engineering Mode state + ui feature flags
   const { isActive: isEngMode } = useEngineeringMode();
-  const sldEnabled = true;   // Admin-controllable: always on by default
-  const scadaEnabled = true; // Admin-controllable: always on by default
+  const sldEnabled = true;
+  const scadaEnabled = true;
+
+  const heroRef = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({ target: heroRef, offset: ["start start", "end start"] });
+  const heroY = useTransform(scrollYProgress, [0, 1], [0, 200]);
+  const heroOpacity = useTransform(scrollYProgress, [0, 0.5], [1, 0]);
 
   const faqData = [
-    {
-      q: lang === "en" ? "How long do I have access to a purchased course?" : "ما مدة الوصول للكورس بعد الشراء؟",
-      a: lang === "en" ? "Lifetime access. Once enrolled, the course is yours forever, including all future updates and bonus materials added to that course." : "وصول مدى الحياة. بمجرد التسجيل، يصبح الكورس ملكك إلى الأبد، بما في ذلك جميع التحديثات المستقبلية.",
-    },
-    {
-      q: lang === "en" ? "Can I watch courses on mobile?" : "هل يمكنني مشاهدة الكورسات على الموبايل؟",
-      a: lang === "en" ? "Absolutely. The platform is fully responsive and works on any device. Our protected video player is optimized for mobile streaming without compromising security." : "بالتأكيد. المنصة متجاوبة بالكامل وتعمل على أي جهاز. مشغل الفيديو المحمي مُحسّن للبث على الموبايل.",
-    },
-    {
-      q: lang === "en" ? "What payment methods are accepted?" : "ما هي طرق الدفع المتاحة؟",
-      a: lang === "en" ? "We accept Visa/Mastercard, InstaPay bank transfers, Vodafone Cash, and major mobile wallets. All transactions are processed through encrypted, PCI-compliant gateways." : "نقبل Visa/Mastercard، وتحويلات InstaPay، وفودافون كاش، والمحافظ الإلكترونية الرئيسية. جميع المعاملات تتم عبر بوابات مشفرة.",
-    },
-    {
-      q: lang === "en" ? "Do I get a certificate after completing a course?" : "هل أحصل على شهادة بعد إتمام الكورس؟",
-      a: lang === "en" ? "Yes. Every course completion awards a verified digital certificate with a unique QR code for validation. Certificates can be downloaded as PDF and shared directly to LinkedIn." : "نعم. يحصل كل طالب يكمل الكورس على شهادة رقمية موثقة برمز QR فريد للتحقق.",
-    },
-    {
-      q: lang === "en" ? "Is there a refund policy?" : "هل يوجد سياسة استرداد؟",
-      a: lang === "en" ? "We offer a 7-day money-back guarantee for all premium courses. If the content doesn't meet your expectations, contact support for a full refund." : "نقدم ضمان استرداد الأموال لمدة 7 أيام لجميع الكورسات المدفوعة.",
-    },
+    { q: lang === "en" ? "How long do I have access to a purchased course?" : "ما مدة الوصول للكورس بعد الشراء؟", a: lang === "en" ? "Lifetime access. Once enrolled, the course is yours forever, including all future updates and bonus materials added to that course." : "وصول مدى الحياة. بمجرد التسجيل، يصبح الكورس ملكك إلى الأبد، بما في ذلك جميع التحديثات المستقبلية." },
+    { q: lang === "en" ? "Can I watch courses on mobile?" : "هل يمكنني مشاهدة الكورسات على الموبايل؟", a: lang === "en" ? "Absolutely. The platform is fully responsive and works on any device. Our protected video player is optimized for mobile streaming without compromising security." : "بالتأكيد. المنصة متجاوبة بالكامل وتعمل على أي جهاز. مشغل الفيديو المحمي مُحسّن للبث على الموبايل." },
+    { q: lang === "en" ? "What payment methods are accepted?" : "ما هي طرق الدفع المتاحة؟", a: lang === "en" ? "We accept Visa/Mastercard, InstaPay bank transfers, Vodafone Cash, and major mobile wallets. All transactions are processed through encrypted, PCI-compliant gateways." : "نقبل Visa/Mastercard، وتحويلات InstaPay، وفودافون كاش، والمحافظ الإلكترونية الرئيسية. جميع المعاملات تتم عبر بوابات مشفرة." },
+    { q: lang === "en" ? "Do I get a certificate after completing a course?" : "هل أحصل على شهادة بعد إتمام الكورس؟", a: lang === "en" ? "Yes. Every course completion awards a verified digital certificate with a unique QR code for validation. Certificates can be downloaded as PDF and shared directly to LinkedIn." : "نعم. يحصل كل طالب يكمل الكورس على شهادة رقمية موثقة برمز QR فريد للتحقق." },
+    { q: lang === "en" ? "Is there a refund policy?" : "هل يوجد سياسة استرداد؟", a: lang === "en" ? "We offer a 7-day money-back guarantee for all premium courses. If the content doesn't meet your expectations, contact support for a full refund." : "نقدم ضمان استرداد الأموال لمدة 7 أيام لجميع الكورسات المدفوعة." },
   ];
 
-  // Filter promotions for top/hero_above position and check dismissed state
-  const topPromotion = activePromotions?.find(
-    (p: Promotion) => {
-      try {
-        return (p.position === "top" || p.position === "hero_above") &&
-          !localStorage.getItem(`dismissed-promo-${p.id}`);
-      } catch { return (p.position === "top" || p.position === "hero_above"); }
-    }
-  );
+  const topPromotion = activePromotions?.find((p: Promotion) => {
+    try { return (p.position === "top" || p.position === "hero_above") && !localStorage.getItem(`dismissed-promo-${p.id}`); } catch { return (p.position === "top" || p.position === "hero_above"); }
+  });
 
   return (
-    <div className="min-h-screen bg-[#0a0e17]">
-      <SEO 
-        title={lang === "en" ? "Home" : "الرئيسية"} 
-        description={lang === "en" ? "Master electrical engineering with professional courses in ETAP, SKM, PowerFactory, and PVSyst." : "أتقن الهندسة الكهربية مع كورسات احترافية في ETAP وSKM وPowerFactory وPVSyst."} 
-      />
-      {/* ─── Promotion Banner ─── */}
+    <div className="min-h-screen bg-[#0a0e17] overflow-hidden">
+      <SEO title={lang === "en" ? "Home" : "الرئيسية"} description={lang === "en" ? "Master electrical engineering with professional courses in ETAP, SKM, PowerFactory, and PVSyst." : "أتقن الهندسة الكهربية مع كورسات احترافية في ETAP وSKM وPowerFactory وPVSyst."} />
+      <MagneticCursor enabled={!isEngMode} />
+
       {topPromotion && <PromoBanner promotion={topPromotion} />}
 
-      {/* ─── Hero ─── */}
-      <section className="relative min-h-screen overflow-hidden pt-20">
-        {/* Background: Solid color with gradient overlay */}
-        <div className="absolute inset-0 bg-[#0a0e17]">
-          {/* Multi-layer gradient overlay */}
-          <div className="absolute inset-0 bg-gradient-to-r from-[#0a0e17]/95 via-[#0a0e17]/70 to-[#0a0e17]/40" />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#0a0e17] via-transparent to-[#0a0e17]/60" />
-          {/* Subtle cyan glow */}
-          <div className="absolute inset-0 hero-glow" />
-          {/* Electric particles layer */}
+      {/* ═══════════════════ HERO ═══════════════════ */}
+      <section ref={heroRef} className="relative min-h-screen overflow-hidden pt-20">
+        <motion.div style={{ y: heroY, opacity: heroOpacity }} className="absolute inset-0 bg-[#0a0e17]">
+          <div className="absolute inset-0 aurora-bg" />
+          <div className="absolute inset-0 mesh-gradient" />
           <ElectricParticles color={isEngMode ? "#00ff88" : "#06b6d4"} intensity="medium" />
-          {/* ⚡ Interactive Single-Line Diagram */}
           <SingleLineDiagram color={isEngMode ? "#00ff88" : "#06b6d4"} enabled={sldEnabled} />
-        </div>
+        </motion.div>
 
         <div className="relative z-10 mx-auto flex max-w-7xl flex-col items-center px-4 py-16 lg:flex-row lg:px-6 lg:py-20 gap-8 lg:gap-0">
-          {/* Left Content */}
           <StaggerContainer className="flex-1 text-center lg:text-start" staggerChildren={0.12}>
             <StaggerItem>
-              <motion.div
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.5, type: "spring" }}
-                className="flex items-center justify-center gap-2 lg:justify-start"
-              >
-                <motion.div
-                  animate={{ opacity: [0.5, 1, 0.5], scale: [0.95, 1.05, 0.95] }}
-                  transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                >
+              <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.5, type: "spring" }} className="flex items-center justify-center gap-2 lg:justify-start">
+                <motion.div animate={{ opacity: [0.5, 1, 0.5], scale: [0.95, 1.05, 0.95] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}>
                   <Zap className="h-4 w-4 text-[#06b6d4]" />
                 </motion.div>
                 <span className="text-xs font-medium uppercase tracking-[0.15em] text-[#06b6d4]">
@@ -386,114 +342,53 @@ export default function Home() {
               <h1 className="mt-6 text-5xl font-extrabold leading-[1.06] tracking-tight text-[#f0f4f8] sm:text-5xl lg:text-[64px]">
                 {lang === "en" ? "Master the Power" : "أتقن قوة"}
                 <br />
-                <motion.span
-                  className="gradient-text"
-                  animate={{ textShadow: ["0 0 20px rgba(6,182,212,0.3), 0 0 40px rgba(6,182,212,0.15)", "0 0 40px rgba(6,182,212,0.6), 0 0 80px rgba(6,182,212,0.3)", "0 0 20px rgba(6,182,212,0.3), 0 0 40px rgba(6,182,212,0.15)"] }}
-                  transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-                >
+                <motion.span className="text-gradient-animated" animate={{ textShadow: ["0 0 20px rgba(6,182,212,0.3)", "0 0 40px rgba(6,182,212,0.6)", "0 0 20px rgba(6,182,212,0.3)"] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}>
                   {lang === "en" ? "of Electrical Engineering" : "الهندسة الكهربية"}
                 </motion.span>
               </h1>
             </StaggerItem>
 
             <StaggerItem>
-              <motion.p
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3, duration: 0.6 }}
-                className="mx-auto mt-5 max-w-lg text-base leading-relaxed text-[#94a3b8] lg:mx-0 lg:text-lg"
-              >
-                {lang === "en"
-                  ? "From electrical network design to advanced simulations in ETAP, SKM, PowerFactory, and PVSyst. Learn from an industry expert with real-world project experience."
-                  : "من تصميم الشبكات الكهربية إلى المحاكاة المتقدمة في ETAP وSKM وPowerFactory وPVSyst. تعلم من خبير الصناعة ذو الخبرة العملية."}
+              <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, duration: 0.6 }} className="mx-auto mt-5 max-w-lg text-base leading-relaxed text-[#94a3b8] lg:mx-0 lg:text-lg">
+                {lang === "en" ? "From electrical network design to advanced simulations in ETAP, SKM, PowerFactory, and PVSyst. Learn from an industry expert with real-world project experience." : "من تصميم الشبكات الكهربية إلى المحاكاة المتقدمة في ETAP وSKM وPowerFactory وPVSyst. تعلم من خبير صناعة ذي خبرة عملية."}
               </motion.p>
             </StaggerItem>
 
             <StaggerItem>
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4, duration: 0.5 }}
-                className="mt-8 flex flex-col items-center gap-4 sm:flex-row lg:justify-start"
-              >
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4, duration: 0.5 }} className="mt-8 flex flex-col items-center gap-4 sm:flex-row lg:justify-start">
                 <Link to="/courses">
-                  <ArcFlashButton
-                    variant="primary"
-                    onClick={() => trackEvent("cta_click", { button: "explore_courses", page: "hero" })}
-                  >
+                  <ArcFlashButton variant="primary" onClick={() => trackEvent("cta_click", { button: "explore_courses", page: "hero" })}>
                     <Zap className="h-4 w-4" />
                     {t("exploreCourses")}
                   </ArcFlashButton>
                 </Link>
-                <ArcFlashButton
-                  variant="outline"
-                  onClick={() => trackEvent("cta_click", { button: "watch_preview", page: "hero" })}
-                >
+                <ArcFlashButton variant="outline" onClick={() => trackEvent("cta_click", { button: "watch_preview", page: "hero" })}>
                   <PlayCircle className="h-4 w-4" />
                   {t("watchFreePreview")}
                 </ArcFlashButton>
               </motion.div>
             </StaggerItem>
 
-            {/* Stats — SCADA Gauges */}
             <StaggerItem>
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.5, duration: 0.5 }}
-                className="mt-10 flex flex-wrap items-center justify-center gap-6 lg:justify-start"
-              >
-                <ScadaGauge enabled={scadaEnabled} value={resolvedStats.totalStudents} label={t("studentsEnrolled")} color="#06b6d4" />
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5, duration: 0.5 }} className="mt-10 flex flex-wrap items-center justify-center gap-8 lg:justify-start">
+                <AnimatedCounter value={resolvedStats.totalStudents} label={t("studentsEnrolled")} color="#06b6d4" suffix="+" />
                 <div className="h-10 w-px bg-[#1f2d44]" />
-                <ScadaGauge enabled={scadaEnabled} value={resolvedStats.satisfactionRate} label={t("satisfactionRate")} suffix="%" color="#10b981" />
+                <AnimatedCounter value={resolvedStats.satisfactionRate} label={t("satisfactionRate")} color="#10b981" suffix="%" />
                 <div className="h-10 w-px bg-[#1f2d44]" />
-                <ScadaGauge enabled={scadaEnabled} value={resolvedStats.totalCourses} label={t("premiumCourses")} color="#f59e0b" />
+                <AnimatedCounter value={resolvedStats.totalCourses} label={t("premiumCourses")} color="#f59e0b" suffix="+" />
               </motion.div>
             </StaggerItem>
           </StaggerContainer>
 
-          {/* Right - Hero showcase image — enlarged to fill available space */}
           <FadeIn delay={0.3} className="mt-8 flex flex-1 justify-center lg:mt-0 lg:justify-end">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, x: 50 }}
-              animate={{ opacity: 1, scale: 1, x: 0 }}
-              transition={{ duration: 0.8, type: "spring", stiffness: 100, damping: 20 }}
-              className="hero-image-wrapper relative w-full max-w-2xl lg:max-w-[600px] xl:max-w-[700px]"
-            >
-              {/* Ambient glow behind image */}
-              <motion.div
-                animate={{ opacity: [0.4, 0.7, 0.4], scale: [1, 1.05, 1] }}
-                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                className="absolute -inset-6 rounded-[2rem] bg-gradient-to-br from-[#06b6d4]/20 via-[#8b5cf6]/10 to-transparent blur-3xl"
-              />
-
-              {/* Neon border ring */}
-              <motion.div
-                animate={{ boxShadow: ["0 0 30px rgba(6,182,212,0.3), 0 0 60px rgba(6,182,212,0.15)", "0 0 50px rgba(6,182,212,0.5), 0 0 100px rgba(6,182,212,0.25)", "0 0 30px rgba(6,182,212,0.3), 0 0 60px rgba(6,182,212,0.15)"] }}
-                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-                className="hero-image-glow-ring relative z-10 overflow-hidden rounded-[1.5rem] border border-[#1f2d44] bg-[#0a0e17] shadow-2xl"
-              >
-                <img
-                  src="hero-main.webp"
-                  alt="Master Electrical Engineering with Eng. Ahmed Elbaz"
-                  className="hero-image-display w-full h-auto object-cover max-h-[480px] lg:max-h-[600px] xl:max-h-[680px]"
-                  loading="eager"
-                  fetchPriority="high"
-                  decoding="async"
-                  width="1200"
-                  height="800"
-                  onError={(e) => { e.currentTarget.src = "/hero-bg.jpg"; e.currentTarget.onerror = null; }}
-                />
-                {/* Glossy overlay */}
+            <motion.div initial={{ opacity: 0, scale: 0.9, x: 50 }} animate={{ opacity: 1, scale: 1, x: 0 }} transition={{ duration: 0.8, type: "spring", stiffness: 100, damping: 20 }} className="relative w-full max-w-2xl lg:max-w-[600px] xl:max-w-[700px]">
+              <motion.div animate={{ opacity: [0.4, 0.7, 0.4], scale: [1, 1.05, 1] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }} className="absolute -inset-6 rounded-[2rem] bg-gradient-to-br from-[#06b6d4]/20 via-[#8b5cf6]/10 to-transparent blur-3xl" />
+              <motion.div animate={{ boxShadow: ["0 0 30px rgba(6,182,212,0.3)", "0 0 50px rgba(6,182,212,0.5)", "0 0 30px rgba(6,182,212,0.3)"] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }} className="relative z-10 overflow-hidden rounded-[1.5rem] border border-[#1f2d44] bg-[#0a0e17] shadow-2xl holographic">
+                <ParallaxHeroImage src="hero-main.webp" alt="Master Electrical Engineering with Eng. Ahmed Elbaz" />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0a0e17]/40 via-transparent to-white/5 pointer-events-none" />
               </motion.div>
 
-              {/* Floating badges */}
-              <motion.div
-                animate={{ y: [0, -8, 0] }}
-                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-                className="absolute -bottom-4 -right-4 z-20 hidden lg:flex"
-              >
+              <motion.div animate={{ y: [0, -8, 0] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }} className="absolute -bottom-4 -right-4 z-20 hidden lg:flex">
                 <NeonGlow color="#06b6d4" className="flex items-center gap-3 rounded-2xl bg-[#111827] p-4 border border-[#1f2d44] shadow-xl">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[rgba(6,182,212,0.1)]">
                     <Star className="h-6 w-6 text-yellow-400 fill-yellow-400" />
@@ -505,17 +400,8 @@ export default function Home() {
                 </NeonGlow>
               </motion.div>
 
-              {/* Second badge - floating top left */}
-              <motion.div
-                animate={{ y: [0, 6, 0] }}
-                transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
-                className="absolute -top-2 -left-2 z-20 hidden lg:flex"
-              >
-                <motion.div
-                  animate={{ boxShadow: ["0 0 15px rgba(16,185,129,0.3)", "0 0 25px rgba(16,185,129,0.5)", "0 0 15px rgba(16,185,129,0.3)"] }}
-                  transition={{ duration: 2, repeat: Infinity }}
-                  className="flex items-center gap-2 rounded-xl bg-[#111827] border border-[#1f2d44] px-3 py-2 shadow-xl"
-                >
+              <motion.div animate={{ y: [0, 6, 0] }} transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut", delay: 0.5 }} className="absolute -top-2 -left-2 z-20 hidden lg:flex">
+                <motion.div animate={{ boxShadow: ["0 0 15px rgba(16,185,129,0.3)", "0 0 25px rgba(16,185,129,0.5)", "0 0 15px rgba(16,185,129,0.3)"] }} transition={{ duration: 2, repeat: Infinity }} className="flex items-center gap-2 rounded-xl bg-[#111827] border border-[#1f2d44] px-3 py-2 shadow-xl">
                   <Zap className="h-5 w-5 text-[#10b981]" />
                   <span className="text-xs font-semibold text-white">2,400+ {lang === "ar" ? "طالب" : "Students"}</span>
                 </motion.div>
@@ -524,15 +410,8 @@ export default function Home() {
           </FadeIn>
         </div>
 
-        {/* Scroll indicator */}
-        <motion.div
-          animate={{ y: [0, 8, 0], opacity: [0.4, 1, 0.4] }}
-          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute bottom-8 left-1/2 z-20 -translate-x-1/2 flex flex-col items-center gap-2"
-        >
-          <span className="text-[10px] uppercase tracking-widest text-[#64748b]">
-            {lang === "ar" ? "مرر للأسفل" : "Scroll Down"}
-          </span>
+        <motion.div animate={{ y: [0, 8, 0], opacity: [0.4, 1, 0.4] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} className="absolute bottom-8 left-1/2 z-20 -translate-x-1/2 flex flex-col items-center gap-2">
+          <span className="text-[10px] uppercase tracking-widest text-[#64748b]">{lang === "ar" ? "مرر للأسفل" : "Scroll Down"}</span>
           <div className="flex h-6 w-4 items-start justify-center">
             <svg width="16" height="24" viewBox="0 0 16 24" fill="none">
               <path d="M8 0 L8 18 M3 13 L8 18 L13 13" stroke="#06b6d4" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -541,396 +420,229 @@ export default function Home() {
         </motion.div>
       </section>
 
-      {/* ─── Software Strip — Real Logos with Carousel ─── */}
+      {/* ═══════════════════ SOFTWARE STRIP ═══════════════════ */}
       <section className="border-y border-[#1f2d44] bg-[#111827] py-10 overflow-hidden">
         <div className="mx-auto max-w-7xl px-4 lg:px-6">
-          <p className="mb-8 text-center text-xs font-semibold uppercase tracking-[0.15em] text-[#64748b]">
-            {lang === "en" ? "Industry Software You Will Master" : "البرامج الهندسية التي ستتقنها"}
-          </p>
+          <ScrollReveal>
+            <p className="mb-8 text-center text-xs font-semibold uppercase tracking-[0.15em] text-[#64748b]">
+              {lang === "en" ? "Industry Software You Will Master" : "البرامج الهندسية التي ستتقنها"}
+            </p>
+          </ScrollReveal>
           <div className="relative flex overflow-x-auto pb-4 scrollbar-hide">
-            {/* Fade masks */}
             <div className="absolute start-0 top-0 bottom-0 w-20 bg-gradient-to-r from-[#111827] to-transparent z-10 pointer-events-none shrink-0" />
             <div className="absolute end-0 top-0 bottom-0 w-20 bg-gradient-to-l from-[#111827] to-transparent z-10 pointer-events-none shrink-0" />
             <div className="flex gap-10" style={{ animation: "scrollLogos 20s linear infinite", minWidth: "max-content" }}>
               {[...SOFTWARE_LOGOS, ...SOFTWARE_LOGOS].map((tool, i) => (
-                <div
-                  key={`${tool.name}-${i}`}
-                  className="software-logo-pill group flex flex-col items-center gap-2 cursor-default shrink-0"
-                  title={tool.name}
-                >
-                  <div className="flex h-12 w-28 items-center justify-center rounded-lg border border-[#1f2d44] bg-[#0a0e17] px-3 py-2 transition-all group-hover:border-[rgba(6,182,212,0.4)] group-hover:bg-[rgba(6,182,212,0.04)]">
-                    <img
-                      src={tool.logo}
-                      alt={tool.name}
-                      className="max-h-8 max-w-full object-contain filter brightness-110 contrast-125 transition-all group-hover:scale-110"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                        if (e.currentTarget.nextElementSibling) (e.currentTarget.nextElementSibling as HTMLElement).style.display = 'block';
-                      }}
-                    />
+                <motion.div key={`${tool.name}-${i}`} className="software-logo-pill group flex flex-col items-center gap-2 cursor-default shrink-0" whileHover={{ y: -6, scale: 1.05 }} title={tool.name}>
+                  <div className="flex h-12 w-28 items-center justify-center rounded-lg border border-[#1f2d44] bg-[#0a0e17] px-3 py-2 transition-all group-hover:border-[rgba(6,182,212,0.4)] group-hover:bg-[rgba(6,182,212,0.04)] holographic">
+                    <img src={tool.logo} alt={tool.name} className="max-h-8 max-w-full object-contain filter brightness-110 contrast-125 transition-all group-hover:scale-110" onError={(e) => { e.currentTarget.style.display = 'none'; if (e.currentTarget.nextElementSibling) (e.currentTarget.nextElementSibling as HTMLElement).style.display = 'block'; }} />
                     <span className="hidden text-sm font-bold text-[#06b6d4]">{tool.name}</span>
                   </div>
                   <span className="text-[10px] font-medium uppercase tracking-widest text-[#475569] group-hover:text-[#06b6d4] transition-colors">{tool.name}</span>
-                </div>
+                </motion.div>
               ))}
             </div>
           </div>
         </div>
       </section>
 
-      {/* ─── Categories ─── */}
+      {/* ═══════════════════ CATEGORIES ═══════════════════ */}
       <section className="py-24">
         <div className="mx-auto max-w-7xl px-4 lg:px-6">
-          <SectionReveal>
-            <div className="mb-12 text-center">
-              <span className="text-xs font-medium uppercase tracking-[0.1em] text-[#06b6d4]">
-                {t("curriculum")}
-              </span>
-              <h2 className="mt-2 text-3xl font-bold text-[#f0f4f8] lg:text-4xl">
-                {t("browseByCategory")}
-              </h2>
-              <p className="mx-auto mt-3 max-w-lg text-[#94a3b8]">
-                {lang === "en" ? "Structured learning paths from fundamentals to advanced design." : "مسارات تعليمية منظمة من الأساسيات إلى التصميم المتقدم."}
-              </p>
-            </div>
-          </SectionReveal>
+          <SectionHeader badge={t("curriculum")} title={t("browseByCategory")} subtitle={lang === "en" ? "Structured learning paths from fundamentals to advanced design." : "مسارات تعليمية منظمة من الأساسيات إلى التصميم المتقدم."} />
 
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {(categories || []).map((cat: Category) => (
-              <SectionReveal key={cat.id}>
+            {(categories || []).map((cat: Category, idx: number) => (
+              <ScrollReveal key={cat.id} delay={idx * 0.1}>
                 <Link to={`/courses?category=${cat.id}`}>
-                  <motion.div
-                    whileHover={{ y: -6, scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    transition={{ type: "spring", stiffness: 400, damping: 20 }}
-                    className="group rounded-xl border border-[#1f2d44] bg-[#111827] p-8 transition-all hover:border-[rgba(6,182,212,0.35)] hover:shadow-[0_12px_32px_rgba(6,182,212,0.08)]"
-                  >
-                    <motion.div
-                      whileHover={{ rotate: [0, -5, 5, -3, 3, 0], scale: 1.1 }}
-                      transition={{ duration: 0.4 }}
-                      className="flex h-10 w-10 items-center justify-center rounded-lg bg-[rgba(6,182,212,0.1)]"
-                    >
-                      {categoryIcons[cat.icon] || <Zap className="h-5 w-5 text-[#06b6d4]" />}
+                  <motion.div whileHover={{ y: -8, scale: 1.03 }} whileTap={{ scale: 0.98 }} transition={{ type: "spring", stiffness: 400, damping: 20 }} className="group rounded-xl border border-[#1f2d44] bg-[#111827] p-8 transition-all hover:border-[rgba(6,182,212,0.35)] hover:shadow-[0_12px_32px_rgba(6,182,212,0.08)] holographic">
+                    <AnimatedIcon icon={categoryIcons[cat.icon] || <Zap className="h-5 w-5" />} variant="glow" size="md" color="#06b6d4" />
+                    <h3 className="mt-4 text-lg font-semibold text-[#f0f4f8]">{lang === "ar" ? cat.nameAr : cat.nameEn}</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-[#94a3b8]">{lang === "ar" ? cat.descriptionAr : cat.descriptionEn}</p>
+                    <motion.div className="mt-4 flex items-center gap-2 text-sm font-medium text-[#06b6d4] opacity-0 group-hover:opacity-100 transition-opacity">
+                      {lang === "en" ? "Explore" : "استكشف"}
+                      <ArrowRight className="h-4 w-4" />
                     </motion.div>
-                    <h3 className="mt-4 text-lg font-semibold text-[#f0f4f8]">
-                      {lang === "ar" ? cat.nameAr : cat.nameEn}
-                    </h3>
-                    <p className="mt-2 text-sm leading-relaxed text-[#94a3b8]">
-                      {lang === "ar" ? cat.descriptionAr : cat.descriptionEn}
-                    </p>
-                    <motion.div className="mt-4 h-0.5 w-0 bg-gradient-to-r from-[#06b6d4] to-[#0891b2] group-hover:w-16 transition-all duration-500 rounded-full" />
                   </motion.div>
                 </Link>
-              </SectionReveal>
+              </ScrollReveal>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ─── Featured Courses ─── */}
+      {/* ═══════════════════ FEATURED COURSES ═══════════════════ */}
       <section className="relative py-24">
         <div className="absolute inset-0 grid-pattern pointer-events-none" />
         <div className="relative z-10 mx-auto max-w-7xl px-4 lg:px-6">
-          <SectionReveal>
-            <div className="mb-12 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
-              <div>
-                <span className="text-xs font-medium uppercase tracking-[0.1em] text-[#06b6d4]">
-                  {t("featured")}
-                </span>
-                <h2 className="mt-2 text-3xl font-bold text-[#f0f4f8] lg:text-4xl">
-                  {t("mostPopularCourses")}
-                </h2>
-              </div>
-              <Link
-                to="/courses"
-                className="text-sm font-medium text-[#94a3b8] transition-colors hover:text-[#06b6d4]"
-              >
-                {t("viewAll")} →
-              </Link>
-            </div>
-          </SectionReveal>
-
+          <SectionHeader badge={t("featured")} title={t("mostPopularCourses")} />
+          <div className="flex justify-end mb-8">
+            <Link to="/courses" className="inline-flex items-center gap-2 text-sm font-medium text-[#94a3b8] transition-colors hover:text-[#06b6d4] group">
+              {t("viewAll")}
+              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+            </Link>
+          </div>
           <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
-            {courses.map((course) => (
-              <SectionReveal key={course.id}>
+            {courses.map((course, idx: number) => (
+              <ScrollReveal key={course.id} delay={idx * 0.1}>
                 <CourseCard course={course} />
-              </SectionReveal>
+              </ScrollReveal>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ─── Features ─── */}
-      <section className="border-t border-[#1f2d44] bg-[#111827] py-24">
+      {/* ═══════════════════ FEATURES BENTO GRID ═══════════════════ */}
+      <section className="border-t border-[#1f2d44] py-24">
         <div className="mx-auto max-w-7xl px-4 lg:px-6">
-          <SectionReveal>
-            <div className="mb-16 text-center">
-              <span className="text-xs font-medium uppercase tracking-[0.1em] text-[#06b6d4]">
-                {t("whyUs")}
-              </span>
-              <h2 className="mt-2 text-3xl font-bold text-[#f0f4f8] lg:text-4xl">
-                {t("builtForSeriousEngineers")}
-              </h2>
-              <p className="mx-auto mt-3 max-w-lg text-[#94a3b8]">
-                {lang === "en" ? "Every feature designed to maximize your learning and career growth." : "كل ميزة مصممة لتعظيم تعلمك ونمو مسيرتك المهنية."}
-              </p>
-            </div>
-          </SectionReveal>
+          <SectionHeader badge={t("whyUs")} title={t("builtForSeriousEngineers")} subtitle={lang === "en" ? "Every feature designed to maximize your learning and career growth." : "كل ميزة مصممة لتعظيم تعلمك ونمو مسيرتك المهنية."} />
 
-          <div className="space-y-20">
-            {[
-              {
-                icon: <Shield className="h-8 w-8" />,
-                title: t("secureAntiPiracyStreaming"),
-                body: lang === "en"
-                  ? "Your premium content stays protected. Our player blocks screen recording, disables right-click downloads, and embeds invisible forensic watermarks unique to each student."
-                  : "يظل المحتوى المتميز محمياً. مشغلنا يمنع تصوير الشاشة ويعطل التنزيل ويضعل علامات مائية فريدة.",
-                bullets: lang === "en"
-                  ? ["Screen capture blocking at OS level", "Dynamic watermarking with user ID", "Encrypted HLS streaming protocol", "No downloadable video source exposed"]
-                  : ["حجب التقاط الشاشة على مستوى النظام", "علامة مائية ديناميكية بمعرف المستخدم", "بروتوكول بث HLS مشفر", "لا يوجد مصدر فيديو قابل للتنزيل"],
-              },
-              {
-                icon: <Award className="h-8 w-8" />,
-                title: t("quizzesVerifiedCertificates"),
-                body: lang === "en"
-                  ? "Test your knowledge after every lesson with auto-graded quizzes. Earn a blockchain-verifiable certificate upon course completion to showcase on LinkedIn."
-                  : "اختبر معرفتك بعد كل درس مع اختبارات مصححة تلقائياً. احصل على شهادة قابلة للتحقق عند إتمام الكورس.",
-                bullets: lang === "en"
-                  ? ["Lesson-level assessments with instant feedback", "Downloadable PDF certificates with QR verification", "LinkedIn integration for profile display", "Progress tracking dashboard"]
-                  : ["تقييمات على مستوى الدرس مع تغذية راجعة فورية", "شهادات PDF قابلة للتحميل مع QR", "تكامل مع LinkedIn", "لوحة متابعة التقدم"],
-              },
-              {
-                icon: <CreditCard className="h-8 w-8" />,
-                title: t("flexiblePaymentMethods"),
-                body: lang === "en"
-                  ? "Pay however suits you best. All transactions are encrypted, PCI-compliant, and processed through verified local payment gateways with instant access upon confirmation."
-                  : "ادفع بالطريقة التي تناسبك. جميع المعاملات مشفرة ومتوافقة مع PCI.",
-                bullets: lang === "en"
-                  ? ["Credit/Debit card (Visa/Mastercard)", "InstaPay bank transfers", "Vodafone Cash & mobile wallets", "Split-payment options for premium bundles"]
-                  : ["بطاقة ائتمان/خصم (Visa/Mastercard)", "تحويلات بنكية InstaPay", "فودافون كاش والمحافظ الإلكترونية", "خيارات تقسيط الدفع"],
-              },
-            ].map((feature, i) => (
-              <SectionReveal key={i}>
-                <div className={`flex flex-col items-center gap-10 lg:flex-row ${i % 2 === 1 ? "lg:flex-row-reverse" : ""}`}>
-                  {/* Visual — animated icon panel */}
-                  <div className="flex flex-1 items-center justify-center">
-                    <motion.div
-                      whileHover={{ scale: 1.08 }}
-                      whileTap={{ scale: 0.95 }}
-                      animate={{ y: [0, -6, 0] }}
-                      transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-                      className="relative flex h-48 w-48 items-center justify-center rounded-2xl border border-[#1f2d44] bg-[#1a2233]"
-                    >
-                      {/* Glow ring */}
-                      <motion.div
-                        animate={{ boxShadow: ["0 0 20px rgba(6,182,212,0.3), inset 0 0 20px rgba(6,182,212,0.05)", "0 0 40px rgba(6,182,212,0.5), inset 0 0 30px rgba(6,182,212,0.1)", "0 0 20px rgba(6,182,212,0.3), inset 0 0 20px rgba(6,182,212,0.05)"] }}
-                        transition={{ duration: 2, repeat: Infinity }}
-                        className="absolute inset-0 rounded-2xl border border-[rgba(6,182,212,0.3)]"
-                      />
-                      <motion.div
-                        whileHover={{ rotate: [0, -8, 8, -5, 5, 0] }}
-                        transition={{ duration: 0.5 }}
-                        className="relative z-10 text-[#06b6d4]"
-                      >
-                        {feature.icon}
-                      </motion.div>
-                    </motion.div>
-                  </div>
-                  {/* Text */}
-                  <div className="flex-1 text-center lg:text-start">
-                    <h3 className="text-xl font-bold text-[#f0f4f8] lg:text-2xl">
-                      {feature.title}
-                    </h3>
-                    <p className="mt-3 text-sm leading-relaxed text-[#94a3b8] lg:text-base">
-                      {feature.body}
-                    </p>
-                    <ul className="mt-5 space-y-2">
-                      {(feature.bullets || []).map((b, j) => (
-                        <motion.li
-                          key={j}
-                          initial={{ opacity: 0, x: -10 }}
-                          whileInView={{ opacity: 1, x: 0 }}
-                          transition={{ delay: j * 0.1 }}
-                          className="flex items-start gap-2 text-sm text-[#94a3b8]"
-                        >
-                          <motion.span
-                            whileHover={{ scale: 1.2, color: "#10b981" }}
-                            className="mt-0.5 text-[#10b981]"
-                          >
-                            ✓
-                          </motion.span>
-                          {b}
-                        </motion.li>
-                      ))}
-                    </ul>
-                  </div>
+          <div className="bento-grid bento-grid-cols-3">
+            <BentoCard span={2} delay={0} className="p-8">
+              <div className="flex flex-col h-full">
+                <AnimatedIcon icon={<Shield className="h-8 w-8" />} variant="glow" size="lg" color="#06b6d4" />
+                <h3 className="mt-6 text-xl font-bold text-[#f0f4f8]">{t("secureAntiPiracyStreaming")}</h3>
+                <p className="mt-3 text-sm leading-relaxed text-[#94a3b8]">
+                  {lang === "en" ? "Your premium content stays protected. Our player blocks screen recording, disables right-click downloads, and embeds invisible forensic watermarks unique to each student." : "يظل المحتوى المتميز محمياً. مشغلنا يمنع تصوير الشاشة ويعطل التنزيل ويضع علامات مائية فريدة."}
+                </p>
+                <ul className="mt-5 space-y-2">
+                  {["Screen capture blocking at OS level", "Dynamic watermarking with user ID", "Encrypted HLS streaming protocol"].map((b, j) => (
+                    <motion.li key={j} initial={{ opacity: 0, x: -10 }} whileInView={{ opacity: 1, x: 0 }} transition={{ delay: j * 0.1 + 0.3 }} viewport={{ once: true }} className="flex items-start gap-2 text-sm text-[#94a3b8]">
+                      <CheckCircle2 className="h-4 w-4 text-[#10b981] mt-0.5 shrink-0" />
+                      {b}
+                    </motion.li>
+                  ))}
+                </ul>
+              </div>
+            </BentoCard>
+
+            <BentoCard delay={0.1} className="p-8">
+              <div className="flex flex-col h-full items-center text-center">
+                <AnimatedIcon icon={<Award className="h-8 w-8" />} variant="orbit" size="lg" color="#f59e0b" />
+                <h3 className="mt-6 text-xl font-bold text-[#f0f4f8]">{t("quizzesVerifiedCertificates")}</h3>
+                <p className="mt-3 text-sm leading-relaxed text-[#94a3b8]">
+                  {lang === "en" ? "Auto-graded quizzes and blockchain-verifiable certificates with QR codes." : "اختبارات مصححة تلقائياً وشهادات قابلة للتحقق برموز QR."}
+                </p>
+              </div>
+            </BentoCard>
+
+            <BentoCard delay={0.2} className="p-8">
+              <div className="flex flex-col h-full items-center text-center">
+                <AnimatedIcon icon={<CreditCard className="h-8 w-8" />} variant="bounce" size="lg" color="#10b981" />
+                <h3 className="mt-6 text-xl font-bold text-[#f0f4f8]">{t("flexiblePaymentMethods")}</h3>
+                <p className="mt-3 text-sm leading-relaxed text-[#94a3b8]">
+                  {lang === "en" ? "Visa, InstaPay, Vodafone Cash — all encrypted and PCI-compliant." : "Visa وInstaPay وفودافون كاش — كلها مشفرة ومتوافقة مع PCI."}
+                </p>
+              </div>
+            </BentoCard>
+
+            <BentoCard span={2} delay={0.3} className="p-8">
+              <div className="flex flex-col lg:flex-row items-center gap-8 h-full">
+                <div className="flex-1">
+                  <AnimatedIcon icon={<Rocket className="h-8 w-8" />} variant="morph" size="lg" color="#8b5cf6" />
+                  <h3 className="mt-6 text-xl font-bold text-[#f0f4f8]">
+                    {lang === "en" ? "Learn at Your Own Pace" : "تعلم بالسرعة التي تناسبك"}
+                  </h3>
+                  <p className="mt-3 text-sm leading-relaxed text-[#94a3b8]">
+                    {lang === "en" ? "Lifetime access to all courses. Watch on any device, anytime. Track your progress with detailed analytics and get personalized recommendations." : "وصول مدى الحياة لجميع الكورسات. شاهد على أي جهاز في أي وقت. تابع تقدمك مع تحليلات مفصلة."}
+                  </p>
                 </div>
-              </SectionReveal>
-            ))}
+                <div className="flex-1 grid grid-cols-2 gap-4">
+                  {[
+                    { icon: <Clock className="h-5 w-5" />, label: lang === "en" ? "Lifetime Access" : "وصول مدى الحياة", color: "#06b6d4" },
+                    { icon: <Globe className="h-5 w-5" />, label: lang === "en" ? "Any Device" : "أي جهاز", color: "#10b981" },
+                    { icon: <BarChart3 className="h-5 w-5" />, label: lang === "en" ? "Progress Tracking" : "متابعة التقدم", color: "#f59e0b" },
+                    { icon: <Sparkles className="h-5 w-5" />, label: lang === "en" ? "AI Recommendations" : "توصيات ذكية", color: "#8b5cf6" },
+                  ].map((item, i) => (
+                    <motion.div key={i} whileHover={{ y: -4, scale: 1.05 }} className="rounded-xl border border-[#1f2d44] bg-[#0a0e17] p-4 text-center">
+                      <motion.div whileHover={{ rotate: [0, -10, 10, 0] }} transition={{ duration: 0.4 }} className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg" style={{ background: `rgba(${hexToRgb(item.color)}, 0.1)`, color: item.color }}>
+                        {item.icon}
+                      </motion.div>
+                      <p className="text-xs font-medium text-[#f0f4f8]">{item.label}</p>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+            </BentoCard>
           </div>
         </div>
       </section>
 
-      {/* ─── Instructor Section ─── */}
-      <SectionReveal>
-        <section className="border-t border-[#1f2d44] bg-[#111827] py-24">
-          <div className="mx-auto max-w-7xl px-4 lg:px-6">
-            <div className="mb-12 text-center">
-              <span className="text-xs font-medium uppercase tracking-[0.1em] text-[#06b6d4]">
-                {t("yourInstructor")}
-              </span>
-              <h2 className="mt-2 text-3xl font-bold text-[#f0f4f8] lg:text-4xl">
-                {lang === "en" ? "Eng. Ahmed Elbaz" : "م. أحمد الباز"}
-              </h2>
-            </div>
+      {/* ═══════════════════ INSTRUCTOR ═══════════════════ */}
+      <section className="border-t border-[#1f2d44] py-24">
+        <div className="mx-auto max-w-7xl px-4 lg:px-6">
+          <SectionHeader badge={t("yourInstructor")} title={lang === "en" ? "Eng. Ahmed Elbaz" : "م. أحمد الباز"} />
 
-            <div className="flex flex-col items-center gap-12 lg:flex-row lg:items-start">
-              {/* Left - Avatar & Bio */}
-              <div className="flex-1 text-center lg:text-start">
-                <motion.div
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="mx-auto mb-6 flex h-28 w-28 items-center justify-center rounded-2xl border border-[#1f2d44] bg-[#1a2233] lg:mx-0"
-                >
-                  <motion.div
-                    animate={{ filter: ["hue-rotate(0deg)", "hue-rotate(15deg)", "hue-rotate(0deg)"] }}
-                    transition={{ duration: 4, repeat: Infinity }}
-                  >
-                    <User className="h-14 w-14 text-[#06b6d4]" />
-                  </motion.div>
+          <div className="flex flex-col items-center gap-12 lg:flex-row lg:items-start">
+            <ScrollReveal direction="left" className="flex-1 text-center lg:text-start">
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="mx-auto mb-6 flex h-28 w-28 items-center justify-center rounded-2xl border border-[#1f2d44] bg-[#1a2233] lg:mx-0 holographic">
+                <motion.div animate={{ filter: ["hue-rotate(0deg)", "hue-rotate(15deg)", "hue-rotate(0deg)"] }} transition={{ duration: 4, repeat: Infinity }}>
+                  <User className="h-14 w-14 text-[#06b6d4]" />
                 </motion.div>
-                <p className="mb-2 text-sm font-medium uppercase tracking-wider text-[#06b6d4]">
-                  {lang === "en" ? t("instructorRole") : t("instructorRoleAr")}
-                </p>
-                <p className="text-base leading-relaxed text-[#94a3b8] lg:text-lg">
-                  {lang === "en" ? t("instructorBio") : t("instructorBioAr")}
-                </p>
-              </div>
+              </motion.div>
+              <p className="mb-2 text-sm font-medium uppercase tracking-wider text-[#06b6d4]">
+                {lang === "en" ? t("instructorRole") : t("instructorRoleAr")}
+              </p>
+              <p className="text-base leading-relaxed text-[#94a3b8] lg:text-lg">
+                {lang === "en" ? t("instructorBio") : t("instructorBioAr")}
+              </p>
+            </ScrollReveal>
 
-              {/* Right - Highlights Grid */}
-              <div className="grid flex-1 grid-cols-2 gap-4 lg:max-w-sm">
-                {[
-                  {
-                    icon: <Briefcase className="h-6 w-6" />,
-                    value: "10+",
-                    label: t("yearsExperience"),
-                  },
-                  {
-                    icon: <GraduationCap className="h-6 w-6" />,
-                    value: "35+",
-                    label: t("coursesTaught"),
-                  },
-                  {
-                    icon: <User className="h-6 w-6" />,
-                    value: "2,400+",
-                    label: t("studentsReached"),
-                  },
-                  {
-                    icon: <Award className="h-6 w-6" />,
-                    value: "98%",
-                    label: t("satisfactionRate"),
-                  },
-                ].map((item, i) => (
-                  <motion.div
-                    key={i}
-                    whileHover={{ y: -4, scale: 1.03 }}
-                    whileTap={{ scale: 0.97 }}
-                    transition={{ type: "spring", stiffness: 400, damping: 20 }}
-                    className="rounded-xl border border-[#1f2d44] bg-[#0a0e17] p-5 text-center cursor-pointer"
-                  >
-                    <motion.div
-                      whileHover={{ rotate: [0, -10, 10, -5, 5, 0], scale: 1.1 }}
-                      transition={{ duration: 0.4 }}
-                      className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-[rgba(6,182,212,0.1)]"
-                    >
-                      <span className="text-[#06b6d4]">{item.icon}</span>
-                    </motion.div>
-                    <p className="text-xl font-bold text-[#f0f4f8]">{item.value}</p>
-                    <p className="mt-1 text-xs text-[#64748b]">{item.label}</p>
+            <ScrollReveal direction="right" className="grid flex-1 grid-cols-2 gap-4 lg:max-w-sm">
+              {[
+                { icon: <Briefcase className="h-6 w-6" />, value: "10+", label: t("yearsExperience"), color: "#06b6d4" },
+                { icon: <GraduationCap className="h-6 w-6" />, value: "35+", label: t("coursesTaught"), color: "#10b981" },
+                { icon: <Users className="h-6 w-6" />, value: "2,400+", label: t("studentsReached"), color: "#f59e0b" },
+                { icon: <Trophy className="h-6 w-6" />, value: "98%", label: t("satisfactionRate"), color: "#8b5cf6" },
+              ].map((item, i) => (
+                <motion.div key={i} whileHover={{ y: -4, scale: 1.03 }} whileTap={{ scale: 0.97 }} transition={{ type: "spring", stiffness: 400, damping: 20 }} className="rounded-xl border border-[#1f2d44] bg-[#0a0e17] p-5 text-center holographic">
+                  <motion.div whileHover={{ rotate: [0, -10, 10, -5, 5, 0], scale: 1.1 }} transition={{ duration: 0.4 }} className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-lg" style={{ background: `rgba(${hexToRgb(item.color)}, 0.1)` }}>
+                    <span style={{ color: item.color }}>{item.icon}</span>
                   </motion.div>
-                ))}
-              </div>
-            </div>
+                  <p className="text-xl font-bold text-[#f0f4f8]">{item.value}</p>
+                  <p className="mt-1 text-xs text-[#64748b]">{item.label}</p>
+                </motion.div>
+              ))}
+            </ScrollReveal>
           </div>
-        </section>
-      </SectionReveal>
+        </div>
+      </section>
 
-      {/* ─── Testimonials ─── */}
+      {/* ═══════════════════ TESTIMONIALS ═══════════════════ */}
       <section className="py-24">
         <div className="mx-auto max-w-7xl px-4 lg:px-6">
-          <SectionReveal>
-            <div className="mb-12 text-center">
-              <span className="text-xs font-medium uppercase tracking-[0.1em] text-[#06b6d4]">
-                {t("testimonials")}
-              </span>
-              <h2 className="mt-2 text-3xl font-bold text-[#f0f4f8] lg:text-4xl">
-                {t("whatEngineersSay")}
-              </h2>
-            </div>
-          </SectionReveal>
+          <SectionHeader badge={t("testimonials")} title={t("whatEngineersSay")} />
 
           <div className="grid gap-6 md:grid-cols-3">
             {(testimonials || []).map((testimonial: Testimonial, idx: number) => (
-              <SectionReveal key={testimonial.id}>
-                <motion.div
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.1, duration: 0.5, type: "spring", stiffness: 200, damping: 20 }}
-                  whileHover={{ y: -6, scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  viewport={{ once: true }}
-                  className="rounded-xl border border-[#1f2d44] bg-[#111827] p-8 cursor-pointer"
-                >
-                  <motion.div
-                    animate={{ scale: [1, 1.05, 1] }}
-                    transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                    className="flex gap-1"
-                  >
+              <ScrollReveal key={testimonial.id} delay={idx * 0.1}>
+                <motion.div whileHover={{ y: -6, scale: 1.02 }} whileTap={{ scale: 0.98 }} className="rounded-xl border border-[#1f2d44] bg-[#111827] p-8 holographic">
+                  <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} className="flex gap-1">
                     {Array.from({ length: testimonial.rating || 5 }).map((_, j) => (
                       <Star key={j} className="h-4 w-4 fill-[#f59e0b] text-[#f59e0b]" />
                     ))}
                   </motion.div>
-                  <p className="mt-4 text-sm leading-relaxed italic text-[#f0f4f8]">
-                    "{testimonial.content}"
-                  </p>
-                  <motion.div
-                    whileHover={{ x: 4 }}
-                    className="mt-6 flex items-center gap-3"
-                  >
-                    <motion.div
-                      whileHover={{ rotate: 360, scale: 1.1 }}
-                      transition={{ duration: 0.5 }}
-                      className="flex h-10 w-10 items-center justify-center rounded-full bg-[#1a2233] text-sm font-semibold text-[#06b6d4]"
-                    >
+                  <p className="mt-4 text-sm leading-relaxed italic text-[#f0f4f8]">"{testimonial.content}"</p>
+                  <motion.div whileHover={{ x: 4 }} className="mt-6 flex items-center gap-3">
+                    <motion.div whileHover={{ rotate: 360, scale: 1.1 }} transition={{ duration: 0.5 }} className="flex h-10 w-10 items-center justify-center rounded-full bg-[#1a2233] text-sm font-semibold text-[#06b6d4]">
                       {testimonial.name.charAt(0)}
                     </motion.div>
                     <div>
                       <p className="text-sm font-semibold text-[#f0f4f8]">{testimonial.name}</p>
-                      <p className="text-xs text-[#64748b]">
-                        {testimonial.title} {testimonial.company ? `at ${testimonial.company}` : ""}
-                      </p>
+                      <p className="text-xs text-[#64748b]">{testimonial.title} {testimonial.company ? `at ${testimonial.company}` : ""}</p>
                     </div>
                   </motion.div>
                 </motion.div>
-              </SectionReveal>
+              </ScrollReveal>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ─── FAQ ─── */}
+      {/* ═══════════════════ FAQ ═══════════════════ */}
       <section className="py-24">
         <div className="mx-auto max-w-3xl px-4 lg:px-6">
-          <SectionReveal>
-            <div className="mb-12 text-center">
-              <span className="text-xs font-medium uppercase tracking-[0.1em] text-[#06b6d4]">
-                {t("faq")}
-              </span>
-              <h2 className="mt-2 text-3xl font-bold text-[#f0f4f8] lg:text-4xl">
-                {t("commonQuestions")}
-              </h2>
-            </div>
-          </SectionReveal>
+          <SectionHeader badge={t("faq")} title={t("commonQuestions")} />
 
           <div>
             {faqData.map((faq, i) => (
@@ -940,33 +652,31 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ─── CTA Banner ─── */}
-      <section className="border-y border-[#1f2d44] py-20 cta-gradient">
-        <div className="mx-auto max-w-3xl px-4 text-center lg:px-6">
-          <h2 className="text-3xl font-bold text-[#f0f4f8]">
-            {t("readyToPowerUp")}
-          </h2>
-          <p className="mt-3 text-base text-[#94a3b8]">
-            {lang === "en" ? "Join 2,400+ engineers mastering the tools that matter. Start learning today — no credit card required for free courses." : "انضم لأكثر من 2400 مهندس يتقنون الأدوات المهمة. ابدأ التعلم اليوم — لا تحتاج بطاقة ائتمان للكورسات المجانية."}
-          </p>
-          <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
-            <Link to="/courses">
-              <Button className="glow-btn h-12 bg-gradient-to-r from-[#06b6d4] to-[#0891b2] px-7 text-sm font-semibold text-[#0a0e17]"
-                onClick={() => trackEvent("cta_click", { button: "get_started_free", page: "cta_banner" })}
-              >
-                {t("getStartedFree")}
-              </Button>
-            </Link>
-            <Link to="/courses">
-              <Button
-                variant="outline"
-                className="h-12 border-[#1f2d44] bg-transparent px-7 text-sm font-semibold text-[#f0f4f8] hover:border-[#06b6d4] hover:text-[#06b6d4]"
-                onClick={() => trackEvent("cta_click", { button: "view_pricing", page: "cta_banner" })}
-              >
-                {t("viewCoursePricing")}
-              </Button>
-            </Link>
-          </div>
+      {/* ═══════════════════ CTA BANNER ═══════════════════ */}
+      <section className="border-y border-[#1f2d44] py-20 relative overflow-hidden">
+        <div className="absolute inset-0 aurora-bg" />
+        <div className="absolute inset-0 mesh-gradient" />
+        <div className="relative z-10 mx-auto max-w-3xl px-4 text-center lg:px-6">
+          <ScrollReveal>
+            <motion.h2 initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.1 }} className="text-3xl font-bold text-[#f0f4f8] lg:text-4xl">
+              {t("readyToPowerUp")}
+            </motion.h2>
+            <motion.p initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.2 }} className="mt-3 text-base text-[#94a3b8]">
+              {lang === "en" ? "Join 2,400+ engineers mastering the tools that matter. Start learning today — no credit card required for free courses." : "انضم لأكثر من 2400 مهندس يتقنون الأدوات المهمة. ابدأ التعلم اليوم — لا تحتاج بطاقة ائتمان للكورسات المجانية."}
+            </motion.p>
+            <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.3 }} className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
+              <Link to="/courses">
+                <Button className="glow-btn h-12 bg-gradient-to-r from-[#06b6d4] to-[#0891b2] px-7 text-sm font-semibold text-[#0a0e17]" onClick={() => trackEvent("cta_click", { button: "get_started_free", page: "cta_banner" })}>
+                  {t("getStartedFree")}
+                </Button>
+              </Link>
+              <Link to="/courses">
+                <Button variant="outline" className="h-12 border-[#1f2d44] bg-transparent px-7 text-sm font-semibold text-[#f0f4f8] hover:border-[#06b6d4] hover:text-[#06b6d4]" onClick={() => trackEvent("cta_click", { button: "view_pricing", page: "cta_banner" })}>
+                  {t("viewCoursePricing")}
+                </Button>
+              </Link>
+            </motion.div>
+          </ScrollReveal>
         </div>
       </section>
     </div>
@@ -975,42 +685,22 @@ export default function Home() {
 
 function FAQItem({ question, answer }: { question: string; answer: string }) {
   const [open, setOpen] = useState(false);
-
   return (
-    <motion.div
-      layout
-      className="border-b border-[#1f2d44] overflow-hidden"
-    >
-      <motion.button
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between py-6 text-start"
-        whileTap={{ scale: 0.99 }}
-      >
-        <span className="text-base font-semibold text-[#f0f4f8] transition-colors hover:text-[#06b6d4]">
-          {question}
-        </span>
-        <motion.div
-          animate={{ rotate: open ? 180 : 0, color: open ? "#06b6d4" : "#64748b" }}
-          transition={{ duration: 0.3, type: "spring", stiffness: 300, damping: 25 }}
-        >
-          {open ? (
-            <ChevronUp className="h-4 w-4 shrink-0" />
-          ) : (
-            <ChevronDown className="h-4 w-4 shrink-0" />
-          )}
+    <motion.div layout className="border-b border-[#1f2d44] overflow-hidden">
+      <motion.button onClick={() => setOpen(!open)} className="flex w-full items-center justify-between py-6 text-start" whileTap={{ scale: 0.99 }}>
+        <span className="text-base font-semibold text-[#f0f4f8] transition-colors hover:text-[#06b6d4]">{question}</span>
+        <motion.div animate={{ rotate: open ? 180 : 0, color: open ? "#06b6d4" : "#64748b" }} transition={{ duration: 0.3, type: "spring", stiffness: 300, damping: 25 }}>
+          {open ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
         </motion.div>
       </motion.button>
-      <motion.div
-        initial={false}
-        animate={{
-          height: open ? "auto" : 0,
-          opacity: open ? 1 : 0,
-        }}
-        transition={{ duration: 0.4, type: "spring", stiffness: 300, damping: 30 }}
-        className="overflow-hidden"
-      >
+      <motion.div initial={false} animate={{ height: open ? "auto" : 0, opacity: open ? 1 : 0 }} transition={{ duration: 0.4, type: "spring", stiffness: 300, damping: 30 }} className="overflow-hidden">
         <p className="pb-6 text-sm leading-relaxed text-[#94a3b8]">{answer}</p>
       </motion.div>
     </motion.div>
   );
+}
+
+function hexToRgb(hex: string): string {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : "6, 182, 212";
 }
