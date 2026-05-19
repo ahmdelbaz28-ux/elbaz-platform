@@ -39,10 +39,14 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
       "base-uri 'self'",
       "form-action 'self' https://accounts.google.com",
       "report-uri /api/csp-report",
-      `report-to {"endpoints":[{"url":"/api/csp-report"}],"max_age":86400,"group":"csp"}`,
     ].join("; ");
 
     c.header("Content-Security-Policy", cspDirectives);
+    c.header("Report-To", JSON.stringify({
+      group: "csp",
+      max_age: 86400,
+      endpoints: [{ url: "/api/csp-report" }],
+    }));
 
     // Don't cache HTML pages (they contain dynamic nonces)
     c.header("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
@@ -60,10 +64,14 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
       "base-uri 'self'",
       "form-action 'self' https://accounts.google.com",
       "report-uri /api/csp-report",
-      `report-to {"endpoints":[{"url":"/api/csp-report"}],"max_age":86400,"group":"csp"}`,
     ].join("; ");
 
     c.header("Content-Security-Policy", cspDirectives);
+    c.header("Report-To", JSON.stringify({
+      group: "csp",
+      max_age: 86400,
+      endpoints: [{ url: "/api/csp-report" }],
+    }));
   }
 
   if (env.NODE_ENV === "production") {

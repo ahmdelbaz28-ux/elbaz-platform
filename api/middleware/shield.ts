@@ -23,9 +23,9 @@ export const shieldMiddleware = createMiddleware(async (c, next) => {
   const path = c.req.path;
   
   // ── 1. Rate Limiting (Flood Protection) ──
-  // Allow 100 requests per 10 seconds per IP (Elite threshold)
+  // Allow 200 requests per 10 seconds per IP (complements tRPC rate limiter)
   const limitWindow = 10000; 
-  const limitCount = 100;
+  const limitCount = 200;
   
   let record = rateLimitMap.get(ip);
   if (!record || now > record.resetTime) {

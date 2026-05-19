@@ -19,6 +19,8 @@ import {
   siteSettings,
   themes,
   promotions,
+  softwareDownloads,
+  reviews,
 } from "./schema";
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -32,6 +34,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   chatMessages: many(chatMessages),
   passwordResetTokens: many(passwordResetTokens),
   ticketReplies: many(ticketReplies),
+  reviews: many(reviews),
 }));
 
 export const categoriesRelations = relations(categories, ({ many }) => ({
@@ -45,6 +48,7 @@ export const coursesRelations = relations(courses, ({ one, many }) => ({
   payments: many(payments),
   certificates: many(certificates),
   chatMessages: many(chatMessages),
+  reviews: many(reviews),
 }));
 
 export const lessonsRelations = relations(lessons, ({ one, many }) => ({
@@ -118,4 +122,11 @@ export const themesRelations = relations(themes, () => ({}));
 
 export const promotionsRelations = relations(promotions, ({ one }) => ({
   promoCode: one(promoCodes, { fields: [promotions.promoCodeId], references: [promoCodes.id] }),
+}));
+
+export const softwareDownloadsRelations = relations(softwareDownloads, () => ({}));
+
+export const reviewsRelations = relations(reviews, ({ one }) => ({
+  user: one(users, { fields: [reviews.userId], references: [users.id] }),
+  course: one(courses, { fields: [reviews.courseId], references: [courses.id] }),
 }));

@@ -12,6 +12,6 @@ RUN chown -R appuser:appgroup /app
 USER appuser
 EXPOSE 7860
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD node -e "const m=process.memoryUsage();if(m.heapTotal<1){process.exit(1)}const r=m.heapUsed/m.heapTotal;if(r>0.9){process.exit(1)}else{process.exit(0)}"
+  CMD wget -qO- http://localhost:7860/api/health || exit 1
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["npx", "tsx", "api/boot.ts"]
