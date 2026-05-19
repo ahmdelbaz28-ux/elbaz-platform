@@ -286,8 +286,15 @@ class CacheEngine {
   evictExpired(): number {
     let count = 0;
     const now = Date.now();
+    const keysToDelete: CacheKey[] = [];
     for (const [key, entry] of this.store) {
       if (now - entry.createdAt > entry.ttl) {
+        keysToDelete.push(key);
+      }
+    }
+    for (const key of keysToDelete) {
+      const entry = this.store.get(key);
+      if (entry) {
         this.store.delete(key);
         this.removeFromTagIndex(key, entry.tags);
         count++;
@@ -324,6 +331,10 @@ class CacheEngine {
       evictions: 0,
       errors: 0,
     };
+  }
+
+  recordError(): void {
+    this.metrics.errors++;
   }
 
   keys(): CacheKey[] {

@@ -24,6 +24,7 @@ import { db } from "./queries/connection.js";
 import { payments, enrollments, courses } from "@db/schema";
 import { verifyPaymobWebhook, type PaymobWebhookPayload } from "./lib/paymob.js";
 import { invalidateCourseCache, invalidateStatsCache } from "./lib/cache.js";
+import { invalidateSitemapCache } from "./boot.js";
 
 const paymobWebhook = new Hono();
 
@@ -159,6 +160,7 @@ paymobWebhook.post("/webhook", async (c) => {
         // Invalidate caches (outside transaction logic but within handler)
         await invalidateCourseCache();
         await invalidateStatsCache();
+        invalidateSitemapCache();
       }
 
       return c.json({ ok: true, status: newStatus }, 200);

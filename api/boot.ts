@@ -152,6 +152,11 @@ app.get("/api/version", (c) => {
 let cachedSitemap: string | null = null;
 let sitemapExpiry = 0;
 
+export function invalidateSitemapCache(): void {
+  cachedSitemap = null;
+  sitemapExpiry = 0;
+}
+
 app.get("/sitemap.xml", async (c) => {
   if (cachedSitemap && Date.now() < sitemapExpiry) {
     c.header("Content-Type", "application/xml; charset=UTF-8");
@@ -294,15 +299,25 @@ app.use(
 // ── SPA fallback: serve index.html for any unmatched route ──
 // Caches the HTML template + course count to avoid disk/DB reads on every page load
 let cachedHtmlTemplate: string | null = null;
+let cachedHtmlTemplateMtime = 0;
 let cachedCourseCount = 0;
 let courseCountExpiry = 0;
 
 async function getHtmlTemplate(): Promise<string> {
-  if (!cachedHtmlTemplate) {
-    const { readFile } = await import("node:fs/promises");
-    cachedHtmlTemplate = await readFile("./dist/public/index.html", "utf-8");
+  try {
+    const { stat, readFile } = await import("node:fs/promises");
+    const filePath = "./dist/public/index.html";
+    const fileStat = await stat(filePath);
+    if (fileStat.mtimeMs !== cachedHtmlTemplateMtime) {
+      cachedHtmlTemplate = await readFile(filePath, "utf-8");
+      cachedHtmlTemplateMtime = fileStat.mtimeMs;
+    }
+  } catch {
+    if (!cachedHtmlTemplate) {
+      throw new Error("index.html not found");
+    }
   }
-  return cachedHtmlTemplate;
+  return cachedHtmlTemplate!;
 }
 
 async function getCourseCount(): Promise<number> {
@@ -408,11 +423,27 @@ async function start() {
 
   process.on("SIGTERM", () => {
     console.log("[Server] SIGTERM received, shutting down...");
+    try {
+      import("../cache/index.js").then(({ default: ElbazCache }) => {
+        ElbazCache.engine.destroy();
+        ElbazCache.short.destroy();
+        ElbazCache.long.destroy();
+        ElbazCache.session.destroy();
+      });
+    } catch {}
     server.close(() => process.exit(0));
   });
 
   process.on("SIGINT", () => {
     console.log("[Server] SIGINT received, shutting down...");
+    try {
+      import("../cache/index.js").then(({ default: ElbazCache }) => {
+        ElbazCache.engine.destroy();
+        ElbazCache.short.destroy();
+        ElbazCache.long.destroy();
+        ElbazCache.session.destroy();
+      });
+    } catch {}
     server.close(() => process.exit(0));
   });
 }
