@@ -4,7 +4,7 @@
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 # ── Stage 1: Install ALL dependencies (build needs dev deps) ──
-FROM node:24-alpine AS deps
+FROM node:22-alpine AS deps
 WORKDIR /app
 
 # Base system deps for building native npm modules (bcryptjs, sharp, etc.)
@@ -26,7 +26,7 @@ COPY . .
 RUN npm run build
 
 # ── Stage 3: Production dependencies only ──
-FROM node:24-alpine AS prod-deps
+FROM node:22-alpine AS prod-deps
 WORKDIR /app
 
 # Runtime deps only (dumb-init not needed — use built-in 'node' user)
@@ -37,7 +37,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --prefer-offline --no-audit --no-fund
 
 # Stage 4: Production runtime (minimal image)
-FROM node:24-alpine AS production
+FROM node:22-alpine AS production
 WORKDIR /app
 
 # ✅ FIX: Install tini in the production stage (required for ENTRYPOINT)

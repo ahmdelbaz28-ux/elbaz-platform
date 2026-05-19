@@ -1,9 +1,16 @@
 -- ============================================================
--- Elbaz Platform — Seed Data SQL
+-- DEPRECATED: This file is OUT OF SYNC with the current schema.
 -- ============================================================
--- Run this against your Aiven MySQL database.
--- This script is idempotent — uses INSERT IGNORE.
+-- DO NOT RUN THIS FILE. It uses snake_case column names and
+-- references tables (modules, etc.) that no longer exist.
+--
+-- Seeding is now handled by api/lib/db-init.ts which uses the
+-- correct Drizzle schema with camelCase column names.
+--
+-- This file is kept for reference only. Delete when confident.
 -- ============================================================
+
+-- Original seed data SQL follows (DO NOT EXECUTE):
 
 -- ── 1. Ensure is_admin_reply column exists ──
 SET @dbname = DATABASE();

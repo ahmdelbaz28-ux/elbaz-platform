@@ -1,10 +1,11 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "./queries/connection.js";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, lt, lte, gte, isNull, or, count, gt } from "drizzle-orm";
 import { rateLimit } from "./lib/rate-limiter.js";
 import { env } from "./lib/env.js";
 import { createHmac, timingSafeEqual } from "crypto";
+import { promoCodes, promoCodeUsage, payments } from "@db/schema";
 
 interface PromoSession { userId: number; }
 const promoRouter = new Hono<{ Variables: { session: PromoSession } }>();
@@ -42,74 +43,74 @@ async function applyPromoCodeInternal(params: {
   userId: number;
   paymentId?: number;
 }): Promise<{ success: boolean; discount?: number; message: string }> {
-  const promo = await db
+  const now = new Date();
+
+  const [promo] = await db
     .select()
-    .from(sql`promo_codes`)
+    .from(promoCodes)
     .where(
       and(
-        eq(sql`code`, params.code),
-        eq(sql`is_active`, true),
-        sql`valid_from <= NOW()`,
-        sql`(valid_until IS NULL OR valid_until >= NOW())`
+        eq(promoCodes.code, params.code),
+        eq(promoCodes.isActive, true),
+        lte(promoCodes.validFrom, now),
+        or(isNull(promoCodes.validUntil), gte(promoCodes.validUntil, now))
       )
     )
-    .limit(1)
-    .then((rows) => rows[0] as {
-      id: number; max_uses: number | null; used_count: number;
-      max_uses_per_user: number | null; course_ids: string | null;
-      discount_value: number; discount_type: string;
-    } | undefined);
+    .limit(1);
 
   if (!promo) {
     return { success: false, message: "كود الخصم غير صالح أو منتهي الصلاحية" };
   }
 
-  if (promo.max_uses && promo.used_count >= promo.max_uses) {
+  if (promo.maxUses && promo.usedCount >= promo.maxUses) {
     return { success: false, message: "تم استخدام هذا الكود بالحد الأقصى المسموح" };
   }
 
-  const userUsage = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(sql`promo_code_usages`)
+  const [[{ userUsage }]] = await db
+    .select({ userUsage: count() })
+    .from(promoCodeUsage)
     .where(
       and(
-        eq(sql`promo_code_id`, promo.id),
-        eq(sql`user_id`, params.userId)
+        eq(promoCodeUsage.promoCodeId, promo.id),
+        eq(promoCodeUsage.userId, params.userId)
       )
-    )
-    .then((r) => Number(r[0]?.count ?? 0));
+    );
 
-  if (userUsage >= (promo.max_uses_per_user ?? 1)) {
+  if (userUsage >= (promo.maxUsesPerUser ?? 1)) {
     return { success: false, message: "لقد استخدمت هذا الكود من قبل" };
   }
 
-  const courseBinding = promo.course_ids
-    ? JSON.parse(promo.course_ids as string)
-    : null;
-
-  if (courseBinding && !courseBinding.includes(params.courseId)) {
-    return { success: false, message: "هذا الكود غير متاح لهذه الدورة" };
+  if (promo.courseIds && !promo.isValidForAllCourses) {
+    const allowedIds = promo.courseIds as number[];
+    if (!allowedIds.includes(params.courseId)) {
+      return { success: false, message: "هذا الكود غير متاح لهذه الدورة" };
+    }
   }
+
+  const discountValue = parseFloat(promo.discountValue);
 
   if (params.paymentId) {
-    await db.execute(
-      sql`UPDATE payments SET discount_amount = ${promo.discount_value} WHERE id = ${params.paymentId}`
-    );
+    await db
+      .update(payments)
+      .set({ promoCodeId: promo.id })
+      .where(eq(payments.id, params.paymentId));
   }
 
-  await db.execute(
-    sql`INSERT INTO promo_code_usages (promo_code_id, user_id, payment_id, used_at)
-        VALUES (${promo.id}, ${params.userId}, ${params.paymentId ?? null}, NOW())`
-  );
+  await db.insert(promoCodeUsage).values({
+    promoCodeId: promo.id,
+    userId: params.userId,
+    paymentId: params.paymentId ?? null,
+  });
 
-  await db.execute(
-    sql`UPDATE promo_codes SET used_count = used_count + 1 WHERE id = ${promo.id}`
-  );
+  await db
+    .update(promoCodes)
+    .set({ usedCount: sql`${promoCodes.usedCount} + 1` })
+    .where(eq(promoCodes.id, promo.id));
 
   return {
     success: true,
-    discount: promo.discount_value,
-    message: `تم تطبيق الخصم بنجاح (${promo.discount_value}%)`,
+    discount: discountValue,
+    message: `تم تطبيق الخصم بنجاح (${discountValue}%)`,
   };
 }
 
@@ -178,34 +179,38 @@ promoRouter.get("/validate/:code", async (c) => {
     return c.json({ error: "يجب تسجيل الدخول" }, 401);
   }
 
-  const promo = await db
+  const now = new Date();
+
+  const [promo] = await db
     .select({
-      id: sql`id`,
-      discountValue: sql`discount_value`,
-      expiresAt: sql`valid_until`,
-      remainingUses: sql<number>`GREATEST(0, max_uses - used_count)`,
+      id: promoCodes.id,
+      discountValue: promoCodes.discountValue,
+      validUntil: promoCodes.validUntil,
+      maxUses: promoCodes.maxUses,
+      usedCount: promoCodes.usedCount,
     })
-    .from(sql`promo_codes`)
+    .from(promoCodes)
     .where(
       and(
-        eq(sql`code`, code),
-        eq(sql`is_active`, true),
-        sql`valid_from <= NOW()`,
-        sql`(valid_until IS NULL OR valid_until >= NOW())`
+        eq(promoCodes.code, code),
+        eq(promoCodes.isActive, true),
+        lte(promoCodes.validFrom, now),
+        or(isNull(promoCodes.validUntil), gte(promoCodes.validUntil, now))
       )
     )
-    .limit(1)
-    .then((rows) => rows[0]);
+    .limit(1);
 
   if (!promo) {
     return c.json({ valid: false }, 404);
   }
 
+  const remainingUses = promo.maxUses ? Math.max(0, promo.maxUses - promo.usedCount) : null;
+
   return c.json({
     valid: true,
-    discount: promo.discountValue,
-    remainingUses: promo.remainingUses,
-    expiresAt: promo.expiresAt,
+    discount: parseFloat(promo.discountValue),
+    remainingUses,
+    expiresAt: promo.validUntil,
   });
 });
 

@@ -73,10 +73,12 @@ async function rateLimitByKeyPrefix(
   maxPoints: number,
   durationSeconds: number
 ): Promise<RateLimiterRes> {
-  const limiter = await getRateLimiter();
-  return limiter.consume(keyPrefix, maxPoints, {
-    customDuration: durationSeconds,
-  }) as Promise<RateLimiterRes>;
+  const { RateLimiterMemory } = await import("rate-limiter-flexible");
+  const limiter = new RateLimiterMemory({
+    points: maxPoints,
+    duration: durationSeconds,
+  });
+  return limiter.consume(keyPrefix, 1);
 }
 
 type RateLimitAction = "login" | "register" | "forgotPassword" | "resetPassword" | "sendVerification" | "verifyEmail" | "api";

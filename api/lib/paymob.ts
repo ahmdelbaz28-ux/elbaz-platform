@@ -150,7 +150,8 @@ interface PaymobPaymentKeyResponse {
 
 async function verifyPaymobTransaction(transactionId: number): Promise<PaymobTransactionResponse | null> {
   try {
-    const authResponse = await fetch("https://accept.paymob.com/api/auth/tokens", {
+    const baseUrl = env.PAYMOB_BASE_URL;
+    const authResponse = await fetch(`${baseUrl}/api/auth/tokens`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ api_key: env.PAYMOB_API_KEY }),
@@ -160,7 +161,7 @@ async function verifyPaymobTransaction(transactionId: number): Promise<PaymobTra
     if (!token) return null;
 
     const txnResponse = await fetch(
-      `https://accept.paymob.com/api/acceptance/transactions/${transactionId}`,
+      `${baseUrl}/api/acceptance/transactions/${transactionId}`,
       {
         headers: { Authorization: `Bearer ${token}` },
       }
@@ -213,7 +214,9 @@ async function initiatePaymobPayment(
     throw new Error("Invalid payment amount");
   }
 
-  const authRes = await fetch("https://accept.paymob.com/api/auth/tokens", {
+  const baseUrl = env.PAYMOB_BASE_URL;
+
+  const authRes = await fetch(`${baseUrl}/api/auth/tokens`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ api_key: env.PAYMOB_API_KEY }),
@@ -222,7 +225,7 @@ async function initiatePaymobPayment(
   const token = authData.token;
   if (!token) throw new Error("Paymob authentication failed");
 
-  const orderRes = await fetch("https://accept.paymob.com/api/ecommerce/orders", {
+  const orderRes = await fetch(`${baseUrl}/api/ecommerce/orders`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -243,7 +246,7 @@ async function initiatePaymobPayment(
     throw new Error(`No Paymob integration ID configured for payment method: ${paymentMethod}. Set PAYMOB_INTEGRATION_ID or method-specific env var.`);
   }
 
-  const paymentKeyRes = await fetch("https://accept.paymob.com/api/acceptance/payment_keys", {
+  const paymentKeyRes = await fetch(`${baseUrl}/api/acceptance/payment_keys`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -271,7 +274,7 @@ async function initiatePaymobPayment(
   const paymentKeyData = (await paymentKeyRes.json()) as PaymobPaymentKeyResponse;
   if (!paymentKeyData.token) throw new Error("Failed to generate payment key");
 
-  const paymentUrl = `https://accept.paymob.com/api/acceptance/iframes/${env.PAYMOB_IFRAME_ID}?payment_token=${paymentKeyData.token}`;
+  const paymentUrl = `${baseUrl}/api/acceptance/iframes/${env.PAYMOB_IFRAME_ID}?payment_token=${paymentKeyData.token}`;
 
   return { paymentUrl, paymobOrderId: orderData.id };
 }
