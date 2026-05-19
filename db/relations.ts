@@ -21,6 +21,9 @@ import {
   promotions,
   softwareDownloads,
   reviews,
+  userSessions,
+  userNotes,
+  licenses,
 } from "./schema";
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -129,4 +132,36 @@ export const softwareDownloadsRelations = relations(softwareDownloads, () => ({}
 export const reviewsRelations = relations(reviews, ({ one }) => ({
   user: one(users, { fields: [reviews.userId], references: [users.id] }),
   course: one(courses, { fields: [reviews.courseId], references: [courses.id] }),
+}));
+
+export const userSessionsRelations = relations(userSessions, ({ one }) => ({
+  user: one(users, { fields: [userSessions.userId], references: [users.id] }),
+}));
+
+export const userNotesRelations = relations(userNotes, ({ one }) => ({
+  user: one(users, { fields: [userNotes.userId], references: [users.id] }),
+  course: one(courses, { fields: [userNotes.courseId], references: [courses.id] }),
+  lesson: one(lessons, { fields: [userNotes.lessonId], references: [lessons.id] }),
+}));
+
+export const licensesRelations = relations(licenses, ({ one }) => ({
+  user: one(users, { fields: [licenses.userId], references: [users.id] }),
+  course: one(courses, { fields: [licenses.courseId], references: [courses.id] }),
+}));
+
+export const usersRelations = relations(users, ({ many }) => ({
+  enrollments: many(enrollments),
+  payments: many(payments),
+  certificates: many(certificates),
+  lessonProgress: many(lessonProgress),
+  supportTickets: many(supportTickets),
+  promoCodes: many(promoCodes),
+  promoCodeUsage: many(promoCodeUsage),
+  chatMessages: many(chatMessages),
+  passwordResetTokens: many(passwordResetTokens),
+  ticketReplies: many(ticketReplies),
+  reviews: many(reviews),
+  sessions: many(userSessions),
+  notes: many(userNotes),
+  licenses: many(licenses),
 }));

@@ -36,6 +36,12 @@ export const users = mysqlTable(
     emailVerificationToken: varchar("emailVerificationToken", { length: 255 }),
     emailVerificationExpiry: timestamp("emailVerificationExpiry", { mode: "date" }),
     emailVerifiedAt: timestamp("emailVerifiedAt", { mode: "date" }),
+    // 2FA / TOTP
+    totpSecret: varchar("totpSecret", { length: 255 }),
+    totpEnabled: boolean("totpEnabled").notNull().default(false),
+    totpBackupCodes: json("totpBackupCodes"),
+    // Device fingerprint
+    deviceFingerprint: varchar("deviceFingerprint", { length: 255 }),
   },
   (table) => [
     uniqueIndex("users_email_unique").on(table.email),
@@ -621,6 +627,99 @@ export const reviews = mysqlTable(
       foreignColumns: [courses.id],
       name: "fk_reviews_course_id",
     }).onDelete("cascade").onUpdate("cascade"),
+  ]
+);
+
+export const userSessions = mysqlTable(
+  "userSessions",
+  {
+    id: bigint("id", { mode: "number", unsigned: true }).primaryKey().autoincrement(),
+    userId: bigint("userId", { mode: "number", unsigned: true }).notNull(),
+    deviceFingerprint: varchar("deviceFingerprint", { length: 255 }),
+    deviceName: varchar("deviceName", { length: 255 }),
+    browser: varchar("browser", { length: 100 }),
+    os: varchar("os", { length: 100 }),
+    ipAddress: varchar("ipAddress", { length: 45 }),
+    lastActiveAt: timestamp("lastActiveAt", { mode: "date" }).notNull().defaultNow(),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+    isRevoked: boolean("isRevoked").notNull().default(false),
+  },
+  (table) => [
+    index("user_sessions_user_idx").on(table.userId),
+    index("user_sessions_fingerprint_idx").on(table.deviceFingerprint),
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [users.id],
+      name: "fk_user_sessions_user",
+    }).onDelete("cascade").onUpdate("cascade"),
+  ]
+);
+
+export const userNotes = mysqlTable(
+  "userNotes",
+  {
+    id: bigint("id", { mode: "number", unsigned: true }).primaryKey().autoincrement(),
+    userId: bigint("userId", { mode: "number", unsigned: true }).notNull(),
+    courseId: bigint("courseId", { mode: "number", unsigned: true }),
+    lessonId: bigint("lessonId", { mode: "number", unsigned: true }),
+    title: varchar("title", { length: 500 }),
+    content: text("content").notNull(),
+    tags: json("tags"),
+    isPinned: boolean("isPinned").notNull().default(false),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("user_notes_user_idx").on(table.userId),
+    index("user_notes_course_idx").on(table.courseId),
+    index("user_notes_lesson_idx").on(table.lessonId),
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [users.id],
+      name: "fk_user_notes_user",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [table.courseId],
+      foreignColumns: [courses.id],
+      name: "fk_user_notes_course",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [table.lessonId],
+      foreignColumns: [lessons.id],
+      name: "fk_user_notes_lesson",
+    }).onDelete("cascade").onUpdate("cascade"),
+  ]
+);
+
+export const licenses = mysqlTable(
+  "licenses",
+  {
+    id: bigint("id", { mode: "number", unsigned: true }).primaryKey().autoincrement(),
+    userId: bigint("userId", { mode: "number", unsigned: true }).notNull(),
+    courseId: bigint("courseId", { mode: "number", unsigned: true }),
+    licenseKey: varchar("licenseKey", { length: 255 }).notNull().unique(),
+    type: varchar("type", { length: 50 }).notNull().default("course"),
+    status: varchar("status", { length: 50 }).notNull().default("active"),
+    validFrom: timestamp("validFrom", { mode: "date" }).notNull().defaultNow(),
+    validUntil: timestamp("validUntil", { mode: "date" }),
+    maxDevices: int("maxDevices").notNull().default(3),
+    activatedAt: timestamp("activatedAt", { mode: "date" }),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("licenses_key_unique").on(table.licenseKey),
+    index("licenses_user_idx").on(table.userId),
+    index("licenses_status_idx").on(table.status),
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [users.id],
+      name: "fk_licenses_user",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [table.courseId],
+      foreignColumns: [courses.id],
+      name: "fk_licenses_course",
+    }).onDelete("set null").onUpdate("cascade"),
   ]
 );
 

@@ -39,6 +39,7 @@ const globalRateLimit = t.middleware(async (opts) => {
 });
 
 export const publicQuery = t.procedure.use(globalRateLimit);
+export const publicMutation = t.procedure;
 
 const requireAuth = t.middleware(async (opts) => {
   if (!opts.ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
@@ -53,4 +54,7 @@ function requireRole(role: string) {
 }
 
 export const authedQuery = t.procedure.use(globalRateLimit).use(requireAuth);
+export const authQuery = authedQuery;
+export const authMutation = t.procedure.use(requireAuth);
 export const adminQuery = t.procedure.use(globalRateLimit).use(requireAuth).use(requireRole("admin"));
+export const adminMutation = t.procedure.use(requireAuth).use(requireRole("admin"));
