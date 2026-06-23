@@ -16,8 +16,8 @@ export function ElectricalIcon({
   className = "",
   ...props
 }: ElectricalIconProps) {
-  const [arcs, setArcs] = useState<{ id: number; x: number; y: number; opacity: number }[]);
-  const [ripples, setRipples] = useState<{ id: number; size: number; opacity: number }[]);
+  const [arcs, setArcs] = useState<{ id: number; x: number; y: number; opacity: number }[]>([]);
+  const [ripples, setRipples] = useState<{ id: number; size: number; opacity: number }[]>([]);
   const [glowIntensity, setGlowIntensity] = useState(0);
   const idRef = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
