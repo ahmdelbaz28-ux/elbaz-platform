@@ -39,7 +39,7 @@ export async function diagnoseError(error: Error | string, context: string = "Se
       })
     });
 
-    const data = await response.json();
+    const data: any = await response.json();
     const diagnosis = data.choices?.[0]?.message?.content || "Could not generate AI diagnosis.";
     
     console.log("\n" + "═".repeat(60));

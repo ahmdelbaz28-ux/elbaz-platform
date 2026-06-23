@@ -1,7 +1,7 @@
+@import './elite-animations.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-@import './elite-animations.css';
 
 :root {
   --color-bg: #070b12;

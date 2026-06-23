@@ -74,7 +74,7 @@ export const exportRouter = createRouter({
           courseId: enrollments.courseId,
           status: enrollments.status,
           progress: enrollments.progress,
-          createdAt: enrollments.createdAt,
+          enrolledAt: enrollments.enrolledAt,
           completedAt: enrollments.completedAt,
           userName: users.name,
           userUsername: users.username,
@@ -84,12 +84,12 @@ export const exportRouter = createRouter({
         .from(enrollments)
         .leftJoin(users, eq(enrollments.userId, users.id))
         .leftJoin(courses, eq(enrollments.courseId, courses.id))
-        .orderBy(desc(enrollments.createdAt));
+        .orderBy(desc(enrollments.enrolledAt));
 
       return {
         csv: toCsv(
           ["ID", "User", "Username", "Course", "Slug", "Status", "Progress", "Created", "Completed"],
-          allEnrollments.map((e) => [e.id, e.userName, e.userUsername, e.courseTitle, e.courseSlug, e.status, e.progress, e.createdAt?.toISOString(), e.completedAt?.toISOString()])
+          allEnrollments.map((e) => [e.id, e.userName, e.userUsername, e.courseTitle, e.courseSlug, e.status, e.progress, e.enrolledAt?.toISOString(), e.completedAt?.toISOString()])
         ),
         json: allEnrollments,
         count: allEnrollments.length,
@@ -106,7 +106,6 @@ export const exportRouter = createRouter({
         titleEn: courses.titleEn,
         titleAr: courses.titleAr,
         price: courses.price,
-        currency: courses.currency,
         isFeatured: courses.isFeatured,
         isPublished: courses.isPublished,
         level: courses.level,
@@ -117,7 +116,7 @@ export const exportRouter = createRouter({
       return {
         csv: toCsv(
           ["ID", "Slug", "Title EN", "Title AR", "Price", "Currency", "Featured", "Published", "Level", "Students", "Created"],
-          allCourses.map((c) => [c.id, c.slug, c.titleEn, c.titleAr, c.price, c.currency, c.isFeatured, c.isPublished, c.level, c.studentCount, c.createdAt?.toISOString()])
+          allCourses.map((c) => [c.id, c.slug, c.titleEn, c.titleAr, c.price, "EGP", c.isFeatured, c.isPublished, c.level, c.studentCount, c.createdAt?.toISOString()])
         ),
         json: allCourses,
         count: allCourses.length,

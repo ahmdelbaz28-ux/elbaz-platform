@@ -85,7 +85,7 @@ async function applyPromoCodeInternal(params: {
     return { success: false, message: "تم استخدام هذا الكود بالحد الأقصى المسموح" };
   }
 
-  const [[{ userUsage }]] = await db
+  const [{ userUsage }] = await db
     .select({ userUsage: count() })
     .from(promoCodeUsage)
     .where(

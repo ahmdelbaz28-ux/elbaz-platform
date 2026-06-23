@@ -104,7 +104,7 @@ export const twoFaRouter = createRouter({
         return { success: true };
       }
 
-      const backupCodes = user.totpBackupCodes ? (JSON.parse(user.totpBackupCodes) as string[]) : [];
+      const backupCodes = user.totpBackupCodes ? (user.totpBackupCodes as string[]) : [];
       const tokenHash = hashToken(input.token);
       const backupIndex = backupCodes.findIndex((code) => code === tokenHash);
 
@@ -177,7 +177,7 @@ export const twoFaRouter = createRouter({
     .mutation(async ({ input }) => {
       const db = getDb();
       const [user] = await db
-        .select({ totpSecret: users.totpSecret, totpBackupCodes: users.totpBackupCodes, username: users.username })
+        .select({ totpSecret: users.totpSecret, totpEnabled: users.totpEnabled, totpBackupCodes: users.totpBackupCodes, username: users.username })
         .from(users)
         .where(eq(users.id, input.userId))
         .limit(1);
@@ -186,7 +186,7 @@ export const twoFaRouter = createRouter({
 
       if (verifyTotp(user.totpSecret, input.token)) return { success: true };
 
-      const backupCodes = user.totpBackupCodes ? (JSON.parse(user.totpBackupCodes) as string[]) : [];
+      const backupCodes = user.totpBackupCodes ? (user.totpBackupCodes as string[]) : [];
       const tokenHash = hashToken(input.token);
       const backupIndex = backupCodes.findIndex((code) => code === tokenHash);
 

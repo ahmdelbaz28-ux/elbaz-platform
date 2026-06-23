@@ -26,19 +26,7 @@ import {
   licenses,
 } from "./schema";
 
-export const usersRelations = relations(users, ({ many }) => ({
-  enrollments: many(enrollments),
-  payments: many(payments),
-  certificates: many(certificates),
-  lessonProgress: many(lessonProgress),
-  supportTickets: many(supportTickets),
-  promoCodes: many(promoCodes),
-  promoCodeUsage: many(promoCodeUsage),
-  chatMessages: many(chatMessages),
-  passwordResetTokens: many(passwordResetTokens),
-  ticketReplies: many(ticketReplies),
-  reviews: many(reviews),
-}));
+
 
 export const categoriesRelations = relations(categories, ({ many }) => ({
   courses: many(courses),
