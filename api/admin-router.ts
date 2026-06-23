@@ -189,9 +189,8 @@ export const adminRouter = createRouter({
           titleAr: courses.titleAr,
           descriptionEn: courses.descriptionEn,
           descriptionAr: courses.descriptionAr,
-          thumbnailUrl: courses.thumbnailUrl,
+          thumbnailUrl: courses.thumbnail,
           price: courses.price,
-          currency: courses.currency,
           isFeatured: courses.isFeatured,
           isPublished: courses.isPublished,
           level: courses.level,
@@ -252,7 +251,7 @@ export const adminRouter = createRouter({
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     const [recentUsers] = await db.select({ value: count() }).from(users).where(sql`${users.createdAt} >= ${thirtyDaysAgo}`);
-    const [recentEnrollments] = await db.select({ value: count() }).from(enrollments).where(sql`${enrollments.createdAt} >= ${thirtyDaysAgo}`);
+    const [recentEnrollments] = await db.select({ value: count() }).from(enrollments).where(sql`${enrollments.enrolledAt} >= ${thirtyDaysAgo}`);
     const [recentRevenue] = await db.select({ total: sql<string>`COALESCE(SUM(CAST(amount AS DECIMAL(12,2))), 0)` }).from(payments).where(and(eq(payments.status, "completed"), sql`${payments.createdAt} >= ${thirtyDaysAgo}`));
     const [totalLessons] = await db.select({ value: count() }).from(lessons);
 

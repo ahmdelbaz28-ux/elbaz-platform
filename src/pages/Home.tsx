@@ -434,11 +434,11 @@ export default function Home() {
             <div className="flex gap-10" style={{ animation: "scrollLogos 20s linear infinite", minWidth: "max-content" }}>
               {[...SOFTWARE_LOGOS, ...SOFTWARE_LOGOS].map((tool, i) => (
                 <motion.div key={`${tool.name}-${i}`} className="software-logo-pill group flex flex-col items-center gap-2 cursor-default shrink-0" whileHover={{ y: -6, scale: 1.05 }} title={tool.name}>
-                  <div className="flex h-12 w-28 items-center justify-center rounded-lg border border-[#1f2d44] bg-[#0a0e17] px-3 py-2 transition-all group-hover:border-[rgba(6,182,212,0.4)] group-hover:bg-[rgba(6,182,212,0.04)] holographic">
-                    <img src={tool.logo} alt={tool.name} className="max-h-8 max-w-full object-contain filter brightness-110 contrast-125 transition-all group-hover:scale-110" onError={(e) => { e.currentTarget.style.display = 'none'; if (e.currentTarget.nextElementSibling) (e.currentTarget.nextElementSibling as HTMLElement).style.display = 'block'; }} />
+                  <div className="flex h-16 w-32 items-center justify-center rounded-xl border border-[#1f2d44] bg-[#0a0e17] px-4 py-3 transition-all group-hover:border-[rgba(6,182,212,0.6)] group-hover:bg-[rgba(6,182,212,0.08)] holographic shadow-lg">
+                    <img src={tool.logo} alt={tool.name} className="max-h-10 max-w-full object-contain filter brightness-110 contrast-125 transition-all group-hover:scale-110 drop-shadow-md" onError={(e) => { e.currentTarget.style.display = 'none'; const next = e.currentTarget.nextElementSibling; if (next) { (next as HTMLElement).style.display = 'block'; } }} />
                     <span className="hidden text-sm font-bold text-[#06b6d4]">{tool.name}</span>
                   </div>
-                  <span className="text-[10px] font-medium uppercase tracking-widest text-[#475569] group-hover:text-[#06b6d4] transition-colors">{tool.name}</span>
+                  <span className="text-[11px] font-bold uppercase tracking-widest text-[#64748b] group-hover:text-[#06b6d4] transition-colors">{tool.name}</span>
                 </motion.div>
               ))}
             </div>

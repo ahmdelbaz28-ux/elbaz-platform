@@ -17,7 +17,7 @@ export const users = mysqlTable(
   "users",
   {
     id: bigint("id", { mode: "number", unsigned: true }).primaryKey().autoincrement(),
-    username: varchar("username", { length: 255 }).notNull().unique(),
+    username: varchar("username", { length: 255 }).notNull(),
     passwordHash: varchar("passwordHash", { length: 255 }),
     googleId: varchar("googleId", { length: 255 }),
     name: varchar("name", { length: 255 }),

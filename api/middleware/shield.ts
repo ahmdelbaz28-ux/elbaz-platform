@@ -71,9 +71,9 @@ export const shieldMiddleware = createMiddleware(async (c, next) => {
 
   // ── 4. Automatic System Pressure Relief ──
   const mem = process.memoryUsage();
-  const memoryUsage = mem.heapUsed / mem.heapTotal;
-  if (memoryUsage > 0.9) {
-    console.warn(`[Shield] High Memory Pressure Detected (90%+). Throttling traffic.`);
+  const memoryUsageMB = mem.heapUsed / 1024 / 1024;
+  if (memoryUsageMB > 800) { // 800MB limit
+    console.warn(`[Shield] High Memory Pressure Detected (${Math.round(memoryUsageMB)}MB). Throttling traffic.`);
     if (path.startsWith("/api/")) {
       // Return 503 for non-critical API calls to shed load
       if (!path.includes("/auth") && !path.includes("/health")) {
