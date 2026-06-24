@@ -232,7 +232,10 @@ export default function ElectricParticles({
             ctx.stroke();
           }
         } else if (p.type === "pulse") {
-          const radius = (1 - p.lifetime / 40) * p.length * 3;
+          // Clamp radius to >= 0 — CanvasRenderingContext2D.arc() throws
+          // IndexSizeError on negative radius, which crashes the whole page
+          // when the particle's lifetime exceeds 40 frames.
+          const radius = Math.max(0, (1 - p.lifetime / 40) * p.length * 3);
           const alpha = p.opacity * (1 - (1 - p.lifetime / 40));
           ctx.globalAlpha = alpha * 0.6;
           ctx.beginPath();
