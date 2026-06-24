@@ -14,7 +14,7 @@ import SingleLineDiagram from "@/components/ui/SingleLineDiagram";
 import ScadaGauge from "@/components/ui/ScadaGauge";
 import ArcFlashButton from "@/components/ui/ArcFlashButton";
 import { useEngineeringMode } from "@/components/ui/EngineeringMode";
-import { motion, useScroll, useTransform, useMotionValue, useSpring } from "framer-motion";
+import { motion, useScroll, useTransform } from "framer-motion";
 import "@/engineering-mode.css";
 import "@/elite-animations.css";
 import {
@@ -32,25 +32,20 @@ import {
   Clock,
   Zap,
   Monitor,
-  BookOpen,
   Globe,
-  Lock,
   Trophy,
   Users,
   Code,
   Cpu,
   Layers,
   BarChart3,
-  Headphones,
   Sparkles,
   ArrowRight,
   CheckCircle2,
   Rocket,
-  Target,
-  Lightbulb,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { trackEvent } from "@/lib/clarity";
 
 type Category = {
@@ -222,7 +217,8 @@ function PromoBanner({ promotion }: { promotion: any }) {
             </Link>
           )}
         </div>
-        <button onClick={handleDismiss} className="absolute end-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-white/70 transition-all hover:bg-white/20 hover:text-white sm:end-3 sm:top-3" aria-label={lang === "ar" ? "إغلاق" : "Dismiss"}>
+        <button type="button"
+          onClick={handleDismiss} className="absolute end-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-white/70 transition-all hover:bg-white/20 hover:text-white sm:end-3 sm:top-3" aria-label={lang === "ar" ? "إغلاق" : "Dismiss"}>
           <X className="h-4 w-4" />
         </button>
       </div>

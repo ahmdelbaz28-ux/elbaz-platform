@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { toast } from "sonner";
@@ -108,7 +108,7 @@ export default function Admin() {
   const blankTheme: Partial<ThemeItem> = { name: "", primaryColor: "#06b6d4", secondaryColor: "#0e7490", accentColor: "#22d3ee", bgColor: "#0a0e17", textColor: "#f0f4f8", cardBgColor: "#111827", borderColor: "#1f2d44" };
 
   /* Promos */
-  const { data: promoCodes, isLoading: promosLoading } = trpc.promo.list.useQuery(undefined, { enabled: !!isAdmin && activeTab === "promos" });
+  const { data: promoCodes } = trpc.promo.list.useQuery(undefined, { enabled: !!isAdmin && activeTab === "promos" });
   const createPromo = trpc.promo.create.useMutation({ onSuccess: () => { utils.promo.list.invalidate(); setShowPromoForm(false); toast.success(lang === "en" ? "Promo created" : "تم إنشاء الكود"); }, onError: (err) => toast.error(err.message) });
   const updatePromo = trpc.promo.update.useMutation({ onSuccess: () => { utils.promo.list.invalidate(); setShowPromoForm(false); toast.success(lang === "en" ? "Promo updated" : "تم تحديث الكود"); }, onError: (err) => toast.error(err.message) });
   const deletePromo = trpc.promo.delete.useMutation({ onSuccess: () => { utils.promo.list.invalidate(); toast.success(lang === "en" ? "Promo deleted" : "تم حذف الكود"); }, onError: (err) => toast.error(err.message) });
@@ -116,7 +116,7 @@ export default function Admin() {
   const [editingPromo, setEditingPromo] = useState<Partial<PromoItem> | null>(null);
 
   /* Promotions */
-  const { data: promotions, isLoading: promotionsLoading } = trpc.settings.listPromotions.useQuery(undefined, { enabled: !!isAdmin && activeTab === "promotions" });
+  const { data: promotions } = trpc.settings.listPromotions.useQuery(undefined, { enabled: !!isAdmin && activeTab === "promotions" });
   const createPromotion = trpc.settings.createPromotion.useMutation({ onSuccess: () => { utils.settings.listPromotions.invalidate(); setShowPromotionForm(false); toast.success(lang === "en" ? "Promotion created" : "تم إنشاء العرض"); }, onError: (err) => toast.error(err.message) });
   const updatePromotion = trpc.settings.updatePromotion.useMutation({ onSuccess: () => { utils.settings.listPromotions.invalidate(); setShowPromotionForm(false); toast.success(lang === "en" ? "Promotion updated" : "تم تحديث العرض"); }, onError: (err) => toast.error(err.message) });
   const deletePromotion = trpc.settings.deletePromotion.useMutation({ onSuccess: () => { utils.settings.listPromotions.invalidate(); toast.success(lang === "en" ? "Promotion deleted" : "تم حذف العرض"); }, onError: (err) => toast.error(err.message) });
