@@ -47,6 +47,32 @@ export default function StarfieldBackground() {
       typeof window !== 'undefined' &&
       window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
+    // ── Theme detection — adapt star/grid colors to the active theme ──────
+    // In light mode: stars become dark slate dots (visible on light bg),
+    // grid lines become light slate (barely visible), shooting stars
+    // become dark blue streaks. In dark mode: original white/cyan.
+    const getThemeColors = () => {
+      const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+      return {
+        isLight,
+        starColor: isLight ? '15,23,42' : '255,255,255',          // slate-900 / white
+        gridColor: isLight ? 'rgba(15,23,42,0.04)' : 'rgba(6,182,212,0.035)',
+        gridColorMajor: isLight ? 'rgba(15,23,42,0.07)' : 'rgba(6,182,212,0.06)',
+        shootingColor: isLight ? '8,145,178' : '255,255,255',     // cyan-600 / white
+      };
+    };
+    let themeColors = getThemeColors();
+
+    // Watch for theme changes — re-paint immediately with new colors
+    const themeObserver = new MutationObserver(() => {
+      themeColors = getThemeColors();
+      paint(performance.now());
+    });
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    });
+
     let stars: Star[] = [];
     const shootings: Shooting[] = [];
     let width = 0;
@@ -117,6 +143,7 @@ export default function StarfieldBackground() {
     };
 
     const drawStars = (dtSec: number) => {
+      const starRgb = themeColors.starColor;
       for (let i = 0; i < stars.length; i++) {
         const s = stars[i];
         let alpha = s.alpha;
@@ -128,7 +155,7 @@ export default function StarfieldBackground() {
         }
         ctx.beginPath();
         ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255,255,255,${alpha.toFixed(3)})`;
+        ctx.fillStyle = `rgba(${starRgb},${alpha.toFixed(3)})`;
         ctx.fill();
       }
     };
@@ -137,15 +164,14 @@ export default function StarfieldBackground() {
     // A light, modern grid drawn once per frame. Very low alpha so it never
     // competes with foreground content — just gives the void a sense of
     // structure / "tech blueprint" feel without being a dominant element.
+    // Colors adapt to the active theme (cyan on dark, slate on light).
     const GRID_SIZE = 64;          // px between grid lines
-    const GRID_COLOR = 'rgba(6,182,212,0.035)'; // ~3.5% opacity — barely visible
-    const GRID_COLOR_MAJOR = 'rgba(6,182,212,0.06)'; // every 4th line slightly brighter
     const drawGrid = () => {
       ctx.lineWidth = 1;
       // Vertical lines
       for (let x = 0; x <= width; x += GRID_SIZE) {
         const isMajor = (x / GRID_SIZE) % 4 === 0;
-        ctx.strokeStyle = isMajor ? GRID_COLOR_MAJOR : GRID_COLOR;
+        ctx.strokeStyle = isMajor ? themeColors.gridColorMajor : themeColors.gridColor;
         ctx.beginPath();
         ctx.moveTo(x + 0.5, 0);
         ctx.lineTo(x + 0.5, height);
@@ -154,7 +180,7 @@ export default function StarfieldBackground() {
       // Horizontal lines
       for (let y = 0; y <= height; y += GRID_SIZE) {
         const isMajor = (y / GRID_SIZE) % 4 === 0;
-        ctx.strokeStyle = isMajor ? GRID_COLOR_MAJOR : GRID_COLOR;
+        ctx.strokeStyle = isMajor ? themeColors.gridColorMajor : themeColors.gridColor;
         ctx.beginPath();
         ctx.moveTo(0, y + 0.5);
         ctx.lineTo(width, y + 0.5);
@@ -163,6 +189,7 @@ export default function StarfieldBackground() {
     };
 
     const drawShootings = (dtSec: number) => {
+      const shootRgb = themeColors.shootingColor;
       for (let i = shootings.length - 1; i >= 0; i--) {
         const m = shootings[i];
         m.life += dtSec;
@@ -187,9 +214,9 @@ export default function StarfieldBackground() {
         const tailY = m.y - (m.vy / speed) * m.length;
 
         const grad = ctx.createLinearGradient(m.x, m.y, tailX, tailY);
-        grad.addColorStop(0, `rgba(255,255,255,${alpha.toFixed(3)})`);
-        grad.addColorStop(0.25, `rgba(255,255,255,${(alpha * 0.7).toFixed(3)})`);
-        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        grad.addColorStop(0, `rgba(${shootRgb},${alpha.toFixed(3)})`);
+        grad.addColorStop(0.25, `rgba(${shootRgb},${(alpha * 0.7).toFixed(3)})`);
+        grad.addColorStop(1, `rgba(${shootRgb},0)`);
 
         ctx.strokeStyle = grad;
         ctx.lineWidth = m.width;
@@ -202,8 +229,8 @@ export default function StarfieldBackground() {
         // Bright head with a faint glow halo for the "lit" meteor look
         ctx.beginPath();
         ctx.arc(m.x, m.y, m.width * 1.4, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255,255,255,${alpha.toFixed(3)})`;
-        ctx.shadowColor = `rgba(255,255,255,${(alpha * 0.7).toFixed(3)})`;
+        ctx.fillStyle = `rgba(${shootRgb},${alpha.toFixed(3)})`;
+        ctx.shadowColor = `rgba(${shootRgb},${(alpha * 0.7).toFixed(3)})`;
         ctx.shadowBlur = 8;
         ctx.fill();
         ctx.shadowBlur = 0;
@@ -267,6 +294,7 @@ export default function StarfieldBackground() {
       if (rafId) cancelAnimationFrame(rafId);
       window.removeEventListener('resize', resize);
       document.removeEventListener('visibilitychange', onVisibility);
+      themeObserver.disconnect();
     };
   }, []);
 

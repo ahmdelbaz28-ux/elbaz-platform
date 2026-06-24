@@ -13,6 +13,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { EngineeringModeToggle } from "@/components/ui/EngineeringMode";
+import ThemeToggle from "@/components/ThemeToggle";
 
 export default function Navbar() {
   const { lang, setLang } = useTranslation();
@@ -172,6 +173,9 @@ export default function Navbar() {
 
           {/* ── Right Controls ── */}
           <div className="hidden items-center gap-2 md:flex">
+            {/* Theme toggle (dark/light) */}
+            <ThemeToggle variant="compact" />
+
             {/* Language toggle */}
             <button
               data-testid="language-toggle"
@@ -315,15 +319,18 @@ export default function Navbar() {
             </Link>
           ))}
 
-          {/* Lang + Auth */}
+          {/* Lang + Theme + Auth */}
           <div className="mt-6 flex flex-col items-center gap-3">
-            <button
-              data-testid="language-toggle-mobile"
-              onClick={() => setLang(lang === "en" ? "ar" : "en")}
-              className="rounded-xl border border-[#1e2d3d] px-6 py-2.5 text-base font-medium text-[#64748b] hover:border-[#06b6d4] hover:text-[#06b6d4]"
-            >
-              {lang === "en" ? "العربية" : "English"}
-            </button>
+            <div className="flex items-center gap-3">
+              <ThemeToggle variant="full" />
+              <button
+                data-testid="language-toggle-mobile"
+                onClick={() => setLang(lang === "en" ? "ar" : "en")}
+                className="rounded-xl border border-[#1e2d3d] px-6 py-2.5 text-base font-medium text-[#64748b] hover:border-[#06b6d4] hover:text-[#06b6d4]"
+              >
+                {lang === "en" ? "العربية" : "English"}
+              </button>
+            </div>
             {isAuthenticated ? (
               <button
                 onClick={() => { logout(); setMobileOpen(false); }}
