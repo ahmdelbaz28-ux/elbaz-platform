@@ -39,28 +39,140 @@ export async function ensureDatabase(): Promise<void> {
     if (tableExists) {
       console.log("[DB] Schema already initialized — checking for incremental migrations...");
 
-      // ── Incremental migrations for existing databases ──
-      const migrations = [
-        // Migration: Add googleId column + make passwordHash nullable (for Google OAuth)
-        `ALTER TABLE users MODIFY COLUMN passwordHash VARCHAR(255) NULL`,
-        `ALTER TABLE users ADD COLUMN IF NOT EXISTS googleId VARCHAR(255) NULL`,
-        `ALTER TABLE users ADD COLUMN IF NOT EXISTS passwordResetToken VARCHAR(255) NULL`,
-        `ALTER TABLE users ADD COLUMN IF NOT EXISTS passwordResetExpiresAt TIMESTAMP NULL`,
-        `ALTER TABLE users ADD COLUMN IF NOT EXISTS emailVerificationToken VARCHAR(255) NULL`,
-        `ALTER TABLE users ADD COLUMN IF NOT EXISTS emailVerificationExpiry TIMESTAMP NULL`,
-        `ALTER TABLE users ADD COLUMN IF NOT EXISTS emailVerifiedAt TIMESTAMP NULL`,
-        `ALTER TABLE users ADD COLUMN IF NOT EXISTS pendingEmail VARCHAR(255) NULL`,
-        `ALTER TABLE users ADD UNIQUE INDEX IF NOT EXISTS users_google_id_unique (googleId)`,
-      ];
+      // ── Helper: check if a column exists before adding it ──────────────
+      // MySQL does NOT support `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
+      // (that's PostgreSQL syntax). On MySQL we must check INFORMATION_SCHEMA
+      // first, otherwise every restart logs 8 syntax-error warnings.
+      const columnExists = async (table: string, column: string): Promise<boolean> => {
+        const rows = await conn.execute(
+          "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",
+          [table, column]
+        );
+        return (rows as { cnt: number }[])[0]?.cnt > 0;
+      };
 
-      for (const sql of migrations) {
+      const indexExists = async (table: string, indexName: string): Promise<boolean> => {
+        const rows = await conn.execute(
+          "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?",
+          [table, indexName]
+        );
+        return (rows as { cnt: number }[])[0]?.cnt > 0;
+      };
+
+      // ── Incremental migrations for existing databases ──
+      // Each migration checks existence first → no syntax errors, no warnings.
+      console.log("[DB] Running incremental migrations...");
+
+      // Migration 1: make passwordHash nullable (for Google OAuth users)
+      try {
+        await conn.execute(`ALTER TABLE users MODIFY COLUMN passwordHash VARCHAR(255) NULL`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (!message.includes("Duplicate") && !message.includes("already exists")) {
+          console.warn("[DB] Migration warning (passwordHash):", message);
+        }
+      }
+
+      // Migration 2: add googleId column if missing
+      if (!(await columnExists("users", "googleId"))) {
         try {
-          await conn.execute(sql);
+          await conn.execute(`ALTER TABLE users ADD COLUMN googleId VARCHAR(255) NULL`);
+          console.log("[DB]   + Added column users.googleId");
         } catch (err) {
-          // Ignore "IF NOT EXISTS" already-exists errors or duplicate column errors
           const message = err instanceof Error ? err.message : String(err);
           if (!message.includes("Duplicate") && !message.includes("already exists")) {
-            console.warn("[DB] Migration warning:", message);
+            console.warn("[DB] Migration warning (googleId):", message);
+          }
+        }
+      }
+
+      // Migration 3: add passwordResetToken column if missing
+      if (!(await columnExists("users", "passwordResetToken"))) {
+        try {
+          await conn.execute(`ALTER TABLE users ADD COLUMN passwordResetToken VARCHAR(255) NULL`);
+          console.log("[DB]   + Added column users.passwordResetToken");
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (!message.includes("Duplicate") && !message.includes("already exists")) {
+            console.warn("[DB] Migration warning (passwordResetToken):", message);
+          }
+        }
+      }
+
+      // Migration 4: add passwordResetExpiresAt column if missing
+      if (!(await columnExists("users", "passwordResetExpiresAt"))) {
+        try {
+          await conn.execute(`ALTER TABLE users ADD COLUMN passwordResetExpiresAt TIMESTAMP NULL`);
+          console.log("[DB]   + Added column users.passwordResetExpiresAt");
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (!message.includes("Duplicate") && !message.includes("already exists")) {
+            console.warn("[DB] Migration warning (passwordResetExpiresAt):", message);
+          }
+        }
+      }
+
+      // Migration 5: add emailVerificationToken column if missing
+      if (!(await columnExists("users", "emailVerificationToken"))) {
+        try {
+          await conn.execute(`ALTER TABLE users ADD COLUMN emailVerificationToken VARCHAR(255) NULL`);
+          console.log("[DB]   + Added column users.emailVerificationToken");
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (!message.includes("Duplicate") && !message.includes("already exists")) {
+            console.warn("[DB] Migration warning (emailVerificationToken):", message);
+          }
+        }
+      }
+
+      // Migration 6: add emailVerificationExpiry column if missing
+      if (!(await columnExists("users", "emailVerificationExpiry"))) {
+        try {
+          await conn.execute(`ALTER TABLE users ADD COLUMN emailVerificationExpiry TIMESTAMP NULL`);
+          console.log("[DB]   + Added column users.emailVerificationExpiry");
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (!message.includes("Duplicate") && !message.includes("already exists")) {
+            console.warn("[DB] Migration warning (emailVerificationExpiry):", message);
+          }
+        }
+      }
+
+      // Migration 7: add emailVerifiedAt column if missing
+      if (!(await columnExists("users", "emailVerifiedAt"))) {
+        try {
+          await conn.execute(`ALTER TABLE users ADD COLUMN emailVerifiedAt TIMESTAMP NULL`);
+          console.log("[DB]   + Added column users.emailVerifiedAt");
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (!message.includes("Duplicate") && !message.includes("already exists")) {
+            console.warn("[DB] Migration warning (emailVerifiedAt):", message);
+          }
+        }
+      }
+
+      // Migration 8: add pendingEmail column if missing
+      if (!(await columnExists("users", "pendingEmail"))) {
+        try {
+          await conn.execute(`ALTER TABLE users ADD COLUMN pendingEmail VARCHAR(255) NULL`);
+          console.log("[DB]   + Added column users.pendingEmail");
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (!message.includes("Duplicate") && !message.includes("already exists")) {
+            console.warn("[DB] Migration warning (pendingEmail):", message);
+          }
+        }
+      }
+
+      // Migration 9: add unique index on googleId if missing
+      if (!(await indexExists("users", "users_google_id_unique"))) {
+        try {
+          await conn.execute(`ALTER TABLE users ADD UNIQUE INDEX users_google_id_unique (googleId)`);
+          console.log("[DB]   + Added index users_google_id_unique");
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (!message.includes("Duplicate") && !message.includes("already exists")) {
+            console.warn("[DB] Migration warning (users_google_id_unique):", message);
           }
         }
       }
