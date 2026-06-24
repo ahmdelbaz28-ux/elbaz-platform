@@ -1,66 +1,118 @@
 /**
- * GENIUS CHATBOT - Smart Cascading Fallback System
+ * GENIUS CHATBOT — Modal (primary) + OpenRouter (auto fallback)
  *
- * Uses OpenRouter free models with automatic cascading fallback.
- * If a model is overloaded/down/unavailable, instantly tries the next.
- * User NEVER sees any error - the system always finds a working model.
+ * Strategy:
+ *   1. PRIMARY: Modal — zai-org/GLM-5.1-FP8 (the assistant "replies as itself").
+ *      GLM-5.1 is a REASONING model: it emits `reasoning_content` (chain-of-thought)
+ *      BEFORE the final `content`. The reasoning is ALWAYS filtered out — the user
+ *      only ever sees the polished answer in `content`.
+ *   2. FALLBACK: OpenRouter free-model cascade (21 models, tiered) — used
+ *      automatically if Modal is unavailable, rate-limited, or errors.
  *
- * Models ordered by: parameter size > reasoning quality > context length > speed
- * Tier 1 = best quality, Tier 4 = last resort
- *
- * Note: OpenRouter free model availability changes frequently.
- * The system automatically adapts — dead models are skipped after 3 failures,
- * and new models can be added here when they become available.
- * Currently: 21 active free models (all verified May 2026)
+ * The user never sees which provider answered, never sees any error, and never
+ * sees internal reasoning. If Modal fails, OpenRouter takes over instantly.
  */
 
-// Support both CHATBOT_API_KEY (from .env template) and OPENROUTER_API_KEY (legacy)
-// ✅ FIX: Read from centralized env.ts instead of raw process.env
 import { env } from "../lib/env";
-const OPENROUTER_API_KEY = env.OPENROUTER_API_KEY || process.env.CHATBOT_API_KEY || "";
 
-// ✅ Validate API key format on startup
-let apiKeyValid: boolean | null = null; // null = not tested yet
-let apiKeyValidated = false;
+// ════════════════════════════════════════════════════════════════════════
+// PROVIDER CONFIG
+// ════════════════════════════════════════════════════════════════════════
 
-async function validateApiKey(): Promise<boolean> {
-  if (!OPENROUTER_API_KEY) {
-    apiKeyValid = false;
-    apiKeyValidated = true;
-    console.error("[Chatbot] API key not configured — set OPENROUTER_API_KEY or CHATBOT_API_KEY");
-    return false;
+// ── Primary provider: Modal ────────────────────────────────────────────
+const MODAL_API_KEY =
+  env.MODAL_API_KEY || process.env.MODAL_API_KEY || "";
+const MODAL_ENDPOINT = "https://api.us-west-2.modal.direct/v1/chat/completions";
+const MODAL_MODEL = "zai-org/GLM-5.1-FP8";
+
+// ── Fallback provider: OpenRouter ──────────────────────────────────────
+// Support both CHATBOT_API_KEY (from .env template) and OPENROUTER_API_KEY (legacy)
+const OPENROUTER_API_KEY =
+  env.OPENROUTER_API_KEY || process.env.CHATBOT_API_KEY || "";
+
+// ════════════════════════════════════════════════════════════════════════
+// HEALTH TRACKING — remember which provider works to optimize routing
+// ════════════════════════════════════════════════════════════════════════
+
+// Modal health
+let modalKeyValid: boolean | null = null; // null = not tested yet
+let modalConsecFails = 0;
+let modalLastSuccess = 0;
+let modalLastFailTime = 0;
+
+// OpenRouter health
+let openrouterKeyValidated = false;
+let openrouterKeyValid: boolean | null = null;
+
+// Per-model OpenRouter tracking (fallback cascade)
+const modelSuccessCount: Record<string, number> = {};
+const modelFailCount: Record<string, number> = {};
+let lastWorkingModel = "";
+let lastWorkingTime = 0;
+let modelFailResetTime = 0;
+
+const MODAL_COOLDOWN_MS = 60_000; // back off Modal for 60s after a failure
+const MAX_CONSEC_MODAL_FAILS = 3; // after this many, prefer OpenRouter first briefly
+
+// ════════════════════════════════════════════════════════════════════════
+// SYSTEM PROMPT
+// ════════════════════════════════════════════════════════════════════════
+
+/**
+ * Build system prompt based on user's language.
+ * Personality: Friendly, interactive, professional — like a senior engineer mentor.
+ * IMPORTANT: instructs the model to NEVER leak that it is a reasoning model,
+ * never expose its internal thinking, and reply as the platform's own assistant.
+ */
+function getSystemPrompt(language?: string): string {
+  const reasoningGuard = `\n\n⛔ OUTPUT RULES (critical):\n- Reply ONLY with the final user-facing answer. NEVER expose your internal reasoning, chain-of-thought, planning steps, or "let me think" text.\n- NEVER mention Modal, OpenRouter, GLM, or any AI/model provider name. You are simply the platform's assistant.\n- Do NOT say you are an AI or a language model.`;
+
+  if (language === "ar") {
+    return `أنت المساعد الذكي الرسمي لمنصة "الباز" (Elbaz Platform) المتخصصة في الكورسات الهندسية.
+أنت مساعد تقني محترف، متزن، وتفاعلي. لا تتخذ لنفسك اسماً شخصياً، بل عرف نفسك كمساعد ذكي للمنصة.
+
+📌 تخصصك:
+- خبير قوي جداً في الهندسة الكهربائية، وتحديداً في برامج: ETAP, SKM Power*Tools, DIgSILENT PowerFactory, PVSyst.
+- أنت مبرمج لتقديم حلول فعلية وخطوات عملية، وليس مجرد توجيه وهمي.
+- تمتلك معرفة بمكونات الموقع. إذا سألك الطالب عن كورسات، أرشده لكورسات المهندس أحمد الباز (Eng. Ahmed Elbaz) المتوفرة لدينا، ووضح أن المنصة تقدم أقوى الكورسات العملية في تصميم الأنظمة، الوقاية، ودراسات الـ Arc Flash.
+
+🤝 أسلوبك في الكلام:
+- كن احترافياً، متزناً، وتفاعلياً (وليس هزلياً).
+- استخدم تنسيق Markdown بشكل ممتاز.
+- نسق اللغة العربية بدقة عالية، وتأكد من وضع مسافات صحيحة عند دمج الكلمات الإنجليزية مع العربية للحفاظ على التنسيق.
+- استخدم الرموز التعبيرية الهندسية بشكل خفيف (⚡ 🔌 💡) دون مبالغة.
+- قسّم إجاباتك لفقرات ونقاط (Bullet points) لتكون سهلة القراءة.
+
+🚫 محظورات:
+- لا تخترع روابط (URLs) غير موجودة.
+- لا تذكر أبداً أنك ذكاء اصطناعي أو نموذج لغوي أو من أي مزود مثل OpenRouter.
+- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${reasoningGuard}`;
   }
-  if (!OPENROUTER_API_KEY.startsWith("sk-or-")) {
-    apiKeyValid = false;
-    apiKeyValidated = true;
-    console.error("[Chatbot] Invalid API key format — must start with 'sk-or-'");
-    return false;
-  }
-  try {
-    const resp = await fetch("https://openrouter.ai/api/v1/auth/key", {
-      headers: { "Authorization": "Bearer " + OPENROUTER_API_KEY },
-      signal: AbortSignal.timeout(5000),
-    });
-    apiKeyValid = resp.ok;
-    apiKeyValidated = true;
-    if (!resp.ok) {
-      const errData = await resp.json().catch(function() { return {}; });
-      console.error("[Chatbot] API key validation failed:", JSON.stringify(errData));
-    } else {
-      console.log("[Chatbot] API key validated successfully");
-    }
-    return apiKeyValid;
-  } catch (e) {
-    // Network error during validation — don't mark as invalid yet
-    console.warn("[Chatbot] Could not validate API key (network error):", String(e));
-    return true; // Assume valid and let actual requests determine
-  }
+  return `You are the official AI Assistant of the "Elbaz Platform" (specializing in engineering courses).
+You are a highly professional, balanced, and interactive technical assistant. Do NOT use any personal name for yourself; introduce yourself only as the platform's smart assistant.
+
+📌 Your Expertise:
+- You are an expert in Electrical Engineering, specifically highly proficient in ETAP, SKM Power*Tools, DIgSILENT PowerFactory, and PVSyst.
+- Provide actual, practical solutions and step-by-step guidance, not generic advice.
+- You have deep knowledge of the platform's content. If asked about courses, recommend Eng. Ahmed Elbaz's practical engineering courses available on this platform.
+
+🤝 Your Communication Style:
+- Be professional, balanced, and helpful (not comical).
+- Use excellent Markdown formatting.
+- If mixing English and Arabic, ensure proper spacing and bidirectional text formatting.
+- Use engineering emojis sparingly (⚡ 🔌 💡).
+- Break your answers into short paragraphs and bullet points for readability.
+
+🚫 Rules:
+- Do NOT hallucinate fake URLs.
+- NEVER mention you are an AI, a language model, or from OpenRouter or any other provider.
+- If asked about non-engineering topics, politely decline and state your expertise.${reasoningGuard}`;
 }
 
-// ═══════════════════════════════════════════════════════════
-// MODEL POOL - 21 free models, ordered strongest -> weakest
-// Updated: May 2026 (all verified available on OpenRouter)
-// ═══════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════
+// OPENROUTER FALLBACK MODEL POOL — 21 free models, strongest -> weakest
+// (Only used if Modal is unavailable)
+// ════════════════════════════════════════════════════════════════════════
 
 const AI_MODELS = [
   // ─── Tier 1: Best quality — highest parameter count & reasoning ───
@@ -93,63 +145,187 @@ const AI_MODELS = [
   { id: "liquid/lfm-2.5-1.2b-instruct:free",            ctx: 32768,  tier: 4 },
 ];
 
+// ════════════════════════════════════════════════════════════════════════
+// MODAL (PRIMARY) — non-streaming
+// ════════════════════════════════════════════════════════════════════════
 
-// Smart tracking: remember which models work to optimize future requests
-const modelSuccessCount: Record<string, number> = {};
-const modelFailCount: Record<string, number> = {};
-let lastWorkingModel = "";
-let lastWorkingTime = 0;
-let modelFailResetTime = 0;
-
-/**
- * Build system prompt based on user's language
- * Personality: Friendly, interactive, humorous — like a senior engineer mentor
- */
-function getSystemPrompt(language?: string): string {
-  if (language === "ar") {
-    return `أنت المساعد الذكي الرسمي لمنصة "الباز" (Elbaz Platform) المتخصصة في الكورسات الهندسية.
-أنت مساعد تقني محترف، متزن، وتفاعلي. لا تتخذ لنفسك اسماً شخصياً، بل عرف نفسك كمساعد ذكي للمنصة.
-
-📌 تخصصك:
-- خبير قوي جداً في الهندسة الكهربائية، وتحديداً في برامج: ETAP, SKM Power*Tools, DIgSILENT PowerFactory, PVSyst.
-- أنت مبرمج لتقديم حلول فعلية وخطوات عملية، وليس مجرد توجيه وهمي.
-- تمتلك معرفة بمكونات الموقع. إذا سألك الطالب عن كورسات، أرشده لكورسات المهندس أحمد الباز (Eng. Ahmed Elbaz) المتوفرة لدينا، ووضح أن المنصة تقدم أقوى الكورسات العملية في تصميم الأنظمة، الوقاية، ودراسات الـ Arc Flash.
-
-🤝 أسلوبك في الكلام:
-- كن احترافياً، متزناً، وتفاعلياً (وليس هزلياً).
-- استخدم تنسيق Markdown بشكل ممتاز.
-- نسق اللغة العربية بدقة عالية، وتأكد من وضع مسافات صحيحة عند دمج الكلمات الإنجليزية مع العربية للحفاظ على التنسيق.
-- استخدم الرموز التعبيرية الهندسية بشكل خفيف (⚡ 🔌 💡) دون مبالغة.
-- قسّم إجاباتك لفقرات ونقاط (Bullet points) لتكون سهلة القراءة.
-
-🚫 محظورات:
-- لا تخترع روابط (URLs) غير موجودة.
-- لا تذكر أبداً أنك ذكاء اصطناعي أو نموذج لغوي أو من OpenRouter.
-- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.`;
+async function validateModalKey(): Promise<boolean> {
+  if (!MODAL_API_KEY) {
+    modalKeyValid = false;
+    return false;
   }
-  return `You are the official AI Assistant of the "Elbaz Platform" (specializing in engineering courses).
-You are a highly professional, balanced, and interactive technical assistant. Do NOT use any personal name for yourself; introduce yourself only as the platform's smart assistant.
+  // Modal tokens don't have a public verify endpoint, so we treat a key as
+  // valid until an actual request proves otherwise. We do a minimal probe.
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(function() { controller.abort(); }, 8000);
+    const response = await fetch(MODAL_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + MODAL_API_KEY,
+        "Content-Type": "application/json",
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: MODAL_MODEL,
+        messages: [{ role: "user", content: "ping" }],
+        max_tokens: 1,
+      }),
+    });
+    clearTimeout(timeoutId);
 
-📌 Your Expertise:
-- You are an expert in Electrical Engineering, specifically highly proficient in ETAP, SKM Power*Tools, DIgSILENT PowerFactory, and PVSyst.
-- Provide actual, practical solutions and step-by-step guidance, not generic advice.
-- You have deep knowledge of the platform's content. If asked about courses, recommend Eng. Ahmed Elbaz's practical engineering courses available on this platform.
-
-🤝 Your Communication Style:
-- Be professional, balanced, and helpful (not comical).
-- Use excellent Markdown formatting.
-- If mixing English and Arabic, ensure proper spacing and bidirectional text formatting.
-- Use engineering emojis sparingly (⚡ 🔌 💡).
-- Break your answers into short paragraphs and bullet points for readability.
-
-🚫 Rules:
-- Do NOT hallucinate fake URLs.
-- NEVER mention you are an AI, a language model, or from OpenRouter.
-- If asked about non-engineering topics, politely decline and state your expertise.`;
+    if (response.status === 401 || response.status === 403) {
+      modalKeyValid = false;
+      console.error("[Chatbot/Modal] API key rejected (" + response.status + ")");
+      return false;
+    }
+    // Any other status (200, or even a 5xx) means the key was accepted by the gateway
+    modalKeyValid = true;
+    return true;
+  } catch (e) {
+    // Network error during probe — assume valid, let real requests decide
+    console.warn("[Chatbot/Modal] Could not probe key (network error):", String(e));
+    modalKeyValid = true;
+    return true;
+  }
 }
 
 /**
- * Try a single model with timeout protection
+ * Should we try Modal first right now?
+ * Yes unless: key is invalid, OR we're in a cooldown after a recent failure.
+ */
+function modalIsAvailable(): boolean {
+  if (!MODAL_API_KEY) return false;
+  if (modalKeyValid === false) return false;
+  // If we've had recent consecutive failures and are within cooldown, skip Modal
+  if (modalConsecFails >= MAX_CONSEC_MODAL_FAILS) {
+    if (modalLastFailTime && Date.now() - modalLastFailTime < MODAL_COOLDOWN_MS) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Try Modal once (non-streaming). Returns null on any failure.
+ * CRITICAL: extracts `content` only — `reasoning_content` is discarded.
+ */
+async function tryModal(
+  messages: { role: string; content: string }[],
+  systemPrompt: string,
+  timeoutMs: number
+): Promise<{ reply: string; model: string } | null> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  try {
+    const controller = new AbortController();
+    // GLM-5.1 reasons for several seconds; allow ample time.
+    timeoutId = setTimeout(function() { controller.abort(); }, timeoutMs);
+
+    const response = await fetch(MODAL_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + MODAL_API_KEY,
+        "Content-Type": "application/json",
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: MODAL_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...messages.map(function(m) { return { role: m.role, content: m.content }; }),
+        ],
+        temperature: 0.7,
+        max_tokens: 2048,
+      }),
+    });
+
+    if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
+
+    if (response.status === 401 || response.status === 403) {
+      modalKeyValid = false;
+      modalConsecFails++;
+      modalLastFailTime = Date.now();
+      console.error("[Chatbot/Modal] request rejected (" + response.status + ")");
+      return null;
+    }
+    if (!response.ok) {
+      modalConsecFails++;
+      modalLastFailTime = Date.now();
+      return null;
+    }
+
+    const data = await response.json() as {
+      error?: unknown;
+      choices?: { message?: { content?: string | null; reasoning_content?: string | null } }[];
+    };
+
+    if (data.error) {
+      modalConsecFails++;
+      modalLastFailTime = Date.now();
+      return null;
+    }
+
+    // ✅ Extract `content` ONLY. reasoning_content is the model's private
+    // chain-of-thought and must NEVER be shown to the user.
+    const reply = data.choices?.[0]?.message?.content ?? "";
+
+    if (!reply || reply.trim().length === 0) {
+      // Model produced only reasoning and ran out of tokens — treat as soft failure
+      modalConsecFails++;
+      modalLastFailTime = Date.now();
+      return null;
+    }
+
+    // SUCCESS
+    modalConsecFails = 0;
+    modalLastSuccess = Date.now();
+    modalKeyValid = true;
+    return { reply: reply.trim(), model: MODAL_MODEL };
+  } catch (e) {
+    if (timeoutId) clearTimeout(timeoutId);
+    modalConsecFails++;
+    modalLastFailTime = Date.now();
+    console.warn("[Chatbot/Modal] request failed:", String(e));
+    return null;
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// OPENROUTER (FALLBACK)
+// ════════════════════════════════════════════════════════════════════════
+
+async function validateOpenRouterKey(): Promise<boolean> {
+  if (!OPENROUTER_API_KEY) {
+    openrouterKeyValid = false;
+    openrouterKeyValidated = true;
+    return false;
+  }
+  if (!OPENROUTER_API_KEY.startsWith("sk-or-")) {
+    openrouterKeyValid = false;
+    openrouterKeyValidated = true;
+    console.error("[Chatbot/OpenRouter] Invalid API key format — must start with 'sk-or-'");
+    return false;
+  }
+  try {
+    const resp = await fetch("https://openrouter.ai/api/v1/auth/key", {
+      headers: { "Authorization": "Bearer " + OPENROUTER_API_KEY },
+      signal: AbortSignal.timeout(5000),
+    });
+    openrouterKeyValid = resp.ok;
+    openrouterKeyValidated = true;
+    if (!resp.ok) {
+      const errData = await resp.json().catch(function() { return {}; });
+      console.error("[Chatbot/OpenRouter] API key validation failed:", JSON.stringify(errData));
+    }
+    return openrouterKeyValid;
+  } catch (e) {
+    console.warn("[Chatbot/OpenRouter] Could not validate API key (network error):", String(e));
+    return true; // Assume valid and let actual requests determine
+  }
+}
+
+/**
+ * Try a single OpenRouter model with timeout protection.
  * Returns null on any failure (timeout, rate limit, overload, etc.)
  */
 async function tryModel(
@@ -187,15 +363,13 @@ async function tryModel(
 
     if (timeoutId) clearTimeout(timeoutId);
 
-    // ✅ Detect 401 (invalid API key) — mark immediately and stop trying
     if (response.status === 401) {
-      console.error("[Chatbot] API key returned 401 Unauthorized — key is invalid or expired");
-      apiKeyValid = false;
-      apiKeyValidated = true;
+      console.error("[Chatbot/OpenRouter] API key returned 401 Unauthorized — key is invalid or expired");
+      openrouterKeyValid = false;
+      openrouterKeyValidated = true;
       return null;
     }
 
-    // Any other non-200 status = skip to next model silently
     if (!response.ok) {
       modelFailCount[modelId] = (modelFailCount[modelId] || 0) + 1;
       return null;
@@ -203,7 +377,6 @@ async function tryModel(
 
     const data = await response.json() as { error?: unknown; choices?: { message?: { content?: string } }[] };
 
-    // Check for API-level error
     if (data.error) {
       modelFailCount[modelId] = (modelFailCount[modelId] || 0) + 1;
       return null;
@@ -215,9 +388,9 @@ async function tryModel(
       return null;
     }
 
-    // SUCCESS - track it for optimization
+    // SUCCESS
     modelSuccessCount[modelId] = (modelSuccessCount[modelId] || 0) + 1;
-    modelFailCount[modelId] = 0; // reset fail count on success
+    modelFailCount[modelId] = 0;
     lastWorkingModel = modelId;
     lastWorkingTime = Date.now();
 
@@ -230,139 +403,17 @@ async function tryModel(
 }
 
 /**
- * GENIUS MAIN: Get chat response with smart cascading fallback
- *
- * Strategy:
- * 1. Try last working model first (if used within last 5 min - fastest path)
- * 2. Skip models with 3+ recent consecutive fails (temporarily avoid bad models)
- * 3. Try Tier 1 models first (best quality) - 20s timeout each
- * 4. Then Tier 2 - 15s timeout each
- * 5. Then Tier 3 - 10s timeout each
- * 6. Then Tier 4 - 8s timeout each
- *
- * User will NEVER see an error. System always finds a working model.
- * Worst case: ~120s if every single model is down (extremely unlikely)
+ * Run the full OpenRouter cascading fallback (only if Modal was unavailable/failed).
  */
-export async function getChatResponse(request: {
-  messages: { role: string; content: string }[];
-  language?: string;
-}): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
-  // ✅ Validate API key if not validated yet
-  if (!apiKeyValidated) {
-    await validateApiKey();
-  }
-  if (apiKeyValid === false) {
-    return {
-      success: false,
-      error: request.language === "ar"
-        ? "عذراً، مفتاح API الخاص بالشات بوت غير صالح أو غير مُهيأ. يرجى التواصل مع الدعم الفني."
-        : "Sorry, the chatbot API key is invalid or not configured. Please contact support.",
-    };
-  }
-
-  const systemPrompt = getSystemPrompt(request.language);
-
-  // ✅ Reset fail counts every 10 minutes — models recover from transient errors
-  if (!modelFailResetTime || Date.now() - modelFailResetTime > 600000) {
-    for (const k in modelFailCount) { modelFailCount[k] = 0; }
-    modelFailResetTime = Date.now();
-  }
-
-  // ✅ Global timeout — prevent user waiting >60s even if all models are slow
-  const globalStartTime = Date.now();
-  const GLOBAL_TIMEOUT_MS = 60000;
-
-  // Timeout per tier (decreasing for smaller/faster models)
-  const TIER_TIMEOUTS: Record<number, number> = {
-    1: 20000, // Tier 1: 20s (large models need more time)
-    2: 15000, // Tier 2: 15s
-    3: 10000, // Tier 3: 10s
-    4: 8000,  // Tier 4: 8s (small/fast models)
-  };
-
-  // ─── Step 1: Try last working model first (if recent) ───
-  if (lastWorkingModel && (Date.now() - lastWorkingTime) < 300000) {
-    // Check it hasn't failed 3+ times since
-    if ((modelFailCount[lastWorkingModel] || 0) < 3) {
-      const result = await tryModel(lastWorkingModel, request.messages, systemPrompt, TIER_TIMEOUTS[1]);
-      if (result) return { success: true, reply: result.reply, model: result.model };
-    }
-  }
-
-  // ─── Step 2: Try all models by tier, skipping known-bad ones ───
-  for (let tier = 1; tier <= 4; tier++) {
-    let tierTried = 0;
-    let tierSkipped = 0;
-
-    for (let i = 0; i < AI_MODELS.length; i++) {
-      const model = AI_MODELS[i];
-      if (model.tier !== tier) continue;
-
-      // Skip models that failed 3+ times recently (they're likely still down)
-      if ((modelFailCount[model.id] || 0) >= 3) {
-        tierSkipped++;
-        continue;
-      }
-
-      tierTried++;
-      const result = await tryModel(model.id, request.messages, systemPrompt, TIER_TIMEOUTS[tier]);
-      if (result) return { success: true, reply: result.reply, model: result.model };
-    }
-
-    console.log("[Chatbot] Tier " + tier + ": tried " + tierTried + ", skipped " + tierSkipped + " failed models");
-    // ✅ Check global timeout — don't make the user wait forever
-    if (Date.now() - globalStartTime > GLOBAL_TIMEOUT_MS) {
-      console.warn("[Chatbot] Global timeout reached (" + Math.round((Date.now() - globalStartTime) / 1000) + "s)");
-      break;
-    }
-  }
-
-  // ─── Step 3: ABSOLUTE LAST RESORT - try ALL models including known-bad ones ───
-  // This only happens if ALL 23 models were skipped as "bad"
-  console.warn("[Chatbot] All tiers exhausted with skips. Trying all models as last resort...");
-  for (let i = 0; i < AI_MODELS.length; i++) {
-    const model = AI_MODELS[i];
-    // Reset fail count to give them another chance
-    modelFailCount[model.id] = 0;
-    const result = await tryModel(model.id, request.messages, systemPrompt, 10000);
-    if (result) return { success: true, reply: result.reply, model: result.model };
-  }
-
-  // ✅ Check if the root cause was an invalid API key
-  if ((apiKeyValid as boolean | null) === false) {
-    return {
-      success: false,
-      error: request.language === "ar"
-        ? "عذراً، مفتاح API الخاص بالشات بوت غير صالح. يرجى تحديث المفتاح وإعادة المحاولة."
-        : "Sorry, the chatbot API key is invalid. Please update the key and try again.",
-    };
-  }
-
-  console.error("[Chatbot] ALL models failed completely");
-  return { success: false, error: request.language === "ar"
-    ? "جميع نماذج الذكاء الاصطناعي مشغولة حالياً. يرجى المحاولة بعد قليل."
-    : "All AI models are temporarily busy. Please try again in a few seconds."
-  };
-}
-
-/**
- * Get the best model to try (with cascading logic, shared with getChatResponse)
- * Returns { modelId, systemPrompt, controller } or null if API key invalid
- *
- * This is the core logic shared between streaming and non-streaming.
- * It tries models in order: last working → tier 1 → tier 2 → tier 3 → tier 4 → last resort
- */
-export async function pickWorkingModel(
-  _messages: { role: string; content: string }[],
+async function openRouterFallback(
+  messages: { role: string; content: string }[],
+  systemPrompt: string,
   language?: string
-): Promise<{ modelId: string; systemPrompt: string } | null> {
-  // Validate API key if not validated yet
-  if (!apiKeyValidated) {
-    await validateApiKey();
+): Promise<{ reply: string; model: string } | null> {
+  if (!openrouterKeyValidated) {
+    await validateOpenRouterKey();
   }
-  if (apiKeyValid === false) return null;
-
-  const systemPrompt = getSystemPrompt(language);
+  if (openrouterKeyValid === false) return null;
 
   // Reset fail counts every 10 minutes
   if (!modelFailResetTime || Date.now() - modelFailResetTime > 600000) {
@@ -371,47 +422,204 @@ export async function pickWorkingModel(
   }
 
   const globalStartTime = Date.now();
-  const GLOBAL_TIMEOUT_MS = 30000; // 30s to find a working model for streaming
+  const GLOBAL_TIMEOUT_MS = 60000;
 
   const TIER_TIMEOUTS: Record<number, number> = {
-    1: 10000, // Tier 1: 10s (just needs first byte for streaming)
-    2: 8000,  // Tier 2: 8s
-    3: 6000,  // Tier 3: 6s
-    4: 5000,  // Tier 4: 5s
+    1: 20000,
+    2: 15000,
+    3: 10000,
+    4: 8000,
   };
 
   // Step 1: Try last working model first
   if (lastWorkingModel && (Date.now() - lastWorkingTime) < 300000) {
     if ((modelFailCount[lastWorkingModel] || 0) < 3) {
-      if (await probeModel(lastWorkingModel, systemPrompt, TIER_TIMEOUTS[1])) {
-        return { modelId: lastWorkingModel, systemPrompt };
-      }
+      const result = await tryModel(lastWorkingModel, messages, systemPrompt, TIER_TIMEOUTS[1]);
+      if (result) return result;
     }
   }
 
   // Step 2: Try all models by tier
   for (let tier = 1; tier <= 4; tier++) {
+    let tierTried = 0;
+    let tierSkipped = 0;
+
     for (let i = 0; i < AI_MODELS.length; i++) {
       const model = AI_MODELS[i];
       if (model.tier !== tier) continue;
-      if ((modelFailCount[model.id] || 0) >= 3) continue;
-
-      if (Date.now() - globalStartTime > GLOBAL_TIMEOUT_MS) {
-        console.warn("[Chatbot/Stream] Model selection timeout reached");
-        return null;
+      if ((modelFailCount[model.id] || 0) >= 3) {
+        tierSkipped++;
+        continue;
       }
+      tierTried++;
+      const result = await tryModel(model.id, messages, systemPrompt, TIER_TIMEOUTS[tier]);
+      if (result) return result;
+    }
 
-      if (await probeModel(model.id, systemPrompt, TIER_TIMEOUTS[tier])) {
-        return { modelId: model.id, systemPrompt };
+    console.log("[Chatbot/OpenRouter] Tier " + tier + ": tried " + tierTried + ", skipped " + tierSkipped);
+    if (Date.now() - globalStartTime > GLOBAL_TIMEOUT_MS) {
+      console.warn("[Chatbot/OpenRouter] Global timeout reached (" + Math.round((Date.now() - globalStartTime) / 1000) + "s)");
+      break;
+    }
+  }
+
+  // Step 3: ABSOLUTE LAST RESORT - try ALL models including known-bad ones
+  console.warn("[Chatbot/OpenRouter] All tiers exhausted with skips. Trying all models as last resort...");
+  for (let i = 0; i < AI_MODELS.length; i++) {
+    const model = AI_MODELS[i];
+    modelFailCount[model.id] = 0;
+    const result = await tryModel(model.id, messages, systemPrompt, 10000);
+    if (result) return result;
+  }
+
+  // no-op to satisfy unused 'language' if both providers configured
+  void language;
+  return null;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// MAIN: non-streaming response
+// ════════════════════════════════════════════════════════════════════════
+
+export async function getChatResponse(request: {
+  messages: { role: string; content: string }[];
+  language?: string;
+}): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
+  const systemPrompt = getSystemPrompt(request.language);
+
+  // ─── PRIMARY: Modal (GLM-5.1-FP8) ───
+  if (modalIsAvailable()) {
+    if (modalKeyValid === null) {
+      await validateModalKey();
+    }
+    if (modalIsAvailable()) {
+      // GLM-5.1 reasons for several seconds; give it up to 75s.
+      const result = await tryModal(request.messages, systemPrompt, 75000);
+      if (result) {
+        return { success: true, reply: result.reply, model: result.model };
+      }
+      console.warn("[Chatbot] Modal failed — falling back to OpenRouter cascade.");
+    }
+  } else {
+    console.info("[Chatbot] Modal not available right now — using OpenRouter fallback.");
+  }
+
+  // ─── FALLBACK: OpenRouter cascade ───
+  const orResult = await openRouterFallback(request.messages, systemPrompt, request.language);
+  if (orResult) {
+    return { success: true, reply: orResult.reply, model: orResult.model };
+  }
+
+  // ─── BOTH PROVIDERS FAILED ───
+  const modalDead = modalKeyValid === false || !MODAL_API_KEY;
+  const orDead = openrouterKeyValid === false || !OPENROUTER_API_KEY;
+
+  if (modalDead && orDead) {
+    return {
+      success: false,
+      error: request.language === "ar"
+        ? "مفتاحات API الخاصة بالشات بوت غير مُهيأة أو غير صالحة. يرجى التواصل مع الدعم الفني."
+        : "The chatbot API keys are not configured or invalid. Please contact support.",
+    };
+  }
+
+  console.error("[Chatbot] All providers failed (Modal + OpenRouter).");
+  return {
+    success: false,
+    error: request.language === "ar"
+      ? "جميع نماذج الذكاء الاصطناعي مشغولة حالياً. يرجى المحاولة بعد قليل."
+      : "All AI models are temporarily busy. Please try again in a few seconds.",
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// STREAMING — provider selection
+// ════════════════════════════════════════════════════════════════════════
+
+/**
+ * Pick the best provider/model to stream from.
+ *
+ * Returns one of:
+ *   - { provider: "modal",   modelId, systemPrompt }       → stream from Modal
+ *   - { provider: "openrouter", modelId, systemPrompt }    → stream from OpenRouter
+ *   - null                                                     → nothing available
+ *
+ * For Modal we probe with a tiny request (reasoning models can't be cheaply
+ * "first-byte" probed because content arrives only after reasoning completes,
+ * so we just verify the key/gateway and trust the real stream).
+ */
+export async function pickWorkingModel(
+  _messages: { role: string; content: string }[],
+  language?: string
+): Promise<
+  | { provider: "modal"; modelId: string; systemPrompt: string }
+  | { provider: "openrouter"; modelId: string; systemPrompt: string }
+  | null
+> {
+  const systemPrompt = getSystemPrompt(language);
+
+  // ─── PRIMARY: Modal ───
+  if (modalIsAvailable()) {
+    if (modalKeyValid === null) {
+      await validateModalKey();
+    }
+    if (modalIsAvailable()) {
+      return { provider: "modal", modelId: MODAL_MODEL, systemPrompt };
+    }
+  }
+
+  // ─── FALLBACK: OpenRouter ───
+  if (!openrouterKeyValidated) {
+    await validateOpenRouterKey();
+  }
+  if (openrouterKeyValid === false) return null;
+
+  // Reset fail counts every 10 minutes
+  if (!modelFailResetTime || Date.now() - modelFailResetTime > 600000) {
+    for (const k in modelFailCount) { modelFailCount[k] = 0; }
+    modelFailResetTime = Date.now();
+  }
+
+  const globalStartTime = Date.now();
+  const GLOBAL_TIMEOUT_MS = 30000;
+
+  const TIER_TIMEOUTS: Record<number, number> = {
+    1: 10000,
+    2: 8000,
+    3: 6000,
+    4: 5000,
+  };
+
+  // Try last working model first
+  if (lastWorkingModel && (Date.now() - lastWorkingTime) < 300000) {
+    if ((modelFailCount[lastWorkingModel] || 0) < 3) {
+      if (await probeModel(lastWorkingModel, systemPrompt, TIER_TIMEOUTS[1])) {
+        return { provider: "openrouter", modelId: lastWorkingModel, systemPrompt };
       }
     }
   }
 
-  // Step 3: Last resort
+  // Try all models by tier
+  for (let tier = 1; tier <= 4; tier++) {
+    for (let i = 0; i < AI_MODELS.length; i++) {
+      const model = AI_MODELS[i];
+      if (model.tier !== tier) continue;
+      if ((modelFailCount[model.id] || 0) >= 3) continue;
+      if (Date.now() - globalStartTime > GLOBAL_TIMEOUT_MS) {
+        console.warn("[Chatbot/Stream] Model selection timeout reached");
+        return null;
+      }
+      if (await probeModel(model.id, systemPrompt, TIER_TIMEOUTS[tier])) {
+        return { provider: "openrouter", modelId: model.id, systemPrompt };
+      }
+    }
+  }
+
+  // Last resort
   for (let i = 0; i < AI_MODELS.length; i++) {
     modelFailCount[AI_MODELS[i].id] = 0;
     if (await probeModel(AI_MODELS[i].id, systemPrompt, 5000)) {
-      return { modelId: AI_MODELS[i].id, systemPrompt };
+      return { provider: "openrouter", modelId: AI_MODELS[i].id, systemPrompt };
     }
   }
 
@@ -419,8 +627,8 @@ export async function pickWorkingModel(
 }
 
 /**
- * Probe a model with streaming to check if it responds
- * Returns true if we get at least one SSE data chunk
+ * Probe an OpenRouter model with streaming to check if it responds.
+ * Returns true if we get at least one SSE data chunk.
  */
 async function probeModel(
   modelId: string,
@@ -444,15 +652,15 @@ async function probeModel(
         model: modelId,
         messages: [{ role: "system", content: systemPrompt }],
         stream: true,
-        max_tokens: 1, // Minimal token for probing
+        max_tokens: 1,
       }),
     });
 
     clearTimeout(timeoutId);
 
     if (response.status === 401) {
-      apiKeyValid = false;
-      apiKeyValidated = true;
+      openrouterKeyValid = false;
+      openrouterKeyValidated = true;
       return false;
     }
     if (!response.ok) {
@@ -460,13 +668,11 @@ async function probeModel(
       return false;
     }
 
-    // Model accepted the request — mark as working
     modelSuccessCount[modelId] = (modelSuccessCount[modelId] || 0) + 1;
     modelFailCount[modelId] = 0;
     lastWorkingModel = modelId;
     lastWorkingTime = Date.now();
 
-    // Consume the response body to avoid leaking the connection
     if (response.body) {
       await response.body.cancel();
     }
@@ -478,11 +684,16 @@ async function probeModel(
 }
 
 /**
- * Create a real streaming connection to OpenRouter
- * Returns a ReadableStream of SSE chunks, or null on failure
+ * Create a streaming connection to the chosen provider.
+ * Returns a ReadableStream of our lightweight SSE format:
+ *     data: {"text": "..."}      (token chunks)
+ *     data: [DONE]
  *
- * The caller pipes this directly to the HTTP response — true streaming!
- * No buffering, no fake setInterval — tokens flow as they arrive.
+ * CRITICAL: for Modal/GLM-5.1, only `delta.content` is forwarded. The
+ * `delta.reasoning_content` (chain-of-thought) is NEVER sent to the client.
+ *
+ * If the chosen provider stream fails partway, we transparently fall back to
+ * the other provider (non-streaming) so the user still gets an answer.
  */
 export async function getStreamResponse(request: {
   messages: { role: string; content: string }[];
@@ -498,6 +709,132 @@ export async function getStreamResponse(request: {
     };
   }
 
+  const encoder = new TextEncoder();
+
+  // ─── Modal stream ───
+  // We read the upstream manually (rather than piping through a Transform)
+  // so we can detect the "only reasoning, no content" case and transparently
+  // recover via the OpenRouter fallback before closing the stream.
+  if (picked.provider === "modal") {
+    let response: Response;
+    try {
+      response = await fetch(MODAL_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + MODAL_API_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: picked.modelId,
+          messages: [
+            { role: "system", content: picked.systemPrompt },
+            ...request.messages.map(function(m) { return { role: m.role, content: m.content }; }),
+          ],
+          temperature: 0.7,
+          max_tokens: 2048,
+          stream: true,
+        }),
+        // Long timeout: reasoning models think before emitting content.
+        signal: AbortSignal.timeout(120000),
+      });
+    } catch (e) {
+      modalConsecFails++;
+      modalLastFailTime = Date.now();
+      console.warn("[Chatbot/Stream] Modal stream open threw:", String(e), "— falling back to OpenRouter.");
+      return await streamOpenRouterFallback(request, picked.systemPrompt);
+    }
+
+    if (!response.ok || !response.body) {
+      modalConsecFails++;
+      modalLastFailTime = Date.now();
+      console.warn("[Chatbot/Stream] Modal stream open failed (" + response.status + ") — falling back to OpenRouter.");
+      return await streamOpenRouterFallback(request, picked.systemPrompt);
+    }
+
+    // Reset Modal health — stream opened successfully.
+    modalConsecFails = 0;
+    modalLastSuccess = Date.now();
+    modalKeyValid = true;
+
+    const upstream = response.body;
+    const decoder = new TextDecoder();
+
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const reader = upstream.getReader();
+        let sawContent = false;
+        let buffer = "";
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || ""; // keep incomplete line
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed || trimmed === "data: [DONE]") continue;
+              if (!trimmed.startsWith("data: ")) continue;
+              try {
+                const parsed = JSON.parse(trimmed.slice(6));
+                const delta = parsed.choices?.[0]?.delta;
+                if (!delta) continue;
+                // ✅ Forward ONLY `content`. Discard `reasoning_content` (chain-of-thought).
+                if (delta.content) {
+                  sawContent = true;
+                  controller.enqueue(
+                    encoder.encode("data: " + JSON.stringify({ text: delta.content }) + "\n\n")
+                  );
+                }
+              } catch {
+                // Skip malformed JSON chunks
+              }
+            }
+          }
+
+          // Flush any trailing buffered line
+          const rest = buffer.trim();
+          if (rest.startsWith("data: ") && rest.slice(6).trim() !== "[DONE]") {
+            try {
+              const parsed = JSON.parse(rest.slice(6).trim());
+              const delta = parsed.choices?.[0]?.delta;
+              if (delta && delta.content) {
+                sawContent = true;
+                controller.enqueue(
+                  encoder.encode("data: " + JSON.stringify({ text: delta.content }) + "\n\n")
+                );
+              }
+            } catch {
+              // Skip malformed trailing chunk
+            }
+          }
+        } catch (e) {
+          controller.error(e);
+          return;
+        } finally {
+          try { reader.releaseLock(); } catch { /* already released */ }
+        }
+
+        // Modal produced only reasoning (or nothing usable) — recover via fallback.
+        if (!sawContent) {
+          console.warn("[Chatbot/Stream] Modal returned no content (only reasoning) — recovering via OpenRouter.");
+          const fb = await openRouterFallback(request.messages, picked.systemPrompt, request.language);
+          if (fb) {
+            controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: fb.reply }) + "\n\n"));
+          }
+        }
+
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+
+    return { stream, model: picked.modelId };
+  }
+
+  // ─── OpenRouter stream ───
   try {
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -515,7 +852,7 @@ export async function getStreamResponse(request: {
         ],
         temperature: 0.7,
         max_tokens: 2048,
-        stream: true, // ✅ REAL streaming
+        stream: true,
       }),
     });
 
@@ -528,11 +865,7 @@ export async function getStreamResponse(request: {
       };
     }
 
-    // ✅ Pipe the OpenRouter SSE stream directly to the client
-    // Transform OpenRouter's SSE format to our lightweight format
-    const encoder = new TextEncoder();
     const decoder = new TextDecoder();
-
     const transformStream = new TransformStream<Uint8Array, Uint8Array>({
       async transform(chunk, controller) {
         const text = decoder.decode(chunk, { stream: true });
@@ -547,7 +880,6 @@ export async function getStreamResponse(request: {
             const parsed = JSON.parse(trimmed.slice(6));
             const delta = parsed.choices?.[0]?.delta;
             if (delta && delta.content) {
-              // Send our lightweight SSE format to the client
               controller.enqueue(
                 encoder.encode("data: " + JSON.stringify({ text: delta.content }) + "\n\n")
               );
@@ -564,7 +896,6 @@ export async function getStreamResponse(request: {
     });
 
     const stream = response.body.pipeThrough(transformStream);
-
     return { stream, model: picked.modelId };
   } catch {
     modelFailCount[picked.modelId] = (modelFailCount[picked.modelId] || 0) + 1;
@@ -577,14 +908,55 @@ export async function getStreamResponse(request: {
 }
 
 /**
- * Get stats about model usage (for debugging/monitoring)
+ * If a Modal stream fails, fall back to a NON-streaming OpenRouter response,
+ * then emit it as a single SSE text chunk so the client sees one clean reply.
+ */
+async function streamOpenRouterFallback(
+  request: { messages: { role: string; content: string }[]; language?: string },
+  systemPrompt: string
+): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
+  const orResult = await openRouterFallback(request.messages, systemPrompt, request.language);
+  if (!orResult) {
+    return {
+      error: request.language === "ar"
+        ? "جميع نماذج الذكاء الاصطناعي مشغولة حالياً. يرجى المحاولة بعد قليل."
+        : "All AI models are temporarily busy. Please try again in a few seconds.",
+    };
+  }
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: orResult.reply }) + "\n\n"));
+      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      controller.close();
+    },
+  });
+  return { stream, model: orResult.model };
+}
+
+/**
+ * Get stats about provider/model usage (for debugging/monitoring)
  */
 export function getChatbotStats() {
   return {
-    totalModels: AI_MODELS.length,
-    lastWorkingModel: lastWorkingModel,
-    lastWorkingTimeAgo: lastWorkingTime ? Math.round((Date.now() - lastWorkingTime) / 1000) + "s ago" : "never",
-    modelSuccessCounts: modelSuccessCount,
-    modelFailCounts: modelFailCount,
+    primary: {
+      provider: "modal",
+      model: MODAL_MODEL,
+      configured: !!MODAL_API_KEY,
+      keyValid: modalKeyValid,
+      consecFails: modalConsecFails,
+      lastSuccessAgo: modalLastSuccess ? Math.round((Date.now() - modalLastSuccess) / 1000) + "s ago" : "never",
+      available: modalIsAvailable(),
+    },
+    fallback: {
+      provider: "openrouter",
+      configured: !!OPENROUTER_API_KEY,
+      keyValid: openrouterKeyValid,
+      totalModels: AI_MODELS.length,
+      lastWorkingModel: lastWorkingModel,
+      lastWorkingTimeAgo: lastWorkingTime ? Math.round((Date.now() - lastWorkingTime) / 1000) + "s ago" : "never",
+      modelSuccessCounts: modelSuccessCount,
+      modelFailCounts: modelFailCount,
+    },
   };
 }
