@@ -150,6 +150,7 @@ interface PaymobPaymentKeyResponse {
 
 async function verifyPaymobTransaction(transactionId: number): Promise<PaymobTransactionResponse | null> {
   try {
+    if (!env.PAYMOB_API_KEY) return null;
     const baseUrl = env.PAYMOB_BASE_URL;
     const authResponse = await fetch(`${baseUrl}/api/auth/tokens`, {
       method: "POST",
@@ -188,7 +189,8 @@ function isPaymobConfigured(): boolean {
   return !!(
     env.PAYMOB_API_KEY &&
     env.PAYMOB_INTEGRATION_ID &&
-    env.PAYMOB_HMAC_SECRET
+    env.PAYMOB_HMAC_SECRET &&
+    env.PAYMOB_IFRAME_ID
   );
 }
 

@@ -160,21 +160,6 @@ export const localAuthRouter = createRouter({
         console.log(`[Auth] Registration successful: user=${input.username}, id=${userId}, email=${safeEmail || "none"}`);
         return responseData;
       } catch (err) {
-        // 🛡️ ELITE FALLBACK: If DB fails in dev, provide a mock session to let the user try the app
-        if (process.env.NODE_ENV !== "production") {
-          console.warn("[Auth] ⚠️ DB Failed during registration. Providing Mock Session for UI testing...");
-          const mockUserId = Math.floor(Math.random() * 9000) + 1000;
-          const token = await createToken({ userId: mockUserId, username: input.username, role: "user", tokenVersion: 0 });
-          
-          const authCookie = serializeAuthCookie(ctx.req.headers, token);
-          const flagCookie = serializeAuthFlagCookie(ctx.req.headers);
-          ctx.resHeaders.append("set-cookie", authCookie);
-          ctx.resHeaders.append("set-cookie", flagCookie);
-
-           return {
-             user: { id: mockUserId, username: input.username, name: input.name || input.username },
-           };
-        }
 
         if (err instanceof TRPCError) throw err;
         console.error("[Auth] Unexpected registration error:", err);
@@ -334,7 +319,7 @@ export const localAuthRouter = createRouter({
 
         if (input.email.toLowerCase() !== (ctx.user.email || "").toLowerCase()) {
           // Send verification email to the NEW address
-          await initiateEmailVerification(ctx.user.id, input.email);
+          await initiateEmailVerification(ctx.user.id, input.email, ctx.req.headers);
           return { success: true, emailVerificationRequired: true, message: "A verification link has been sent to your new email address. Please click it to confirm the change." };
         }
       }
@@ -407,7 +392,7 @@ export const localAuthRouter = createRouter({
       const ip = (cfIp || realIp || (forwarded ? forwarded.split(",").shift()?.trim() : "unknown")) ?? "unknown";
       await checkRateLimit(ip, "forgotPassword");
 
-      const result = await initiatePasswordReset(input.email);
+      const result = await initiatePasswordReset(input.email, ctx.req.headers);
       return result;
     }),
 
@@ -498,7 +483,7 @@ export const localAuthRouter = createRouter({
     const ip = (cfIp || realIp || (forwarded ? forwarded.split(",").shift()?.trim() : "unknown")) ?? "unknown";
     await checkRateLimit(ip, "sendVerification");
 
-    const result = await initiateEmailVerification(ctx.user.id);
+    const result = await initiateEmailVerification(ctx.user.id, undefined, ctx.req.headers);
     return result;
   }),
 

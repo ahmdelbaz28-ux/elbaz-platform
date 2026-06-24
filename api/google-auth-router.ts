@@ -25,9 +25,8 @@ function setAuthCookies(c: any, token: string): void {
   const flagCookie = serializeAuthFlagCookie(headers);
   // ✅ FIX: Use appendHeader to set multiple Set-Cookie headers
   // c.header() overwrites, but we need both cookies
-  const existing = c.res.headers.getSetCookie?.() || [];
-  c.res.headers.append("Set-Cookie", authCookie);
-  c.res.headers.append("Set-Cookie", flagCookie);
+  c.header("Set-Cookie", authCookie, { append: true });
+  c.header("Set-Cookie", flagCookie, { append: true });
 }
 
 /**
@@ -99,6 +98,8 @@ async function verifyGoogleToken(idToken: string): Promise<Record<string, unknow
 function successResponse(c: any, userData: Record<string, unknown>) {
   return c.json({ success: true, user: userData });
 }
+
+googleAuthRouter.options("/", (c) => c.body(null, 204));
 
 /**
  * POST /api/google-auth
