@@ -348,11 +348,24 @@ app.get("*", async (c) => {
     html = html.replace(/"%%OFFER_COUNT%%"/g, `"${courseCount}"`);
 
     if (nonce) {
-      const injected = html.replace(
+      // Inject the nonce meta tag into <head>
+      html = html.replace(
         /<head([^>]*)>/,
         `<head$1><meta name="csp-nonce" content="${nonce}">`
       );
-      return c.html(injected);
+      // Add nonce attribute to ALL inline <script> tags (those without src).
+      // This prevents CSP "script-src-elem" violations for:
+      //   - the self-healing chunk-error listener
+      //   - the lazy GSI loader
+      //   - the Clarity analytics snippet
+      //   - the theme-detection FOUC-prevention script
+      //   - any future inline scripts
+      // External scripts (with src=) are unaffected — they're allowed via 'self'.
+      html = html.replace(
+        /<script(?![^>]*\ssrc=)([^>]*)>/g,
+        `<script nonce="${nonce}"$1>`
+      );
+      return c.html(html);
     }
     return c.html(html);
   } catch {
