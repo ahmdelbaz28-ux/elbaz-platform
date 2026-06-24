@@ -10,6 +10,7 @@ import ChatBot from "@/components/ChatBot";
 import ScrollToTop from "@/components/ScrollToTop";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import StarfieldBackground from "@/components/StarfieldBackground";
 import { NotificationProvider } from "@/components/NotificationToast";
 import ThemeProvider from "@/components/ThemeProvider";
 import { EngineeringModeProvider } from "@/components/ui/EngineeringMode";
@@ -48,6 +49,8 @@ function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-[#070b12] overflow-x-hidden w-full relative flex flex-col">
+      {/* ── Animated starfield + shooting stars background (all pages) ── */}
+      <StarfieldBackground />
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:rounded-lg focus:bg-[#06b6d4] focus:px-4 focus:py-2 focus:text-[#0a0e17] focus:font-semibold focus:outline-none focus:ring-2 focus:ring-[#06b6d4]">
         Skip to main content
       </a>
