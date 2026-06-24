@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 /* -------------------------------------------------------------------------- */
 /*  Types                                                                      */
@@ -7,7 +7,7 @@ import React, { useEffect, useRef, useState } from 'react';
 interface Logo3DProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
-  /** Enable mouse-tracking tilt on hover. Default `true`. */
+  /** Enable subtle hover scale effect. Default `true`. */
   interactive?: boolean;
 }
 
@@ -15,9 +15,10 @@ interface Logo3DProps {
 /*  Constants                                                                  */
 /* -------------------------------------------------------------------------- */
 
-const ACCENT = '#06b6d4';
+/** Site palette — keeps the logo "taking the shape of the site" */
 const ACCENT_RGB = '6,182,212';
-const DARK_BG = '#0a0e17';
+const BADGE_TOP = '#0f1623';
+const BADGE_BOTTOM = '#060911';
 
 const SIZE_MAP: Record<NonNullable<Logo3DProps['size']>, number> = {
   sm: 28,
@@ -26,169 +27,124 @@ const SIZE_MAP: Record<NonNullable<Logo3DProps['size']>, number> = {
   xl: 80,
 };
 
-/** Outer ring / padding as a fraction of the logo size */
-const RING_SCALE = 1.25;
+/** Reserved outer space for the soft halo (kept identical to old layout
+ *  so consumers that depend on the previous bounding box don't shift). */
+const HALO_SCALE = 1.25;
 
 /* -------------------------------------------------------------------------- */
 /*  Component                                                                  */
 /* -------------------------------------------------------------------------- */
-
+/**
+ * Elegant circular logo badge.
+ *
+ * Design goals (per owner feedback):
+ *   1. The logo must read as a CIRCULAR element that matches the site's
+ *      overall rounded/circular aesthetic — no more "thin rectangle
+ *      floating inside a circle" look.
+ *   2. No spinning conic-gradient ring behind the logo (the previous
+ *      version's main complaint — looked amateurish).
+ *   3. No tacky holographic sweep, no aggressive 3D tilt on hover.
+ *   4. The actual logo image file (`/logo.png`, `/logo.webp`) is NEVER
+ *      modified — only the way it is presented inside its circular
+ *      background changes.
+ *
+ * The result is a refined, stationary circular badge with a slow
+ * "breathing" accent glow that gives the logo life without distraction.
+ */
 export default function Logo3D({
   size = 'md',
   className = '',
   interactive = true,
 }: Logo3DProps) {
   const px = SIZE_MAP[size];
-  const outerSize = Math.round(px * RING_SCALE);
+  const outerSize = Math.round(px * HALO_SCALE);
 
-  const [rotation, setRotation] = useState(0);
+  const [isHovered, setIsHovered] = useState(false);
+  const [breath, setBreath] = useState(0.5);
   const rafRef = useRef<number>(0);
-  const isVisibleRef = useRef(true);
+  const visibleRef = useRef(true);
 
+  /* ── Slow breathing glow (4s cycle, very subtle) ──────────────────────── */
   useEffect(() => {
-    const ROTATION_PERIOD = 5000;
-    let startTimestamp: number | null = null;
+    // Respect users who prefer reduced motion — freeze at the neutral state.
+    const prefersReduced =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReduced) {
+      setBreath(0.5);
+      return;
+    }
 
-    const animate = (timestamp: number) => {
-      if (!isVisibleRef.current) {
-        rafRef.current = requestAnimationFrame(animate);
+    const PERIOD = 4000;
+    let start: number | null = null;
+
+    const tick = (ts: number) => {
+      if (!visibleRef.current) {
+        rafRef.current = requestAnimationFrame(tick);
         return;
       }
-      if (startTimestamp === null) startTimestamp = timestamp;
-      const elapsed = timestamp - startTimestamp;
-      const angle = (elapsed / ROTATION_PERIOD) * 360;
-      setRotation(angle);
-      rafRef.current = requestAnimationFrame(animate);
+      if (start === null) start = ts;
+      const t = (ts - start) / PERIOD;
+      // Smooth sinusoidal breathing between 0..1
+      setBreath((Math.sin(t * Math.PI * 2) + 1) / 2);
+      rafRef.current = requestAnimationFrame(tick);
     };
 
-    rafRef.current = requestAnimationFrame(animate);
+    rafRef.current = requestAnimationFrame(tick);
 
-    const handleVisibility = () => {
-      isVisibleRef.current = !document.hidden;
-      if (!document.hidden) startTimestamp = null;
+    const onVisibility = () => {
+      visibleRef.current = !document.hidden;
+      if (!document.hidden) start = null;
     };
-    document.addEventListener('visibilitychange', handleVisibility);
+    document.addEventListener('visibilitychange', onVisibility);
 
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      document.removeEventListener('visibilitychange', handleVisibility);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
 
-  /* ---- Hover tilt state (applied to entire container for unified feel) ---- */
-  const [tilt, setTilt] = useState({ x: 0, y: 0 });
-  const [isHovered, setIsHovered] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const tiltRafRef = useRef<number>(0);
-
-  const handleMouseMove = React.useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      if (!interactive) return;
-      if (tiltRafRef.current) cancelAnimationFrame(tiltRafRef.current);
-
-      tiltRafRef.current = requestAnimationFrame(() => {
-        const el = containerRef.current;
-        if (!el) return;
-        const rect = el.getBoundingClientRect();
-        const cx = rect.left + rect.width / 2;
-        const cy = rect.top + rect.height / 2;
-        const dx = (e.clientX - cx) / (rect.width / 2);
-        const dy = (e.clientY - cy) / (rect.height / 2);
-        const maxTilt = 12;
-        setTilt({
-          x: -dy * maxTilt,
-          y: dx * maxTilt,
-        });
-      });
-    },
-    [interactive],
-  );
-
-  const handleMouseLeave = React.useCallback(() => {
-    if (tiltRafRef.current) cancelAnimationFrame(tiltRafRef.current);
-    setTilt({ x: 0, y: 0 });
-    setIsHovered(false);
-  }, []);
-
-  const handleMouseEnter = React.useCallback(() => {
-    setIsHovered(true);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      if (tiltRafRef.current) cancelAnimationFrame(tiltRafRef.current);
-    };
-  }, []);
-
-  /* ---- Derived visual values ----------------------------------------------- */
+  /* ── Derived values (kept inexpensive) ────────────────────────────────── */
+  const glowAlpha = isHovered ? 0.55 : 0.18 + breath * 0.14; // 0.18 → 0.32
+  const ringAlpha = isHovered ? 0.55 : 0.22 + breath * 0.08; // 0.22 → 0.30
+  const innerRingAlpha = isHovered ? 0.22 : 0.06 + breath * 0.04;
+  const scale = isHovered && interactive ? 1.06 : 1;
+  const haloBlur = Math.max(4, Math.round(px * 0.18));
   const shadowSpread = Math.max(2, Math.round(px * 0.04));
-  const glowBlur = Math.max(8, Math.round(px * 0.3));
-  const hoverGlowBlur = Math.max(12, Math.round(px * 0.45));
 
-  /* ---- Render -------------------------------------------------------------- */
+  /* ── Render ───────────────────────────────────────────────────────────── */
   return (
     <div
-      ref={containerRef}
-      onMouseMove={handleMouseMove}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
       className={`logo-3d-container select-none ${className}`}
       style={{
-        perspective: `${px * 10}px`,
         width: outerSize,
         height: outerSize,
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
         flexShrink: 0,
+        position: 'relative',
+        cursor: interactive ? 'pointer' : 'default',
       }}
+      onMouseEnter={() => interactive && setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
-      {/* ── Orbiting ring (auto-rotating conic gradient border) ── */}
-      <div
-        aria-hidden="true"
-        className="logo-3d-ring"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          borderRadius: '50%',
-          padding: 2,
-          background: `conic-gradient(
-            from 0deg,
-            transparent 0%,
-            ${ACCENT} 15%,
-            transparent 30%,
-            transparent 50%,
-            ${ACCENT} 65%,
-            transparent 80%,
-            transparent 100%
-          )`,
-          WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
-          mask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
-          WebkitMaskComposite: 'xor',
-          maskComposite: 'exclude',
-          opacity: isHovered ? 0.9 : 0.5,
-          transition: 'opacity 0.4s ease',
-          willChange: 'transform',
-          transform: `rotate(${rotation}deg)`,
-          pointerEvents: 'none',
-        }}
-      />
-
-      {/* ── Outer glow halo ── */}
+      {/* ── Soft ambient halo (replaces the spinning ring) ─────────────── */}
       <div
         aria-hidden="true"
         style={{
           position: 'absolute',
-          inset: -4,
+          inset: -Math.round(px * 0.06),
           borderRadius: '50%',
-          background: `radial-gradient(circle, rgba(${ACCENT_RGB},${isHovered ? 0.2 : 0.1}) 0%, transparent 70%)`,
-          transition: 'background 0.4s ease',
+          background: `radial-gradient(circle, rgba(${ACCENT_RGB},${glowAlpha * 0.6}) 0%, rgba(${ACCENT_RGB},${glowAlpha * 0.15}) 40%, transparent 75%)`,
+          transition: 'background 0.6s ease',
           pointerEvents: 'none',
+          filter: `blur(${haloBlur * 0.5}px)`,
+          willChange: 'background',
         }}
       />
 
-      {/* ── Static disc: holds the logo — NO auto-rotation, only hover tilt ── */}
+      {/* ── Main circular badge (static, elegant) ──────────────────────── */}
       <div
         style={{
           position: 'relative',
@@ -198,98 +154,76 @@ export default function Logo3D({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          /* Only mouse-driven tilt — NO auto rotateY so logo stays centered */
-          transform: `rotateY(${tilt.y}deg) rotateX(${tilt.x}deg) scale3d(${isHovered ? 1.15 : 1}, ${isHovered ? 1.15 : 1}, 1)`,
-          transition: tilt.x === 0 && tilt.y === 0 ? 'transform 0.4s cubic-bezier(.175, .885, .32, 1.275)' : 'none',
+          transform: `scale(${scale})`,
+          transition: 'transform 0.5s cubic-bezier(.175,.885,.32,1.275)',
           willChange: 'transform',
-          transformStyle: 'preserve-3d',
-          /* 3D depth / bevel shadows with "Electrical Blue" glow */
-          boxShadow: `
-            0 ${shadowSpread}px ${glowBlur}px rgba(${ACCENT_RGB}, ${isHovered ? 0.8 : 0.4}),
-            ${Math.round(px * 0.1)}px ${Math.round(px * 0.1)}px ${Math.round(px * 0.15)}px rgba(0,0,0,0.5),
-            inset 0 ${Math.round(px * 0.015)}px ${Math.round(px * 0.05)}px rgba(255,255,255,0.2),
-            inset 0 -${Math.round(px * 0.02)}px ${Math.round(px * 0.05)}px rgba(0,0,0,0.6)
-          `,
-          /* 3D bevel gradient — More metallic / premium */
+          /* Refined dark gradient that matches the site background —
+             gives a clean "cut-out of the site" feel rather than a
+             metallic 3D bevel. */
           background: `
-            radial-gradient(circle at 30% 25%, rgba(255,255,255,0.15) 0%, transparent 50%),
-            linear-gradient(160deg, rgba(255,255,255,0.1) 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0.6) 100%),
-            ${DARK_BG}
+            radial-gradient(circle at 32% 28%, rgba(255,255,255,0.07) 0%, transparent 55%),
+            linear-gradient(150deg, ${BADGE_TOP} 0%, ${BADGE_BOTTOM} 100%)
           `,
-          border: `2px solid rgba(${ACCENT_RGB}, ${isHovered ? 0.6 : 0.3})`,
+          /* Static accent border — no spinning. */
+          border: `${Math.max(1.5, Math.round(px * 0.035))}px solid rgba(${ACCENT_RGB}, ${ringAlpha})`,
+          boxShadow: `
+            0 ${shadowSpread}px ${Math.round(px * 0.14)}px rgba(0,0,0,0.45),
+            0 0 ${Math.round(px * 0.22)}px rgba(${ACCENT_RGB}, ${glowAlpha * 0.35}),
+            inset 0 1px 1px rgba(255,255,255,0.06),
+            inset 0 -1px 2px rgba(0,0,0,0.5)
+          `,
         }}
       >
-        {/* Holographic light sweep effect */}
+        {/* Subtle inner accent ring (decorative, static) */}
         <div
           aria-hidden="true"
           style={{
             position: 'absolute',
-            inset: 0,
+            inset: Math.max(2, Math.round(px * 0.09)),
             borderRadius: '50%',
-            background: 'linear-gradient(135deg, transparent 45%, rgba(255,255,255,0.2) 50%, transparent 55%)',
-            backgroundSize: '250% 250%',
-            backgroundPosition: isHovered ? '0% 0%' : '100% 100%',
-            transition: 'background-position 0.6s ease-in-out',
+            border: `1px solid rgba(${ACCENT_RGB}, ${innerRingAlpha})`,
             pointerEvents: 'none',
-            zIndex: 3,
+            transition: 'border-color 0.5s ease',
           }}
         />
 
-        {/* Inner bevel ring */}
-        <div
+        {/* ── Logo image (UNCHANGED — only the surrounding badge changes) ─ */}
+        <picture
           aria-hidden="true"
           style={{
-            position: 'absolute',
-            inset: 1.5,
-            borderRadius: '50%',
-            boxShadow:
-              'inset 0 1px 3px rgba(255,255,255,0.12), inset 0 -1px 4px rgba(0,0,0,0.4)',
-            pointerEvents: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '100%',
+            height: '100%',
+            padding: Math.round(px * 0.16),
+            position: 'relative',
+            zIndex: 2,
           }}
-        />
-
-        {/* Logo image — WebP-first with PNG fallback, optimized for crisp rendering */}
-        <picture aria-hidden="true">
+        >
           <source srcSet="/logo.webp 1x, /logo@2x.webp 2x" type="image/webp" />
           <img
             src="/logo.png"
             srcSet="/logo.png 1x, /logo@2x.webp 2x"
             alt="Elbaz Platform Logo"
-            width={Math.round(px * 0.85)}
-            height={Math.round(px * 0.85)}
             draggable={false}
             loading="eager"
             decoding="async"
             fetchPriority="high"
             style={{
-              position: 'relative',
-              zIndex: 2,
-              filter: isHovered
-                ? 'drop-shadow(0 0 12px rgba(6,182,212,0.8))'
-                : 'drop-shadow(0 0 4px rgba(6,182,212,0.3))',
-              transition: 'all 0.4s ease',
+              maxWidth: '100%',
+              maxHeight: '100%',
+              width: 'auto',
+              height: 'auto',
               objectFit: 'contain',
-              transform: `translateZ(${px * 0.2}px)`, // 3D pop effect
+              filter: isHovered
+                ? 'drop-shadow(0 0 8px rgba(6,182,212,0.6)) brightness(1.08)'
+                : `drop-shadow(0 0 3px rgba(6,182,212,${0.22 + breath * 0.1}))`,
+              transition: 'filter 0.5s ease',
             }}
           />
         </picture>
       </div>
-
-      {/* ── Pulsing "Electrical" glow ring ── */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          inset: -2,
-          borderRadius: '50%',
-          boxShadow: `0 0 ${isHovered ? hoverGlowBlur + 10 : glowBlur + 4}px ${isHovered ? Math.round(px * 0.18) : Math.round(px * 0.1)}px rgba(${ACCENT_RGB}, ${isHovered ? 0.5 : 0.25})`,
-          transition: 'all 0.4s ease',
-          willChange: 'box-shadow',
-          pointerEvents: 'none',
-          animation: isHovered ? 'none' : 'logo3d-glow-pulse 2s ease-in-out infinite',
-        }}
-      />
-
     </div>
   );
 }

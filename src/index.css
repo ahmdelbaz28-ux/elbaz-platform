@@ -414,17 +414,16 @@ img[loading="lazy"] {
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   3D LOGO ANIMATIONS
+   LOGO BADGE
+   ────────────────────────────────────────────────────────────────────
+   The breathing glow + hover scale on the Logo3D component are driven
+   inline by the component (so they stay co-located with the JSX). This
+   block is intentionally minimal — keep the container GPU-friendly.
    ════════════════════════════════════════════════════════════════════ */
 
-@keyframes logo3d-glow-pulse {
-  0%, 100% { box-shadow: 0 0 8px rgba(6,182,212,0.18); }
-  50% { box-shadow: 0 0 20px rgba(6,182,212,0.4), 0 0 40px rgba(6,182,212,0.12); }
-}
-
-/* Smooth 3D rotation for the logo disc */
 .logo-3d-container {
   transform-style: preserve-3d;
+  will-change: transform;
 }
 
 /* ── Card shimmer shine sweep effect ── */

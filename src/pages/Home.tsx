@@ -95,7 +95,7 @@ const categoryIcons: Record<string, React.ReactNode> = {
 // Official software logos — downloaded from each vendor's official source and
 // stored locally in /public/software-logos/ to prevent broken external hotlinks.
 // Sources verified via VLM:
-//   ETAP          — official ETAP "Digital Twin" circular logo
+//   ETAP          — official ETAP red wordmark logo (etap.com)
 //   SKM           — official SKM Systems Analysis, Inc. corporate logo (skm.com)
 //   PowerFactory  — official DIgSILENT logo (red text + red triangle)
 //   PVSyst        — official PVsyst logo (yellow sun + blue solar panel + wordmark)
