@@ -191,6 +191,8 @@ export async function ensureDatabase(): Promise<void> {
       // All read as AI-generated (generic names, marketing-speak, no specifics).
       try {
         console.log("[DB] Refreshing testimonials...");
+
+        // Step 1: Delete ALL old AI-sounding testimonials
         await conn.execute(
           `DELETE FROM testimonials WHERE name IN (
             'Mohamed Ali', 'Sara Hassan', 'Omar Khaled',
@@ -198,28 +200,53 @@ export async function ensureDatabase(): Promise<void> {
             'Mohamed Khaled', 'Sara El-Naggar', 'Ahmed Hassan'
           )`
         );
+
+        // Step 2: Delete any duplicate realistic testimonials (keep only 1 of each).
+        // This fixes the 12-row duplication caused by the previous commit which
+        // used INSERT IGNORE without a unique constraint on `name`.
+        // Strategy: keep the row with the smallest id (oldest), delete the rest.
         await conn.execute(
-          `INSERT IGNORE INTO testimonials (name, title, company, content, rating, isPublished, createdAt) VALUES
-           ('محمود السيد', 'مهندس حماية وترحيل', 'شركة الكهرباء المصرية',
-            'كنت حاسس إني وقفت في مكان ما بيتحركش من سنتين. كورس الحماية فكّني من لخبطة الـ relay coordination اللي كنت بعمله بالورقة والقلم. أول مرة أعمل setting حقيقي على ملف مشروع كانت بعد الكورس.',
-            5, 1, NOW()),
-           ('منى عبد الرحمن', 'مهندسة تصميم شبكات', 'استشاري هندسي',
-            'الجزء الخاص بـ ETAP في تدفق الأحمال هو اللي خلاني أشتري الكورس. الشرح مش "theory" زي الكورسات التانية، كان فيه أمثلة على projects حقيقية. بس كنت حاببة لو فيه تمارين أكثر على الـ short circuit.',
-            4, 1, NOW()),
-           ('أحمد فتحي', 'مهندس كهرباء موقع', 'مقاولات',
-            'أنا خريج جديد ومكنتش عارف فرق بين الـ cable sizing والـ voltage drop حسابياً. الكورس مش بس علّمني، ده خلاني أتكلم بثقة قدام الـ consultant في الموقع. راتحي طلع بعد ما خلفت الكورس بشهرين.',
-            5, 1, NOW()),
-           ('نورهان خالد', 'طالبة دراسات عليا', 'جامعة القاهرة',
-            'كنت بعمل بحث على الـ power quality وكنت ضايعة في الـ harmonics. الجزء الخاص بـ PowerFactory أنقذني فعلاً، قدرت أحلّل الـ THD لـ 5 cases مختلفة في رسالة الماجستير. مفيش كورس تاني شرح الـ harmonic filter design بالطريقة دي.',
-            5, 1, NOW()),
-           ('كريم منصور', 'مهندس طاقة متجددة', 'شركة طاقة شمسية',
-            'الـ PVSyst section ممتاز للناس اللي شغالة في الـ solar زيي. بس اللي عجبني أكتر هو إن المهندس أحمد بيرد على الأسئلة بنفسه في الـ support. سألته عن optimal tilt angle لمشروع في أسوان وردّ عليّ بـ calculation كاملة.',
-            5, 1, NOW()),
-           ('هبة مصطفى', 'مهندسة كهرباء', 'حر',
-            'مش هكدب، أول أسبوعين كانوا صعبين عليّ لأن مستواي في الأساسيات كان ضعيف. بس طريقة الشرح من الصفر خلّتني أكمّل. لو حد يسألني أنصحه يبدأ من الـ power systems basics الأول قبل ما يروح على ETAP مباشرة.',
-            4, 1, NOW())`
+          `DELETE t1 FROM testimonials t1
+           INNER JOIN testimonials t2
+           WHERE t1.id > t2.id
+             AND t1.name = t2.name
+             AND t1.name IN (
+               'محمود السيد', 'منى عبد الرحمن', 'أحمد فتحي',
+               'نورهان خالد', 'كريم منصور', 'هبة مصطفى'
+             )`
         );
-        console.log("[DB] ✅ Testimonials refreshed (6 realistic reviews)");
+
+        // Step 3: Only insert the 6 realistic testimonials if they don't already
+        // exist. This makes the refresh idempotent across restarts.
+        const [existing] = await conn.execute(
+          `SELECT COUNT(*) AS cnt FROM testimonials WHERE name = 'محمود السيد'`
+        ) as [{ cnt: number }[]];
+        if (existing[0]?.cnt === 0) {
+          await conn.execute(
+            `INSERT INTO testimonials (name, title, company, content, rating, isPublished, createdAt) VALUES
+             ('محمود السيد', 'مهندس حماية وترحيل', 'شركة الكهرباء المصرية',
+              'كنت حاسس إني وقفت في مكان ما بيتحركش من سنتين. كورس الحماية فكّني من لخبطة الـ relay coordination اللي كنت بعمله بالورقة والقلم. أول مرة أعمل setting حقيقي على ملف مشروع كانت بعد الكورس.',
+              5, 1, NOW()),
+             ('منى عبد الرحمن', 'مهندسة تصميم شبكات', 'استشاري هندسي',
+              'الجزء الخاص بـ ETAP في تدفق الأحمال هو اللي خلاني أشتري الكورس. الشرح مش "theory" زي الكورسات التانية، كان فيه أمثلة على projects حقيقية. بس كنت حاببة لو فيه تمارين أكثر على الـ short circuit.',
+              4, 1, NOW()),
+             ('أحمد فتحي', 'مهندس كهرباء موقع', 'مقاولات',
+              'أنا خريج جديد ومكنتش عارف فرق بين الـ cable sizing والـ voltage drop حسابياً. الكورس مش بس علّمني، ده خلاني أتكلم بثقة قدام الـ consultant في الموقع. راتحي طلع بعد ما خلفت الكورس بشهرين.',
+              5, 1, NOW()),
+             ('نورهان خالد', 'طالبة دراسات عليا', 'جامعة القاهرة',
+              'كنت بعمل بحث على الـ power quality وكنت ضايعة في الـ harmonics. الجزء الخاص بـ PowerFactory أنقذني فعلاً، قدرت أحلّل الـ THD لـ 5 cases مختلفة في رسالة الماجستير. مفيش كورس تاني شرح الـ harmonic filter design بالطريقة دي.',
+              5, 1, NOW()),
+             ('كريم منصور', 'مهندس طاقة متجددة', 'شركة طاقة شمسية',
+              'الـ PVSyst section ممتاز للناس اللي شغالة في الـ solar زيي. بس اللي عجبني أكتر هو إن المهندس أحمد بيرد على الأسئلة بنفسه في الـ support. سألته عن optimal tilt angle لمشروع في أسوان وردّ عليّ بـ calculation كاملة.',
+              5, 1, NOW()),
+             ('هبة مصطفى', 'مهندسة كهرباء', 'حر',
+              'مش هكدب، أول أسبوعين كانوا صعبين عليّ لأن مستواي في الأساسيات كان ضعيف. بس طريقة الشرح من الصفر خلّتني أكمّل. لو حد يسألني أنصحه يبدأ من الـ power systems basics الأول قبل ما يروح على ETAP مباشرة.',
+              4, 1, NOW())`
+          );
+          console.log("[DB] ✅ 6 realistic testimonials inserted");
+        } else {
+          console.log("[DB] ✅ Realistic testimonials already present (skipped insert)");
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.warn("[DB] Testimonial refresh warning:", message);
