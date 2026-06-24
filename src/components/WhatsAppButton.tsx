@@ -86,7 +86,7 @@ export default function WhatsAppButton() {
 
       {/* Floating button */}
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        type="button" onClick={() => setIsOpen(!isOpen)}
         aria-label={lang === "en" ? "Open WhatsApp chat" : "فتح محادثة واتساب"}
         aria-expanded={isOpen}
         aria-controls="whatsapp-tooltip"
