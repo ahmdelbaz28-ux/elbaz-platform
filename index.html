@@ -14,17 +14,25 @@
     <meta name="theme-color" content="#06b6d4" />
     <meta name="msapplication-TileColor" content="#06b6d4" />
 
-    <!-- Favicon -->
+    <!-- Favicon — multi-format for best browser support -->
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="icon" type="image/x-icon" href="favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+    <link rel="mask-icon" href="favicon.svg" color="#06b6d4" />
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://ahmedelbaz.qzz.io/" />
     <meta property="og:title" content="Eng Ahmed Elbaz | Electrical Engineering Courses" />
     <meta property="og:description" content="Master electrical engineering with professional courses in ETAP, SKM, PowerFactory, PVSyst, and more. Learn from industry expert Eng. Ahmed Elbaz." />
-    <meta property="og:image" content="https://ahmedelbaz.qzz.io/hero-main.webp" />
+    <meta property="og:image" content="https://ahmedelbaz.qzz.io/logo.png" />
+    <meta property="og:image:secure_url" content="https://ahmedelbaz.qzz.io/logo.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+    <meta property="og:image:alt" content="Ahmed Elbaz Electrical Engineering Platform Logo" />
     <meta property="og:locale" content="en_US" />
     <meta property="og:locale:alternate" content="ar_AR" />
 
@@ -33,7 +41,8 @@
     <meta property="twitter:url" content="https://ahmedelbaz.qzz.io/" />
     <meta property="twitter:title" content="Eng Ahmed Elbaz | Electrical Engineering Courses" />
     <meta property="twitter:description" content="Master electrical engineering with professional courses in ETAP, SKM, PowerFactory, PVSyst, and more." />
-    <meta property="twitter:image" content="https://ahmedelbaz.qzz.io/hero-main.webp" />
+    <meta property="twitter:image" content="https://ahmedelbaz.qzz.io/logo.png" />
+    <meta property="twitter:image:alt" content="Ahmed Elbaz Electrical Engineering Platform Logo" />
 
     <!-- Google Fonts - Inter + Cairo (loaded normally to avoid CSP inline handler issues) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -86,7 +95,13 @@
       "@type": "EducationalOrganization",
       "name": "Eng Ahmed Elbaz",
       "url": "https://ahmedelbaz.qzz.io",
-      "logo": "https://ahmedelbaz.qzz.io/logo.png",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://ahmedelbaz.qzz.io/logo.png",
+        "width": 512,
+        "height": 512
+      },
+      "image": "https://ahmedelbaz.qzz.io/logo.png",
       "description": "Professional electrical engineering courses in ETAP, SKM, PowerFactory, PVSyst, and more. Lifetime access and verified certificates.",
       "sameAs": [
         "https://www.youtube.com/@AhmedElbazEng",

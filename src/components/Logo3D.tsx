@@ -248,25 +248,31 @@ export default function Logo3D({
           }}
         />
 
-        {/* Logo image — Enhanced with professional drop-shadow */}
-        <img
-          src="/logo.png"
-          alt="Elbaz Platform Logo"
-          aria-hidden="true"
-          width={Math.round(px * 0.85)}
-          height={Math.round(px * 0.85)}
-          draggable={false}
-          style={{
-            position: 'relative',
-            zIndex: 2,
-            filter: isHovered
-              ? 'drop-shadow(0 0 12px rgba(6,182,212,0.8))'
-              : 'drop-shadow(0 0 4px rgba(6,182,212,0.3))',
-            transition: 'all 0.4s ease',
-            objectFit: 'contain',
-            transform: `translateZ(${px * 0.2}px)`, // 3D pop effect
-          }}
-        />
+        {/* Logo image — WebP-first with PNG fallback, optimized for crisp rendering */}
+        <picture aria-hidden="true">
+          <source srcSet="/logo.webp 1x, /logo@2x.webp 2x" type="image/webp" />
+          <img
+            src="/logo.png"
+            srcSet="/logo.png 1x, /logo@2x.webp 2x"
+            alt="Elbaz Platform Logo"
+            width={Math.round(px * 0.85)}
+            height={Math.round(px * 0.85)}
+            draggable={false}
+            loading="eager"
+            decoding="async"
+            fetchPriority="high"
+            style={{
+              position: 'relative',
+              zIndex: 2,
+              filter: isHovered
+                ? 'drop-shadow(0 0 12px rgba(6,182,212,0.8))'
+                : 'drop-shadow(0 0 4px rgba(6,182,212,0.3))',
+              transition: 'all 0.4s ease',
+              objectFit: 'contain',
+              transform: `translateZ(${px * 0.2}px)`, // 3D pop effect
+            }}
+          />
+        </picture>
       </div>
 
       {/* ── Pulsing "Electrical" glow ring ── */}

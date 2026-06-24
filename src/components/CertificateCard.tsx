@@ -140,7 +140,19 @@ export default function CertificateCard({ data }: CertificateCardProps) {
         {/* Logo & Institution */}
         <div className="cert-logo-area">
           <div className="cert-logo-ring">
-            <img src="/logo.png" alt="Elbaz Platform Logo" onError={(e) => { e.currentTarget.src = "/hero-bg.jpg"; e.currentTarget.onerror = null; }} />
+            <picture>
+              <source srcSet="/logo.webp 1x, /logo@2x.webp 2x" type="image/webp" />
+              <img
+                src="/logo.png"
+                srcSet="/logo.png 1x, /logo@2x.webp 2x"
+                alt="Elbaz Platform Logo"
+                width={120}
+                height={120}
+                loading="eager"
+                decoding="async"
+                onError={(e) => { e.currentTarget.src = "/hero-bg.jpg"; e.currentTarget.onerror = null; }}
+              />
+            </picture>
           </div>
           <span className="cert-platform-label">Elbaz Platform</span>
           <span className="cert-institution-name">Electrical Engineering Academy</span>
