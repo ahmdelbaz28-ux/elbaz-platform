@@ -26,6 +26,7 @@ upload/
 skills/
 download/
 worklog.md
+public/
 
 # ── Testing / Coverage
 test-results/ ──
