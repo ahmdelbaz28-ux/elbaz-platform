@@ -8,11 +8,8 @@ import AnimatedIcon from "@/components/ui/AnimatedIcon";
 import BentoCard from "@/components/ui/BentoCard";
 import AnimatedCounter from "@/components/ui/AnimatedCounter";
 import ScrollReveal from "@/components/ui/ScrollReveal";
-import ScadaGauge from "@/components/ui/ScadaGauge";
 import ArcFlashButton from "@/components/ui/ArcFlashButton";
-import { useEngineeringMode } from "@/components/ui/EngineeringMode";
-import { motion, useScroll, useTransform } from "framer-motion";
-import "@/engineering-mode.css";
+import { motion } from "framer-motion";
 import "@/elite-animations.css";
 import {
   PlayCircle,
@@ -290,14 +287,6 @@ export default function Home() {
     totalCourses: (ps.totalCourses ?? 0) > 0 ? ps.totalCourses : FALLBACK_STATS.totalCourses,
   };
 
-  const { isActive: isEngMode } = useEngineeringMode();
-  const scadaEnabled = true;
-
-  const heroRef = useRef<HTMLDivElement>(null);
-  const { scrollYProgress } = useScroll({ target: heroRef, offset: ["start start", "end start"] });
-  const heroY = useTransform(scrollYProgress, [0, 1], [0, 200]);
-  const heroOpacity = useTransform(scrollYProgress, [0, 0.5], [1, 0]);
-
   const faqData = [
     { q: lang === "en" ? "How long do I have access to a purchased course?" : "ما مدة الوصول للكورس بعد الشراء؟", a: lang === "en" ? "Lifetime access. Once enrolled, the course is yours forever, including all future updates and bonus materials added to that course." : "وصول مدى الحياة. بمجرد التسجيل، يصبح الكورس ملكك إلى الأبد، بما في ذلك جميع التحديثات المستقبلية." },
     { q: lang === "en" ? "Can I watch courses on mobile?" : "هل يمكنني مشاهدة الكورسات على الموبايل؟", a: lang === "en" ? "Absolutely. The platform is fully responsive and works on any device. Our protected video player is optimized for mobile streaming without compromising security." : "بالتأكيد. المنصة متجاوبة بالكامل وتعمل على أي جهاز. مشغل الفيديو المحمي مُحسّن للبث على الموبايل." },
@@ -316,9 +305,7 @@ export default function Home() {
       {topPromotion && <PromoBanner promotion={topPromotion} />}
 
       {/* ═══════════════════ HERO ═══════════════════ */}
-      <section ref={heroRef} className="relative min-h-screen overflow-hidden pt-20">
-        <motion.div style={{ y: heroY, opacity: heroOpacity }} className="absolute inset-0 bg-[#0a0e17]" />
-
+      <section className="relative min-h-screen overflow-hidden pt-20">
         {/* Subtle radial glow behind hero content — keeps depth without electrical effects */}
         <div
           aria-hidden

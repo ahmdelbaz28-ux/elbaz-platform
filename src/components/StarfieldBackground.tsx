@@ -3,10 +3,10 @@ import { useEffect, useRef } from 'react';
 /* -------------------------------------------------------------------------- */
 /*  StarfieldBackground                                                        */
 /*  ─────────────────────────────────────────────────────────────────────────  */
-/*  Minimal night-sky background:                                              */
-/*    • A few faint static stars (no twinkle — keeps the background calm).    */
-/*    • Occasional shooting stars (شهاب) that streak across the sky and       */
-/*      fade out — the ONLY animated element.                                 */
+/*  Calm night-sky background:                                                 */
+/*    • Sparse static stars — a small fraction (~25%) breathe very slowly      */
+/*      (8-14s cycle) so the sky feels alive without being distracting.       */
+/*    • Occasional white shooting stars (شهاب) streak diagonally and fade.    */
 /*                                                                             */
 /*  Rendered behind all site content (z-index: -1, fixed) on every page.      */
 /*  One canvas, one rAF loop, pauses when tab hidden, respects                */
@@ -18,6 +18,9 @@ interface Star {
   y: number;
   r: number;
   alpha: number;
+  // Slow twinkle — only assigned to ~25% of stars. Others are fully static.
+  twinkleSpeed: number; // 0 = static, otherwise radians/sec
+  twinklePhase: number;
 }
 
 interface Shooting {
@@ -55,15 +58,26 @@ export default function StarfieldBackground() {
     let running = true;
 
     // ── Seed a sparse, calm starfield ───────────────────────────────────────
-    // Lower density = calmer background. ~1 star per 18,000 px².
+    // ~1 star per 16,000 px², capped so huge screens don't drown in dots.
     const seedStars = () => {
-      const target = Math.min(140, Math.floor((width * height) / 18000));
-      stars = new Array(target).fill(0).map(() => ({
-        x: Math.random() * width,
-        y: Math.random() * height,
-        r: 0.3 + Math.random() * 0.7,   // small stars only — no big "lit" ones
-        alpha: 0.25 + Math.random() * 0.45,
-      }));
+      const target = Math.min(160, Math.floor((width * height) / 16000));
+      stars = new Array(target).fill(0).map(() => {
+        // Only ~25% of stars twinkle — keeps the sky mostly still but
+        // with subtle life. Twinkle is SLOW (8-14s full cycle) and shallow
+        // (alpha varies by ±0.25 around the base) so it never demands
+        // attention.
+        const shouldTwinkle = Math.random() < 0.25;
+        return {
+          x: Math.random() * width,
+          y: Math.random() * height,
+          r: 0.3 + Math.random() * 0.8,
+          alpha: 0.3 + Math.random() * 0.4,
+          twinkleSpeed: shouldTwinkle
+            ? (Math.PI * 2) / (8 + Math.random() * 6) // 8-14s period
+            : 0,
+          twinklePhase: Math.random() * Math.PI * 2,
+        };
+      });
     };
 
     const resize = () => {
@@ -76,14 +90,16 @@ export default function StarfieldBackground() {
       canvas.style.height = `${height}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       seedStars();
-      draw(0);
+      // Repaint immediately so resizing doesn't leave a blank canvas.
+      // (Works for both animated and reduced-motion modes.)
+      paint();
     };
 
     // ── Spawn a single shooting star ────────────────────────────────────────
-    // Diagonal trajectory, gentle speed. 80% go down-right, 20% down-left.
+    // 80% streak down-right, 20% down-left for variety. Gentle speed.
     const spawnShooting = (): Shooting => {
       const fromTopRight = Math.random() < 0.2;
-      const speed = 500 + Math.random() * 350; // px/sec — gentle
+      const speed = 450 + Math.random() * 300; // px/sec — gentle
       const angle = Math.PI * 0.28;            // ~50° below horizontal
       const startX = fromTopRight
         ? width * (0.55 + Math.random() * 0.4)
@@ -94,18 +110,25 @@ export default function StarfieldBackground() {
         vx: Math.cos(angle) * speed * (fromTopRight ? -1 : 1),
         vy: Math.sin(angle) * speed,
         life: 0,
-        maxLife: 1.0 + Math.random() * 0.5,    // 1.0s - 1.5s
-        length: 90 + Math.random() * 80,       // 90px - 170px trail
-        width: 1.0 + Math.random() * 0.6,
+        maxLife: 1.1 + Math.random() * 0.5,    // 1.1s - 1.6s
+        length: 110 + Math.random() * 90,      // 110px - 200px trail
+        width: 1.4 + Math.random() * 0.6,      // 1.4-2.0px (more visible)
       };
     };
 
-    const drawStars = () => {
+    const drawStars = (dtSec: number) => {
       for (let i = 0; i < stars.length; i++) {
         const s = stars[i];
+        let alpha = s.alpha;
+        if (s.twinkleSpeed > 0) {
+          s.twinklePhase += s.twinkleSpeed * dtSec;
+          // Shallow modulation: ±0.25 around the base alpha.
+          const modulation = (Math.sin(s.twinklePhase) + 1) / 2; // 0..1
+          alpha = s.alpha * (0.7 + modulation * 0.5); // 0.7x .. 1.2x base
+        }
         ctx.beginPath();
         ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255,255,255,${s.alpha})`;
+        ctx.fillStyle = `rgba(255,255,255,${alpha.toFixed(3)})`;
         ctx.fill();
       }
     };
@@ -118,7 +141,7 @@ export default function StarfieldBackground() {
         m.y += m.vy * dtSec;
 
         const t = m.life / m.maxLife;
-        if (t >= 1 || m.x < -200 || m.x > width + 200 || m.y > height + 200) {
+        if (t >= 1 || m.x < -250 || m.x > width + 250 || m.y > height + 250) {
           shootings.splice(i, 1);
           continue;
         }
@@ -135,8 +158,8 @@ export default function StarfieldBackground() {
         const tailY = m.y - (m.vy / speed) * m.length;
 
         const grad = ctx.createLinearGradient(m.x, m.y, tailX, tailY);
-        grad.addColorStop(0, `rgba(255,255,255,${alpha})`);
-        grad.addColorStop(0.3, `rgba(255,255,255,${(alpha * 0.6).toFixed(3)})`);
+        grad.addColorStop(0, `rgba(255,255,255,${alpha.toFixed(3)})`);
+        grad.addColorStop(0.25, `rgba(255,255,255,${(alpha * 0.7).toFixed(3)})`);
         grad.addColorStop(1, 'rgba(255,255,255,0)');
 
         ctx.strokeStyle = grad;
@@ -147,38 +170,39 @@ export default function StarfieldBackground() {
         ctx.lineTo(tailX, tailY);
         ctx.stroke();
 
-        // Tiny bright head
+        // Bright head with a faint glow halo for the "lit" meteor look
         ctx.beginPath();
-        ctx.arc(m.x, m.y, m.width * 1.2, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+        ctx.arc(m.x, m.y, m.width * 1.4, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,255,255,${alpha.toFixed(3)})`;
+        ctx.shadowColor = `rgba(255,255,255,${(alpha * 0.7).toFixed(3)})`;
+        ctx.shadowBlur = 8;
         ctx.fill();
+        ctx.shadowBlur = 0;
       }
     };
 
-    const draw = (ts: number) => {
+    // ── paint: pure render of current state (used by both modes) ────────────
+    const paint = (ts: number = 0) => {
       const dtSec = lastTs === 0 ? 0 : Math.min(0.05, (ts - lastTs) / 1000);
       lastTs = ts;
 
       ctx.clearRect(0, 0, width, height);
-      drawStars();
-      drawShootings(dtSec);
+      drawStars(prefersReduced ? 0 : dtSec);
+      if (!prefersReduced) {
+        drawShootings(dtSec);
+      }
 
-      // Spawn next shooting star — slow, calm pace (every 4-9 seconds)
-      if (ts >= nextShootAt) {
-        nextShootAt = ts + 4000 + Math.random() * 5000;
+      // Spawn next shooting star — calm pace (every 3-7 seconds)
+      if (!prefersReduced && ts >= nextShootAt) {
+        nextShootAt = ts + 3000 + Math.random() * 4000;
         shootings.push(spawnShooting());
       }
     };
 
     const tick = (ts: number) => {
       if (!running) return;
-      draw(ts);
+      paint(ts);
       rafId = requestAnimationFrame(tick);
-    };
-
-    const paintStatic = () => {
-      ctx.clearRect(0, 0, width, height);
-      drawStars();
     };
 
     // ── Boot ───────────────────────────────────────────────────────────────
@@ -186,11 +210,13 @@ export default function StarfieldBackground() {
     window.addEventListener('resize', resize);
 
     if (prefersReduced) {
-      paintStatic();
+      // No animation loop — paint once with static stars (no shooting stars).
+      // resize() already calls paint() so we're covered on viewport changes.
+      paint(0);
     } else {
-      // First shooting star comes after ~2s so the user can register the
-      // calm starfield first, then sees the meteor.
-      nextShootAt = performance.now() + 2000;
+      // First shooting star at +1.8s so the user registers the calm field
+      // first, then sees the meteor.
+      nextShootAt = performance.now() + 1800;
       rafId = requestAnimationFrame(tick);
     }
 
@@ -200,7 +226,7 @@ export default function StarfieldBackground() {
         if (rafId) cancelAnimationFrame(rafId);
       } else if (!prefersReduced) {
         running = true;
-        lastTs = 0;
+        lastTs = 0; // reset dt so we don't get a huge jump
         rafId = requestAnimationFrame(tick);
       }
     };

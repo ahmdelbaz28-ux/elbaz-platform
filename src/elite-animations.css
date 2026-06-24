@@ -3,36 +3,7 @@
    Inspired by detego.app + expert enhancements
    ════════════════════════════════════════════════════════════════════ */
 
-/* ── Aurora Background ── */
-@keyframes auroraShift {
-  0% { background-position: 0% 50%; }
-  25% { background-position: 100% 0%; }
-  50% { background-position: 100% 100%; }
-  75% { background-position: 0% 100%; }
-  100% { background-position: 0% 50%; }
-}
-.aurora-bg {
-  background: linear-gradient(
-    135deg,
-    rgba(6, 182, 212, 0.08) 0%,
-    rgba(139, 92, 246, 0.06) 25%,
-    rgba(16, 185, 129, 0.04) 50%,
-    rgba(6, 182, 212, 0.08) 75%,
-    rgba(139, 92, 246, 0.06) 100%
-  );
-  background-size: 400% 400%;
-  animation: auroraShift 20s ease infinite;
-  will-change: background-position;
-}
 
-/* ── Mesh Gradient ── */
-.mesh-gradient {
-  background:
-    radial-gradient(at 20% 80%, rgba(6, 182, 212, 0.12) 0%, transparent 50%),
-    radial-gradient(at 80% 20%, rgba(139, 92, 246, 0.1) 0%, transparent 50%),
-    radial-gradient(at 50% 50%, rgba(16, 185, 129, 0.06) 0%, transparent 60%),
-    radial-gradient(at 90% 90%, rgba(6, 182, 212, 0.08) 0%, transparent 40%);
-}
 
 /* ── Icon Orbit Animation ── */
 @keyframes iconOrbit {
@@ -223,26 +194,6 @@
   will-change: left, top;
 }
 
-/* ── Text Gradient Animated ── */
-@keyframes textGradientShift {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-.text-gradient-animated {
-  background: linear-gradient(
-    90deg,
-    #06b6d4,
-    #22d3ee,
-    #10b981,
-    #06b6d4
-  );
-  background-size: 300% 100%;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  animation: textGradientShift 4s ease infinite;
-}
 
 /* ── Floating Particles ── */
 @keyframes particleFloat {
@@ -373,37 +324,6 @@
   animation: glitch2 3s infinite linear;
 }
 
-/* ── Holographic Card ── */
-@keyframes holoShift {
-  0% { background-position: 0% 0%; }
-  50% { background-position: 100% 100%; }
-  100% { background-position: 0% 0%; }
-}
-.holographic {
-  position: relative;
-  overflow: hidden;
-}
-.holographic::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    135deg,
-    rgba(6, 182, 212, 0.1) 0%,
-    rgba(139, 92, 246, 0.08) 25%,
-    rgba(16, 185, 129, 0.1) 50%,
-    rgba(245, 158, 11, 0.08) 75%,
-    rgba(6, 182, 212, 0.1) 100%
-  );
-  background-size: 200% 200%;
-  animation: holoShift 6s ease infinite;
-  opacity: 0;
-  transition: opacity 0.4s ease;
-  pointer-events: none;
-}
-.holographic:hover::before {
-  opacity: 1;
-}
 
 /* ── Number Counter ── */
 .counter-digit {
