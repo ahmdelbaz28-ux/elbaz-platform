@@ -39,7 +39,6 @@ export default {
         "hero-shimmer": "heroShimmer 4s ease-in-out infinite",
         "whatsapp-pulse": "whatsappPulse 2s ease-out infinite",
         "notification-slide-in": "notificationSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards",
-        "logo3d-glow-pulse": "logo3d-glow-pulse 3s ease-in-out infinite",
       },
       keyframes: {
         float: {
@@ -83,10 +82,6 @@ export default {
         notificationSlideIn: {
           from: { transform: "translateY(12px) scale(0.95)", opacity: "0" },
           to: { transform: "translateY(0) scale(1)", opacity: "1" },
-        },
-        "logo3d-glow-pulse": {
-          "0%, 100%": { boxShadow: "0 0 8px rgba(6,182,212,0.18)" },
-          "50%": { boxShadow: "0 0 20px rgba(6,182,212,0.4), 0 0 40px rgba(6,182,212,0.12)" },
         },
       },
     },
