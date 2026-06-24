@@ -145,6 +145,22 @@
     <script src="cache-nuke.js?v=%%CACHE_BUST%%"></script>
     <!-- Early RTL detection to prevent FOUC (external file to satisfy CSP script-src) -->
     <script src="rtl-detect.js?v=%%CACHE_BUST%%"></script>
+
+    <!-- ⚡ Theme detection — runs BEFORE React to prevent flash of wrong theme.
+         Reads from localStorage or falls back to prefers-color-scheme.
+         Sets data-theme on <html> so CSS overrides apply instantly. -->
+    <script>
+      (function() {
+        try {
+          var saved = localStorage.getItem('elbaz-theme');
+          var theme = saved || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+          document.documentElement.setAttribute('data-theme', theme);
+        } catch(e) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      })();
+    </script>
+
     <div id="root"></div>
     <!-- 🚀 Elite: Cache-busting the main entry point to ensure JS updates propagate instantly -->
     <script type="module" src="src/main.tsx?v=%%CACHE_BUST%%"></script>
