@@ -9,7 +9,7 @@ import BentoCard from "@/components/ui/BentoCard";
 import AnimatedCounter from "@/components/ui/AnimatedCounter";
 import ScrollReveal from "@/components/ui/ScrollReveal";
 import ArcFlashButton from "@/components/ui/ArcFlashButton";
-import { motion } from "framer-motion";
+import { motion, useScroll, useTransform } from "framer-motion";
 import "@/elite-animations.css";
 import {
   PlayCircle,
