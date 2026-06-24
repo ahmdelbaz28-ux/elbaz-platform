@@ -180,15 +180,23 @@ export async function ensureDatabase(): Promise<void> {
       console.log("[DB] ✅ Incremental migrations complete");
 
       // ── Testimonial refresh ──────────────────────────────────────────────
-      // Replace the old generic seed testimonials (Mohamed Ali / Sara Hassan /
-      // Omar Khaled — which read as AI-generated and were duplicating in the
-      // UI) with 6 realistic, varied reviews. Runs on every boot so the
-      // table stays clean regardless of which deploy originally seeded it.
-      // Idempotent: uses name-based DELETE + INSERT IGNORE.
+      // Replace ALL old generic/AI-sounding seed testimonials with 6 realistic,
+      // varied reviews. Runs on every boot so the table stays clean regardless
+      // of which deploy originally seeded it.
+      //
+      // Old names being removed (from various prior seed files + manual entry):
+      //   - Mohamed Ali / Sara Hassan / Omar Khaled (original db-init seed)
+      //   - أحمد علي / محمد أحمد / سارة محمد (older Arabic seed)
+      //   - Mohamed Khaled / Sara El-Naggar / Ahmed Hassan (English-named seed)
+      // All read as AI-generated (generic names, marketing-speak, no specifics).
       try {
         console.log("[DB] Refreshing testimonials...");
         await conn.execute(
-          `DELETE FROM testimonials WHERE name IN ('Mohamed Ali', 'Sara Hassan', 'Omar Khaled')`
+          `DELETE FROM testimonials WHERE name IN (
+            'Mohamed Ali', 'Sara Hassan', 'Omar Khaled',
+            'أحمد علي', 'محمد أحمد', 'سارة محمد',
+            'Mohamed Khaled', 'Sara El-Naggar', 'Ahmed Hassan'
+          )`
         );
         await conn.execute(
           `INSERT IGNORE INTO testimonials (name, title, company, content, rating, isPublished, createdAt) VALUES
