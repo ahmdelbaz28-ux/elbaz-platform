@@ -287,16 +287,12 @@ app.post("/api/csp-report", async (c) => {
 // ── No-cache headers for critical files (must come before serveStatic) ──
 app.use("/*", noCacheMiddleware);
 
-// ── Static frontend files from dist/public ──
-app.use(
-  "/*",
-  serveStatic({
-    root: "./dist/public",
-    rewriteRequestPath: (path) => path,
-  })
-);
-
-// ── SPA fallback: serve index.html for any unmatched route ──
+// ── SPA route handler — MUST be before serveStatic ──────────────────────
+// serveStatic would otherwise serve index.html directly for "/" and bypass
+// our CSP nonce injection. By registering the wildcard HTML handler BEFORE
+// serveStatic, browser navigations (Accept: text/html) are caught here and
+// served with the nonce. Non-HTML requests (assets, API) fall through to
+// serveStatic / API routes below.
 // Caches the HTML template + course count to avoid disk/DB reads on every page load
 let cachedHtmlTemplate: string | null = null;
 let cachedHtmlTemplateMtime = 0;
@@ -327,10 +323,10 @@ async function getCourseCount(): Promise<number> {
       const { courses } = await import("@db/schema");
       const { count, eq } = await import("drizzle-orm");
       const result = await db
-        .select({ value: count() })
+        .select({ count: count() })
         .from(courses)
         .where(eq(courses.isPublished, true));
-      cachedCourseCount = result[0]?.value ?? 0;
+      cachedCourseCount = Number(result[0]?.count ?? 0);
     } catch {
       // Keep previous value on error
     }
@@ -339,13 +335,25 @@ async function getCourseCount(): Promise<number> {
   return cachedCourseCount;
 }
 
+// HTML route handler — registered BEFORE serveStatic so it wins for "/"
+// and all SPA routes. Only handles requests that want HTML (browser nav).
 app.get("*", async (c) => {
+  const accept = c.req.header("accept") ?? "";
+  const wantsHtml = accept.includes("text/html");
+
+  // If the request doesn't want HTML (e.g. an asset fetch, API call, or
+  // curl without Accept header), fall through to serveStatic / other routes.
+  if (!wantsHtml) {
+    return c.notFound();
+  }
+
   try {
     let html = await getHtmlTemplate();
     const nonce = c.get("cspNonce") as string | undefined;
 
     const courseCount = await getCourseCount();
     html = html.replace(/"%%OFFER_COUNT%%"/g, `"${courseCount}"`);
+    html = html.replace(/%%CACHE_BUST%%/g, process.env.BUILD_ID || "dev");
 
     if (nonce) {
       // Inject the nonce meta tag into <head>
@@ -372,6 +380,17 @@ app.get("*", async (c) => {
     return c.json({ error: "Not Found" }, 404);
   }
 });
+
+// ── Static frontend files from dist/public ──
+// Serves JS/CSS/image assets. index.html is already handled by the wildcard
+// route above, so this only handles actual static files.
+app.use(
+  "/*",
+  serveStatic({
+    root: "./dist/public",
+    rewriteRequestPath: (path) => path,
+  })
+);
 
 app.onError(async (err, c) => {
   const requestId = c.get("requestId") ?? crypto.randomUUID();
