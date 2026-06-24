@@ -4,6 +4,7 @@ import { TRPCError } from "@trpc/server";
 
 let redisClient: Redis | null = null;
 let rateLimiter: RateLimiterMemory | null = null;
+let redisWarningLogged = false;
 
 async function initRedis(): Promise<void> {
   const { env } = await import("./env.js");
@@ -84,6 +85,15 @@ async function rateLimitByKeyPrefix(
 type RateLimitAction = "login" | "register" | "forgotPassword" | "resetPassword" | "sendVerification" | "verifyEmail" | "api";
 
 async function checkRateLimit(ip: string, _action: RateLimitAction): Promise<void> {
+  const { env } = await import("./env.js");
+  if (env.isProduction && !redisClient && !env.REDIS_URL) {
+    if (!redisWarningLogged) {
+      console.warn("[RateLimiter] Redis not configured, rate limiting disabled in production");
+      redisWarningLogged = true;
+    }
+    return;
+  }
+
   try {
     await rateLimit(`${ip}:${_action}`);
   } catch (rlRes: unknown) {

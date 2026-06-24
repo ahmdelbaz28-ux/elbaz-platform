@@ -17,7 +17,7 @@ import crypto from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { getDb } from "../queries/connection";
 import { users } from "@db/schema";
-import { env } from "./env";
+import { env, getActiveFrontendUrl } from "./env";
 
 // ─── Configuration ───
 const RESET_TOKEN_EXPIRY_MINUTES = 15;
@@ -30,6 +30,15 @@ interface EmailMessage {
   subject: string;
   html: string;
   text: string;
+}
+
+function getFrontendUrl(headers?: Headers): string {
+  if (!headers) return env.FRONTEND_URL;
+  const forwardedHost = headers.get("x-forwarded-host");
+  const host = forwardedHost || headers.get("host");
+  if (!host) return env.FRONTEND_URL;
+  const protocol = headers.get("x-forwarded-proto") || (host.includes("localhost") ? "http" : "https");
+  return getActiveFrontendUrl(`${protocol}://${host}`);
 }
 
 /**
@@ -83,7 +92,7 @@ export async function sendEmail(message: EmailMessage): Promise<boolean> {
  * Generate a password reset token and send it to the user's email.
  * The token is stored in the database with an expiry time.
  */
-export async function initiatePasswordReset(email: string): Promise<{
+export async function initiatePasswordReset(email: string, headers?: Headers): Promise<{
   success: boolean;
   message: string;
 }> {
@@ -135,11 +144,11 @@ export async function initiatePasswordReset(email: string): Promise<{
      .where(eq(users.id, user.id));
 
   // Build reset URL
-  const resetUrl = `${env.FRONTEND_URL}/reset-password?token=${resetToken}&uid=${user.id}`;
+  const resetUrl = `${getFrontendUrl(headers)}/reset-password?token=${resetToken}&uid=${user.id}`;
 
   // Send the reset email
   const name = (user.name || user.username).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  await sendEmail({
+  const emailSent = await sendEmail({
     to: user.email,
     subject: "Password Reset — Ahmed Elbaz Electrical Engineering Platform",
     html: `
@@ -161,6 +170,10 @@ export async function initiatePasswordReset(email: string): Promise<{
     `,
     text: `Hello ${name},\n\nWe received a request to reset your password.\n\nReset link: ${resetUrl}\n\nThis link expires in ${RESET_TOKEN_EXPIRY_MINUTES} minutes.\n\nIf you didn't request this, ignore this email.`,
   });
+
+  if (!emailSent) {
+    console.error("[Email] Failed to send password reset email to:", user.email);
+  }
 
   return { success: true, message: genericMessage };
 }
@@ -224,7 +237,7 @@ export async function completePasswordReset(
  * When `newEmail` is provided, the verification email is sent to the new address
  * and the pending email is stored separately until confirmed.
  */
-export async function initiateEmailVerification(userId: number, newEmail?: string): Promise<{
+export async function initiateEmailVerification(userId: number, newEmail?: string, headers?: Headers): Promise<{
   success: boolean;
   message: string;
 }> {
@@ -262,7 +275,7 @@ export async function initiateEmailVerification(userId: number, newEmail?: strin
     })
     .where(eq(users.id, userId));
 
-  const verificationUrl = `${env.FRONTEND_URL}/verify-email?token=${verificationToken}&uid=${userId}`;
+  const verificationUrl = `${getFrontendUrl(headers)}/verify-email?token=${verificationToken}&uid=${userId}`;
 
   const name = (user.name || user.username).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -306,12 +319,17 @@ export async function initiateEmailVerification(userId: number, newEmail?: strin
     ? `Hello ${name},\n\nPlease confirm your new email address by clicking the link below:\n\n${verificationUrl}\n\nThis link expires in ${EMAIL_VERIFICATION_EXPIRY_MINUTES} minutes.\n\nIf you didn't request this change, ignore this email.`
     : `Hello ${name},\n\nPlease verify your email address by clicking the link below:\n\n${verificationUrl}\n\nThis link expires in ${EMAIL_VERIFICATION_EXPIRY_MINUTES} minutes.\n\nIf you didn't create an account, ignore this email.`;
 
-  await sendEmail({
+  const emailSent = await sendEmail({
     to: targetEmail,
     subject: emailSubject,
     html: emailBody,
     text: textBody,
   });
+
+  if (!emailSent) {
+    console.error("[Email] Failed to send verification email to:", targetEmail);
+    return { success: false, message: "Could not send verification email. Please try again later." };
+  }
 
   return { success: true, message: "Verification email sent. Please check your inbox." };
 }
