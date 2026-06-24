@@ -133,6 +133,35 @@ export default function StarfieldBackground() {
       }
     };
 
+    // ── Subtle grid overlay ─────────────────────────────────────────────────
+    // A light, modern grid drawn once per frame. Very low alpha so it never
+    // competes with foreground content — just gives the void a sense of
+    // structure / "tech blueprint" feel without being a dominant element.
+    const GRID_SIZE = 64;          // px between grid lines
+    const GRID_COLOR = 'rgba(6,182,212,0.035)'; // ~3.5% opacity — barely visible
+    const GRID_COLOR_MAJOR = 'rgba(6,182,212,0.06)'; // every 4th line slightly brighter
+    const drawGrid = () => {
+      ctx.lineWidth = 1;
+      // Vertical lines
+      for (let x = 0; x <= width; x += GRID_SIZE) {
+        const isMajor = (x / GRID_SIZE) % 4 === 0;
+        ctx.strokeStyle = isMajor ? GRID_COLOR_MAJOR : GRID_COLOR;
+        ctx.beginPath();
+        ctx.moveTo(x + 0.5, 0);
+        ctx.lineTo(x + 0.5, height);
+        ctx.stroke();
+      }
+      // Horizontal lines
+      for (let y = 0; y <= height; y += GRID_SIZE) {
+        const isMajor = (y / GRID_SIZE) % 4 === 0;
+        ctx.strokeStyle = isMajor ? GRID_COLOR_MAJOR : GRID_COLOR;
+        ctx.beginPath();
+        ctx.moveTo(0, y + 0.5);
+        ctx.lineTo(width, y + 0.5);
+        ctx.stroke();
+      }
+    };
+
     const drawShootings = (dtSec: number) => {
       for (let i = shootings.length - 1; i >= 0; i--) {
         const m = shootings[i];
@@ -187,6 +216,7 @@ export default function StarfieldBackground() {
       lastTs = ts;
 
       ctx.clearRect(0, 0, width, height);
+      drawGrid();          // modern subtle grid (bottom layer)
       drawStars(prefersReduced ? 0 : dtSec);
       if (!prefersReduced) {
         drawShootings(dtSec);

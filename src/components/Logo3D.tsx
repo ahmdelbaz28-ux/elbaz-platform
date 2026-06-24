@@ -1,24 +1,31 @@
 import { useEffect, useRef, useState } from 'react';
 
 /* -------------------------------------------------------------------------- */
-/*  Types                                                                      */
+/*  Logo3D                                                                     */
+/*  ─────────────────────────────────────────────────────────────────────────  */
+/*  Professional circular logo badge.                                          */
+/*                                                                             */
+/*  Design intent:                                                             */
+/*    • The logo image file (/logo.png, /logo.webp) is NEVER modified —       */
+/*      same brand asset as supplied by the owner.                            */
+/*    • The badge surrounding it is a refined, modern monolith:               */
+/*        - Soft inner radial light (top-left) for depth                       */
+/*        - Hairline accent ring (cyan) — static, no spinning                  */
+/*        - Very slow 6s "breathing" glow halo — alive but never distracting   */
+/*        - On hover: subtle lift + brighter halo, NO tilt, NO sweep           */
+/*    • Accessibility: respects prefers-reduced-motion (freezes at neutral).   */
+/*    • Performance: one rAF per instance, paused when tab hidden.             */
 /* -------------------------------------------------------------------------- */
 
 interface Logo3DProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
-  /** Enable subtle hover scale effect. Default `true`. */
   interactive?: boolean;
 }
 
-/* -------------------------------------------------------------------------- */
-/*  Constants                                                                  */
-/* -------------------------------------------------------------------------- */
-
-/** Site palette — keeps the logo "taking the shape of the site" */
 const ACCENT_RGB = '6,182,212';
-const BADGE_TOP = '#0f1623';
-const BADGE_BOTTOM = '#060911';
+const BADGE_TOP = '#101724';
+const BADGE_BOTTOM = '#05080d';
 
 const SIZE_MAP: Record<NonNullable<Logo3DProps['size']>, number> = {
   sm: 28,
@@ -27,30 +34,10 @@ const SIZE_MAP: Record<NonNullable<Logo3DProps['size']>, number> = {
   xl: 80,
 };
 
-/** Reserved outer space for the soft halo (kept identical to old layout
- *  so consumers that depend on the previous bounding box don't shift). */
+// Outer space reserved for the halo — kept identical to the previous
+// implementation so the logo's bounding box does not shift in the layout.
 const HALO_SCALE = 1.25;
 
-/* -------------------------------------------------------------------------- */
-/*  Component                                                                  */
-/* -------------------------------------------------------------------------- */
-/**
- * Elegant circular logo badge.
- *
- * Design goals (per owner feedback):
- *   1. The logo must read as a CIRCULAR element that matches the site's
- *      overall rounded/circular aesthetic — no more "thin rectangle
- *      floating inside a circle" look.
- *   2. No spinning conic-gradient ring behind the logo (the previous
- *      version's main complaint — looked amateurish).
- *   3. No tacky holographic sweep, no aggressive 3D tilt on hover.
- *   4. The actual logo image file (`/logo.png`, `/logo.webp`) is NEVER
- *      modified — only the way it is presented inside its circular
- *      background changes.
- *
- * The result is a refined, stationary circular badge with a slow
- * "breathing" accent glow that gives the logo life without distraction.
- */
 export default function Logo3D({
   size = 'md',
   className = '',
@@ -64,9 +51,8 @@ export default function Logo3D({
   const rafRef = useRef<number>(0);
   const visibleRef = useRef(true);
 
-  /* ── Slow breathing glow (4s cycle, very subtle) ──────────────────────── */
+  /* ── Slow breathing glow (6s cycle, very subtle) ──────────────────────── */
   useEffect(() => {
-    // Respect users who prefer reduced motion — freeze at the neutral state.
     const prefersReduced =
       typeof window !== 'undefined' &&
       window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -75,7 +61,7 @@ export default function Logo3D({
       return;
     }
 
-    const PERIOD = 4000;
+    const PERIOD = 6000; // 6s — slower, calmer than the previous 4s
     let start: number | null = null;
 
     const tick = (ts: number) => {
@@ -85,7 +71,6 @@ export default function Logo3D({
       }
       if (start === null) start = ts;
       const t = (ts - start) / PERIOD;
-      // Smooth sinusoidal breathing between 0..1
       setBreath((Math.sin(t * Math.PI * 2) + 1) / 2);
       rafRef.current = requestAnimationFrame(tick);
     };
@@ -104,13 +89,13 @@ export default function Logo3D({
     };
   }, []);
 
-  /* ── Derived values (kept inexpensive) ────────────────────────────────── */
-  const glowAlpha = isHovered ? 0.55 : 0.18 + breath * 0.14; // 0.18 → 0.32
-  const ringAlpha = isHovered ? 0.55 : 0.22 + breath * 0.08; // 0.22 → 0.30
-  const innerRingAlpha = isHovered ? 0.22 : 0.06 + breath * 0.04;
-  const scale = isHovered && interactive ? 1.06 : 1;
-  const haloBlur = Math.max(4, Math.round(px * 0.18));
-  const shadowSpread = Math.max(2, Math.round(px * 0.04));
+  /* ── Derived values ───────────────────────────────────────────────────── */
+  const haloAlpha = isHovered ? 0.45 : 0.14 + breath * 0.10;  // 0.14 → 0.24
+  const ringAlpha = isHovered ? 0.55 : 0.30 + breath * 0.06;  // 0.30 → 0.36
+  const innerRingAlpha = isHovered ? 0.25 : 0.08 + breath * 0.04;
+  const lift = isHovered && interactive ? -1 : 0;             // 1px lift on hover
+  const haloBlur = Math.max(4, Math.round(px * 0.22));
+  const ringWidth = Math.max(1, Math.round(px * 0.025));
 
   /* ── Render ───────────────────────────────────────────────────────────── */
   return (
@@ -129,22 +114,22 @@ export default function Logo3D({
       onMouseEnter={() => interactive && setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* ── Soft ambient halo (replaces the spinning ring) ─────────────── */}
+      {/* ── Ambient halo (slow breathing glow) ──────────────────────────── */}
       <div
         aria-hidden="true"
         style={{
           position: 'absolute',
-          inset: -Math.round(px * 0.06),
+          inset: -Math.round(px * 0.08),
           borderRadius: '50%',
-          background: `radial-gradient(circle, rgba(${ACCENT_RGB},${glowAlpha * 0.6}) 0%, rgba(${ACCENT_RGB},${glowAlpha * 0.15}) 40%, transparent 75%)`,
+          background: `radial-gradient(circle, rgba(${ACCENT_RGB},${haloAlpha}) 0%, rgba(${ACCENT_RGB},${haloAlpha * 0.35}) 35%, transparent 72%)`,
           transition: 'background 0.6s ease',
           pointerEvents: 'none',
-          filter: `blur(${haloBlur * 0.5}px)`,
+          filter: `blur(${haloBlur * 0.6}px)`,
           willChange: 'background',
         }}
       />
 
-      {/* ── Main circular badge (static, elegant) ──────────────────────── */}
+      {/* ── Main circular badge ─────────────────────────────────────────── */}
       <div
         style={{
           position: 'relative',
@@ -154,32 +139,33 @@ export default function Logo3D({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          transform: `scale(${scale})`,
-          transition: 'transform 0.5s cubic-bezier(.175,.885,.32,1.275)',
+          transform: `translateY(${lift}px)`,
+          transition: 'transform 0.45s cubic-bezier(.2,.8,.2,1)',
           willChange: 'transform',
-          /* Refined dark gradient that matches the site background —
-             gives a clean "cut-out of the site" feel rather than a
-             metallic 3D bevel. */
+          /* Layered background:
+             1. Inner radial light from top-left for depth (mimics soft studio light)
+             2. Linear gradient from top to bottom — keeps the badge integrated
+                with the site's dark palette rather than looking like a sticker */
           background: `
-            radial-gradient(circle at 32% 28%, rgba(255,255,255,0.07) 0%, transparent 55%),
-            linear-gradient(150deg, ${BADGE_TOP} 0%, ${BADGE_BOTTOM} 100%)
+            radial-gradient(circle at 30% 25%, rgba(255,255,255,0.08) 0%, transparent 55%),
+            linear-gradient(155deg, ${BADGE_TOP} 0%, ${BADGE_BOTTOM} 100%)
           `,
-          /* Static accent border — no spinning. */
-          border: `${Math.max(1.5, Math.round(px * 0.035))}px solid rgba(${ACCENT_RGB}, ${ringAlpha})`,
+          /* Hairline accent ring — static, no spin */
+          border: `${ringWidth}px solid rgba(${ACCENT_RGB}, ${ringAlpha})`,
           boxShadow: `
-            0 ${shadowSpread}px ${Math.round(px * 0.14)}px rgba(0,0,0,0.45),
-            0 0 ${Math.round(px * 0.22)}px rgba(${ACCENT_RGB}, ${glowAlpha * 0.35}),
-            inset 0 1px 1px rgba(255,255,255,0.06),
-            inset 0 -1px 2px rgba(0,0,0,0.5)
+            0 ${Math.max(2, Math.round(px * 0.05))}px ${Math.round(px * 0.18)}px rgba(0,0,0,0.5),
+            0 0 ${Math.round(px * 0.28)}px rgba(${ACCENT_RGB}, ${haloAlpha * 0.5}),
+            inset 0 1px 1px rgba(255,255,255,0.08),
+            inset 0 -1px 2px rgba(0,0,0,0.55)
           `,
         }}
       >
-        {/* Subtle inner accent ring (decorative, static) */}
+        {/* Decorative inner ring (static, hairline) */}
         <div
           aria-hidden="true"
           style={{
             position: 'absolute',
-            inset: Math.max(2, Math.round(px * 0.09)),
+            inset: Math.max(2, Math.round(px * 0.10)),
             borderRadius: '50%',
             border: `1px solid rgba(${ACCENT_RGB}, ${innerRingAlpha})`,
             pointerEvents: 'none',
@@ -187,7 +173,7 @@ export default function Logo3D({
           }}
         />
 
-        {/* ── Logo image (UNCHANGED — only the surrounding badge changes) ─ */}
+        {/* ── Logo image — NEVER modified, only its container ──────────── */}
         <picture
           aria-hidden="true"
           style={{
@@ -196,7 +182,7 @@ export default function Logo3D({
             justifyContent: 'center',
             width: '100%',
             height: '100%',
-            padding: Math.round(px * 0.16),
+            padding: Math.round(px * 0.17),
             position: 'relative',
             zIndex: 2,
           }}
@@ -217,8 +203,8 @@ export default function Logo3D({
               height: 'auto',
               objectFit: 'contain',
               filter: isHovered
-                ? 'drop-shadow(0 0 8px rgba(6,182,212,0.6)) brightness(1.08)'
-                : `drop-shadow(0 0 3px rgba(6,182,212,${0.22 + breath * 0.1}))`,
+                ? 'drop-shadow(0 0 9px rgba(6,182,212,0.55)) brightness(1.08)'
+                : `drop-shadow(0 0 3px rgba(6,182,212,${0.20 + breath * 0.10}))`,
               transition: 'filter 0.5s ease',
             }}
           />

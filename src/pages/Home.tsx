@@ -459,11 +459,15 @@ export default function Home() {
           <SectionHeader badge={t("curriculum")} title={t("browseByCategory")} subtitle={lang === "en" ? "Structured learning paths from fundamentals to advanced design." : "مسارات تعليمية منظمة من الأساسيات إلى التصميم المتقدم."} />
 
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {(categories || []).map((cat: Category, idx: number) => (
+            {(categories || []).map((cat: Category, idx: number) => {
+              // Cycle through modern variants so each card feels distinct
+              const variants = ["glow", "pulse", "tilt", "ripple"] as const;
+              const variant = variants[idx % variants.length];
+              return (
               <ScrollReveal key={cat.id} delay={idx * 0.1}>
                 <Link to={`/courses?category=${cat.id}`}>
                   <motion.div whileHover={{ y: -8, scale: 1.03 }} whileTap={{ scale: 0.98 }} transition={{ type: "spring", stiffness: 400, damping: 20 }} className="group rounded-xl border border-[#1f2d44] bg-[#111827] p-8 transition-all hover:border-[rgba(6,182,212,0.35)] hover:shadow-[0_12px_32px_rgba(6,182,212,0.08)]">
-                    <AnimatedIcon icon={categoryIcons[cat.icon] || <Zap className="h-5 w-5" />} variant="glow" size="md" color="#06b6d4" />
+                    <AnimatedIcon icon={categoryIcons[cat.icon] || <Zap className="h-5 w-5" />} variant={variant} size="md" color="#06b6d4" />
                     <h3 className="mt-4 text-lg font-semibold text-[#f0f4f8]">{lang === "ar" ? cat.nameAr : cat.nameEn}</h3>
                     <p className="mt-2 text-sm leading-relaxed text-[#94a3b8]">{lang === "ar" ? cat.descriptionAr : cat.descriptionEn}</p>
                     <motion.div className="mt-4 flex items-center gap-2 text-sm font-medium text-[#06b6d4] opacity-0 group-hover:opacity-100 transition-opacity">
@@ -473,7 +477,8 @@ export default function Home() {
                   </motion.div>
                 </Link>
               </ScrollReveal>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>
