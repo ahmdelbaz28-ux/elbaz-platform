@@ -54,11 +54,31 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          lfs: true    # ✅ Fetch LFS objects so we can push them to HF
 
       - name: Setup Git LFS
         run: |
           git lfs install
-          git lfs track "*.png" "*.jpg" "*.webp" "*.jpeg" "*.gif" "*.svg" "*.ico" "*.jar" "*.properties"
+          git lfs fetch --all origin
+          git lfs checkout
+          echo "=== LFS files tracked ==="
+          git lfs ls-files | head -10
+          echo "..."
+          echo "Total LFS files: $(git lfs ls-files | wc -l)"
+
+      - name: Verify LFS objects are present (not just pointers)
+        run: |
+          # Pick a known image file and check it's a real binary, not a pointer
+          if [ -f public/logo.png ]; then
+            size=$(wc -c < public/logo.png)
+            if [ "$size" -lt 200 ]; then
+              echo "❌ FATAL: public/logo.png is still an LFS pointer ($size bytes)"
+              echo "LFS fetch did not work. Aborting deploy."
+              exit 1
+            else
+              echo "✅ public/logo.png is a real binary ($size bytes)"
+            fi
+          fi
 
       - name: Configure Git for HF
         run: |
@@ -66,12 +86,15 @@ jobs:
           git config user.email "ahmdelbaz28@users.noreply.github.com"
           git config user.name "ahmdelbaz28-ux"
 
-      - name: Push to HF Spaces
+      - name: Push to HF Spaces (commits + LFS objects)
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           SHA: ${{ github.sha }}
         run: |
+          # Push commit history first
           git push hf-space main --force
+          # Push LFS objects to HF's Xet storage
+          git lfs push hf-space --all
           echo "Deploy complete! SHA: ${SHA}"
 
       - name: Deployment Status
