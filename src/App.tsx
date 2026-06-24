@@ -8,6 +8,7 @@ import WhatsAppButton from "@/components/WhatsAppButton";
 import CookieConsent from "@/components/CookieConsent";
 import ChatBot from "@/components/ChatBot";
 import ScrollToTop from "@/components/ScrollToTop";
+import BackgroundStars from "@/components/BackgroundStars";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { NotificationProvider } from "@/components/NotificationToast";
@@ -51,6 +52,7 @@ function Layout({ children }: { children: React.ReactNode }) {
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:rounded-lg focus:bg-[#06b6d4] focus:px-4 focus:py-2 focus:text-[#0a0e17] focus:font-semibold focus:outline-none focus:ring-2 focus:ring-[#06b6d4]">
         Skip to main content
       </a>
+      <BackgroundStars />
       <Navbar />
       <ScrollToTop />
       <main id="main-content" tabIndex={-1} className="pb-20 md:pb-0"><Suspense fallback={<PageLoader />}>{children}</Suspense></main>

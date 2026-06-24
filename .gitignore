@@ -29,7 +29,7 @@ worklog.md
 public/
 
 # ── Testing / Coverage
-test-results/ ──
+test-results/
 coverage/
 .turbo/
 .vercel/
