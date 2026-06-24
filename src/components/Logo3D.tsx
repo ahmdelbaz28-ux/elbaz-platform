@@ -253,7 +253,7 @@ export default function Logo3D({
           <source srcSet="/logo.webp 1x, /logo@2x.webp 2x" type="image/webp" />
           <img
             src="/logo.png"
-            srcSet="/logo.png 1x, /logo@2x.webp 2x"
+            srcSet="/logo.png 1x, /logo.png 2x"
             alt="Elbaz Platform Logo"
             width={Math.round(px * 0.85)}
             height={Math.round(px * 0.85)}
