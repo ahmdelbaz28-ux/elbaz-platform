@@ -27,7 +27,8 @@ skills/
 download/
 worklog.md
 
-# ── Testing / Coverage ──
+# ── Testing / Coverage
+test-results/ ──
 coverage/
 .turbo/
 .vercel/
