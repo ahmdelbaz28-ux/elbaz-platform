@@ -2,13 +2,28 @@ import { motion, useInView, useAnimation } from "framer-motion";
 import { useEffect, useRef, type ReactNode } from "react";
 import { cn } from "@/components/ui/motion";
 
+/* -------------------------------------------------------------------------- */
+/*  AnimatedIcon                                                               */
+/*  ─────────────────────────────────────────────────────────────────────────  */
+/*  Modern icon component with powerful, contemporary animations.              */
+/*  Variants:                                                                  */
+/*    • default — gentle fade-up + scale-in                                    */
+/*    • glow    — pulsing accent halo around the icon                          */
+/*    • orbit   — small satellite dot orbiting the icon                        */
+/*    • morph   — shape-shifting background (rounded square → circle)          */
+/*    • flip    — 3D Y-axis flip on hover                                      */
+/*    • bounce  — vertical bounce on hover                                     */
+/*    • pulse   — continuous soft scale pulse (new)                            */
+/*    • ripple  — concentric ripple on hover (new)                             */
+/*    • tilt    — 3D tilt that follows hover position (new)                    */
+/* -------------------------------------------------------------------------- */
+
 interface AnimatedIconProps {
   icon: ReactNode;
   label?: string;
   className?: string;
-  iconClassName?: string;
   labelClassName?: string;
-  variant?: "default" | "glow" | "orbit" | "morph" | "flip" | "bounce";
+  variant?: "default" | "glow" | "orbit" | "morph" | "flip" | "bounce" | "pulse" | "ripple" | "tilt";
   delay?: number;
   size?: "sm" | "md" | "lg" | "xl";
   color?: string;
@@ -33,7 +48,6 @@ export default function AnimatedIcon({
   icon,
   label,
   className,
-  iconClassName,
   labelClassName,
   variant = "default",
   delay = 0,
@@ -126,12 +140,36 @@ export default function AnimatedIcon({
           transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
         />
       )}
+      {variant === "pulse" && (
+        <motion.div
+          className="absolute inset-0 rounded-xl"
+          style={{ background: `rgba(${hexToRgb(color)}, 0.06)` }}
+          animate={{
+            scale: [1, 1.08, 1],
+            opacity: [0.6, 1, 0.6],
+          }}
+          transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+        />
+      )}
+      {variant === "ripple" && (
+        <>
+          {[0, 0.6, 1.2].map((t) => (
+            <motion.span
+              key={t}
+              className="absolute inset-0 rounded-xl"
+              style={{ border: `1px solid ${color}` }}
+              initial={{ scale: 1, opacity: 0 }}
+              whileHover={{ scale: [1, 1.4], opacity: [0.5, 0], transition: { duration: 1.2, repeat: Infinity, delay: t, ease: "easeOut" } }}
+            />
+          ))}
+        </>
+      )}
       <motion.div
         className={cn(iconSizeMap[size], "relative z-10")}
         style={{ color }}
-        whileHover={{ scale: 1.15, rotate: [0, -10, 10, -5, 5, 0] }}
+        whileHover={{ scale: 1.18, rotate: [0, -10, 10, -5, 5, 0] }}
         whileTap={{ scale: 0.9 }}
-        transition={{ duration: 0.4 }}
+        transition={{ duration: 0.45 }}
       >
         {icon}
       </motion.div>
@@ -160,6 +198,18 @@ export default function AnimatedIcon({
         <motion.div
           className="relative"
           whileHover={{ y: [-4, -8, -4, 0], transition: { duration: 0.5 } }}
+        >
+          {renderIcon()}
+        </motion.div>
+      ) : variant === "tilt" ? (
+        <motion.div
+          className="relative"
+          whileHover={{
+            rotateX: [0, -15, 0],
+            rotateY: [0, 15, 0],
+            transition: { duration: 0.6, ease: "easeInOut" },
+          }}
+          style={{ perspective: 800, transformStyle: "preserve-3d" }}
         >
           {renderIcon()}
         </motion.div>
