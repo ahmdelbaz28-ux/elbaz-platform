@@ -1,6 +1,6 @@
 import { request, expect } from "@playwright/test";
 
-const BASE_URL = "https://ahmedelbaz.qzz.io";
+const BASE_URL = process.env.TEST_BASE_URL || "https://ahmedelbaz.qzz.io";
 const TEST_USER_EMAIL = `global_test_${Date.now()}@example.com`;
 const TEST_USER_PASSWORD = "GlobalTestPass123!";
 const TEST_USER_NAME = "Global Test Automation User";
