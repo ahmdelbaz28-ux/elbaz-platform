@@ -13,7 +13,7 @@ export default defineConfig({
   },
   globalSetup: require.resolve("./tests/setup/global-setup"),
   use: {
-    baseURL: "https://ahmedelbaz.qzz.io",
+    baseURL: process.env.TEST_BASE_URL || "https://ahmedelbaz.qzz.io",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
@@ -40,7 +40,7 @@ export default defineConfig({
       name: "API",
       testMatch: /.*-api\.spec\.ts$/,
       use: {
-        baseURL: "https://ahmedelbaz.qzz.io",
+        baseURL: process.env.TEST_BASE_URL || "https://ahmedelbaz.qzz.io",
         extraHTTPHeaders: {
           "Content-Type": "application/json",
           Accept: "application/json",
@@ -50,7 +50,7 @@ export default defineConfig({
   ],
   webServer: {
     command: "npm run start -- --port 3000",
-    url: "https://ahmedelbaz.qzz.io",
+    url: process.env.TEST_BASE_URL || "https://ahmedelbaz.qzz.io",
     reuseExistingServer: !process.env.CI,
     timeout: 120000,
   },
