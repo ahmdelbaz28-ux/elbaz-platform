@@ -29,12 +29,17 @@ describe("Chatbot Module", () => {
   /**
    * Helper: import the chatbot module with mocked env.
    * Must be called after vi.resetModules() so the module is freshly loaded.
+   *
+   * By default MODAL_API_KEY is omitted (undefined) so the PRIMARY Modal
+   * provider is disabled and tests exercise the OpenRouter FALLBACK cascade.
+   * Pass { modal: true } to enable Modal with a test key.
    */
-  async function importChatbot() {
+  async function importChatbot(opts?: { modal?: boolean }) {
     vi.doMock("../lib/env", () => ({
       env: {
         OPENROUTER_API_KEY: "sk-or-v1-test-key-12345",
         CHATBOT_API_KEY: "",
+        MODAL_API_KEY: opts?.modal ? "modal-test-key-12345" : "",
         isProduction: false,
       },
     }));
@@ -48,11 +53,18 @@ describe("Chatbot Module", () => {
       const { getChatbotStats } = await importChatbot();
       const stats = getChatbotStats();
 
-      expect(stats.totalModels).toBe(21);
-      expect(stats.lastWorkingModel).toBe("");
-      expect(stats.lastWorkingTimeAgo).toBe("never");
-      expect(stats.modelSuccessCounts).toEqual({});
-      expect(stats.modelFailCounts).toEqual({});
+      // Primary (Modal) defaults
+      expect(stats.primary.provider).toBe("modal");
+      expect(stats.primary.configured).toBe(false); // no MODAL_API_KEY in mock
+      expect(stats.primary.consecFails).toBe(0);
+      expect(stats.primary.lastSuccessAgo).toBe("never");
+
+      // Fallback (OpenRouter) defaults
+      expect(stats.fallback.totalModels).toBe(21);
+      expect(stats.fallback.lastWorkingModel).toBe("");
+      expect(stats.fallback.lastWorkingTimeAgo).toBe("never");
+      expect(stats.fallback.modelSuccessCounts).toEqual({});
+      expect(stats.fallback.modelFailCounts).toEqual({});
     });
   });
 
@@ -61,7 +73,7 @@ describe("Chatbot Module", () => {
   describe("model pool", () => {
     it("has 21 models", async () => {
       const { getChatbotStats } = await importChatbot();
-      expect(getChatbotStats().totalModels).toBe(21);
+      expect(getChatbotStats().fallback.totalModels).toBe(21);
     });
 
     it("models are ordered by tier (all tier 1 before tier 2, etc.)", async () => {
@@ -258,7 +270,7 @@ describe("Chatbot Module", () => {
   // ─── System prompt ─────────────────────────────────────────────────────
 
   describe("system prompt", () => {
-    it("English system prompt contains 'Bassem' (case insensitive)", async () => {
+    it("English system prompt mentions Elbaz and electrical-engineering focus", async () => {
       mockFetch.mockImplementation(async (url: string, options: any) => {
         if (url.includes("/auth/key")) {
           return { ok: true, json: async () => ({}) };
@@ -266,7 +278,8 @@ describe("Chatbot Module", () => {
         const body = JSON.parse(options.body);
         const systemMsg = body.messages.find((m: any) => m.role === "system");
         expect(systemMsg).toBeDefined();
-        expect(systemMsg.content.toLowerCase()).toMatch(/bassem/);
+        expect(systemMsg.content.toLowerCase()).toMatch(/elbaz/);
+        expect(systemMsg.content).toMatch(/ETAP|SKM|PowerFactory|PVSyst/);
         return {
           ok: true,
           json: async () => ({
@@ -282,7 +295,7 @@ describe("Chatbot Module", () => {
       });
     });
 
-    it("Arabic system prompt contains 'باسم'", async () => {
+    it("Arabic system prompt mentions 'الباز'", async () => {
       mockFetch.mockImplementation(async (url: string, options: any) => {
         if (url.includes("/auth/key")) {
           return { ok: true, json: async () => ({}) };
@@ -290,7 +303,7 @@ describe("Chatbot Module", () => {
         const body = JSON.parse(options.body);
         const systemMsg = body.messages.find((m: any) => m.role === "system");
         expect(systemMsg).toBeDefined();
-        expect(systemMsg.content).toMatch(/باسم/);
+        expect(systemMsg.content).toMatch(/الباز/);
         return {
           ok: true,
           json: async () => ({
@@ -331,9 +344,127 @@ describe("Chatbot Module", () => {
       expect(result.success).toBe(true);
 
       const stats = getChatbotStats();
-      expect(stats.lastWorkingModel).toBe(result.model);
-      expect(stats.lastWorkingTimeAgo).not.toBe("never");
-      expect(stats.modelSuccessCounts[result.model!]).toBe(1);
+      expect(stats.fallback.lastWorkingModel).toBe(result.model);
+      expect(stats.fallback.lastWorkingTimeAgo).not.toBe("never");
+      expect(stats.fallback.modelSuccessCounts[result.model!]).toBe(1);
+    });
+  });
+
+  // ─── Modal (PRIMARY provider) ─────────────────────────────────────────
+
+  describe("Modal primary provider", () => {
+    it("uses Modal first when configured and returns content (not reasoning)", async () => {
+      // Mock that returns BOTH reasoning_content and content, like the real GLM-5.1
+      mockFetch.mockImplementation(async (url: string) => {
+        if (url.includes("modal.direct")) {
+          return {
+            ok: true,
+            json: async () => ({
+              choices: [
+                {
+                  message: {
+                    content: "Hello! I can confirm I am the Elbaz assistant.",
+                    reasoning_content: "1. Internal thinking steps the user must never see.",
+                  },
+                },
+              ],
+            }),
+          };
+        }
+        // OpenRouter should NOT be called
+        return {
+          ok: true,
+          json: async () => ({
+            choices: [{ message: { content: "SHOULD NOT BE USED" } }],
+          }),
+        };
+      });
+
+      const { getChatResponse, getChatbotStats } = await importChatbot({ modal: true });
+      const result = await getChatResponse({
+        messages: [{ role: "user", content: "Hi" }],
+      });
+
+      expect(result.success).toBe(true);
+      // The user-facing reply is the polished content, NOT the reasoning.
+      expect(result.reply).toBe("Hello! I can confirm I am the Elbaz assistant.");
+      expect(result.reply).not.toContain("Internal thinking");
+      expect(result.model).toBe("zai-org/GLM-5.1-FP8");
+
+      // Modal recorded as healthy; OpenRouter untouched.
+      const stats = getChatbotStats();
+      expect(stats.primary.consecFails).toBe(0);
+      expect(stats.primary.lastSuccessAgo).not.toBe("never");
+      expect(stats.fallback.lastWorkingModel).toBe(""); // OpenRouter never invoked
+    });
+
+    it("falls back to OpenRouter cascade when Modal returns an error", async () => {
+      mockFetch.mockImplementation(async (url: string) => {
+        if (url.includes("modal.direct")) {
+          return { ok: false, status: 500, json: async () => ({ error: "boom" }) };
+        }
+        if (url.includes("/auth/key")) {
+          return { ok: true, json: async () => ({}) };
+        }
+        // First OpenRouter model succeeds
+        return {
+          ok: true,
+          json: async () => ({
+            choices: [{ message: { content: "Recovered via OpenRouter!" } }],
+          }),
+        };
+      });
+
+      const { getChatResponse, getChatbotStats } = await importChatbot({ modal: true });
+      const result = await getChatResponse({
+        messages: [{ role: "user", content: "Hi" }],
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.reply).toBe("Recovered via OpenRouter!");
+      // Modal health degraded; OpenRouter now has a working model.
+      const stats = getChatbotStats();
+      expect(stats.primary.consecFails).toBeGreaterThan(0);
+      expect(stats.fallback.lastWorkingModel).toBeTruthy();
+    });
+
+    it("treats a reply that is only reasoning (empty content) as a Modal failure", async () => {
+      mockFetch.mockImplementation(async (url: string) => {
+        if (url.includes("modal.direct")) {
+          return {
+            ok: true,
+            json: async () => ({
+              choices: [
+                {
+                  message: {
+                    content: null, // ran out of tokens during reasoning
+                    reasoning_content: "long private chain-of-thought...",
+                  },
+                },
+              ],
+            }),
+          };
+        }
+        if (url.includes("/auth/key")) {
+          return { ok: true, json: async () => ({}) };
+        }
+        return {
+          ok: true,
+          json: async () => ({
+            choices: [{ message: { content: "OpenRouter fallback answer" } }],
+          }),
+        };
+      });
+
+      const { getChatResponse } = await importChatbot({ modal: true });
+      const result = await getChatResponse({
+        messages: [{ role: "user", content: "Hi" }],
+      });
+
+      // Should NOT surface the reasoning — falls back to OpenRouter.
+      expect(result.success).toBe(true);
+      expect(result.reply).toBe("OpenRouter fallback answer");
+      expect(result.reply).not.toContain("chain-of-thought");
     });
   });
 });

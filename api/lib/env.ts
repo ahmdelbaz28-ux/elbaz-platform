@@ -29,6 +29,10 @@ const envSchema = z.object({
   PAYMOB_WEBHOOK_SECRET: z.string().optional(),
   PAYMOB_BASE_URL: z.string().default("https://accept.paymob.com"),
 
+  // ── AI Chatbot providers ──────────────────────────────────────
+  // MODAL_API_KEY is the PRIMARY provider (zai-org/GLM-5.1-FP8 via Modal).
+  // OPENROUTER_API_KEY is the FALLBACK provider (free model cascade).
+  MODAL_API_KEY: z.string().optional(),
   OPENROUTER_API_KEY: z.string().optional(),
 
   GOOGLE_CLIENT_ID: z.string().min(1, "GOOGLE_CLIENT_ID is required"),
