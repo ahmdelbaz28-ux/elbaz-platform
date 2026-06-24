@@ -85,9 +85,9 @@ export function getR2Client(): S3Client {
 
   const endpoint = env.R2_ENDPOINT || (accountId ? `https://${accountId}.r2.cloudflarestorage.com` : "");
 
-  if (!accessKeyId || !secretAccessKey || !endpoint) {
+  if (!accessKeyId || !secretAccessKey || !endpoint || !env.R2_BUCKET_NAME) {
     throw new Error(
-      "R2 is not configured. Set R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and R2_ENDPOINT in your environment."
+      "R2 is not configured. Set R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME, and R2_ENDPOINT or R2_ACCOUNT_ID in your environment."
     );
   }
 
@@ -130,9 +130,11 @@ interface PresignedVideoOptions {
 export async function generateR2PresignedUrl(options: PresignedVideoOptions): Promise<string> {
   const { objectKey, expiresIn = 1800, disposition = "inline" } = options;
   const client = getR2Client();
+  const bucketName = env.R2_BUCKET_NAME;
+  if (!bucketName) throw new Error("R2 bucket is not configured");
 
   const command = new GetObjectCommand({
-    Bucket: env.R2_BUCKET_NAME,
+    Bucket: bucketName,
     Key: objectKey,
     ResponseContentType: "video/mp4",
     ResponseContentDisposition: `${disposition}; filename="video.mp4"`,
@@ -155,8 +157,10 @@ export async function getR2ObjectMetadata(objectKey: string): Promise<{
 } | null> {
   try {
     const client = getR2Client();
+    const bucketName = env.R2_BUCKET_NAME;
+    if (!bucketName) throw new Error("R2 bucket is not configured");
     const command = new HeadObjectCommand({
-      Bucket: env.R2_BUCKET_NAME,
+      Bucket: bucketName,
       Key: objectKey,
     });
     const response = await client.send(command);

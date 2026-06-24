@@ -44,6 +44,12 @@ export async function ensureDatabase(): Promise<void> {
         // Migration: Add googleId column + make passwordHash nullable (for Google OAuth)
         `ALTER TABLE users MODIFY COLUMN passwordHash VARCHAR(255) NULL`,
         `ALTER TABLE users ADD COLUMN IF NOT EXISTS googleId VARCHAR(255) NULL`,
+        `ALTER TABLE users ADD COLUMN IF NOT EXISTS passwordResetToken VARCHAR(255) NULL`,
+        `ALTER TABLE users ADD COLUMN IF NOT EXISTS passwordResetExpiresAt TIMESTAMP NULL`,
+        `ALTER TABLE users ADD COLUMN IF NOT EXISTS emailVerificationToken VARCHAR(255) NULL`,
+        `ALTER TABLE users ADD COLUMN IF NOT EXISTS emailVerificationExpiry TIMESTAMP NULL`,
+        `ALTER TABLE users ADD COLUMN IF NOT EXISTS emailVerifiedAt TIMESTAMP NULL`,
+        `ALTER TABLE users ADD COLUMN IF NOT EXISTS pendingEmail VARCHAR(255) NULL`,
         `ALTER TABLE users ADD UNIQUE INDEX IF NOT EXISTS users_google_id_unique (googleId)`,
       ];
 

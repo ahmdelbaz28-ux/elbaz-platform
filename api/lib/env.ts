@@ -15,26 +15,26 @@ const envSchema = z.object({
   JWT_ACCESS_EXPIRY: z.string().default("15m"),
   JWT_REFRESH_EXPIRY: z.string().default("7d"),
 
-  R2_ACCOUNT_ID: z.string().min(1, "R2_ACCOUNT_ID is required"),
-  R2_ACCESS_KEY_ID: z.string().min(1, "R2_ACCESS_KEY_ID is required"),
-  R2_SECRET_ACCESS_KEY: z.string().min(1, "R2_SECRET_ACCESS_KEY is required"),
-  R2_BUCKET_NAME: z.string().min(1, "R2_BUCKET_NAME is required"),
+  R2_ACCOUNT_ID: z.string().optional(),
+  R2_ACCESS_KEY_ID: z.string().optional(),
+  R2_SECRET_ACCESS_KEY: z.string().optional(),
+  R2_BUCKET_NAME: z.string().optional(),
   R2_ENDPOINT: z.string().optional(),
   R2_PUBLIC_URL: z.string().url().optional(),
 
-  PAYMOB_API_KEY: z.string().min(1, "PAYMOB_API_KEY is required"),
+  PAYMOB_API_KEY: z.string().optional(),
   PAYMOB_INTEGRATION_ID: z.coerce.number().min(0).optional(),
   PAYMOB_IFRAME_ID: z.coerce.number().min(0).optional(),
-  PAYMOB_HMAC_SECRET: z.string().min(1, "PAYMOB_HMAC_SECRET is required"),
+  PAYMOB_HMAC_SECRET: z.string().optional(),
   PAYMOB_WEBHOOK_SECRET: z.string().optional(),
   PAYMOB_BASE_URL: z.string().default("https://accept.paymob.com"),
 
-  OPENROUTER_API_KEY: z.string().min(1, "OPENROUTER_API_KEY is required"),
+  OPENROUTER_API_KEY: z.string().optional(),
 
   GOOGLE_CLIENT_ID: z.string().min(1, "GOOGLE_CLIENT_ID is required"),
-  GOOGLE_CLIENT_SECRET: z.string().min(1, "GOOGLE_CLIENT_SECRET is required"),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
 
-  RESEND_API_KEY: z.string().min(1, "RESEND_API_KEY is required"),
+  RESEND_API_KEY: z.string().optional(),
   RESEND_FROM_EMAIL: z.string().default("noreply@ahmedelbaz.qzz.io").transform(v => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!v || !emailRegex.test(v)) return "noreply@ahmedelbaz.qzz.io";
