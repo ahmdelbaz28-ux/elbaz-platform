@@ -1,6 +1,6 @@
 import { test, expect, request } from "@playwright/test";
 
-const BASE_URL = "https://ahmedelbaz.qzz.io";
+const BASE_URL = process.env.TEST_BASE_URL || "https://ahmedelbaz.qzz.io";
 
 test.describe("Security API", () => {
   test("SQL injection in parameters is blocked", async ({ request }) => {
