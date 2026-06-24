@@ -15,10 +15,10 @@
 *.md text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
-# NOTE: Images are intentionally NOT tracked via Git LFS.
-# Previous LFS configuration broke all images on HuggingFace Spaces
-# (Docker COPY . . only copies 131-byte pointer files, not real images).
-# Images are now committed directly to the repo as binary files.
+# Binary image files — tracked via Git LFS (required by HuggingFace Xet storage)
+# Without LFS tracking, HF rejects git pushes containing binary image files.
+# HF Spaces Docker builds resolve LFS pointers automatically during the build
+# context preparation, so the deployed site serves real image bytes.
 *.png filter=lfs diff=lfs merge=lfs -text
 *.jpg filter=lfs diff=lfs merge=lfs -text
 *.jpeg filter=lfs diff=lfs merge=lfs -text
