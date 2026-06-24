@@ -12,6 +12,12 @@
   "categories": ["education", "lifestyle"],
   "icons": [
     {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
       "src": "/pwa-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
@@ -36,14 +42,18 @@
       "short_name": "Courses",
       "description": "View your enrolled courses",
       "url": "/dashboard",
-      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192" }]
+      "icons": [
+        { "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }
+      ]
     },
     {
       "name": "Explore Courses",
       "short_name": "Explore",
       "description": "Browse available courses",
       "url": "/courses",
-      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192" }]
+      "icons": [
+        { "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }
+      ]
     }
   ]
 }

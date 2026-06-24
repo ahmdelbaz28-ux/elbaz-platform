@@ -3,7 +3,13 @@
   "@type": "EducationalOrganization",
   "name": "Eng Ahmed Elbaz",
   "url": "https://ahmedelbaz.qzz.io",
-  "logo": "https://ahmedelbaz.qzz.io/logo.png",
+  "logo": {
+    "@type": "ImageObject",
+    "url": "https://ahmedelbaz.qzz.io/logo.png",
+    "width": 512,
+    "height": 512
+  },
+  "image": "https://ahmedelbaz.qzz.io/logo.png",
   "description": "Professional electrical engineering courses in ETAP, SKM, PowerFactory, PVSyst, and more.",
   "sameAs": [],
   "founder": {
