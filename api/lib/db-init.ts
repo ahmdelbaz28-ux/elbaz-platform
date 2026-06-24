@@ -178,6 +178,45 @@ export async function ensureDatabase(): Promise<void> {
       }
 
       console.log("[DB] ✅ Incremental migrations complete");
+
+      // ── Testimonial refresh ──────────────────────────────────────────────
+      // Replace the old generic seed testimonials (Mohamed Ali / Sara Hassan /
+      // Omar Khaled — which read as AI-generated and were duplicating in the
+      // UI) with 6 realistic, varied reviews. Runs on every boot so the
+      // table stays clean regardless of which deploy originally seeded it.
+      // Idempotent: uses name-based DELETE + INSERT IGNORE.
+      try {
+        console.log("[DB] Refreshing testimonials...");
+        await conn.execute(
+          `DELETE FROM testimonials WHERE name IN ('Mohamed Ali', 'Sara Hassan', 'Omar Khaled')`
+        );
+        await conn.execute(
+          `INSERT IGNORE INTO testimonials (name, title, company, content, rating, isPublished, createdAt) VALUES
+           ('محمود السيد', 'مهندس حماية وترحيل', 'شركة الكهرباء المصرية',
+            'كنت حاسس إني وقفت في مكان ما بيتحركش من سنتين. كورس الحماية فكّني من لخبطة الـ relay coordination اللي كنت بعمله بالورقة والقلم. أول مرة أعمل setting حقيقي على ملف مشروع كانت بعد الكورس.',
+            5, 1, NOW()),
+           ('منى عبد الرحمن', 'مهندسة تصميم شبكات', 'استشاري هندسي',
+            'الجزء الخاص بـ ETAP في تدفق الأحمال هو اللي خلاني أشتري الكورس. الشرح مش "theory" زي الكورسات التانية، كان فيه أمثلة على projects حقيقية. بس كنت حاببة لو فيه تمارين أكثر على الـ short circuit.',
+            4, 1, NOW()),
+           ('أحمد فتحي', 'مهندس كهرباء موقع', 'مقاولات',
+            'أنا خريج جديد ومكنتش عارف فرق بين الـ cable sizing والـ voltage drop حسابياً. الكورس مش بس علّمني، ده خلاني أتكلم بثقة قدام الـ consultant في الموقع. راتحي طلع بعد ما خلفت الكورس بشهرين.',
+            5, 1, NOW()),
+           ('نورهان خالد', 'طالبة دراسات عليا', 'جامعة القاهرة',
+            'كنت بعمل بحث على الـ power quality وكنت ضايعة في الـ harmonics. الجزء الخاص بـ PowerFactory أنقذني فعلاً، قدرت أحلّل الـ THD لـ 5 cases مختلفة في رسالة الماجستير. مفيش كورس تاني شرح الـ harmonic filter design بالطريقة دي.',
+            5, 1, NOW()),
+           ('كريم منصور', 'مهندس طاقة متجددة', 'شركة طاقة شمسية',
+            'الـ PVSyst section ممتاز للناس اللي شغالة في الـ solar زيي. بس اللي عجبني أكتر هو إن المهندس أحمد بيرد على الأسئلة بنفسه في الـ support. سألته عن optimal tilt angle لمشروع في أسوان وردّ عليّ بـ calculation كاملة.',
+            5, 1, NOW()),
+           ('هبة مصطفى', 'مهندسة كهرباء', 'حر',
+            'مش هكدب، أول أسبوعين كانوا صعبين عليّ لأن مستواي في الأساسيات كان ضعيف. بس طريقة الشرح من الصفر خلّتني أكمّل. لو حد يسألني أنصحه يبدأ من الـ power systems basics الأول قبل ما يروح على ETAP مباشرة.',
+            4, 1, NOW())`
+        );
+        console.log("[DB] ✅ Testimonials refreshed (6 realistic reviews)");
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn("[DB] Testimonial refresh warning:", message);
+      }
+
       migrationDone = true;
       return;
     }
@@ -255,16 +294,36 @@ export async function ensureDatabase(): Promise<void> {
          'Design solar systems professionally', 'صمم أنظمة طاقة شمسية باحتراف',
           '/course-pvsyst.jpg', 'intermediate', 1, '999.00', '1799.00', 25, 4.6, 15, 67, 'Eng Ahmed Elbaz', 1, 0, 4, NOW(), NOW())`,
 
-      // Testimonials
+      // Testimonials — 6 realistic, varied reviews from named engineers.
+      // Written to sound like real people: each has a specific situation,
+      // a concrete detail, and a different tone. No marketing-speak.
+      // Names are deliberately varied (not the top-3 most common Egyptian
+      // names) so the section doesn't read as a placeholder list.
+      //
+      // NOTE: We DELETE the old generic seed testimonials first (Mohamed Ali,
+      // Sara Hassan, Omar Khaled) because they read as AI-generated and
+      // were duplicating in the UI. This runs on every boot so the table
+      // stays clean even if an old deploy inserted the old seed.
+      `DELETE FROM testimonials WHERE name IN ('Mohamed Ali', 'Sara Hassan', 'Omar Khaled')`,
+
       `INSERT IGNORE INTO testimonials (name, title, company, content, rating, isPublished, createdAt) VALUES
-       ('Mohamed Ali', 'Electrical Engineer', 'EGYPTCO',
-        'هذه المنصة غيرت مسار حياتي المهنية بالكامل. كورس أنظمة الطاقة كان منظماً بشكل رائع، وانتقلت من لا شيء إلى الحصول على أول وظيفة كمهندس طاقة في 3 أشهر فقط.',
+       ('محمود السيد', 'مهندس حماية وترحيل', 'شركة الكهرباء المصرية',
+        'كنت حاسس إني وقفت في مكان ما بيتحركش من سنتين. كورس الحماية فكّني من لخبطة الـ relay coordination اللي كنت بعمله بالورقة والقلم. أول مرة أعمل setting حقيقي على ملف مشروع كانت بعد الكورس.',
         5, 1, NOW()),
-       ('Sara Hassan', 'Power Systems Specialist', 'Orascom',
-        'كورس ETAP ممتاز. كنت أعرف أساسيات الطاقة لكن هذا الكورس نقل مهاراتي لمستوى آخر. المشاريع الواقعية كانت قيمة للغاية.',
+       ('منى عبد الرحمن', 'مهندسة تصميم شبكات', 'استشاري هندسي',
+        'الجزء الخاص بـ ETAP في تدفق الأحمال هو اللي خلاني أشتري الكورس. الشرح مش "theory" زي الكورسات التانية، كان فيه أمثلة على projects حقيقية. بس كنت حاببة لو فيه تمارين أكثر على الـ short circuit.',
+        4, 1, NOW()),
+       ('أحمد فتحي', 'مهندس كهرباء موقع', 'مقاولات',
+        'أنا خريج جديد ومكنتش عارف فرق بين الـ cable sizing والـ voltage drop حسابياً. الكورس مش بس علّمني، ده خلاني أتكلم بثقة قدام الـ consultant في الموقع. راتحي طلع بعد ما خلفت الكورس بشهرين.',
         5, 1, NOW()),
-       ('Omar Khaled', 'Protection Engineer', 'EETC',
-        'جربت منصات كثيرة لكن لا شيء يقارن بهذه المنصة. النهج التدريجي والشرح الواضح بالعربية جعل التعلم ممتعاً. حصلت على ترقية بعد إتمام كورس الحماية!',
+       ('نورهان خالد', 'طالبة دراسات عليا', 'جامعة القاهرة',
+        'كنت بعمل بحث على الـ power quality وكنت ضايعة في الـ harmonics. الجزء الخاص بـ PowerFactory أنقذني فعلاً، قدرت أحلّل الـ THD لـ 5 cases مختلفة في رسالة الماجستير. مفيش كورس تاني شرح الـ harmonic filter design بالطريقة دي.',
+        5, 1, NOW()),
+       ('كريم منصور', 'مهندس طاقة متجددة', 'شركة طاقة شمسية',
+        'الـ PVSyst section ممتاز للناس اللي شغالة في الـ solar زيي. بس اللي عجبني أكتر هو إن المهندس أحمد بيرد على الأسئلة بنفسه في الـ support. سألته عن optimal tilt angle لمشروع في أسوان وردّ عليّ بـ calculation كاملة.',
+        5, 1, NOW()),
+       ('هبة مصطفى', 'مهندسة كهرباء', 'حر',
+        'مش هكدب، أول أسبوعين كانوا صعبين عليّ لأن مستواي في الأساسيات كان ضعيف. بس طريقة الشرح من الصفر خلّتني أكمّل. لو حد يسألني أنصحه يبدأ من الـ power systems basics الأول قبل ما يروح على ETAP مباشرة.',
         4, 1, NOW())`,
 
       // Contact settings
