@@ -8,9 +8,6 @@ import AnimatedIcon from "@/components/ui/AnimatedIcon";
 import BentoCard from "@/components/ui/BentoCard";
 import AnimatedCounter from "@/components/ui/AnimatedCounter";
 import ScrollReveal from "@/components/ui/ScrollReveal";
-import MagneticCursor from "@/components/ui/MagneticCursor";
-import ElectricParticles from "@/components/ui/ElectricParticles";
-import SingleLineDiagram from "@/components/ui/SingleLineDiagram";
 import ScadaGauge from "@/components/ui/ScadaGauge";
 import ArcFlashButton from "@/components/ui/ArcFlashButton";
 import { useEngineeringMode } from "@/components/ui/EngineeringMode";
@@ -294,7 +291,6 @@ export default function Home() {
   };
 
   const { isActive: isEngMode } = useEngineeringMode();
-  const sldEnabled = true;
   const scadaEnabled = true;
 
   const heroRef = useRef<HTMLDivElement>(null);
@@ -317,18 +313,21 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[#0a0e17] overflow-hidden">
       <SEO title={lang === "en" ? "Home" : "الرئيسية"} description={lang === "en" ? "Master electrical engineering with professional courses in ETAP, SKM, PowerFactory, and PVSyst." : "أتقن الهندسة الكهربية مع كورسات احترافية في ETAP وSKM وPowerFactory وPVSyst."} />
-      <MagneticCursor enabled={!isEngMode} />
-
       {topPromotion && <PromoBanner promotion={topPromotion} />}
 
       {/* ═══════════════════ HERO ═══════════════════ */}
       <section ref={heroRef} className="relative min-h-screen overflow-hidden pt-20">
-        <motion.div style={{ y: heroY, opacity: heroOpacity }} className="absolute inset-0 bg-[#0a0e17]">
-          <div className="absolute inset-0 aurora-bg" />
-          <div className="absolute inset-0 mesh-gradient" />
-          <ElectricParticles color={isEngMode ? "#00ff88" : "#06b6d4"} intensity="medium" />
-          <SingleLineDiagram color={isEngMode ? "#00ff88" : "#06b6d4"} enabled={sldEnabled} />
-        </motion.div>
+        <motion.div style={{ y: heroY, opacity: heroOpacity }} className="absolute inset-0 bg-[#0a0e17]" />
+
+        {/* Subtle radial glow behind hero content — keeps depth without electrical effects */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(ellipse 60% 50% at 50% 35%, rgba(6,182,212,0.06) 0%, transparent 70%)",
+          }}
+        />
 
         <div className="relative z-10 mx-auto flex max-w-7xl flex-col items-center px-4 py-16 lg:flex-row lg:px-6 lg:py-20 gap-8 lg:gap-0">
           <StaggerContainer className="flex-1 text-center lg:text-start" staggerChildren={0.12}>
@@ -347,9 +346,9 @@ export default function Home() {
               <h1 className="mt-6 text-5xl font-extrabold leading-[1.06] tracking-tight text-[#f0f4f8] sm:text-5xl lg:text-[64px]">
                 {lang === "en" ? "Master the Power" : "أتقن قوة"}
                 <br />
-                <motion.span className="text-gradient-animated" animate={{ textShadow: ["0 0 20px rgba(6,182,212,0.3)", "0 0 40px rgba(6,182,212,0.6)", "0 0 20px rgba(6,182,212,0.3)"] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}>
+                <span className="gradient-text">
                   {lang === "en" ? "of Electrical Engineering" : "الهندسة الكهربية"}
-                </motion.span>
+                </span>
               </h1>
             </StaggerItem>
 
@@ -388,7 +387,7 @@ export default function Home() {
           <FadeIn delay={0.3} className="mt-8 flex flex-1 justify-center lg:mt-0 lg:justify-end">
             <motion.div initial={{ opacity: 0, scale: 0.9, x: 50 }} animate={{ opacity: 1, scale: 1, x: 0 }} transition={{ duration: 0.8, type: "spring", stiffness: 100, damping: 20 }} className="relative w-full max-w-2xl lg:max-w-[600px] xl:max-w-[700px]">
               <motion.div animate={{ opacity: [0.4, 0.7, 0.4], scale: [1, 1.05, 1] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }} className="absolute -inset-6 rounded-[2rem] bg-gradient-to-br from-[#06b6d4]/20 via-[#8b5cf6]/10 to-transparent blur-3xl" />
-              <motion.div animate={{ boxShadow: ["0 0 30px rgba(6,182,212,0.3)", "0 0 50px rgba(6,182,212,0.5)", "0 0 30px rgba(6,182,212,0.3)"] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }} className="relative z-10 overflow-hidden rounded-[1.5rem] border border-[#1f2d44] bg-[#0a0e17] shadow-2xl holographic">
+              <motion.div animate={{ boxShadow: ["0 0 30px rgba(6,182,212,0.3)", "0 0 50px rgba(6,182,212,0.5)", "0 0 30px rgba(6,182,212,0.3)"] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }} className="relative z-10 overflow-hidden rounded-[1.5rem] border border-[#1f2d44] bg-[#0a0e17] shadow-2xl">
                 <ParallaxHeroImage src="hero-main.webp" alt="Master Electrical Engineering with Eng. Ahmed Elbaz" />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0a0e17]/40 via-transparent to-white/5 pointer-events-none" />
               </motion.div>
@@ -439,7 +438,7 @@ export default function Home() {
             <div className="flex gap-10" style={{ animation: "scrollLogos 20s linear infinite", minWidth: "max-content" }}>
               {[...SOFTWARE_LOGOS, ...SOFTWARE_LOGOS].map((tool, i) => (
                 <motion.div key={`${tool.name}-${i}`} className="software-logo-pill group flex flex-col items-center gap-2 cursor-default shrink-0" whileHover={{ y: -6, scale: 1.05 }} title={tool.name}>
-                  <div className="flex h-16 w-32 items-center justify-center rounded-xl border border-[#1f2d44] bg-[#0a0e17] px-4 py-3 transition-all group-hover:border-[rgba(6,182,212,0.6)] group-hover:bg-[rgba(6,182,212,0.08)] holographic shadow-lg">
+                  <div className="flex h-16 w-32 items-center justify-center rounded-xl border border-[#1f2d44] bg-[#0a0e17] px-4 py-3 transition-all group-hover:border-[rgba(6,182,212,0.6)] group-hover:bg-[rgba(6,182,212,0.08)] shadow-lg">
                     <picture>
                       <source srcSet={tool.logo} type="image/webp" />
                       <img
@@ -476,7 +475,7 @@ export default function Home() {
             {(categories || []).map((cat: Category, idx: number) => (
               <ScrollReveal key={cat.id} delay={idx * 0.1}>
                 <Link to={`/courses?category=${cat.id}`}>
-                  <motion.div whileHover={{ y: -8, scale: 1.03 }} whileTap={{ scale: 0.98 }} transition={{ type: "spring", stiffness: 400, damping: 20 }} className="group rounded-xl border border-[#1f2d44] bg-[#111827] p-8 transition-all hover:border-[rgba(6,182,212,0.35)] hover:shadow-[0_12px_32px_rgba(6,182,212,0.08)] holographic">
+                  <motion.div whileHover={{ y: -8, scale: 1.03 }} whileTap={{ scale: 0.98 }} transition={{ type: "spring", stiffness: 400, damping: 20 }} className="group rounded-xl border border-[#1f2d44] bg-[#111827] p-8 transition-all hover:border-[rgba(6,182,212,0.35)] hover:shadow-[0_12px_32px_rgba(6,182,212,0.08)]">
                     <AnimatedIcon icon={categoryIcons[cat.icon] || <Zap className="h-5 w-5" />} variant="glow" size="md" color="#06b6d4" />
                     <h3 className="mt-4 text-lg font-semibold text-[#f0f4f8]">{lang === "ar" ? cat.nameAr : cat.nameEn}</h3>
                     <p className="mt-2 text-sm leading-relaxed text-[#94a3b8]">{lang === "ar" ? cat.descriptionAr : cat.descriptionEn}</p>
@@ -596,7 +595,7 @@ export default function Home() {
 
           <div className="flex flex-col items-center gap-12 lg:flex-row lg:items-start">
             <ScrollReveal direction="left" className="flex-1 text-center lg:text-start">
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="mx-auto mb-6 flex h-28 w-28 items-center justify-center rounded-2xl border border-[#1f2d44] bg-[#1a2233] lg:mx-0 holographic">
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="mx-auto mb-6 flex h-28 w-28 items-center justify-center rounded-2xl border border-[#1f2d44] bg-[#1a2233] lg:mx-0">
                 <motion.div animate={{ filter: ["hue-rotate(0deg)", "hue-rotate(15deg)", "hue-rotate(0deg)"] }} transition={{ duration: 4, repeat: Infinity }}>
                   <User className="h-14 w-14 text-[#06b6d4]" />
                 </motion.div>
@@ -616,7 +615,7 @@ export default function Home() {
                 { icon: <Users className="h-6 w-6" />, value: "2,400+", label: t("studentsReached"), color: "#f59e0b" },
                 { icon: <Trophy className="h-6 w-6" />, value: "98%", label: t("satisfactionRate"), color: "#8b5cf6" },
               ].map((item, i) => (
-                <motion.div key={i} whileHover={{ y: -4, scale: 1.03 }} whileTap={{ scale: 0.97 }} transition={{ type: "spring", stiffness: 400, damping: 20 }} className="rounded-xl border border-[#1f2d44] bg-[#0a0e17] p-5 text-center holographic">
+                <motion.div key={i} whileHover={{ y: -4, scale: 1.03 }} whileTap={{ scale: 0.97 }} transition={{ type: "spring", stiffness: 400, damping: 20 }} className="rounded-xl border border-[#1f2d44] bg-[#0a0e17] p-5 text-center">
                   <motion.div whileHover={{ rotate: [0, -10, 10, -5, 5, 0], scale: 1.1 }} transition={{ duration: 0.4 }} className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-lg" style={{ background: `rgba(${hexToRgb(item.color)}, 0.1)` }}>
                     <span style={{ color: item.color }}>{item.icon}</span>
                   </motion.div>
@@ -637,7 +636,7 @@ export default function Home() {
           <div className="grid gap-6 md:grid-cols-3">
             {(testimonials || []).map((testimonial: Testimonial, idx: number) => (
               <ScrollReveal key={testimonial.id} delay={idx * 0.1}>
-                <motion.div whileHover={{ y: -6, scale: 1.02 }} whileTap={{ scale: 0.98 }} className="rounded-xl border border-[#1f2d44] bg-[#111827] p-8 holographic">
+                <motion.div whileHover={{ y: -6, scale: 1.02 }} whileTap={{ scale: 0.98 }} className="rounded-xl border border-[#1f2d44] bg-[#111827] p-8">
                   <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} className="flex gap-1">
                     {Array.from({ length: testimonial.rating || 5 }).map((_, j) => (
                       <Star key={j} className="h-4 w-4 fill-[#f59e0b] text-[#f59e0b]" />
@@ -675,8 +674,6 @@ export default function Home() {
 
       {/* ═══════════════════ CTA BANNER ═══════════════════ */}
       <section className="border-y border-[#1f2d44] py-20 relative overflow-hidden">
-        <div className="absolute inset-0 aurora-bg" />
-        <div className="absolute inset-0 mesh-gradient" />
         <div className="relative z-10 mx-auto max-w-3xl px-4 text-center lg:px-6">
           <ScrollReveal>
             <motion.h2 initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.1 }} className="text-3xl font-bold text-[#f0f4f8] lg:text-4xl">
