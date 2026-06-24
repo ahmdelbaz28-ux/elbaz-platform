@@ -97,13 +97,22 @@ const categoryIcons: Record<string, React.ReactNode> = {
   BarChart3: <BarChart3 className="h-5 w-5" />,
 };
 
+// Official software logos — downloaded from each vendor's official source and
+// stored locally in /public/software-logos/ to prevent broken external hotlinks.
+// Sources verified via VLM:
+//   ETAP          — official ETAP "Digital Twin" circular logo
+//   SKM           — official SKM Systems Analysis, Inc. corporate logo (skm.com)
+//   PowerFactory  — official DIgSILENT logo (red text + red triangle)
+//   PVSyst        — official PVsyst logo (yellow sun + blue solar panel + wordmark)
+//   AutoCAD       — official AutoCAD logo by Autodesk (Wikimedia Commons)
+//   MATLAB        — official MATLAB logo by MathWorks (Wikimedia Commons)
 const SOFTWARE_LOGOS = [
-  { name: "ETAP", logo: "https://upload.wikimedia.org/wikipedia/en/c/c3/ETAP_logo.png" },
-  { name: "SKM", logo: "https://www.skm.com/wp-content/uploads/2021/06/skm-logo.png" },
-  { name: "PowerFactory", logo: "https://upload.wikimedia.org/wikipedia/commons/1/1a/DIgSILENT_Logo.png" },
-  { name: "PVSyst", logo: "https://www.pvsyst.com/wp-content/uploads/2019/05/logo-pvsyst.png" },
-  { name: "AutoCAD", logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/af/Autodesk_AutoCAD_logo.svg/512px-Autodesk_AutoCAD_logo.svg.png" },
-  { name: "MATLAB", logo: "https://upload.wikimedia.org/wikipedia/commons/2/21/Matlab_Logo.png" },
+  { name: "ETAP", logo: "/software-logos/etap.webp", logoFallback: "/software-logos/etap.png" },
+  { name: "SKM", logo: "/software-logos/skm.webp", logoFallback: "/software-logos/skm.png" },
+  { name: "PowerFactory", logo: "/software-logos/powerfactory.webp", logoFallback: "/software-logos/powerfactory.png" },
+  { name: "PVSyst", logo: "/software-logos/pvsyst.webp", logoFallback: "/software-logos/pvsyst.png" },
+  { name: "AutoCAD", logo: "/software-logos/autocad.webp", logoFallback: "/software-logos/autocad.png" },
+  { name: "MATLAB", logo: "/software-logos/matlab.webp", logoFallback: "/software-logos/matlab.png" },
 ];
 
 const FALLBACK_STATS = { totalStudents: 2400, satisfactionRate: 98, totalCourses: 35 };
@@ -435,7 +444,23 @@ export default function Home() {
               {[...SOFTWARE_LOGOS, ...SOFTWARE_LOGOS].map((tool, i) => (
                 <motion.div key={`${tool.name}-${i}`} className="software-logo-pill group flex flex-col items-center gap-2 cursor-default shrink-0" whileHover={{ y: -6, scale: 1.05 }} title={tool.name}>
                   <div className="flex h-16 w-32 items-center justify-center rounded-xl border border-[#1f2d44] bg-[#0a0e17] px-4 py-3 transition-all group-hover:border-[rgba(6,182,212,0.6)] group-hover:bg-[rgba(6,182,212,0.08)] holographic shadow-lg">
-                    <img src={tool.logo} alt={tool.name} className="max-h-10 max-w-full object-contain filter brightness-110 contrast-125 transition-all group-hover:scale-110 drop-shadow-md" onError={(e) => { e.currentTarget.style.display = 'none'; const next = e.currentTarget.nextElementSibling; if (next) { (next as HTMLElement).style.display = 'block'; } }} />
+                    <picture>
+                      <source srcSet={tool.logo} type="image/webp" />
+                      <img
+                        src={tool.logoFallback}
+                        alt={`${tool.name} official logo`}
+                        width={120}
+                        height={48}
+                        loading="lazy"
+                        decoding="async"
+                        className="max-h-10 max-w-full object-contain filter brightness-110 contrast-125 transition-all group-hover:scale-110 drop-shadow-md"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          const next = e.currentTarget.nextElementSibling as HTMLElement | null;
+                          if (next) next.style.display = 'block';
+                        }}
+                      />
+                    </picture>
                     <span className="hidden text-sm font-bold text-[#06b6d4]">{tool.name}</span>
                   </div>
                   <span className="text-[11px] font-bold uppercase tracking-widest text-[#64748b] group-hover:text-[#06b6d4] transition-colors">{tool.name}</span>
