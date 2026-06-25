@@ -52,9 +52,13 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
     c.header("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
     c.header("Pragma", "no-cache");
   } else if (!isApi) {
-    // For API/assets, set a minimal CSP without nonces (no scripts expected)
+    // For API/assets, set a minimal CSP. Include 'unsafe-inline' in script-src
+    // as a fallback for when Cloudflare CDN caches HTML responses (the cached
+    // version may not have the per-request nonce). This is less secure than
+    // nonce-based CSP but prevents the site from breaking on the custom domain.
     const cspDirectives = [
       "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://www.clarity.ms https://accounts.google.com https://oauth2.googleapis.com",
       "worker-src 'self'",
       "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",

@@ -51,7 +51,7 @@ let lastWorkingModel = "";
 let lastWorkingTime = 0;
 let modelFailResetTime = 0;
 
-const MODAL_COOLDOWN_MS = 60_000; // back off Modal for 60s after a failure
+const MODAL_COOLDOWN_MS = 15_000; // back off Modal for 15s after a failure (was 60s — too long for a primary provider)
 const MAX_CONSEC_MODAL_FAILS = 3; // after this many, prefer OpenRouter first briefly
 
 // ════════════════════════════════════════════════════════════════════════
@@ -673,8 +673,9 @@ export async function getChatResponse(request: {
       await validateModalKey();
     }
     if (modalIsAvailable()) {
-      // GLM-5.1 reasons for several seconds; give it up to 75s.
-      const result = await tryModal(request.messages, systemPrompt, 75000);
+      // GLM-5.1-FP8 is a reasoning model — it thinks before answering.
+      // Give it up to 120s (was 75s — too short for complex questions).
+      const result = await tryModal(request.messages, systemPrompt, 120000);
       if (result) {
         return { success: true, reply: result.reply, model: result.model };
       }
