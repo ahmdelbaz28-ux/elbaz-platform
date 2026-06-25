@@ -23,6 +23,8 @@ export default function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [step, setStep] = useState<Step>("enterEmail");
+  const [recoveryLink, setRecoveryLink] = useState<string | null>(null);
+  const [deliveryWarning, setDeliveryWarning] = useState<string | null>(null);
 
   const forgotMutation = trpc.auth.forgotPassword.useMutation({
     onSuccess: (data) => {
@@ -33,9 +35,12 @@ export default function ForgotPassword() {
       // domain) to the user instead of letting them wait for an email that
       // will never arrive.
       if (data.deliveryWarning) {
-        setTimeout(() => {
-          toast.warning(data.deliveryWarning, { duration: 8000 });
-        }, 1500);
+        setDeliveryWarning(data.deliveryWarning);
+      }
+      // If the server returned a recovery link (email delivery failed),
+      // show it on the page so the user can reset without email.
+      if (data.recoveryLink) {
+        setRecoveryLink(data.recoveryLink);
       }
     },
     onError: (err) => {
@@ -222,6 +227,31 @@ export default function ForgotPassword() {
 
               {/* Info card */}
               <div className="rounded-xl border border-[#1f2d44] bg-[#111827] p-5">
+                {/* Recovery link (shown when email delivery failed) */}
+                {recoveryLink && (
+                  <div className="mb-4 rounded-lg border border-[rgba(245,158,11,0.3)] bg-[rgba(245,158,11,0.05)] p-4">
+                    <p className="text-sm font-medium text-[#f59e0b]">
+                      {lang === "ar" ? "⚠️ لم يتم إرسال البريد الإلكتروني" : "⚠️ Email could not be delivered"}
+                    </p>
+                    <p className="mt-2 text-xs leading-relaxed text-[#94a3b8]">
+                      {deliveryWarning || (lang === "ar"
+                        ? "نظام البريد الإلكتروني غير مُهيأ بالكامل بعد. استخدم الرابط أدناه لإعادة تعيين كلمة المرور مباشرة:"
+                        : "Email delivery is not fully set up yet. Use the link below to reset your password directly:")}
+                    </p>
+                    <a
+                      href={recoveryLink}
+                      className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-[#06b6d4] px-4 py-2.5 text-sm font-semibold text-[#0a0e17] transition-all hover:bg-[#0891b2]"
+                    >
+                      {lang === "ar" ? "إعادة تعيين كلمة المرور الآن" : "Reset Password Now"}
+                    </a>
+                    <p className="mt-2 text-xs text-[#64748b]">
+                      {lang === "ar"
+                        ? "الرابط صالح لمدة 15 دقيقة وللاستخدام مرة واحدة فقط"
+                        : "Link expires in 15 minutes and is single-use only"}
+                    </p>
+                  </div>
+                )}
+
                 <div className="space-y-3">
                   <div className="flex items-start gap-3">
                     <div className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[rgba(6,182,212,0.15)]">

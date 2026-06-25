@@ -44,16 +44,21 @@ export default function Login() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleClientId, setGoogleClientId] = useState("");
 
-  // Fetch Google Client ID from server health endpoint
+  // Fetch Google Client ID from the dedicated /api/env endpoint.
+  // This is lighter than /api/health and returns exactly what we need.
   useEffect(() => {
-    fetch("/api/health", { cache: "no-store" })
+    fetch("/api/env", { cache: "no-store" })
       .then(r => r.json())
       .then(data => {
-        if (data?.env?.GOOGLE_CLIENT_ID) {
-          setGoogleClientId(data.env.GOOGLE_CLIENT_ID);
+        if (data?.GOOGLE_CLIENT_ID) {
+          setGoogleClientId(data.GOOGLE_CLIENT_ID);
+        } else {
+          console.warn("[GoogleAuth] GOOGLE_CLIENT_ID not found in /api/env response");
         }
       })
-      .catch(() => { /* Google Sign-In optional */ });
+      .catch((err) => {
+        console.warn("[GoogleAuth] Could not fetch /api/env:", err.message);
+      });
   }, []);
 
   // Handle Google Sign-In response
@@ -281,6 +286,9 @@ export default function Login() {
                   placeholder={t("enterUsername")}
                   className="mt-1 border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8] placeholder:text-[#64748b] focus:border-[#06b6d4] focus:ring-[#06b6d4]"
                   autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   required
                 />
               </div>
@@ -304,6 +312,7 @@ export default function Login() {
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder={t("enterPassword")}
                     className="border-[#1f2d44] bg-[#0a0e17] pr-10 text-[#f0f4f8] placeholder:text-[#64748b] focus:border-[#06b6d4] focus:ring-[#06b6d4]"
+                    autoComplete="current-password"
                     required
                   />
                   <button

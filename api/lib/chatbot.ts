@@ -894,8 +894,10 @@ export async function getStreamResponse(request: {
           max_tokens: 2048,
           stream: true,
         }),
-        // Long timeout: reasoning models think before emitting content.
-        signal: AbortSignal.timeout(120000),
+        // Long timeout: reasoning models (GLM-5.1-FP8) think before emitting
+        // content. The initial connection can take 60-90s while the model
+        // reasons. Give it 180s to open the stream.
+        signal: AbortSignal.timeout(180000),
       });
     } catch (e) {
       modalConsecFails++;
