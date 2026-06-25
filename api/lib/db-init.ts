@@ -252,6 +252,22 @@ export async function ensureDatabase(): Promise<void> {
         console.warn("[DB] Testimonial refresh warning:", message);
       }
 
+      // ── Course thumbnail fix ─────────────────────────────────────────────
+      // Ensure each course uses the correct, matching thumbnail image.
+      // "Power Systems Fundamentals" was using /course-panel.jpg (a control
+      // panel photo) instead of /course-cable.jpg (power transmission lines
+      // which is a much better match for a power systems fundamentals course).
+      try {
+        console.log("[DB] Fixing course thumbnails...");
+        await conn.execute(
+          `UPDATE courses SET thumbnail = '/course-cable.jpg' WHERE slug = 'power-systems-basics' AND thumbnail = '/course-panel.jpg'`
+        );
+        console.log("[DB] ✅ Course thumbnails fixed");
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn("[DB] Course thumbnail fix warning:", message);
+      }
+
       migrationDone = true;
       return;
     }
@@ -300,7 +316,7 @@ export async function ensureDatabase(): Promise<void> {
          'A comprehensive introduction to electrical power systems covering generation, transmission, distribution, and load analysis fundamentals.',
          'مقدمة شاملة لأنظمة الطاقة الكهربائية تغطي التوليد والنقل والتوزيع وأساسيات تحليل الأحمال.',
          'Learn power system basics from scratch', 'تعلم أساسيات أنظمة الطاقة من الصفر',
-          '/course-panel.jpg', 'beginner', 0, '0.00', 8, 4.8, 24, 156, 'Eng Ahmed Elbaz', 1, 1, 1, NOW(), NOW())`,
+          '/course-cable.jpg', 'beginner', 0, '0.00', 8, 4.8, 24, 156, 'Eng Ahmed Elbaz', 1, 1, 1, NOW(), NOW())`,
 
       // Course 2: ETAP Full Course (PREMIUM)
       `INSERT IGNORE INTO courses (slug, categoryId, titleEn, titleAr, descriptionEn, descriptionAr, shortDescEn, shortDescAr, thumbnail, level, isPremium, price, originalPrice, durationHours, rating, reviewCount, studentCount, instructorName, isPublished, isFeatured, sortOrder, createdAt, updatedAt)
