@@ -327,40 +327,19 @@ async function validateModalKey(): Promise<boolean> {
     modalKeyValid = false;
     return false;
   }
-  // Modal tokens don't have a public verify endpoint, so we treat a key as
-  // valid until an actual request proves otherwise. We do a minimal probe.
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(function() { controller.abort(); }, 8000);
-    const response = await fetch(MODAL_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Authorization": "Bearer " + MODAL_API_KEY,
-        "Content-Type": "application/json",
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: MODAL_MODEL,
-        messages: [{ role: "user", content: "ping" }],
-        max_tokens: 1,
-      }),
-    });
-    clearTimeout(timeoutId);
-
-    if (response.status === 401 || response.status === 403) {
-      modalKeyValid = false;
-      console.error("[Chatbot/Modal] API key rejected (" + response.status + ")");
-      return false;
-    }
-    // Any other status (200, or even a 5xx) means the key was accepted by the gateway
-    modalKeyValid = true;
-    return true;
-  } catch (e) {
-    // Network error during probe — assume valid, let real requests decide
-    console.warn("[Chatbot/Modal] Could not probe key (network error):", String(e));
-    modalKeyValid = true;
-    return true;
+  // Modal doesn't have a lightweight key-verify endpoint, and probing with a
+  // real chat request takes too long for reasoning models (GLM-5.1-FP8 can
+  // spend 30+ seconds thinking even for "ping" with max_tokens=1).
+  // Instead, just check the key format and mark as valid. The actual chat
+  // request will set modalKeyValid=false on 401/403.
+  //
+  // Modal research keys start with "modalresearch_" or "ak-".
+  if (!MODAL_API_KEY.startsWith("modalresearch_") && !MODAL_API_KEY.startsWith("ak-")) {
+    console.warn("[Chatbot/Modal] API key has unexpected format (starts with:", MODAL_API_KEY.substring(0, 15) + "...). Proceeding anyway.");
   }
+  modalKeyValid = true;
+  console.log("[Chatbot/Modal] API key configured (will be validated on first request).");
+  return true;
 }
 
 /**
