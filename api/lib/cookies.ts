@@ -96,7 +96,4 @@ export function clearAuthCookies(headers: Headers): string[] {
   ];
 }
 
-/** @deprecated Use clearAuthCookies() instead — returns array for proper Set-Cookie handling */
-export function clearAuthCookie(headers: Headers): string {
-  return clearAuthCookies(headers).join(", ");
-}
+

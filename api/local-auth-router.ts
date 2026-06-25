@@ -9,6 +9,7 @@ import { createToken } from "./lib/jwt";
 import { initiatePasswordReset, completePasswordReset, initiateEmailVerification, completeEmailVerification } from "./lib/email";
 // ✅ SECURITY FIX: Import auth cookie helpers for httpOnly cookie auth
 import { serializeAuthCookie, serializeAuthFlagCookie, clearAuthCookies } from "./lib/cookies";
+import { logger } from "./lib/logger";
 
 // ─── Shared Response Types ─────────────────────────────────────────────────────
 
@@ -57,7 +58,7 @@ export const localAuthRouter = createRouter({
         await checkRateLimit(ip, "register");
       } catch (rlErr: any) {
         const retrySec = Math.ceil((rlErr?.cause?.retryAfterMs ?? 60000) / 1000);
-        console.warn(`[Auth] Rate limited register attempt from ${ip}, retry in ${retrySec}s`);
+        logger.warn("Rate limited register attempt", { ip, retryAfterSec: retrySec });
         throw new TRPCError({
           code: "TOO_MANY_REQUESTS",
           message: `Too many registration attempts. Please wait ${retrySec} seconds before trying again.`,
@@ -165,17 +166,16 @@ export const localAuthRouter = createRouter({
           try {
             const result = await initiateEmailVerification(userId, safeEmail, ctx.req.headers);
             if (result.success) {
-              console.log(`[Auth] Verification email sent to ${safeEmail} for user ${userId}`);
+              logger.info("Verification email sent", { userId, email: safeEmail });
             } else {
-              console.warn(`[Auth] Verification email not sent to ${safeEmail}: ${result.message}`);
+              logger.warn("Verification email not sent", { userId, email: safeEmail, reason: result.message });
             }
           } catch (emailErr) {
-            // Don't fail registration if email sending breaks
-            console.error("[Auth] Failed to send verification email:", (emailErr as Error).message);
+            logger.error("Failed to send verification email", { userId, error: (emailErr as Error).message });
           }
         }
 
-        console.log(`[Auth] Registration successful: user=${input.username}, id=${userId}, email=${safeEmail || "none"}`);
+        logger.info("Registration successful", { userId, username: input.username, email: safeEmail });
         return responseData;
       } catch (err) {
 

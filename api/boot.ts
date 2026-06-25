@@ -470,31 +470,20 @@ async function start() {
   console.log(`[Server] Environment: ${env.NODE_ENV}`);
   console.log(`[Server] Frontend: ${env.FRONTEND_URL}`);
 
-  process.on("SIGTERM", () => {
-    console.log("[Server] SIGTERM received, shutting down...");
+  const shutdownHandler = async (signal: string) => {
+    console.log(`[Server] ${signal} received, shutting down...`);
     try {
-      import("../cache/index.js").then(({ default: ElbazCache }) => {
-        ElbazCache.engine.destroy();
-        ElbazCache.short.destroy();
-        ElbazCache.long.destroy();
-        ElbazCache.session.destroy();
-      });
+      const { default: ElbazCache } = await import("../cache/index.js");
+      ElbazCache.engine.destroy();
+      ElbazCache.short.destroy();
+      ElbazCache.long.destroy();
+      ElbazCache.session.destroy();
     } catch {}
     server.close(() => process.exit(0));
-  });
+  };
 
-  process.on("SIGINT", () => {
-    console.log("[Server] SIGINT received, shutting down...");
-    try {
-      import("../cache/index.js").then(({ default: ElbazCache }) => {
-        ElbazCache.engine.destroy();
-        ElbazCache.short.destroy();
-        ElbazCache.long.destroy();
-        ElbazCache.session.destroy();
-      });
-    } catch {}
-    server.close(() => process.exit(0));
-  });
+  process.on("SIGTERM", () => shutdownHandler("SIGTERM"));
+  process.on("SIGINT", () => shutdownHandler("SIGINT"));
 }
 
 start().catch((err) => {

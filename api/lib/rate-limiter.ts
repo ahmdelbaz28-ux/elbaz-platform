@@ -86,12 +86,12 @@ type RateLimitAction = "login" | "register" | "forgotPassword" | "resetPassword"
 
 async function checkRateLimit(ip: string, _action: RateLimitAction): Promise<void> {
   const { env } = await import("./env.js");
-  if (env.isProduction && !redisClient && !env.REDIS_URL) {
-    if (!redisWarningLogged) {
-      console.warn("[RateLimiter] Redis not configured, rate limiting disabled in production");
-      redisWarningLogged = true;
+  if (!redisClient && !redisWarningLogged) {
+    redisWarningLogged = true;
+    if (env.isProduction) {
+      console.warn("[RateLimiter] Redis not configured — falling back to in-memory rate limiter");
     }
-    return;
+    // Fall through to in-memory rate limiter (initialized in getRateLimiter)
   }
 
   try {
