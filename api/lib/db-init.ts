@@ -254,13 +254,33 @@ export async function ensureDatabase(): Promise<void> {
 
       // ── Course thumbnail fix ─────────────────────────────────────────────
       // Ensure each course uses the correct, matching thumbnail image.
-      // "Power Systems Fundamentals" was using /course-panel.jpg (a control
-      // panel photo) instead of /course-cable.jpg (power transmission lines
-      // which is a much better match for a power systems fundamentals course).
+      // Some courses had old placeholder thumbnails or mismatched images.
+      // This UPDATE runs on every boot to keep thumbnails in sync with
+      // the professional AI-generated images in /public/course-*.jpg
       try {
         console.log("[DB] Fixing course thumbnails...");
         await conn.execute(
-          `UPDATE courses SET thumbnail = '/course-cable.jpg' WHERE slug = 'power-systems-basics' AND thumbnail = '/course-panel.jpg'`
+          `UPDATE courses SET thumbnail = '/course-cable.jpg' WHERE slug = 'power-systems-basics'`
+        );
+        await conn.execute(
+          `UPDATE courses SET thumbnail = '/course-etap.jpg' WHERE slug = 'etap-complete-course'`
+        );
+        await conn.execute(
+          `UPDATE courses SET thumbnail = '/course-skm.jpg' WHERE slug = 'protection-relay-coordination'`
+        );
+        await conn.execute(
+          `UPDATE courses SET thumbnail = '/course-pvsyst.jpg' WHERE slug = 'renewable-energy-design'`
+        );
+        // Also fix any courses with old placeholder thumbnails
+        await conn.execute(
+          `UPDATE courses SET thumbnail = '/course-powerfactory.jpg' WHERE thumbnail LIKE '%/images/courses/%' AND slug NOT IN ('power-systems-basics','etap-complete-course','protection-relay-coordination','renewable-energy-design')`
+        );
+        // Fix remaining old-format thumbnails
+        await conn.execute(
+          `UPDATE courses SET thumbnail = REPLACE(thumbnail, '/images/courses/etap-thumb.jpg', '/course-etap.jpg') WHERE thumbnail LIKE '%etap-thumb%'`
+        );
+        await conn.execute(
+          `UPDATE courses SET thumbnail = REPLACE(thumbnail, '/images/courses/power-basics-thumb.jpg', '/course-cable.jpg') WHERE thumbnail LIKE '%power-basics-thumb%'`
         );
         console.log("[DB] ✅ Course thumbnails fixed");
       } catch (err) {
