@@ -146,6 +146,14 @@ app.get("/api/version", (c) => {
   });
 });
 
+// ── Public env endpoint (used by frontend to get GOOGLE_CLIENT_ID, etc.) ──
+// Dedicated endpoint so the frontend doesn't have to parse /api/health.
+// Returns only safe, public keys — never secrets.
+app.get("/api/env", async (c) => {
+  const { getPublicEnvKeys } = await import("./lib/env.js");
+  return c.json(getPublicEnvKeys());
+});
+
 // ── Dynamic Sitemap ──
 // Generates sitemap.xml from live DB data so URLs + lastmod are always accurate.
 // Cached for 1 hour to avoid DB query on every request.
