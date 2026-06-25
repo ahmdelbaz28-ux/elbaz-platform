@@ -471,12 +471,13 @@ async function validateOpenRouterKey(): Promise<boolean> {
   if (!OPENROUTER_API_KEY) {
     openrouterKeyValid = false;
     openrouterKeyValidated = true;
+    console.warn("[Chatbot/OpenRouter] No OPENROUTER_API_KEY configured — chatbot will not work without either MODAL_API_KEY or OPENROUTER_API_KEY.");
     return false;
   }
   if (!OPENROUTER_API_KEY.startsWith("sk-or-")) {
     openrouterKeyValid = false;
     openrouterKeyValidated = true;
-    console.error("[Chatbot/OpenRouter] Invalid API key format — must start with 'sk-or-'");
+    console.error("[Chatbot/OpenRouter] Invalid API key format — must start with 'sk-or-'. Current key starts with:", OPENROUTER_API_KEY.substring(0, 6) + "...");
     return false;
   }
   try {
@@ -489,11 +490,17 @@ async function validateOpenRouterKey(): Promise<boolean> {
     if (!resp.ok) {
       const errData = await resp.json().catch(function() { return {}; });
       console.error("[Chatbot/OpenRouter] API key validation failed:", JSON.stringify(errData));
+      console.error("[Chatbot/OpenRouter] The OPENROUTER_API_KEY in HF Space Secrets is invalid or expired.");
+      console.error("[Chatbot/OpenRouter] Get a new key at https://openrouter.ai/keys and update it in HF Space Settings → Repository secrets.");
+    } else {
+      console.log("[Chatbot/OpenRouter] API key validated successfully.");
     }
     return openrouterKeyValid;
   } catch (e) {
-    console.warn("[Chatbot/OpenRouter] Could not validate API key (network error):", String(e));
-    return true; // Assume valid and let actual requests determine
+    console.warn("[Chatbot/OpenRouter] Could not validate API key (network error — assuming valid):", String(e));
+    openrouterKeyValid = true; // Assume valid and let actual requests determine
+    openrouterKeyValidated = true;
+    return true;
   }
 }
 
