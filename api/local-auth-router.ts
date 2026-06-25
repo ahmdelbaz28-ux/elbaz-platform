@@ -193,6 +193,10 @@ export const localAuthRouter = createRouter({
       z.object({
         username: z.string().min(1),
         password: z.string().min(1),
+        // "Remember me" flag — when true (default), the auth cookie gets a
+        // 30-day maxAge. When false, no maxAge is set so the cookie becomes
+        // a session cookie that's deleted when the browser closes.
+        remember: z.boolean().optional().default(true),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -284,8 +288,9 @@ export const localAuthRouter = createRouter({
       await clearRateLimit(loginIp, "login");
 
       // ✅ SECURITY FIX: Set JWT in httpOnly cookie instead of returning only in body
-      const authCookie = serializeAuthCookie(ctx.req.headers, token);
-      const flagCookie = serializeAuthFlagCookie(ctx.req.headers);
+      const remember = input.remember !== false; // default true
+      const authCookie = serializeAuthCookie(ctx.req.headers, token, remember);
+      const flagCookie = serializeAuthFlagCookie(ctx.req.headers, remember);
       ctx.resHeaders.append("set-cookie", authCookie);
       ctx.resHeaders.append("set-cookie", flagCookie);
 

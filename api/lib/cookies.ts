@@ -26,38 +26,47 @@ export const AUTH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60; // 30 days in seconds (mat
 // Prevents unnecessary auth.me requests on every page load for unauthenticated users
 export const AUTH_FLAG_COOKIE_NAME = "elbaz_auth_flag";
 
-export function getAuthCookieOptions(headers: Headers): CookieOptions {
+/**
+ * Build cookie options. When `remember` is false, NO maxAge is set → the
+ * cookie becomes a "session cookie" that's automatically deleted when the
+ * browser closes. When true (default), the cookie persists for 30 days.
+ */
+export function getAuthCookieOptions(headers: Headers, remember: boolean = true): CookieOptions {
   const localhost = isLocalhost(headers);
-  return {
+  const opts: CookieOptions = {
     httpOnly: true,
     path: "/",
     sameSite: localhost ? "Lax" : "None",
     secure: !localhost,
-    maxAge: AUTH_COOKIE_MAX_AGE,
   };
+  if (remember) {
+    opts.maxAge = AUTH_COOKIE_MAX_AGE;
+  }
+  // When remember === false, omit maxAge entirely → session cookie
+  return opts;
 }
 
 /** Serialize an auth cookie (set on login/register) */
-export function serializeAuthCookie(headers: Headers, token: string): string {
-  const opts = getAuthCookieOptions(headers);
+export function serializeAuthCookie(headers: Headers, token: string, remember: boolean = true): string {
+  const opts = getAuthCookieOptions(headers, remember);
   return cookie.serialize(AUTH_COOKIE_NAME, token, {
     httpOnly: opts.httpOnly,
     path: opts.path,
     sameSite: opts.sameSite?.toLowerCase() as "lax" | "none",
     secure: opts.secure,
-    maxAge: opts.maxAge,
+    ...(opts.maxAge !== undefined ? { maxAge: opts.maxAge } : {}),
   });
 }
 
 /** Serialize a non-HttpOnly flag cookie (readable from JS to guard auth.me calls) */
-export function serializeAuthFlagCookie(headers: Headers): string {
-  const opts = getAuthCookieOptions(headers);
+export function serializeAuthFlagCookie(headers: Headers, remember: boolean = true): string {
+  const opts = getAuthCookieOptions(headers, remember);
   return cookie.serialize(AUTH_FLAG_COOKIE_NAME, "1", {
     httpOnly: false, // Must be readable from JavaScript
     path: opts.path,
     sameSite: opts.sameSite?.toLowerCase() as "lax" | "none",
     secure: opts.secure,
-    maxAge: opts.maxAge,
+    ...(opts.maxAge !== undefined ? { maxAge: opts.maxAge } : {}),
   });
 }
 

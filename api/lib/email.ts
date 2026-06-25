@@ -45,8 +45,24 @@ function getFrontendUrl(headers?: Headers): string {
  * Send an email using the configured provider.
  * In development, just logs to console.
  * In production, use a real email service.
+ *
+ * Returns an object with `ok` + optional diagnostics so callers can surface
+ * a useful error to the user (e.g. Resend sandbox limitation).
  */
+export interface SendEmailResult {
+  ok: boolean;
+  /** Human-readable reason for failure (safe to log + show in dev mode). */
+  reason?: string;
+  /** True if the failure is due to Resend's sandbox / unverified domain. */
+  needsDomainVerification?: boolean;
+}
+
 export async function sendEmail(message: EmailMessage): Promise<boolean> {
+  const result = await sendEmailWithDiagnostics(message);
+  return result.ok;
+}
+
+export async function sendEmailWithDiagnostics(message: EmailMessage): Promise<SendEmailResult> {
   if (!env.isProduction) {
     // Development: Log email to console
     console.log(JSON.stringify({
@@ -57,35 +73,55 @@ export async function sendEmail(message: EmailMessage): Promise<boolean> {
       subject: message.subject,
       textPreview: message.text.substring(0, 200),
     }));
-    return true;
+    return { ok: true };
   }
 
   // Production: Use configured email provider
-  if (env.RESEND_API_KEY) {
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${env.RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: `Ahmed Elbaz Platform <${env.RESEND_FROM_EMAIL}>`,
-        to: message.to,
-        subject: message.subject,
-        html: message.html,
-        text: message.text,
-      }),
-    });
-    if (!response.ok) {
-      const errBody = await response.text().catch(() => "");
-      console.error("[Email/Resend] Error " + response.status + ": " + errBody);
-      return false;
-    }
-    return true;
-  } else {
+  if (!env.RESEND_API_KEY) {
     console.error("No email provider configured (RESEND_API_KEY not set)");
-    return false;
+    return { ok: false, reason: "Email service not configured" };
   }
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: `Ahmed Elbaz Platform <${env.RESEND_FROM_EMAIL}>`,
+      to: message.to,
+      subject: message.subject,
+      html: message.html,
+      text: message.text,
+    }),
+  });
+
+  if (!response.ok) {
+    const errBody = await response.text().catch(() => "");
+    console.error(`[Email/Resend] Error ${response.status}: ${errBody}`);
+
+    // Detect Resend's "sandbox / unverified domain" 403 error so the caller
+    // can tell the user the actual reason instead of a generic "email sent".
+    // Example Resend 403 body:
+    //   {"statusCode":403,"name":"validation_error",
+    //    "message":"You can only send testing emails to your own email
+    //    address (you@example.com). To send emails to other recipients,
+    //    please verify a domain at resend.com/domains"}
+    const isSandboxBlock =
+      response.status === 403 &&
+      (errBody.includes("testing emails") || errBody.includes("verify a domain"));
+
+    return {
+      ok: false,
+      reason: isSandboxBlock
+        ? "Resend domain not verified — sandbox mode only allows sending to the account owner's email."
+        : `Resend API error ${response.status}`,
+      needsDomainVerification: isSandboxBlock,
+    };
+  }
+
+  return { ok: true };
 }
 
 /**
@@ -95,6 +131,9 @@ export async function sendEmail(message: EmailMessage): Promise<boolean> {
 export async function initiatePasswordReset(email: string, headers?: Headers): Promise<{
   success: boolean;
   message: string;
+  /** Present only when the email couldn't actually be delivered (e.g. Resend
+   *  sandbox mode). Frontend can show this as a warning to the user. */
+  deliveryWarning?: string;
 }> {
   const db = getDb();
 
@@ -148,7 +187,7 @@ export async function initiatePasswordReset(email: string, headers?: Headers): P
 
   // Send the reset email
   const name = (user.name || user.username).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  const emailSent = await sendEmail({
+  const sendResult = await sendEmailWithDiagnostics({
     to: user.email,
     subject: "Password Reset — Ahmed Elbaz Electrical Engineering Platform",
     html: `
@@ -171,8 +210,20 @@ export async function initiatePasswordReset(email: string, headers?: Headers): P
     text: `Hello ${name},\n\nWe received a request to reset your password.\n\nReset link: ${resetUrl}\n\nThis link expires in ${RESET_TOKEN_EXPIRY_MINUTES} minutes.\n\nIf you didn't request this, ignore this email.`,
   });
 
-  if (!emailSent) {
-    console.error("[Email] Failed to send password reset email to:", user.email);
+  if (!sendResult.ok) {
+    console.error("[Email] Failed to send password reset email to:", user.email, "-", sendResult.reason);
+    // Surface the actual reason to the caller so it can be returned to the
+    // user (especially important for the Resend sandbox limitation, which is
+    // by far the most common cause of "I never got the email" reports).
+    // We still return success=true to prevent email enumeration, but include
+    // a `deliveryWarning` field that the frontend can show when present.
+    return {
+      success: true,
+      message: genericMessage,
+      deliveryWarning: sendResult.needsDomainVerification
+        ? "Email delivery is currently limited (email domain not verified). Please contact support to reset your password."
+        : sendResult.reason,
+    };
   }
 
   return { success: true, message: genericMessage };

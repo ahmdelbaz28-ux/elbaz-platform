@@ -12,8 +12,14 @@ const envSchema = z.object({
   DATABASE_SSL_CA: z.string().optional(),
 
   APP_SECRET: z.string().min(32, "APP_SECRET must be at least 32 characters"),
-  JWT_ACCESS_EXPIRY: z.string().default("15m"),
-  JWT_REFRESH_EXPIRY: z.string().default("7d"),
+  // JWT access token TTL — defaults to 7 days so the cookie (30d) actually
+  // keeps the user logged in between visits. The sliding-session middleware
+  // in context.ts re-issues the token when < 2h remain, so active users stay
+  // logged in indefinitely. MUST be longer than SLIDING_REFRESH_THRESHOLD_S
+  // (2h) or the refresh never triggers and users get logged out after the
+  // token expires.
+  JWT_ACCESS_EXPIRY: z.string().default("7d"),
+  JWT_REFRESH_EXPIRY: z.string().default("30d"),
 
   R2_ACCOUNT_ID: z.string().optional(),
   R2_ACCESS_KEY_ID: z.string().optional(),

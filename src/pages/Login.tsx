@@ -7,6 +7,7 @@ import { Zap, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { trackPlatform, identifyUser } from "@/lib/clarity";
 import { isNativePlatform, setStoredToken } from "@/lib/auth-storage";
 
@@ -38,6 +39,7 @@ export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [remember, setRemember] = useState(true);
   const [error, setError] = useState("");
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleClientId, setGoogleClientId] = useState("");
@@ -203,7 +205,7 @@ export default function Login() {
       toast.error(msg);
       return;
     }
-    loginMutation.mutate({ username: username.trim(), password });
+    loginMutation.mutate({ username: username.trim(), password, remember });
   };
 
   return (
@@ -313,6 +315,19 @@ export default function Login() {
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
+              </div>
+
+              {/* Remember me */}
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="remember-me"
+                  checked={remember}
+                  onCheckedChange={(v) => setRemember(v === true)}
+                  className="border-[#1f2d44] data-[state=checked]:bg-[#06b6d4] data-[state=checked]:border-[#06b6d4]"
+                />
+                <Label htmlFor="remember-me" className="text-sm text-[#94a3b8] cursor-pointer select-none">
+                  {lang === "ar" ? "تذكّرني على هذا الجهاز" : "Remember me on this device"}
+                </Label>
               </div>
             </div>
 
