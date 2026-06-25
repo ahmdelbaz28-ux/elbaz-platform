@@ -336,15 +336,29 @@ async function getCourseCount(): Promise<number> {
 }
 
 // HTML route handler — registered BEFORE serveStatic so it wins for "/"
-// and all SPA routes. Only handles requests that want HTML (browser nav).
-app.get("*", async (c) => {
+// and all SPA routes. Implemented as a MIDDLEWARE (not a route handler)
+// because we need to call next() to fall through to serveStatic for
+// non-HTML requests (static assets, API calls). Route handlers in Hono
+// can only respond or 404 — they can't fall through.
+app.use("*", async (c, next) => {
   const accept = c.req.header("accept") ?? "";
   const wantsHtml = accept.includes("text/html");
+  const path = c.req.path;
 
-  // If the request doesn't want HTML (e.g. an asset fetch, API call, or
-  // curl without Accept header), fall through to serveStatic / other routes.
+  // Skip if this isn't a browser navigation request
   if (!wantsHtml) {
-    return c.notFound();
+    return next(); // → serveStatic handles static assets
+  }
+
+  // Skip API routes
+  if (path.startsWith("/api/")) {
+    return next();
+  }
+
+  // Skip requests that look like static assets (even if Accept: text/html
+  // is present, which can happen with some browsers/prefetchers)
+  if (path.match(/\.(js|css|png|jpg|jpeg|svg|ico|woff2?|ttf|eot|webmanifest|webp|avif|gif|map|txt|xml|json)$/)) {
+    return next();
   }
 
   try {
@@ -362,13 +376,8 @@ app.get("*", async (c) => {
         `<head$1><meta name="csp-nonce" content="${nonce}">`
       );
       // Add nonce attribute to ALL inline <script> tags (those without src).
-      // This prevents CSP "script-src-elem" violations for:
-      //   - the self-healing chunk-error listener
-      //   - the lazy GSI loader
-      //   - the Clarity analytics snippet
-      //   - the theme-detection FOUC-prevention script
-      //   - any future inline scripts
-      // External scripts (with src=) are unaffected — they're allowed via 'self'.
+      // This prevents CSP "script-src-elem" violations for inline scripts.
+      // External scripts (with src=) are unaffected — allowed via 'self'.
       html = html.replace(
         /<script(?![^>]*\ssrc=)([^>]*)>/g,
         `<script nonce="${nonce}"$1>`
