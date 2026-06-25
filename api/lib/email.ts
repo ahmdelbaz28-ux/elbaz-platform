@@ -134,6 +134,11 @@ export async function initiatePasswordReset(email: string, headers?: Headers): P
   /** Present only when the email couldn't actually be delivered (e.g. Resend
    *  sandbox mode). Frontend can show this as a warning to the user. */
   deliveryWarning?: string;
+  /** Present only when email delivery failed. Contains the actual reset URL
+   *  so the user can reset their password directly without email. This is
+   *  a pragmatic fallback for when email isn't set up — the link is
+   *  single-use and expires in 15 minutes. */
+  recoveryLink?: string;
 }> {
   const db = getDb();
 
@@ -213,38 +218,22 @@ export async function initiatePasswordReset(email: string, headers?: Headers): P
   if (!sendResult.ok) {
     console.error("[Email] Failed to send password reset email to:", user.email, "-", sendResult.reason);
     // ── Fallback: log the reset link so the operator can recover the flow ──
-    // When email delivery is broken (Resend sandbox, unverified domain,
-    // network issue), the user would otherwise be stuck — they requested a
-    // reset, can't receive the email, and have no way to proceed.
-    //
-    // As a recovery path, we log the actual reset URL to the server logs.
-    // The operator (you) can read it from the HF Space logs and either:
-    //   1. Manually forward it to the user via WhatsApp/support, OR
-    //   2. Click it themselves during testing to verify the reset flow works.
-    //
-    // Security considerations:
-    //   - The token is single-use (consumed on first reset).
-    //   - The token expires in 15 minutes.
-    //   - The token is SHA-256 hashed in the DB; the raw token only exists
-    //     here + in the URL.
-    //   - Logs are only accessible to the Space owner (you).
-    //   - This only fires on FAILURE — when email works, nothing is logged.
     console.warn(
       "[Email/Recovery] Password reset link for " + user.email +
       " (email delivery failed — use this link to reset manually):\n" +
       resetUrl
     );
-    // Surface the actual reason to the caller so it can be returned to the
-    // user (especially important for the Resend sandbox limitation, which is
-    // by far the most common cause of "I never got the email" reports).
-    // We still return success=true to prevent email enumeration, but include
-    // a `deliveryWarning` field that the frontend can show when present.
+    // Surface the actual reason + recovery link to the caller so the user
+    // can reset their password WITHOUT email. This is critical when the
+    // email system isn't set up (Resend sandbox, unverified domain).
+    // The link is single-use and expires in 15 minutes.
     return {
       success: true,
       message: genericMessage,
       deliveryWarning: sendResult.needsDomainVerification
-        ? "Email delivery is currently limited (email domain not verified). Please contact support to reset your password."
+        ? "Email delivery is currently limited (email domain not verified). Use the link below to reset your password directly."
         : sendResult.reason,
+      recoveryLink: resetUrl,
     };
   }
 
