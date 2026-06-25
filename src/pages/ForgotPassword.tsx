@@ -29,6 +29,14 @@ export default function ForgotPassword() {
       trackPlatform("forgot_password_requested");
       setStep("sent");
       toast.success(data.message);
+      // Surface email delivery problems (e.g. Resend sandbox / unverified
+      // domain) to the user instead of letting them wait for an email that
+      // will never arrive.
+      if (data.deliveryWarning) {
+        setTimeout(() => {
+          toast.warning(data.deliveryWarning, { duration: 8000 });
+        }, 1500);
+      }
     },
     onError: (err) => {
       trackPlatform("forgot_password_error");
