@@ -157,6 +157,24 @@ export const localAuthRouter = createRouter({
            responseData.token = token;
          }
 
+        // ── Send email verification if user registered with an email ────────
+        // This is non-blocking — if email sending fails, registration still
+        // succeeds. The user can request a new verification link from their
+        // profile page. We just log the failure for the operator.
+        if (safeEmail) {
+          try {
+            const result = await initiateEmailVerification(userId, safeEmail, ctx.req.headers);
+            if (result.success) {
+              console.log(`[Auth] Verification email sent to ${safeEmail} for user ${userId}`);
+            } else {
+              console.warn(`[Auth] Verification email not sent to ${safeEmail}: ${result.message}`);
+            }
+          } catch (emailErr) {
+            // Don't fail registration if email sending breaks
+            console.error("[Auth] Failed to send verification email:", (emailErr as Error).message);
+          }
+        }
+
         console.log(`[Auth] Registration successful: user=${input.username}, id=${userId}, email=${safeEmail || "none"}`);
         return responseData;
       } catch (err) {
