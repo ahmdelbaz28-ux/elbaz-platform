@@ -66,15 +66,19 @@ const poolConfig = createPoolConfig();
 let pool: mysql.Pool;
 let isMockMode = false;
 
-async function initializePool(retries = 3, delay = 1000): Promise<mysql.Pool | null> {
+// Create pool once (mysql2.createPool is lazy — doesn't connect immediately)
+pool = mysql.createPool(poolConfig);
+
+async function testConnection(retries = 3, delay = 1000): Promise<void> {
+  let lastErr: Error | null = null;
   for (let i = 0; i < retries; i++) {
     try {
-      const p = mysql.createPool(poolConfig);
-      await p.execute("SELECT 1");
-      console.log(`[DB] ✅ Connection pool initialized successfully (Attempt ${i + 1}/${retries})`);
-      return p;
+      await pool.execute("SELECT 1");
+      console.log(`[DB] ✅ Connection pool verified (Attempt ${i + 1}/${retries})`);
+      return;
     } catch (err) {
-      console.warn(`[DB] Connection attempt ${i + 1}/${retries} failed.`);
+      lastErr = err as Error;
+      console.warn(`[DB] Connection attempt ${i + 1}/${retries} failed:`, (err as Error).message);
       if (i < retries - 1) {
         await new Promise(res => setTimeout(res, delay));
       }
@@ -82,25 +86,21 @@ async function initializePool(retries = 3, delay = 1000): Promise<mysql.Pool | n
   }
   // SECURITY: In production, never fall back to mock mode — fail loudly
   if (env.NODE_ENV === "production") {
-    console.error("[DB] 🛑 FATAL: Cannot connect to database in production. Exiting.");
+    console.error("[DB] 🛑 FATAL: Cannot connect to database in production. Exiting.", lastErr?.message);
     process.exit(1);
   }
   console.error('[DB] ⚠️ Could not connect to MySQL. Enabling "Elite Sandbox Mode" (In-Memory Data).');
   isMockMode = true;
-  return null;
 }
 
-// Lazy initialization
-pool = mysql.createPool(poolConfig);
-initializePool().then(p => {
-  if (p) pool = p;
-});
+// Fire-and-forget: test connection in background. boot.ts calls ensureDatabase before any queries.
+testConnection();
 
 // Proxy DB object to handle Mock Mode
-const db = new Proxy(drizzle(pool), {
+const drizzleDb = drizzle(pool);
+const db = new Proxy(drizzleDb, {
   get(target, prop, receiver) {
     if (isMockMode) {
-      // Return dummy functions for common DB operations to prevent crashes
       return (..._args: any[]) => {
         console.log(`[Sandbox] Intercepted DB call: ${String(prop)}`);
         return {
@@ -130,7 +130,6 @@ export async function getRawConnection(): Promise<mysql.PoolConnection> {
 }
 
 // ── Transactions ─────────────────────────────────────────────────
-// drizzle-orm 0.45+ supports transactions via db.transaction()
 async function withTransaction<T>(fn: (tx: typeof db) => Promise<T>): Promise<T> {
   return db.transaction(async (tx) => {
     return fn(tx as unknown as typeof db);

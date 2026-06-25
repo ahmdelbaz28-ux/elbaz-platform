@@ -10,11 +10,14 @@
 
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
 import { users } from "@db/schema";
 import { getDb } from "./queries/connection";
 import { createToken } from "./lib/jwt";
 import { serializeAuthCookie, serializeAuthFlagCookie } from "./lib/cookies";
 import { env } from "./lib/env";
+import { checkRateLimit } from "./lib/rate-limiter";
+import { logger } from "./lib/logger";
 
 const googleAuthRouter = new Hono();
 
@@ -109,6 +112,16 @@ googleAuthRouter.options("/", (c) => c.body(null, 204));
  */
 googleAuthRouter.post("/", async (c) => {
   try {
+    const cfIp = c.req.header("cf-connecting-ip");
+    const forwarded = c.req.header("x-forwarded-for");
+    const realIp = c.req.header("x-real-ip");
+    const ip = (cfIp || realIp || (forwarded ? forwarded.split(",").shift()?.trim() : "unknown")) ?? "unknown";
+    try {
+      await checkRateLimit(ip, "login");
+    } catch (rlErr: any) {
+      return c.json({ success: false, error: "Too many requests. Please try again later." }, 429);
+    }
+
     const body = await c.req.json<{ idToken: string }>();
 
     if (!body.idToken || typeof body.idToken !== "string") {
@@ -120,7 +133,7 @@ googleAuthRouter.post("/", async (c) => {
     try {
       googleUser = await verifyGoogleToken(body.idToken);
     } catch (err) {
-      console.error("[GoogleAuth] Token verification failed:", (err as Error).message);
+      logger.error("Google auth token verification failed", { error: (err as Error).message, ip });
       return c.json({ success: false, error: "Invalid Google ID token" }, 401);
     }
 
@@ -161,7 +174,7 @@ googleAuthRouter.post("/", async (c) => {
       });
 
       setAuthCookies(c, token);
-      console.log(`[GoogleAuth] Existing user signed in: ${user.username} (id=${user.id})`);
+      logger.info("Google auth — existing user sign-in", { userId: user.id, username: user.username });
 
       return successResponse(c, {
         id: user.id,
@@ -201,7 +214,7 @@ googleAuthRouter.post("/", async (c) => {
         });
 
         setAuthCookies(c, token);
-        console.log(`[GoogleAuth] Linked Google to existing account: ${user.username} (id=${user.id})`);
+        logger.info("Google auth — linked to existing account", { userId: user.id, username: user.username });
 
         return successResponse(c, {
           id: user.id,
@@ -248,7 +261,7 @@ googleAuthRouter.post("/", async (c) => {
     const userId = Number(resultArr[0]?.insertId);
 
     if (!userId || userId === 0 || !Number.isFinite(userId)) {
-      console.error("[GoogleAuth] Insert succeeded but insertId is invalid");
+      logger.error("Google auth — insert succeeded but insertId invalid");
       return c.json({ success: false, error: "Account creation failed" }, 500);
     }
 
@@ -260,7 +273,7 @@ googleAuthRouter.post("/", async (c) => {
     });
 
     setAuthCookies(c, token);
-    console.log(`[GoogleAuth] New user created via Google: ${username} (id=${userId}, email=${googleEmail})`);
+    logger.info("Google auth — new user created", { userId, username, email: googleEmail });
 
     return successResponse(c, {
       id: userId,
@@ -271,7 +284,7 @@ googleAuthRouter.post("/", async (c) => {
       avatar: googlePicture || null,
     });
   } catch (err) {
-    console.error("[GoogleAuth] Error in /api/google-auth:", err);
+    logger.error("Google auth — unexpected error", { error: String(err) });
     return c.json({ success: false, error: "Internal server error" }, 500);
   }
 });

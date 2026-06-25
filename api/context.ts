@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { AUTH_COOKIE_NAME } from "./lib/cookies";
 import { parse } from "cookie";
 import { serializeAuthCookie, serializeAuthFlagCookie } from "./lib/cookies";
+import { logger } from "./lib/logger";
 
 // ✅ SECURITY FIX: Define a SafeUser type that excludes passwordHash
 // The full User object (including passwordHash) should NEVER be in the tRPC context
@@ -39,7 +40,7 @@ setInterval(() => {
     }
   }
   if (cleaned > 0) {
-    console.log("[Auth Cache] Cleaned " + cleaned + " expired entries");
+    logger.info("Auth cache cleanup", { expiredEntriesCleaned: cleaned });
   }
 }, 2 * 60 * 1000).unref();
 
