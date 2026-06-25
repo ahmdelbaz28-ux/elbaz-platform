@@ -653,8 +653,8 @@ export async function getChatResponse(request: {
     }
     if (modalIsAvailable()) {
       // GLM-5.1-FP8 is a reasoning model — it thinks before answering.
-      // Give it up to 120s (was 75s — too short for complex questions).
-      const result = await tryModal(request.messages, systemPrompt, 120000);
+      // Give it up to 180s (was 120s — still timing out for complex questions).
+      const result = await tryModal(request.messages, systemPrompt, 180000);
       if (result) {
         return { success: true, reply: result.reply, model: result.model };
       }
