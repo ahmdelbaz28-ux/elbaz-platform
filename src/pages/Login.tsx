@@ -45,7 +45,6 @@ export default function Login() {
   const [googleClientId, setGoogleClientId] = useState("");
 
   // Fetch Google Client ID from the dedicated /api/env endpoint.
-  // This is lighter than /api/health and returns exactly what we need.
   useEffect(() => {
     fetch("/api/env", { cache: "no-store" })
       .then(r => r.json())
@@ -60,6 +59,29 @@ export default function Login() {
         console.warn("[GoogleAuth] Could not fetch /api/env:", err.message);
       });
   }, []);
+
+  // Check for Google OAuth error/success in URL params (from redirect flow)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const googleError = params.get("google_error");
+    if (googleError) {
+      const errorMessages: Record<string, { ar: string; en: string }> = {
+        "access_denied": { ar: "تم رفض تسجيل الدخول بجوجل", en: "Google sign-in was denied" },
+        "token_exchange_failed": { ar: "فشل تبادل الرمز مع جوجل. حاول مرة أخرى.", en: "Google token exchange failed. Please try again." },
+        "invalid_token": { ar: "رمز جوجل غير صالح", en: "Invalid Google token" },
+        "state_mismatch": { ar: "خطأ أمني في تسجيل جوجل. حاول مرة أخرى.", en: "Security error in Google sign-in. Please try again." },
+        "callback_error": { ar: "حدث خطأ أثناء تسجيل الدخول بجوجل", en: "An error occurred during Google sign-in" },
+        "missing_params": { ar: "بيانات ناقصة من جوجل", en: "Missing parameters from Google" },
+        "no_id_token": { ar: "لم يتم استلام رمز الهوية من جوجل", en: "No ID token received from Google" },
+        "invalid_user_info": { ar: "معلومات المستخدم من جوجل غير مكتملة", en: "Incomplete user info from Google" },
+      };
+      const msg = errorMessages[googleError]?.[lang] || (lang === "ar" ? "حدث خطأ في تسجيل الدخول بجوجل" : "Google sign-in error occurred");
+      setError(msg);
+      toast.error(msg);
+      // Clean the URL
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [lang]);
 
   // Handle Google Sign-In response
   const handleGoogleCallback = useCallback(async (response: GoogleCredentialResponse) => {
@@ -149,21 +171,14 @@ export default function Login() {
     };
   }, [googleClientId, handleGoogleCallback]);
 
-  // Trigger Google Sign-In popup
+  // Trigger Google Sign-In — uses OAuth redirect flow (works on any domain,
+  // doesn't require "Authorized JavaScript origins" in Google Console).
+  // The GIS popup flow was causing "origin_mismatch" errors because the
+  // custom domain wasn't registered in Google Cloud Console.
   const handleGoogleSignIn = useCallback(() => {
-    if (!window.google?.accounts?.id) {
-      toast.error(lang === "ar" ? "جوجل غير متاح حالياً. حاول مرة أخرى." : "Google Sign-In not available yet. Please try again.");
-      return;
-    }
-    window.google.accounts.id.prompt((response) => {
-      if (response.error) {
-        console.log("[GoogleAuth] User dismissed or error:", response.error);
-        if (response.error !== "user_closed") {
-          toast.error(lang === "ar" ? "حدث خطأ في تسجيل جوجل" : "Google Sign-In error occurred");
-        }
-      }
-    });
-  }, [lang]);
+    // Redirect to our backend endpoint which will redirect to Google
+    window.location.href = "/api/google-auth/redirect";
+  }, []);
 
   const loginMutation = trpc.auth.login.useMutation({
     onSuccess: (data) => {

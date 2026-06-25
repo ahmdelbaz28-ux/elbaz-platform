@@ -105,6 +105,212 @@ function successResponse(c: any, userData: Record<string, unknown>) {
 googleAuthRouter.options("/", (c) => c.body(null, 204));
 
 /**
+ * GET /api/google-auth/redirect
+ *
+ * Redirects the user to Google's OAuth consent screen using the
+ * Authorization Code flow (NOT GIS popup). This flow works on ANY
+ * domain because it uses redirect URIs instead of JavaScript origins.
+ *
+ * After Google authenticates the user, it redirects to:
+ *   /api/google-auth/callback?code=...&state=...
+ */
+googleAuthRouter.get("/redirect", (c) => {
+  const clientId = env.GOOGLE_CLIENT_ID;
+  if (!clientId) {
+    return c.json({ error: "Google OAuth not configured" }, 500);
+  }
+
+  // Build the redirect URI — must match what's in Google Cloud Console
+  const proto = c.req.header("x-forwarded-proto") || "https";
+  const host = c.req.header("x-forwarded-host") || c.req.header("host") || "";
+  const origin = `${proto}://${host}`;
+  const redirectUri = `${origin}/api/google-auth/callback`;
+
+  // State parameter for CSRF protection
+  const state = crypto.randomUUID?.() || Math.random().toString(36).slice(2);
+
+  // Store state in a short-lived cookie for verification
+  c.header("Set-Cookie", `google_oauth_state=${state}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`);
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    scope: "openid email profile",
+    state: state,
+    prompt: "select_account",
+  });
+
+  return c.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
+});
+
+/**
+ * GET /api/google-auth/callback
+ *
+ * Handles the redirect back from Google after the user consents.
+ * Exchanges the authorization code for tokens, verifies the ID token,
+ * creates/updates the user, sets auth cookies, and redirects to home.
+ */
+googleAuthRouter.get("/callback", async (c) => {
+  try {
+    const code = c.req.query("code");
+    const state = c.req.query("state");
+    const error = c.req.query("error");
+
+    // If Google returned an error (user denied, etc.)
+    if (error) {
+      return c.redirect(`/?google_error=${encodeURIComponent(error)}`);
+    }
+
+    if (!code || !state) {
+      return c.redirect("/?google_error=missing_params");
+    }
+
+    // Verify state (CSRF protection)
+    const cookieHeader = c.req.header("cookie") || "";
+    const cookies = Object.fromEntries(
+      cookieHeader.split(";").map(s => s.trim().split("=").map(decodeURIComponent) as [string, string])
+    );
+    if (cookies.google_oauth_state !== state) {
+      return c.redirect("/?google_error=state_mismatch");
+    }
+
+    // Clear the state cookie
+    c.header("Set-Cookie", "google_oauth_state=; Path=/; HttpOnly; Secure; Max-Age=0");
+
+    // Build redirect URI (must match the one used in /redirect)
+    const proto = c.req.header("x-forwarded-proto") || "https";
+    const host = c.req.header("x-forwarded-host") || c.req.header("host") || "";
+    const origin = `${proto}://${host}`;
+    const redirectUri = `${origin}/api/google-auth/callback`;
+
+    // Exchange authorization code for tokens
+    const tokenResp = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code: code,
+        client_id: env.GOOGLE_CLIENT_ID,
+        client_secret: env.GOOGLE_CLIENT_SECRET || "",
+        redirect_uri: redirectUri,
+        grant_type: "authorization_code",
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!tokenResp.ok) {
+      const errBody = await tokenResp.text().catch(() => "");
+      console.error("[GoogleAuth] Token exchange failed:", tokenResp.status, errBody);
+      return c.redirect("/?google_error=token_exchange_failed");
+    }
+
+    const tokens = await tokenResp.json() as { id_token?: string; access_token?: string };
+
+    if (!tokens.id_token) {
+      console.error("[GoogleAuth] No id_token in token response");
+      return c.redirect("/?google_error=no_id_token");
+    }
+
+    // Verify the ID token (reuse existing verification logic)
+    let googleUser: Record<string, unknown>;
+    try {
+      googleUser = await verifyGoogleToken(tokens.id_token);
+    } catch (err) {
+      console.error("[GoogleAuth] Token verification failed:", (err as Error).message);
+      return c.redirect("/?google_error=invalid_token");
+    }
+
+    const googleId = googleUser.sub as string;
+    const googleEmail = (googleUser.email as string) || "";
+    const googleName = (googleUser.name as string) || "";
+    const googlePicture = (googleUser.picture as string) || "";
+
+    if (!googleId || !googleEmail) {
+      return c.redirect("/?google_error=invalid_user_info");
+    }
+
+    const db = getDb();
+
+    // Check if user exists by Google ID
+    const existingByGoogle = await db.select().from(users).where(eq(users.googleId, googleId)).limit(1);
+
+    let userId: number;
+    let username: string;
+    let userRole: string;
+    let userName: string;
+    let userEmail: string | null;
+    let userAvatar: string | null;
+
+    if (existingByGoogle.length > 0) {
+      const user = existingByGoogle[0];
+      await db.update(users).set({ lastSignInAt: new Date(), ...(googlePicture && { avatar: googlePicture }) }).where(eq(users.id, user.id));
+      userId = user.id;
+      username = user.username;
+      userRole = user.role;
+      userName = user.name;
+      userEmail = user.email;
+      userAvatar = googlePicture || user.avatar;
+    } else {
+      // Check by email
+      const existingByEmail = googleEmail ? await db.select().from(users).where(eq(users.email, googleEmail)).limit(1) : [];
+
+      if (existingByEmail.length > 0) {
+        const user = existingByEmail[0];
+        await db.update(users).set({ googleId: googleId, lastSignInAt: new Date(), ...(googlePicture && !user.avatar && { avatar: googlePicture }) }).where(eq(users.id, user.id));
+        userId = user.id;
+        username = user.username;
+        userRole = user.role;
+        userName = user.name;
+        userEmail = user.email;
+        userAvatar = user.avatar;
+      } else {
+        // Create new user
+        let baseUsername = googleEmail.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_").toLowerCase();
+        if (baseUsername.length < 3) baseUsername = "user_" + googleId.slice(0, 6);
+
+        let newUsername = baseUsername;
+        let counter = 1;
+        while (counter <= 100) {
+          const existing = await db.select({ id: users.id }).from(users).where(eq(users.username, newUsername)).limit(1);
+          if (existing.length === 0) break;
+          newUsername = baseUsername + counter;
+          counter++;
+        }
+
+        const insertResult = await db.insert(users).values({
+          username: newUsername,
+          passwordHash: null,
+          googleId: googleId,
+          name: googleName || newUsername,
+          email: googleEmail,
+          avatar: googlePicture || null,
+        });
+
+        const resultArr = Array.isArray(insertResult) ? insertResult : [insertResult];
+        userId = Number(resultArr[0]?.insertId);
+        username = newUsername;
+        userRole = "user";
+        userName = googleName || newUsername;
+        userEmail = googleEmail;
+        userAvatar = googlePicture || null;
+      }
+    }
+
+    // Create JWT + set cookies
+    const token = await createToken({ userId, username, role: userRole, tokenVersion: 0 });
+    setAuthCookies(c, token);
+
+    console.log(`[GoogleAuth/OAuth] User signed in: ${username} (id=${userId})`);
+
+    // Redirect to home page — cookies are set, user is logged in
+    return c.redirect("/");
+  } catch (err) {
+    console.error("[GoogleAuth/OAuth] Callback error:", err);
+    return c.redirect("/?google_error=callback_error");
+  }
+});
+
+/**
  * POST /api/google-auth
  *
  * Body: { idToken: string }
