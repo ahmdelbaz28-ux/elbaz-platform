@@ -14,6 +14,7 @@ import StarfieldBackground from "@/components/StarfieldBackground";
 import { NotificationProvider } from "@/components/NotificationToast";
 import ThemeProvider from "@/components/ThemeProvider";
 import { EngineeringModeProvider } from "@/components/ui/EngineeringMode";
+import "@/engineering-mode.css";
 
 const Home = lazy(() => import("./pages/Home").then(m => ({ default: m.default })));
 const Courses = lazy(() => import("./pages/Courses").then(m => ({ default: m.default })));
