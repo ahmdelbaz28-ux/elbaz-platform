@@ -1,0 +1,53 @@
+{
+  "name": "Elbaz Platform — Electrical Engineering Courses",
+  "short_name": "Elbaz Courses",
+  "description": "Professional electrical engineering courses in ETAP, SKM, PowerFactory, PVSyst, and more. By Eng. Ahmed Elbaz.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#070b12",
+  "theme_color": "#06b6d4",
+  "lang": "ar",
+  "dir": "rtl",
+  "categories": ["education", "productivity", "business"],
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Browse Courses",
+      "short_name": "Courses",
+      "url": "/courses",
+      "description": "View all available courses"
+    },
+    {
+      "name": "My Dashboard",
+      "short_name": "Dashboard",
+      "url": "/dashboard",
+      "description": "View your enrolled courses and progress"
+    },
+    {
+      "name": "Sign In",
+      "short_name": "Login",
+      "url": "/login",
+      "description": "Sign in to your account"
+    }
+  ]
+}
