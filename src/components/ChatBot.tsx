@@ -359,10 +359,37 @@ export default function ChatBot() {
 
         if (data.success && data.reply) {
           if (data.model) setActiveModel(data.model);
+
+          // ── Typewriter effect: simulate streaming for non-streaming fallback ──
+          // When the streaming endpoint fails, the full reply arrives at once.
+          // To keep the UX consistent (text appearing word-by-word), we reveal
+          // the reply incrementally using a word-by-word interval.
+          const fullReply = data.reply;
+          const words = fullReply.split(/(\s+)/); // Split keeping whitespace
+          let displayed = "";
+
+          for (let wi = 0; wi < words.length; wi++) {
+            if (abortControllerRef.current?.signal.aborted) break;
+            displayed += words[wi];
+            setStreamingContent(displayed);
+
+            // Vary the delay slightly to feel natural:
+            // - Shorter delay for short words (a, the, و، في)
+            // - Longer delay after punctuation
+            const word = words[wi].trim();
+            const isPunctuation = /[.!?,،؛:]/.test(word);
+            const delay = isPunctuation ? 80 : (word.length <= 2 ? 20 : 35);
+
+            // Use a promise + setTimeout to yield to the event loop
+            await new Promise<void>(function(resolve) {
+              setTimeout(resolve, delay);
+            });
+          }
+
           const botMsg: Message = {
             id: crypto.randomUUID(),
             role: "assistant",
-            content: data.reply,
+            content: fullReply,
             timestamp: new Date(),
             model: data.model || undefined,
           };
@@ -599,9 +626,9 @@ export default function ChatBot() {
                       </div>
 
                       {/* Message Bubble */}
-                      <div className="flex flex-col max-w-[80%]">
+                      <div className="flex flex-col max-w-[85%] min-w-0">
                         <div
-                          className={"relative group px-3.5 py-2.5 rounded-2xl text-[13.5px] leading-relaxed " +
+                          className={"relative group px-3.5 py-2.5 rounded-2xl text-[13.5px] leading-relaxed break-words overflow-wrap-anywhere whitespace-pre-wrap word-break-break-word " +
                             (msg.role === "user"
                               ? "bg-gradient-to-br from-cyan-600 to-blue-600 text-white rounded-ee-md"
                               : msg.isError
@@ -662,8 +689,8 @@ export default function ChatBot() {
                       <div className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30">
                         <Zap className="w-3.5 h-3.5 text-cyan-400" />
                       </div>
-                      <div className="flex flex-col max-w-[80%]">
-                        <div className="px-3.5 py-2.5 rounded-2xl rounded-ss-md bg-[#111827] border border-[#1e2d3d] text-[#e8f0fe] text-[13.5px] leading-relaxed">
+                      <div className="flex flex-col max-w-[85%] min-w-0">
+                        <div className="px-3.5 py-2.5 rounded-2xl rounded-ss-md bg-[#111827] border border-[#1e2d3d] text-[#e8f0fe] text-[13.5px] leading-relaxed break-words overflow-wrap-anywhere whitespace-pre-wrap word-break-break-word">
                           <span dangerouslySetInnerHTML={{ __html: renderMarkdown(streamingContent) }} />
                           {/* Blinking caret */}
                           <span className="inline-block w-1.5 h-4 ms-0.5 bg-cyan-400 animate-pulse align-text-bottom" />

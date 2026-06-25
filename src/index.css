@@ -3,6 +3,43 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ════════════════════════════════════════════════════════════════════
+   CHATBOT — text containment + word wrapping
+   Ensures long words + URLs don't break out of the chat bubble.
+   ════════════════════════════════════════════════════════════════════ */
+.overflow-wrap-anywhere {
+  overflow-wrap: anywhere;
+  word-wrap: break-word;
+}
+.word-break-break-word {
+  word-break: break-word;
+  -webkit-hyphens: auto;
+  hyphens: auto;
+}
+
+/* Chatbot messages: ensure code blocks scroll horizontally instead of
+   overflowing the bubble width */
+.chatbot-messages pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.chatbot-messages code {
+  word-break: break-all;
+}
+.chatbot-messages p {
+  margin-bottom: 0.5rem;
+}
+.chatbot-messages p:last-child {
+  margin-bottom: 0;
+}
+.chatbot-messages ul, .chatbot-messages ol {
+  padding-inline-start: 1.2rem;
+  margin-bottom: 0.5rem;
+}
+.chatbot-messages li {
+  margin-bottom: 0.2rem;
+}
+
 :root {
   --color-bg: #070b12;
   --color-text: #e8f0fe;
