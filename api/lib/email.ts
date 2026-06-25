@@ -212,6 +212,28 @@ export async function initiatePasswordReset(email: string, headers?: Headers): P
 
   if (!sendResult.ok) {
     console.error("[Email] Failed to send password reset email to:", user.email, "-", sendResult.reason);
+    // ── Fallback: log the reset link so the operator can recover the flow ──
+    // When email delivery is broken (Resend sandbox, unverified domain,
+    // network issue), the user would otherwise be stuck — they requested a
+    // reset, can't receive the email, and have no way to proceed.
+    //
+    // As a recovery path, we log the actual reset URL to the server logs.
+    // The operator (you) can read it from the HF Space logs and either:
+    //   1. Manually forward it to the user via WhatsApp/support, OR
+    //   2. Click it themselves during testing to verify the reset flow works.
+    //
+    // Security considerations:
+    //   - The token is single-use (consumed on first reset).
+    //   - The token expires in 15 minutes.
+    //   - The token is SHA-256 hashed in the DB; the raw token only exists
+    //     here + in the URL.
+    //   - Logs are only accessible to the Space owner (you).
+    //   - This only fires on FAILURE — when email works, nothing is logged.
+    console.warn(
+      "[Email/Recovery] Password reset link for " + user.email +
+      " (email delivery failed — use this link to reset manually):\n" +
+      resetUrl
+    );
     // Surface the actual reason to the caller so it can be returned to the
     // user (especially important for the Resend sandbox limitation, which is
     // by far the most common cause of "I never got the email" reports).
@@ -370,15 +392,22 @@ export async function initiateEmailVerification(userId: number, newEmail?: strin
     ? `Hello ${name},\n\nPlease confirm your new email address by clicking the link below:\n\n${verificationUrl}\n\nThis link expires in ${EMAIL_VERIFICATION_EXPIRY_MINUTES} minutes.\n\nIf you didn't request this change, ignore this email.`
     : `Hello ${name},\n\nPlease verify your email address by clicking the link below:\n\n${verificationUrl}\n\nThis link expires in ${EMAIL_VERIFICATION_EXPIRY_MINUTES} minutes.\n\nIf you didn't create an account, ignore this email.`;
 
-  const emailSent = await sendEmail({
+  const sendResult = await sendEmailWithDiagnostics({
     to: targetEmail,
     subject: emailSubject,
     html: emailBody,
     text: textBody,
   });
 
-  if (!emailSent) {
-    console.error("[Email] Failed to send verification email to:", targetEmail);
+  if (!sendResult.ok) {
+    console.error("[Email] Failed to send verification email to:", targetEmail, "-", sendResult.reason);
+    // Same recovery pattern as password reset: log the verification link so
+    // the operator can recover the flow when email delivery is broken.
+    console.warn(
+      "[Email/Recovery] Verification link for " + targetEmail +
+      " (email delivery failed — use this link to verify manually):\n" +
+      verificationUrl
+    );
     return { success: false, message: "Could not send verification email. Please try again later." };
   }
 
