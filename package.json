@@ -23,7 +23,9 @@
     "seed": "npx tsx scripts/seed.ts",
     "electron:dev": "electron electron/main.cjs",
     "electron:start": "electron electron/main.cjs",
-    "electron:build": "npm run build && electron-builder"
+    "electron:build": "npm run build && electron-builder",
+    "deploy:worker": "wrangler deploy --name ahmedelbaz --compatibility-date 2025-09-23 infra/security-audit/worker-v7-hardened.js",
+    "deploy:worker:dry": "wrangler deploy --dry-run --name ahmedelbaz --compatibility-date 2025-09-23 infra/security-audit/worker-v7-hardened.js"
   },
   "main": "electron/main.cjs",
   "build": {
