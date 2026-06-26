@@ -399,7 +399,11 @@ app.use("*", async (c, next) => {
       // race condition, no broken Google Sign-In button when /api/env fails.
       const { getPublicEnvKeys } = await import("./lib/env.js");
       const publicEnv = getPublicEnvKeys();
-      const envScript = `<script nonce="${nonce}">window.__ENV__=${JSON.stringify(publicEnv)};</script>`;
+      // Also inject the build ID so cache-nuke.js can detect version changes
+      // without fetching /api/version (which is also blocked by Cloudflare
+      // Bot Management on some browsers, causing stale CSS/JS to persist).
+      const envWithBuild = { ...publicEnv, buildId: buildId || process.env.BUILD_ID || "dev" };
+      const envScript = `<script nonce="${nonce}">window.__ENV__=${JSON.stringify(envWithBuild)};</script>`;
       // Insert right after the CSP nonce meta tag (before any other scripts)
       html = html.replace(
         /<meta name="csp-nonce"[^>]*>/,
