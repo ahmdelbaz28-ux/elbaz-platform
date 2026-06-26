@@ -288,6 +288,56 @@ export async function ensureDatabase(): Promise<void> {
         console.warn("[DB] Course thumbnail fix warning:", message);
       }
 
+      // ── Course deduplication migration ──────────────────────────────────
+      // The courses table has UNIQUE INDEX on slug but it wasn't enforced,
+      // causing duplicate courses to accumulate. This cleans up duplicates.
+      try {
+        console.log("[DB] Checking for duplicate courses...");
+
+        // Step 1: Add unique index if not exists (ignore errors)
+        try {
+          await conn.execute(
+            `ALTER TABLE courses ADD UNIQUE INDEX courses_slug_unique (slug)`
+          );
+          console.log("[DB]   + Added UNIQUE INDEX on courses.slug");
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.includes("Duplicate")) {
+            console.log("[DB]   ✅ UNIQUE INDEX on courses.slug already exists");
+          } else {
+            // Index might exist with different name, check
+            console.log("[DB]   Index add skipped:", msg.substring(0, 80));
+          }
+        }
+
+        // Step 2: Find and remove duplicate slugs keeping only the newest (highest id)
+        const [dupRows] = await conn.execute(`
+          SELECT slug, GROUP_CONCAT(id ORDER BY id DESC) as all_ids
+          FROM courses
+          GROUP BY slug
+          HAVING COUNT(*) > 1
+        `) as [{ slug: string; all_ids: string }[]];
+
+        if (dupRows.length > 0) {
+          console.log(`[DB]   Found ${dupRows.length} duplicate slugs, cleaning up...`);
+          for (const row of dupRows) {
+            const ids = row.all_ids.split(",");
+            // Keep the first (newest), delete the rest
+            const keepId = ids[0];
+            const deleteIds = ids.slice(1).join(",");
+            await conn.execute(
+              `DELETE FROM courses WHERE id IN (${deleteIds})`
+            );
+            console.log(`[DB]   Kept id=${keepId}, deleted ${ids.length - 1} duplicate(s) for slug: ${row.slug}`);
+          }
+        } else {
+          console.log("[DB]   ✅ No duplicate courses found");
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn("[DB] Course deduplication warning:", message);
+      }
+
       migrationDone = true;
       return;
     }

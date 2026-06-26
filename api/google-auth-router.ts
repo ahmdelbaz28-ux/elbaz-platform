@@ -134,6 +134,7 @@ googleAuthRouter.options("/", (c) => c.body(null, 204));
  */
 googleAuthRouter.get("/redirect", (c) => {
   const clientId = env.GOOGLE_CLIENT_ID;
+  const clientSecret = env.GOOGLE_CLIENT_SECRET;
   if (!clientId) {
     logger.error("Google OAuth: GOOGLE_CLIENT_ID not set");
     return c.redirect("/?google_error=not_configured");
