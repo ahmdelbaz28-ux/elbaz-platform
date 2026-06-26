@@ -429,7 +429,11 @@ export default function StarfieldBackground() {
         left: 0,
         width: '100%',
         height: '100%',
-        zIndex: 0,
+        // ✅ FIX: z-index: -1 ensures the canvas stays BEHIND all content.
+        // Previously z-index: 0, which caused the canvas to cover form elements
+        // (inputs, buttons) making them invisible in screenshots even though
+        // they were in the DOM with correct positions.
+        zIndex: -1,
         pointerEvents: 'none',
         background: '#070b12', // Dark background that matches the site
       }}
