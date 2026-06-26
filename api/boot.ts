@@ -39,13 +39,28 @@ async function loadBuildId() {
 
 /**
  * Critical file names that must never be cached by the browser.
- * These files are always served with Cache-Control: no-cache, no-store.
+ * These files are always served with Cache-Control: no-cache.
  * - sw.js: Service Worker itself — must be fresh for update checks
  * - cache-nuke.js: version detector — must be fresh to detect new deploys
  * - clarity.js / pii-mask.js: analytics — should always be latest
  * - rtl-detect.js: early detection — must be fresh
  * - build-id.json: build identifier — cache-nuke reads this via /api/version
  */
+
+/**
+ * Middleware: Set Cache-Control headers based on file type.
+ * Placed BEFORE serveStatic so it runs for matching requests.
+ *
+ * 🚀 PERFORMANCE FIX:
+ * - Hashed assets (assets/*.js, *.css) → 1 year cache (immutable)
+ * - Images (png, jpg, webp, svg, etc.) → 1 year cache
+ * - Fonts (woff2, ttf, etc.) → 1 year cache
+ * - Critical files (sw.js, cache-nuke.js, etc.) → no-cache (must be fresh)
+ * - HTML pages → no-cache (handled by HTML route handler)
+ */
+import { createMiddleware } from "hono/factory";
+
+// Files that must NEVER be cached (always fetch fresh)
 const NO_CACHE_FILES = new Set([
   "sw.js",
   "sw.js.map",
@@ -58,15 +73,25 @@ const NO_CACHE_FILES = new Set([
   "build-id.json",
 ]);
 
-/**
- * Middleware: Set Cache-Control: no-cache for critical files.
- * Placed BEFORE serveStatic so it runs for matching requests.
- */
-import { createMiddleware } from "hono/factory";
-const noCacheMiddleware = createMiddleware(async (c, next) => {
-  const url = new URL(c.req.url);
-  const filename = url.pathname.split("/").pop() || "";
+// File extensions that get 1-year cache (immutable, content-hashed)
+const LONG_CACHE_EXTENSIONS = new Set([
+  // JS/CSS with content hashes
+  "js", "css", "mjs",
+  // Images
+  "png", "jpg", "jpeg", "gif", "svg", "webp", "avif", "ico",
+  // Fonts
+  "woff", "woff2", "ttf", "eot", "otf",
+  // Other static
+  "json", "xml", "txt", "webmanifest", "map",
+]);
 
+const cacheMiddleware = createMiddleware(async (c, next) => {
+  const url = new URL(c.req.url);
+  const pathname = url.pathname;
+  const filename = pathname.split("/").pop() || "";
+  const ext = filename.split(".").pop()?.toLowerCase() || "";
+
+  // Critical files: no-cache (must always be fresh)
   const isNoCache = NO_CACHE_FILES.has(filename) ||
     filename.startsWith("workbox-");
 
@@ -74,6 +99,12 @@ const noCacheMiddleware = createMiddleware(async (c, next) => {
     c.header("Cache-Control", "no-cache, no-store, must-revalidate, proxy-revalidate");
     c.header("Pragma", "no-cache");
     c.header("Expires", "0");
+  } else if (LONG_CACHE_EXTENSIONS.has(ext) && pathname.startsWith("/assets/")) {
+    // 🚀 Hashed assets in /assets/ → 1 year cache (immutable)
+    c.header("Cache-Control", "public, max-age=31536000, immutable");
+  } else if (LONG_CACHE_EXTENSIONS.has(ext)) {
+    // 🚀 Other static files (images, fonts in /public/) → 1 year cache
+    c.header("Cache-Control", "public, max-age=31536000, immutable");
   }
 
   await next();
@@ -293,7 +324,7 @@ app.post("/api/csp-report", async (c) => {
 });
 
 // ── No-cache headers for critical files (must come before serveStatic) ──
-app.use("/*", noCacheMiddleware);
+app.use("/*", cacheMiddleware);
 
 // ── SPA route handler — MUST be before serveStatic ──────────────────────
 // serveStatic would otherwise serve index.html directly for "/" and bypass
