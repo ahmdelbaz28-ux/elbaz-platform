@@ -1,11 +1,15 @@
 # ════════════════════════════════════════════════════════════════════════════
-# Deploy Cloudflare Worker (alternative to broken Workers Builds)
+# Deploy Cloudflare Worker via direct API (bypasses broken Workers Builds)
 # ════════════════════════════════════════════════════════════════════════════
 # WHY THIS EXISTS:
 #   The Workers Build in the Cloudflare dashboard keeps failing at the
 #   "Deploying" step because `npx wrangler versions upload` needs a
-#   wrangler.toml in the repo. This workflow uses `wrangler deploy` directly,
-#   which is more reliable and gives us full control over the deploy.
+#   wrangler.toml in the repo. This workflow uses the Cloudflare REST API
+#   directly, which is more reliable than wrangler and gives full control.
+#
+# HOW IT WORKS:
+#   Uses PUT /accounts/{account_id}/workers/scripts/{script_name} with
+#   multipart form data (metadata + worker.js module).
 #
 # HOW TO USE:
 #   1. GitHub Secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`
@@ -36,46 +40,82 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Install Wrangler
-        run: npm install -g wrangler@latest
-
-      - name: Deploy Worker
+      - name: Deploy Worker via Cloudflare API
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WORKER_NAME: ahmedelbaz
+          WORKER_FILE: infra/security-audit/worker-v7-hardened.js
         run: |
-          echo "=== Deploying Worker 'ahmedelbaz' to account ${CLOUDFLARE_ACCOUNT_ID} ==="
-          wrangler deploy \
-            --name ahmedelbaz \
-            --compatibility-date 2025-09-23 \
-            infra/security-audit/worker-v7-hardened.js
+          set -euo pipefail
+          echo "=== Deploying Worker '${WORKER_NAME}' to account ${CLOUDFLARE_ACCOUNT_ID} ==="
+
+          # Build the multipart payload manually to ensure compatibility
+          # with Cloudflare's Workers API (ES module format).
+          python3 << 'PYEOF'
+          import os
+          import json
+          import requests
+
+          token = os.environ['CLOUDFLARE_API_TOKEN']
+          account = os.environ['CLOUDFLARE_ACCOUNT_ID']
+          worker_name = os.environ['WORKER_NAME']
+          worker_file = os.environ['WORKER_FILE']
+
+          with open(worker_file, 'r') as f:
+              worker_code = f.read()
+
+          metadata = {
+              "main_module": "worker.js",
+              "compatibility_date": "2025-09-23",
+              "compatibility_flags": []
+          }
+
+          files = {
+              'metadata': (None, json.dumps(metadata), 'application/json'),
+              'worker.js': ('worker.js', worker_code, 'application/javascript+module'),
+          }
+
+          url = f"https://api.cloudflare.com/client/v4/accounts/{account}/workers/scripts/{worker_name}"
+          headers = {"Authorization": f"Bearer {token}"}
+
+          print(f"  → Uploading {len(worker_code)} bytes to {url}")
+          resp = requests.put(url, headers=headers, files=files)
+          print(f"  HTTP Status: {resp.status_code}")
+
+          data = resp.json()
+          if data.get('success'):
+              result = data.get('result', {})
+              print(f"  ✅ Worker deployed!")
+              print(f"  • Modified: {result.get('modified_on','?')}")
+              print(f"  • Deployment ID: {result.get('deployment_id','?')}")
+              print(f"  • Compatibility date: {result.get('compatibility_date','?')}")
+          else:
+              print(f"  ❌ Deploy failed:")
+              print(json.dumps(data, indent=2))
+              exit(1)
+          PYEOF
 
       - name: Verify deployment
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WORKER_NAME: ahmedelbaz
         run: |
           sleep 5
-          # Test worker.dev endpoint
+          # Test worker.dev endpoint (Worker v7 blocks empty UAs)
           WORKER_STATUS=$(curl -sS -o /dev/null -w "%{http_code}" \
-            -H "User-Agent: Mozilla/5.0" \
-            https://ahmedelbaz.ahmdelbaz28.workers.dev)
+            -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \
+            https://${WORKER_NAME}.ahmdelbaz28.workers.dev)
           echo "Worker.dev returned HTTP $WORKER_STATUS"
 
           # Test custom domain
           DOMAIN_STATUS=$(curl -sS -o /dev/null -w "%{http_code}" \
-            -H "User-Agent: Mozilla/5.0" \
+            -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \
             https://ahmedelbaz.qzz.io)
           echo "Custom domain returned HTTP $DOMAIN_STATUS"
 
           if [ "$WORKER_STATUS" = "200" ] || [ "$WORKER_STATUS" = "302" ] || [ "$WORKER_STATUS" = "404" ]; then
             echo "✅ Worker is responding correctly"
           else
-            echo "⚠️ Worker returned unexpected status ($WORKER_STATUS), check logs"
+            echo "⚠️ Worker returned unexpected status ($WORKER_STATUS)"
             exit 1
           fi
