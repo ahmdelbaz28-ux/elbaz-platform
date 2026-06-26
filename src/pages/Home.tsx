@@ -300,7 +300,7 @@ export default function Home() {
   });
 
   return (
-    <div className="min-h-screen bg-[#0a0e17] overflow-hidden">
+    <div className="min-h-screen overflow-hidden">
       <SEO title={lang === "en" ? "Home" : "الرئيسية"} description={lang === "en" ? "Master electrical engineering with professional courses in ETAP, SKM, PowerFactory, and PVSyst." : "أتقن الهندسة الكهربية مع كورسات احترافية في ETAP وSKM وPowerFactory وPVSyst."} />
       {topPromotion && <PromoBanner promotion={topPromotion} />}
 
