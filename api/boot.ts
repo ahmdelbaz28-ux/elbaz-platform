@@ -390,6 +390,22 @@ app.use("*", async (c, next) => {
         /<script(?![^>]*\ssrc=)([^>]*)>/g,
         `<script nonce="${nonce}"$1>`
       );
+
+      // 🔧 ROOT CAUSE FIX: Inject public env vars directly into HTML.
+      // This eliminates the need for the frontend to fetch /api/env, which
+      // was being blocked by Cloudflare Bot Management on some browsers
+      // (returning a "Just a moment..." challenge page instead of JSON).
+      // The frontend now reads window.__ENV__ synchronously — no fetch, no
+      // race condition, no broken Google Sign-In button when /api/env fails.
+      const { getPublicEnvKeys } = await import("./lib/env.js");
+      const publicEnv = getPublicEnvKeys();
+      const envScript = `<script nonce="${nonce}">window.__ENV__=${JSON.stringify(publicEnv)};</script>`;
+      // Insert right after the CSP nonce meta tag (before any other scripts)
+      html = html.replace(
+        /<meta name="csp-nonce"[^>]*>/,
+        `$&${envScript}`
+      );
+
       return c.html(html);
     }
     return c.html(html);
