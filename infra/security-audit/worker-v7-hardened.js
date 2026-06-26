@@ -404,10 +404,56 @@ function addRequestHeaders(request) {
 
 async function handleRequest(request, env, ctx) {
   const requestUrl = new URL(request.url);
+  const pathname = requestUrl.pathname;
+  const ext = pathname.substring(pathname.lastIndexOf('.') + 1).toLowerCase();
+  const filename = pathname.substring(pathname.lastIndexOf('/') + 1);
 
   // Handle CORS preflight
   if (request.method === 'OPTIONS') {
     return addSecurityHeaders(addCORSHeaders(new Response(null, { status: 204 })), requestUrl);
+  }
+
+  // 🚀 PERFORMANCE: Edge caching for static assets using Cache API
+  // This gives us FULL control over cache TTL at the Cloudflare edge,
+  // overriding any stale cache from the origin's old Cache-Control headers.
+  const isCacheableAsset =
+    ['js', 'css', 'mjs', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'avif', 'ico', 'woff', 'woff2', 'ttf', 'eot', 'otf'].includes(ext) &&
+    !['sw.js', 'cache-nuke.js', 'rtl-detect.js', 'clarity.js', 'pii-mask.js', 'build-id.json'].includes(filename) &&
+    !filename.startsWith('workbox-');
+
+  if (isCacheableAsset && request.method === 'GET') {
+    const cacheKey = new Request(requestUrl.toString(), request);
+    const cache = caches.default;
+
+    // Check if we have a cached response
+    let cachedResponse = await cache.match(cacheKey);
+    if (cachedResponse) {
+      // Serve from edge cache — instant!
+      return cachedResponse;
+    }
+
+    // Not cached → fetch from origin, cache it, then serve
+    const originRequest = addRequestHeaders(request);
+    try {
+      const originResponse = await fetch(originRequest);
+      // Clone and add proper headers
+      const newHeaders = new Headers(originResponse.headers);
+      newHeaders.set('Cache-Control', 'public, max-age=31536000, immutable');
+      newHeaders.set('CDN-Cache-Control', 'public, max-age=31536000');
+
+      const responseToCache = new Response(originResponse.body, {
+        status: originResponse.status,
+        statusText: originResponse.statusText,
+        headers: newHeaders,
+      });
+
+      // Store in edge cache for 1 year (ctx.waitUntil ensures it completes)
+      ctx.waitUntil(cache.put(cacheKey, responseToCache.clone()));
+
+      return responseToCache;
+    } catch (err) {
+      // Fall through to normal proxy on error
+    }
   }
 
   // Security stages pipeline (v7: no botScoring, no rateLimit)
