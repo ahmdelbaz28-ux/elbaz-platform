@@ -767,4 +767,221 @@ img[loading="lazy"] {
               color 0.25s ease, box-shadow 0.25s ease, fill 0.25s ease !important;
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   LIGHT MODE PROFESSIONAL ENHANCEMENTS
+   ════════════════════════════════════════════════════════════════════
+   These rules enhance the Light Mode to look professional and polished,
+   matching the quality of the Dark Mode design. */
+
+/* ── Canvas / StarfieldBackground: light bg in light mode ──────────── */
+[data-theme="light"] canvas[style*="background"] {
+  background: #f8fafc !important;
+}
+
+/* ── Input fields: professional styling ────────────────────────────── */
+[data-theme="light"] input[type="text"],
+[data-theme="light"] input[type="email"],
+[data-theme="light"] input[type="password"],
+[data-theme="light"] input[type="search"],
+[data-theme="light"] input[type="url"],
+[data-theme="light"] input[type="number"],
+[data-theme="light"] input:not([type]) {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) inset !important;
+}
+
+[data-theme="light"] input::placeholder,
+[data-theme="light"] textarea::placeholder {
+  color: #94a3b8 !important;
+  opacity: 1 !important;
+}
+
+[data-theme="light"] input:focus,
+[data-theme="light"] textarea:focus {
+  border-color: #0891b2 !important;
+  box-shadow: 0 0 0 3px rgba(8, 145, 178, 0.12) !important;
+  outline: none !important;
+}
+
+/* ── Textarea ──────────────────────────────────────────────────────── */
+[data-theme="light"] textarea {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+}
+
+/* ── Select dropdowns ──────────────────────────────────────────────── */
+[data-theme="light"] select {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+}
+
+/* ── Button text on cyan gradient buttons ──────────────────────────── */
+/* In dark mode, buttons use text-[#0a0e17] (dark text on cyan = good)
+   In light mode, the same dark text on cyan-600 (#0891b2) is still good,
+   but let's make it slightly darker for better contrast */
+[data-theme="light"] .text-\[\#0a0e17\] {
+  color: #0f172a !important;
+}
+
+/* ── Gradient buttons: use darker cyan in light mode ───────────────── */
+[data-theme="light"] .from-\[\#06b6d4\] {
+  --tw-gradient-from: #0891b2 var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(8 145 178 / 0) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+[data-theme="light"] .to-\[\#0891b2\] {
+  --tw-gradient-to: #0e7490 var(--tw-gradient-to-position) !important;
+}
+
+/* ── "glow-btn" effect: softer in light mode ───────────────────────── */
+[data-theme="light"] .glow-btn {
+  box-shadow: 0 4px 14px rgba(8, 145, 178, 0.25) !important;
+}
+[data-theme="light"] .glow-btn:hover {
+  box-shadow: 0 6px 20px rgba(8, 145, 178, 0.35) !important;
+}
+
+/* ── Cards: add subtle shadow and border for depth ─────────────────── */
+[data-theme="light"] .rounded-xl.border,
+[data-theme="light"] .rounded-2xl.border {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03) !important;
+}
+
+/* ── Navbar links: ensure dark text ────────────────────────────────── */
+[data-theme="light"] nav a,
+[data-theme="light"] nav button {
+  color: #334155 !important;
+}
+[data-theme="light"] nav a:hover,
+[data-theme="light"] nav button:hover {
+  color: #0891b2 !important;
+}
+
+/* ── Footer: lighter bg in light mode ──────────────────────────────── */
+[data-theme="light"] footer {
+  background-color: #f1f5f9 !important;
+  border-top-color: #e2e8f0 !important;
+}
+
+/* ── Scrollbar: light theme ────────────────────────────────────────── */
+[data-theme="light"] ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+[data-theme="light"] ::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 5px;
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ── Selection highlight ───────────────────────────────────────────── */
+[data-theme="light"] ::selection {
+  background: rgba(8, 145, 178, 0.2);
+  color: #0f172a;
+}
+
+/* ── Mobile bottom nav ─────────────────────────────────────────────── */
+[data-theme="light"] .mobile-bottom-nav {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+  border-top-color: #e2e8f0 !important;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.06) !important;
+}
+
+/* ── Dialog / Modal overlay ────────────────────────────────────────── */
+[data-theme="light"] [data-radix-dialog-overlay] {
+  background-color: rgba(15, 23, 42, 0.4) !important;
+}
+
+/* ── Code blocks / pre ─────────────────────────────────────────────── */
+[data-theme="light"] pre,
+[data-theme="light"] code {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+/* ── Toast notifications: light bg ─────────────────────────────────── */
+[data-theme="light"] [data-sonner-toast] {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* ── SVG icons: ensure they inherit color properly ─────────────────── */
+[data-theme="light"] svg {
+  color: inherit;
+}
+
+/* ── Badge / Tag components ────────────────────────────────────────── */
+[data-theme="light"] .badge {
+  background-color: #f1f5f9 !important;
+  color: #475569 !important;
+  border-color: #e2e8f0 !important;
+}
+
+/* ── Loading skeletons: light shimmer ──────────────────────────────── */
+[data-theme="light"] .skeleton,
+[data-theme="light"] [class*="animate-pulse"] {
+  background-color: #e2e8f0 !important;
+}
+
+/* ── Divider / separator ───────────────────────────────────────────── */
+[data-theme="light"] hr,
+[data-theme="light"] .separator {
+  border-color: #e2e8f0 !important;
+}
+
+/* ── Links: professional blue ──────────────────────────────────────── */
+[data-theme="light"] a:not([class*="text-"]):not([class*="bg-"]) {
+  color: #0891b2;
+}
+[data-theme="light"] a:not([class*="text-"]):not([class*="bg-"]):hover {
+  color: #0e7490;
+}
+
+/* ── Focus visible: cyan ring ──────────────────────────────────────── */
+[data-theme="light"] *:focus-visible {
+  outline: 2px solid #0891b2 !important;
+  outline-offset: 2px !important;
+}
+
+/* ── Checkbox: cyan accent ─────────────────────────────────────────── */
+[data-theme="light"] input[type="checkbox"]:checked {
+  background-color: #0891b2 !important;
+  border-color: #0891b2 !important;
+}
+
+/* ── Table styling ─────────────────────────────────────────────────── */
+[data-theme="light"] table {
+  border-color: #e2e8f0 !important;
+}
+[data-theme="light"] th {
+  background-color: #f1f5f9 !important;
+  color: #1e293b !important;
+  border-color: #e2e8f0 !important;
+}
+[data-theme="light"] td {
+  border-color: #e2e8f0 !important;
+  color: #334155 !important;
+}
+[data-theme="light"] tr:nth-child(even) {
+  background-color: #f8fafc !important;
+}
+
+/* ── Blockquote ────────────────────────────────────────────────────── */
+[data-theme="light"] blockquote {
+  border-left-color: #0891b2 !important;
+  background-color: #f8fafc !important;
+  color: #334155 !important;
+}
+
  

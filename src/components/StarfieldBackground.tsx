@@ -430,12 +430,14 @@ export default function StarfieldBackground() {
         width: '100%',
         height: '100%',
         // ✅ FIX: z-index: -1 ensures the canvas stays BEHIND all content.
-        // Previously z-index: 0, which caused the canvas to cover form elements
-        // (inputs, buttons) making them invisible in screenshots even though
-        // they were in the DOM with correct positions.
         zIndex: -1,
         pointerEvents: 'none',
-        background: '#070b12', // Dark background that matches the site
+        // ✅ Dynamic background based on current theme
+        // The CSS override [data-theme="light"] canvas also handles this,
+        // but we set it inline for immediate effect before CSS loads.
+        background: typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'light'
+          ? '#f8fafc'
+          : '#070b12',
       }}
     />
   );
