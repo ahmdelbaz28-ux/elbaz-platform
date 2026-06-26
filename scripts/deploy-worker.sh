@@ -25,7 +25,7 @@ NC='\033[0m' # No Color
 
 WORKER_NAME="ahmedelbaz"
 WORKER_FILE="infra/security-audit/worker-v7-hardened.js"
-ACCOUNT_ID="fd43879d968b0358dc82ab3be03fd970"
+ACCOUNT_ID="951840a21847d5c55c8284d4ded7cffc"
 
 echo -e "${CYAN}═══════════════════════════════════════════════════════════════${NC}"
 echo -e "${CYAN}  Deploy Cloudflare Worker: ${WORKER_NAME}${NC}"
