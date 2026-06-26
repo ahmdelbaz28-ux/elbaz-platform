@@ -69,18 +69,10 @@ async function rateLimit(
   return limiter.consume(key, points ?? 1);
 }
 
-async function rateLimitByKeyPrefix(
-  keyPrefix: string,
-  maxPoints: number,
-  durationSeconds: number
-): Promise<RateLimiterRes> {
-  const { RateLimiterMemory } = await import("rate-limiter-flexible");
-  const limiter = new RateLimiterMemory({
-    points: maxPoints,
-    duration: durationSeconds,
-  });
-  return limiter.consume(keyPrefix, 1);
-}
+// ✅ NOTE: rateLimitByKeyPrefix was removed — it created a NEW RateLimiterMemory
+// on every call, which is a memory leak. If you need per-key-prefix rate limiting,
+// use the shared rateLimiter via checkRateLimit() which uses a single instance
+// with automatic cleanup of expired entries.
 
 type RateLimitAction = "login" | "register" | "forgotPassword" | "resetPassword" | "sendVerification" | "verifyEmail" | "api";
 
@@ -117,5 +109,5 @@ function clearRateLimit(ip: string, action: RateLimitAction): void {
   }
 }
 
-export { initRedis, rateLimit, rateLimitByKeyPrefix, checkRateLimit, clearRateLimit };
+export { initRedis, rateLimit, checkRateLimit, clearRateLimit };
 export type { RateLimitAction };

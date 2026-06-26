@@ -39,13 +39,48 @@ if ('serviceWorker' in navigator && !(window as any).Capacitor?.isNativePlatform
       },
       onRegisteredSW(_swUrl: string, registration: ServiceWorkerRegistration | undefined) {
         if (registration) {
-          const interval = setInterval(() => {
+          // ✅ FIX: Check for SW updates every 5 minutes (reduced from 1 minute —
+          // 1 minute was too aggressive and caused unnecessary network requests).
+          // Also properly clean up the interval on page unload.
+          const SW_UPDATE_INTERVAL = 5 * 60 * 1000; // 5 minutes
+          let intervalId: ReturnType<typeof setInterval> | null = null;
+
+          const checkForUpdate = () => {
             if (!document.hidden) {
               registration.update().catch(() => {});
             }
-          }, 1 * 60 * 1000); // 🚀 Elite: Check for updates every 1 minute
-          window.addEventListener('beforeunload', () => clearInterval(interval));
+          };
 
+          // Only run interval when page is visible (saves battery + bandwidth)
+          const startInterval = () => {
+            if (intervalId === null) {
+              intervalId = setInterval(checkForUpdate, SW_UPDATE_INTERVAL);
+            }
+          };
+          const stopInterval = () => {
+            if (intervalId !== null) {
+              clearInterval(intervalId);
+              intervalId = null;
+            }
+          };
+
+          // Start/stop based on visibility
+          document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+              stopInterval();
+            } else {
+              checkForUpdate(); // Check immediately on becoming visible
+              startInterval();
+            }
+          });
+
+          // Initial start
+          startInterval();
+
+          // ✅ FIX: Clean up interval on page unload (prevents leak)
+          window.addEventListener('beforeunload', () => {
+            stopInterval();
+          });
         }
       },
       onRegisterError(error: unknown) {
