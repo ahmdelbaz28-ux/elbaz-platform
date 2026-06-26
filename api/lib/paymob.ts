@@ -5,15 +5,16 @@ import { env } from "../lib/env.js";
  * Paymob integration ID mapping per payment method.
  * Set these in HF Secrets to support multiple payment methods.
  * Falls back to PAYMOB_INTEGRATION_ID if no method-specific ID is set.
+ * NOTE: HF Secrets use names WITHOUT _ID suffix (e.g., PAYMOB_INTEGRATION_CARD)
  */
 const PAYMENT_METHOD_INTEGRATION_IDS: Record<string, string> = {
-  visa: "PAYMOB_INTEGRATION_ID_CARD",
-  instapay: "PAYMOB_INTEGRATION_ID_CARD",
-  vodafone_cash: "PAYMOB_INTEGRATION_ID_WALLET",
-  wallet: "PAYMOB_INTEGRATION_ID_WALLET",
-  bank_transfer: "PAYMOB_INTEGRATION_ID_BANK",
-  kiosk: "PAYMOB_INTEGRATION_ID_KIOSK",
-  cash_collection: "PAYMOB_INTEGRATION_ID_CASH",
+  visa: "PAYMOB_INTEGRATION_CARD",
+  instapay: "PAYMOB_INTEGRATION_CARD",
+  vodafone_cash: "PAYMOB_INTEGRATION_WALLET",
+  wallet: "PAYMOB_INTEGRATION_WALLET",
+  bank_transfer: "PAYMOB_INTEGRATION_BANK",
+  kiosk: "PAYMOB_INTEGRATION_KIOSK",
+  cash_collection: "PAYMOB_INTEGRATION_CASH",
 };
 
 function getIntegrationIdForMethod(paymentMethod: string): number {
