@@ -9,14 +9,10 @@ export function useAuth() {
   const utils = trpc.useUtils();
   const clarityIdentified = useRef(false);
   
-  // Hydration safety: Track if we've mounted yet
   const [hasMounted, setHasMounted] = useState(false);
-
-  // Check auth after mount to avoid hydration mismatch
   const [storedAuth, setStoredAuth] = useState(false);
 
   useEffect(() => {
-    // Defer auth check to after hydration
     setStoredAuth(hasStoredAuth());
     setHasMounted(true);
   }, []);
@@ -27,7 +23,6 @@ export function useAuth() {
     error,
     refetch,
   } = trpc.auth.me.useQuery(undefined, {
-    // Only run the query after we've checked for stored auth (post-hydration)
     enabled: hasMounted && storedAuth,
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 10,
@@ -68,8 +63,6 @@ export function useAuth() {
     navigate("/login", { replace: true });
   }, [logoutMutation, navigate]);
 
-  // During initial render (before hydration), show as loading to avoid mismatch
-  // After mount, show query loading state if query is running
   const isLoading = !hasMounted || queryLoading;
 
   return useMemo(

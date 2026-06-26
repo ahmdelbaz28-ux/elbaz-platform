@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { initiateGoogleOAuth } from "@/lib/google-auth";
 import { Link, useNavigate } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
 import { trpc } from "@/providers/trpc";
@@ -145,49 +146,23 @@ export default function Register() {
     };
   }, [googleClientId, handleGoogleCallback]);
 
-  // Trigger Google Sign-Up — uses OAuth redirect flow (works on any domain,
-  // doesn't require GIS popup that needs Authorized JavaScript origins).
-  // 🔧 FIX: Same approach as Login.tsx — build the Google OAuth URL directly
-  // on the client to avoid Cloudflare Bot Management challenge on
-  // /api/google-auth/redirect (which was causing a white screen).
   const handleGoogleSignIn = useCallback(() => {
-    // Show immediate loading state so the user knows the click registered
     setGoogleLoading(true);
     setError("");
 
     setTimeout(() => {
+      if (!googleClientId) {
+        setGoogleLoading(false);
+        const errMsg = lang === "ar"
+          ? "تعذر بدء التسجيل بجوجل. أعد تحميل الصفحة وحاول مرة أخرى."
+          : "Could not start Google sign-up. Please reload the page and try again.";
+        setError(errMsg);
+        toast.error(errMsg);
+        return;
+      }
+
       try {
-        const clientId = googleClientId;
-        if (!clientId) {
-          setGoogleLoading(false);
-          const errMsg = lang === "ar"
-            ? "تعذر بدء التسجيل بجوجل. أعد تحميل الصفحة وحاول مرة أخرى."
-            : "Could not start Google sign-up. Please reload the page and try again.";
-          setError(errMsg);
-          toast.error(errMsg);
-          return;
-        }
-
-        // Generate state for CSRF protection
-        const state = crypto.randomUUID?.() || Math.random().toString(36).slice(2);
-        // Store state in cookie so the /api/google-auth/callback can verify it
-        document.cookie = `google_oauth_state=${state}; Path=/; Secure; SameSite=Lax; Max-Age=600`;
-        sessionStorage.setItem("google_oauth_state", state);
-
-        // Canonical redirect URI — must match what's registered in Google Console
-        const redirectUri = `${window.location.origin}/api/google-auth/callback`;
-
-        const params = new URLSearchParams({
-          client_id: clientId,
-          redirect_uri: redirectUri,
-          response_type: "code",
-          scope: "openid email profile",
-          state: state,
-          prompt: "select_account",
-        });
-
-        // Direct navigation to Google — no server round-trip, no Cloudflare challenge
-        window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+        initiateGoogleOAuth(googleClientId);
       } catch (err) {
         console.error("[GoogleAuth] Failed to redirect:", err);
         setGoogleLoading(false);

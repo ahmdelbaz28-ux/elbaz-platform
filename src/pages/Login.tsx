@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { initiateGoogleOAuth } from "@/lib/google-auth";
 import { Link, useNavigate } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
 import { trpc } from "@/providers/trpc";
@@ -204,60 +205,23 @@ export default function Login() {
     };
   }, [googleClientId, handleGoogleCallback]);
 
-  // Trigger Google Sign-In — uses OAuth redirect flow (works on any domain,
-  // doesn't require "Authorized JavaScript origins" in Google Console).
-  // The GIS popup flow was causing "origin_mismatch" errors because the
-  // custom domain wasn't registered in Google Cloud Console.
   const handleGoogleSignIn = useCallback(() => {
-    // 🔧 FIX: Show immediate loading state so the user knows the click registered
     setGoogleLoading(true);
     setError("");
 
-    // 🔧 ROOT CAUSE FIX: Build the Google OAuth URL directly on the client
-    // instead of redirecting to /api/google-auth/redirect. The server-side
-    // redirect was being intercepted by Cloudflare Bot Management on some
-    // browsers, returning a "Just a moment..." challenge page (white screen).
-    //
-    // The state cookie set by the server is no longer needed because we
-    // generate state on the client and store it in sessionStorage. The
-    // /api/google-auth/callback endpoint will verify the state from a cookie
-    // we set here.
     setTimeout(() => {
+      if (!googleClientId) {
+        setGoogleLoading(false);
+        const errMsg = lang === "ar"
+          ? "تعذر بدء تسجيل الدخول بجوجل. أعد تحميل الصفحة وحاول مرة أخرى."
+          : "Could not start Google sign-in. Please reload the page and try again.";
+        setError(errMsg);
+        toast.error(errMsg);
+        return;
+      }
+
       try {
-        const clientId = googleClientId;
-        if (!clientId) {
-          setGoogleLoading(false);
-          const errMsg = lang === "ar"
-            ? "تعذر بدء تسجيل الدخول بجوجل. أعد تحميل الصفحة وحاول مرة أخرى."
-            : "Could not start Google sign-in. Please reload the page and try again.";
-          setError(errMsg);
-          toast.error(errMsg);
-          return;
-        }
-
-        // Generate state for CSRF protection
-        const state = crypto.randomUUID?.() || Math.random().toString(36).slice(2);
-        // Store state in cookie so the /api/google-auth/callback can verify it
-        // (HttpOnly=False because we set it from JS; Secure=True because we're on HTTPS;
-        // SameSite=Lax so it's sent on the top-level redirect back from Google)
-        document.cookie = `google_oauth_state=${state}; Path=/; Secure; SameSite=Lax; Max-Age=600`;
-        // Also keep in sessionStorage as backup
-        sessionStorage.setItem("google_oauth_state", state);
-
-        // Canonical redirect URI — must match what's registered in Google Console
-        const redirectUri = `${window.location.origin}/api/google-auth/callback`;
-
-        const params = new URLSearchParams({
-          client_id: clientId,
-          redirect_uri: redirectUri,
-          response_type: "code",
-          scope: "openid email profile",
-          state: state,
-          prompt: "select_account",
-        });
-
-        // Direct navigation to Google — no server round-trip, no Cloudflare challenge
-        window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+        initiateGoogleOAuth(googleClientId);
       } catch (err) {
         console.error("[GoogleAuth] Failed to redirect:", err);
         setGoogleLoading(false);
