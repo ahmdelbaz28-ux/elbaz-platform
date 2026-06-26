@@ -202,13 +202,51 @@ export default function Login() {
     setGoogleLoading(true);
     setError("");
 
-    // Use a small timeout so React can paint the loading spinner before the
-    // browser navigates away. This gives the user visual feedback that the
-    // button was clicked, even on slow connections.
+    // 🔧 ROOT CAUSE FIX: Build the Google OAuth URL directly on the client
+    // instead of redirecting to /api/google-auth/redirect. The server-side
+    // redirect was being intercepted by Cloudflare Bot Management on some
+    // browsers, returning a "Just a moment..." challenge page (white screen).
+    //
+    // The state cookie set by the server is no longer needed because we
+    // generate state on the client and store it in sessionStorage. The
+    // /api/google-auth/callback endpoint will verify the state from a cookie
+    // we set here.
     setTimeout(() => {
       try {
-        // Redirect to our backend endpoint which will redirect to Google
-        window.location.href = "/api/google-auth/redirect";
+        const clientId = googleClientId;
+        if (!clientId) {
+          setGoogleLoading(false);
+          const errMsg = lang === "ar"
+            ? "تعذر بدء تسجيل الدخول بجوجل. أعد تحميل الصفحة وحاول مرة أخرى."
+            : "Could not start Google sign-in. Please reload the page and try again.";
+          setError(errMsg);
+          toast.error(errMsg);
+          return;
+        }
+
+        // Generate state for CSRF protection
+        const state = crypto.randomUUID?.() || Math.random().toString(36).slice(2);
+        // Store state in cookie so the /api/google-auth/callback can verify it
+        // (HttpOnly=False because we set it from JS; Secure=True because we're on HTTPS;
+        // SameSite=Lax so it's sent on the top-level redirect back from Google)
+        document.cookie = `google_oauth_state=${state}; Path=/; Secure; SameSite=Lax; Max-Age=600`;
+        // Also keep in sessionStorage as backup
+        sessionStorage.setItem("google_oauth_state", state);
+
+        // Canonical redirect URI — must match what's registered in Google Console
+        const redirectUri = `${window.location.origin}/api/google-auth/callback`;
+
+        const params = new URLSearchParams({
+          client_id: clientId,
+          redirect_uri: redirectUri,
+          response_type: "code",
+          scope: "openid email profile",
+          state: state,
+          prompt: "select_account",
+        });
+
+        // Direct navigation to Google — no server round-trip, no Cloudflare challenge
+        window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
       } catch (err) {
         console.error("[GoogleAuth] Failed to redirect:", err);
         setGoogleLoading(false);
@@ -219,7 +257,7 @@ export default function Login() {
         toast.error(errMsg);
       }
     }, 50);
-  }, [lang]);
+  }, [lang, googleClientId]);
 
   const loginMutation = trpc.auth.login.useMutation({
     onSuccess: (data) => {
