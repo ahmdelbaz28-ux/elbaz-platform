@@ -89,25 +89,54 @@ chatbotRouter.post("/", async (c) => {
 
 // ── Streaming chat endpoint (SSE) ──
 chatbotRouter.post("/stream", async (c) => {
+  // CreateAbortController for timeout
+  const timeoutMs = 45_000; // 45 second timeout for AI response
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => {
+    console.warn("[Chatbot] Stream timeout - aborting request");
+    timeoutController.abort();
+  }, timeoutMs);
+
   try {
     const ip = getChatbotIp(c);
     if (!checkChatbotRateLimit(ip)) {
+      clearTimeout(timeoutId);
       return c.json({ success: false, error: "Rate limit exceeded. Please try again later." }, 429);
     }
     const body = await c.req.json<{ messages: { role: string; content: string }[]; language?: string; chatId?: string }>();
 
     if (!body.messages || !Array.isArray(body.messages) || body.messages.length === 0) {
+      clearTimeout(timeoutId);
       return c.json({ success: false, error: "Messages array is required" }, 400);
     }
 
     const messages = body.messages.slice(-50);
 
-    const result = await getStreamResponse({
+    // Create promise that rejects on timeout
+    const streamPromise = getStreamResponse({
       messages,
       language: body.language,
     });
 
+    // Race between stream response and timeout
+    let result;
+    try {
+      result = await Promise.race([
+        streamPromise,
+        new Promise<never>((_, reject) => {
+          timeoutController.signal.addEventListener("abort", () => {
+            reject(new Error("AI response timeout (45s)"));
+          });
+        }),
+      ]);
+    } catch (raceErr: any) {
+      clearTimeout(timeoutId);
+      console.warn("[Chatbot] Stream race failed:", raceErr.message);
+      return c.json({ success: false, error: "Request timeout. Please try again.", chatId: body.chatId }, 504);
+    }
+
     if ("error" in result) {
+      clearTimeout(timeoutId);
       return c.json({ success: false, error: result.error, chatId: body.chatId }, 503);
     }
 
@@ -116,18 +145,75 @@ chatbotRouter.post("/stream", async (c) => {
     const modelEvent = encoder.encode("data: " + JSON.stringify({ model: result.model }) + "\n\n");
 
     // Create a combined stream: model event FIRST, then actual content stream
+    let controllerRef: ReadableStreamDefaultController | null = null;
+    let isStreamClosed = false;
+
     const combinedStream = new ReadableStream<Uint8Array>({
       start(controller) {
+        controllerRef = controller;
         // Send model name first so client can show "Thinking with [model]..."
-        controller.enqueue(modelEvent);
-        // Pipe the actual content stream
-        result.stream.pipeTo(new WritableStream({
-          write(chunk) { controller.enqueue(chunk); },
-          close() { controller.close(); },
-          abort(reason) { controller.error(reason); },
-        })).catch(function() { controller.close(); });
+        try {
+          controller.enqueue(modelEvent);
+        } catch {
+          isStreamClosed = true;
+        }
+      },
+      cancel() {
+        // Handle client disconnect
+        isStreamClosed = true;
+        clearTimeout(timeoutId);
+        try { timeoutController.abort(); } catch {}
       },
     });
+
+    // Pipe the actual content stream in background (non-blocking)
+    (async () => {
+      try {
+        const reader = result.stream.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          // Check for timeout or stream closure
+          if (timeoutController.signal.aborted || isStreamClosed) break;
+
+          try {
+            const { done, value } = await reader.read();
+            if (done || isStreamClosed) break;
+
+            if (value && !isStreamClosed) {
+              try {
+                controllerRef?.enqueue(value);
+              } catch {
+                isStreamClosed = true;
+                break;
+              }
+            }
+          } catch (readErr: any) {
+            if (readErr.name === "AbortError") break;
+            console.warn("[Chatbot] Stream read error:", readErr.message);
+            break;
+          }
+        }
+
+        // Clean close
+        clearTimeout(timeoutId);
+        if (!isStreamClosed) {
+          try {
+            controllerRef?.close();
+          } catch {}
+          isStreamClosed = true;
+        }
+      } catch (pipeErr: any) {
+        console.warn("[Chatbot] Stream pipe error:", pipeErr.message);
+        clearTimeout(timeoutId);
+        if (!isStreamClosed) {
+          try {
+            controllerRef?.close();
+          } catch {}
+          isStreamClosed = true;
+        }
+      }
+    })();
 
     return new Response(combinedStream, {
       status: 200,
@@ -139,6 +225,7 @@ chatbotRouter.post("/stream", async (c) => {
       },
     });
   } catch (err) {
+    clearTimeout(timeoutId);
     console.error("[Chatbot] Error in /api/chatbot/stream:", err);
     return c.json({ success: false, error: "Internal server error" }, 500);
   }
