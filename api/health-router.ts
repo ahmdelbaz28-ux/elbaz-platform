@@ -87,14 +87,22 @@ healthRouter.get("/health", async (c) => {
         method: "HEAD",
         signal: AbortSignal.timeout(5000),
       });
+      // S3-compatible APIs (including R2) return:
+      // - 200: public bucket listing enabled (rare)
+      // - 400: Bad request (missing auth params) — endpoint IS reachable
+      // - 403: Forbidden (auth required) — endpoint IS reachable
+      // All three mean the endpoint is healthy. Only 5xx or network errors mean unhealthy.
+      const isReachable = r2Response.ok || r2Response.status === 400 || r2Response.status === 403;
       checks.storage = {
-        status: r2Response.ok || r2Response.status === 403 ? "healthy" : "degraded",
+        status: isReachable ? "healthy" : "degraded",
         latency_ms: Date.now() - r2Start,
         detail: r2Response.ok
           ? "R2 endpoint reachable"
           : r2Response.status === 403
             ? "R2 endpoint reachable (auth required for listing)"
-            : `R2 responded with ${r2Response.status}`,
+            : r2Response.status === 400
+              ? "R2 endpoint reachable (S3 API responding)"
+              : `R2 responded with ${r2Response.status}`,
       };
     } else {
       checks.storage = {

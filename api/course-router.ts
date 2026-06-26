@@ -353,7 +353,12 @@ export const courseRouter = createRouter({
    stats: publicQuery.query(async () => {
      const cache = getCache();
      const cached = await cache.get<StatsResponse>(cacheKeys.stats());
-     if (cached) return cached;
+     // 🔧 FIX: If cached result is all zeros, skip cache and re-query.
+     // This handles the case where courses were added after the initial
+     // cache was populated (e.g., server started before DB was seeded).
+     if (cached && (cached.totalCourses > 0 || cached.totalStudents > 0 || cached.totalLessons > 0)) {
+       return cached;
+     }
 
     const db = getDb();
     const rows = await db.execute(sql`
