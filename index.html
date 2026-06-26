@@ -4,6 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
+    <!-- ✅ CRITICAL: Force Dark Mode background IMMEDIATELY before any CSS/JS loads.
+         This prevents any flash of white/light background (FOUC) during page load.
+         The theme script below will set data-theme, and the CSS will override this
+         with the proper theme colors. But if CSS is slow to load, this ensures
+         the user NEVER sees a white flash. -->
+    <style>
+      html { background-color: #0a0e17 !important; }
+      body { background-color: #0a0e17 !important; color: #f0f4f8 !important; }
+    </style>
+
     <!-- Primary Meta Tags -->
     <title>Eng Ahmed Elbaz | Electrical Engineering Courses</title>
     <meta name="title" content="Eng Ahmed Elbaz | Electrical Engineering Courses" />
