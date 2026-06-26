@@ -1,5 +1,5 @@
-import { motion, useInView, useAnimation } from "framer-motion";
-import { useEffect, useRef, type ReactNode } from "react";
+import { motion, useInView, useAnimation, useScroll, useTransform } from "framer-motion";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/components/ui/motion";
 
 /* -------------------------------------------------------------------------- */
@@ -12,10 +12,11 @@ import { cn } from "@/components/ui/motion";
 /*    • orbit   — small satellite dot orbiting the icon                        */
 /*    • morph   — shape-shifting background (rounded square → circle)          */
 /*    • flip    — 3D Y-axis flip on hover                                      */
-/*    • bounce  — vertical bounce on hover                                     */
-/*    • pulse   — continuous soft scale pulse (new)                            */
-/*    • ripple  — concentric ripple on hover (new)                             */
-/*    • tilt    — 3D tilt that follows hover position (new)                    */
+/*    • bounce  — vertical bounce on hover                                      */
+/*    • pulse   — continuous soft scale pulse                                  */
+/*    • ripple  — concentric ripple on hover                                   */
+/*    • tilt    — 3D tilt that follows hover position                          */
+/*    • float   — scroll-triggered floating animation (NEW)                    */
 /* -------------------------------------------------------------------------- */
 
 interface AnimatedIconProps {
@@ -23,11 +24,15 @@ interface AnimatedIconProps {
   label?: string;
   className?: string;
   labelClassName?: string;
-  variant?: "default" | "glow" | "orbit" | "morph" | "flip" | "bounce" | "pulse" | "ripple" | "tilt";
+  variant?: "default" | "glow" | "orbit" | "morph" | "flip" | "bounce" | "pulse" | "ripple" | "tilt" | "float";
   delay?: number;
   size?: "sm" | "md" | "lg" | "xl";
   color?: string;
   onClick?: () => void;
+  /** Enable parallax floating effect on scroll */
+  parallax?: boolean;
+  /** Custom parallax intensity (default: 0.5) */
+  parallaxIntensity?: number;
 }
 
 const sizeMap = {
@@ -54,10 +59,21 @@ export default function AnimatedIcon({
   size = "md",
   color = "#06b6d4",
   onClick,
+  parallax = false,
+  parallaxIntensity = 0.5,
 }: AnimatedIconProps) {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: "-50px" });
   const controls = useAnimation();
+
+  // Scroll-based parallax effect
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start end", "end start"]
+  });
+  const y = useTransform(scrollYProgress, [0, 1], [30 * parallaxIntensity, -30 * parallaxIntensity]);
+  const rotate = useTransform(scrollYProgress, [0, 1], [2 * parallaxIntensity, -2 * parallaxIntensity]);
+  const scale = useTransform(scrollYProgress, [0, 0.5, 1], [0.95, 1.05, 0.95]);
 
   useEffect(() => {
     if (isInView) {
@@ -210,6 +226,35 @@ export default function AnimatedIcon({
             transition: { duration: 0.6, ease: "easeInOut" },
           }}
           style={{ perspective: 800, transformStyle: "preserve-3d" }}
+        >
+          {renderIcon()}
+        </motion.div>
+      ) : variant === "float" ? (
+        // Float variant: continuous floating animation with scroll parallax
+        <motion.div
+          className="relative"
+          animate={parallax ? {
+            y: [0, -12, 0, -8, 0],
+            rotate: [0, 2, 0, -2, 0],
+            scale: [1, 1.02, 1, 1.02, 1],
+          } : {
+            y: [0, -12, 0, -8, 0],
+            rotate: [0, 2, 0, -2, 0],
+          }}
+          transition={parallax ? {
+            duration: 6,
+            repeat: Infinity,
+            ease: "easeInOut",
+          } : {
+            duration: 4,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+          style={parallax ? {
+            y,
+            rotate,
+            scale,
+          } : undefined}
         >
           {renderIcon()}
         </motion.div>
