@@ -46,8 +46,8 @@ interface Shooting {
 
 const MAX_CONNECTION_DIST = 200; // Maximum distance for connecting lines (increased)
 const MIN_CONNECTION_DIST = 60;  // Minimum distance to consider connection
-const PARTICLE_SPEED = 1.5;      // Drift speed (px/frame)
-const CONNECTION_ALPHA = 0.4;   // Base alpha for connection lines (increased for visibility)
+const PARTICLE_SPEED = 40;        // Drift speed in pixels per second (visible movement)
+const CONNECTION_ALPHA = 0.4;    // Base alpha for connection lines (increased for visibility)
 const PARTICLE_COUNT = 200;      // Number of particles (increased for more connections)
 
 export default function StarfieldBackground() {
@@ -220,9 +220,9 @@ export default function StarfieldBackground() {
       for (let i = 0; i < particles.length; i++) {
         const p = particles[i];
         
-        // Slow drift movement
-        p.x += p.vx;
-        p.y += p.vy;
+        // Slow drift movement - use dtSec for time-based animation
+        p.x += p.vx * dtSec;
+        p.y += p.vy * dtSec;
         
         // Wrap around screen edges
         if (p.x < -20) p.x = width + 20;
