@@ -81,6 +81,7 @@ export default function Login() {
     const params = new URLSearchParams(window.location.search);
     const googleError = params.get("google_error");
     if (googleError) {
+      const googleDetail = params.get("google_detail");
       const errorMessages: Record<string, { ar: string; en: string }> = {
         "access_denied": { ar: "تم رفض تسجيل الدخول بجوجل. حاول مرة أخرى أو استخدم اسم المستخدم وكلمة المرور.", en: "Google sign-in was denied. Please try again or use your username and password." },
         "token_exchange_failed": { ar: "فشل تبادل الرمز مع جوجل. تأكد من إعدادات OAuth في Google Cloud Console ثم حاول مرة أخرى.", en: "Google token exchange failed. Please verify OAuth settings in Google Cloud Console and try again." },
@@ -97,9 +98,19 @@ export default function Login() {
           en: "⚠️ Redirect URI not registered in Google Cloud Console. Add: https://ahmedelbaz.qzz.io/api/google-auth/callback to Authorized redirect URIs."
         },
       };
-      const msg = errorMessages[googleError]?.[lang] || (lang === "ar" ? `حدث خطأ في تسجيل الدخول بجوجل: ${googleError}` : `Google sign-in error occurred: ${googleError}`);
+      let msg = errorMessages[googleError]?.[lang] || (lang === "ar" ? `حدث خطأ في تسجيل الدخول بجوجل: ${googleError}` : `Google sign-in error occurred: ${googleError}`);
+      
+      // Append Google's specific error detail for token_exchange_failed
+      // This helps diagnose: invalid_grant, invalid_client, invalid_request, etc.
+      if (googleError === "token_exchange_failed" && googleDetail) {
+        const detailMsg = lang === "ar" 
+          ? ` (تفاصيل الخطأ من Google: ${googleDetail})` 
+          : ` (Google error detail: ${googleDetail})`;
+        msg += detailMsg;
+      }
+      
       setError(msg);
-      toast.error(msg, { duration: 8000 });
+      toast.error(msg, { duration: 10000 });
       // Clean the URL
       window.history.replaceState({}, "", window.location.pathname);
     }

@@ -232,12 +232,32 @@ googleAuthRouter.get("/callback", async (c) => {
 
     if (!tokenResp.ok) {
       const errBody = await tokenResp.text().catch(() => "");
+      
+      // Parse the Google error to get a specific error code
+      let googleError = "unknown";
+      let googleErrorDesc = "";
+      try {
+        const errJson = JSON.parse(errBody);
+        googleError = errJson.error || "unknown";
+        googleErrorDesc = errJson.error_description || "";
+      } catch {
+        // If we can't parse, use the raw body
+        googleErrorDesc = errBody.substring(0, 200);
+      }
+      
       logger.error("Google OAuth: token exchange failed", {
         status: tokenResp.status,
-        body: errBody,
+        error: googleError,
+        errorDescription: googleErrorDesc,
         redirectUri,
+        codeLength: code.length,
+        stateLength: state.length,
       });
-      return c.redirect("/?google_error=token_exchange_failed");
+      
+      // Pass the specific Google error to the frontend so the user can see it
+      // This helps diagnose: invalid_grant, invalid_client, invalid_request, etc.
+      const errorParam = encodeURIComponent(`${googleError}:${googleErrorDesc}`);
+      return c.redirect(`/?google_error=token_exchange_failed&google_detail=${errorParam}`);
     }
 
     const tokens = await tokenResp.json() as { id_token?: string; access_token?: string };
