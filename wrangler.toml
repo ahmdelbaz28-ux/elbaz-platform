@@ -1,0 +1,55 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Cloudflare Worker configuration — ahmedelbaz
+# ─────────────────────────────────────────────────────────────────────────────
+# This file is the ROOT CAUSE FIX for the failing Workers Build
+# (Build #4095f630 — "Deploying" step ❌).
+#
+# Without this file, `npx wrangler versions upload` has no idea:
+#   1. What the Worker's name is
+#   2. Which file is the entrypoint
+#   3. What compatibility settings to use
+#   4. What account to deploy to
+#
+# Result: build succeeds at "Building" but fails at "Deploying".
+# ─────────────────────────────────────────────────────────────────────────────
+
+name = "ahmedelbaz"
+main = "infra/security-audit/worker-v7-hardened.js"
+compatibility_date = "2025-09-23"
+compatibility_flags = []
+
+# Account ID is injected via Cloudflare dashboard / `CLOUDFLARE_ACCOUNT_ID` env
+# when wrangler runs inside Workers Builds. Locally you can set it with:
+#   export CLOUDFLARE_ACCOUNT_ID=fd43879d968b0358dc82ab3be03fd970
+
+# ─── Production routes ───────────────────────────────────────────────────────
+# Binds the Worker to the custom domain. The route + zone_id tell Cloudflare
+# to run this Worker for every request hitting ahmedelbaz.qzz.io.
+
+# Route on the custom domain (zone must exist in the same CF account).
+# Commented out by default — the Worker is currently bound via the dashboard.
+# Uncomment if you want this file to manage the route as well.
+#
+# [[routes]]
+# pattern = "ahmedelbaz.qzz.io/*"
+# custom_domain = true
+
+# ─── Observability ───────────────────────────────────────────────────────────
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+# ─── Limits ──────────────────────────────────────────────────────────────────
+# Worker v7 proxies requests to the Hugging Face Space — no CPU-heavy work.
+# Default 30s CPU time + 128MB memory is plenty.
+[limits]
+cpu_ms = 30000
+
+# ─── Notes ───────────────────────────────────────────────────────────────────
+# • The Worker code (worker-v7-hardened.js) is a pure-Cloudflare-Workers
+#   module — uses only `fetch`, `crypto.randomUUID`, `request.cf`, etc.
+#   No Node.js APIs → no need for `nodejs_compat`.
+# • The Worker proxies all traffic to:
+#     https://ahmdelbaz28-ahmdrtap.hf.space
+# • Secrets are NOT needed in this file — the Worker has no bindings
+#   (no KV, no R2, no D1, no Durable Objects, no env vars).
