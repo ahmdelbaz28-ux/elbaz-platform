@@ -66,16 +66,19 @@ export default function Login() {
     const googleError = params.get("google_error");
     if (googleError) {
       const errorMessages: Record<string, { ar: string; en: string }> = {
-        "access_denied": { ar: "تم رفض تسجيل الدخول بجوجل", en: "Google sign-in was denied" },
-        "token_exchange_failed": { ar: "فشل تبادل الرمز مع جوجل. حاول مرة أخرى.", en: "Google token exchange failed. Please try again." },
-        "invalid_token": { ar: "رمز جوجل غير صالح", en: "Invalid Google token" },
-        "state_mismatch": { ar: "خطأ أمني في تسجيل جوجل. حاول مرة أخرى.", en: "Security error in Google sign-in. Please try again." },
-        "callback_error": { ar: "حدث خطأ أثناء تسجيل الدخول بجوجل", en: "An error occurred during Google sign-in" },
-        "missing_params": { ar: "بيانات ناقصة من جوجل", en: "Missing parameters from Google" },
-        "no_id_token": { ar: "لم يتم استلام رمز الهوية من جوجل", en: "No ID token received from Google" },
-        "invalid_user_info": { ar: "معلومات المستخدم من جوجل غير مكتملة", en: "Incomplete user info from Google" },
+        "access_denied": { ar: "تم رفض تسجيل الدخول بجوجل. حاول مرة أخرى أو استخدم اسم المستخدم وكلمة المرور.", en: "Google sign-in was denied. Please try again or use your username and password." },
+        "token_exchange_failed": { ar: "فشل تبادل الرمز مع جوجل. تأكد من إعدادات OAuth في Google Cloud Console ثم حاول مرة أخرى.", en: "Google token exchange failed. Please verify OAuth settings in Google Cloud Console and try again." },
+        "invalid_token": { ar: "رمز جوجل غير صالح. حاول مرة أخرى.", en: "Invalid Google token. Please try again." },
+        "state_mismatch": { ar: "خطأ أمني في تسجيل جوجل (state mismatch). أغلق المتصفح وحاول مرة أخرى.", en: "Security error in Google sign-in (state mismatch). Please close your browser and try again." },
+        "callback_error": { ar: "حدث خطأ غير متوقع أثناء تسجيل الدخول بجوجل. حاول مرة أخرى.", en: "An unexpected error occurred during Google sign-in. Please try again." },
+        "missing_params": { ar: "بيانات ناقصة من جوجل. حاول مرة أخرى.", en: "Missing parameters from Google. Please try again." },
+        "no_id_token": { ar: "لم يتم استلام رمز الهوية من جوجل. حاول مرة أخرى.", en: "No ID token received from Google. Please try again." },
+        "invalid_user_info": { ar: "معلومات المستخدم من جوجل غير مكتملة. حاول مرة أخرى.", en: "Incomplete user info from Google. Please try again." },
+        "not_configured": { ar: "تسجيل الدخول بجوجل غير مُفعّل على الخادم. تواصل مع الإدارة.", en: "Google sign-in is not configured on the server. Please contact support." },
+        "origin_mismatch": { ar: "النطاق غير مصرح به في Google Cloud Console. تواصل مع الإدارة.", en: "This domain is not authorized in Google Cloud Console. Please contact support." },
+        "redirect_uri_mismatch": { ar: "رابط إعادة التوجيه غير مصرح به في Google Cloud Console. تواصل مع الإدارة.", en: "Redirect URI not authorized in Google Cloud Console. Please contact support." },
       };
-      const msg = errorMessages[googleError]?.[lang] || (lang === "ar" ? "حدث خطأ في تسجيل الدخول بجوجل" : "Google sign-in error occurred");
+      const msg = errorMessages[googleError]?.[lang] || (lang === "ar" ? `حدث خطأ في تسجيل الدخول بجوجل: ${googleError}` : `Google sign-in error occurred: ${googleError}`);
       setError(msg);
       toast.error(msg);
       // Clean the URL
