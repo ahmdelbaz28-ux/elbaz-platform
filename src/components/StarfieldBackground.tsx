@@ -44,10 +44,11 @@ interface Shooting {
   width: number;
 }
 
-const MAX_CONNECTION_DIST = 150; // Maximum distance for connecting lines
-const MIN_CONNECTION_DIST = 50;  // Minimum distance to consider connection
-const PARTICLE_SPEED = 1.2;      // Drift speed (px/frame) - increased for visible movement
-const CONNECTION_ALPHA = 0.15;   // Base alpha for connection lines
+const MAX_CONNECTION_DIST = 200; // Maximum distance for connecting lines (increased)
+const MIN_CONNECTION_DIST = 60;  // Minimum distance to consider connection
+const PARTICLE_SPEED = 1.5;      // Drift speed (px/frame)
+const CONNECTION_ALPHA = 0.4;   // Base alpha for connection lines (increased for visibility)
+const PARTICLE_COUNT = 200;      // Number of particles (increased for more connections)
 
 export default function StarfieldBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -100,8 +101,8 @@ export default function StarfieldBackground() {
 
     // Seed particles with slow random drift
     const seedParticles = () => {
-      // Density: ~1 particle per 20,000 px²
-      const target = Math.min(120, Math.floor((width * height) / 20000));
+      // Fixed number of particles for consistent constellation effect
+      const target = PARTICLE_COUNT;
       particles = new Array(target).fill(0).map(() => {
         const shouldTwinkle = Math.random() < 0.25;
         // Random slow drift direction
@@ -159,18 +160,22 @@ export default function StarfieldBackground() {
 
     // Draw cosmic gradient background
     const drawCosmicGradient = () => {
-      // Radial gradient from center-top
+      // Fill with dark background first
+      ctx.fillStyle = 'rgba(7, 11, 18, 1)'; // Match site bg color
+      ctx.fillRect(0, 0, width, height);
+      
+      // Add subtle radial glow from top center
       const centerX = width * 0.5;
-      const centerY = height * 0.3;
-      const radius = Math.max(width, height) * 0.8;
+      const centerY = height * 0.2;
+      const radius = Math.max(width, height) * 0.6;
       
       const gradient = ctx.createRadialGradient(
         centerX, centerY, 0,
         centerX, centerY, radius
       );
-      gradient.addColorStop(0, themeColors.gradientFrom);
-      gradient.addColorStop(0.5, themeColors.gradientTo);
-      gradient.addColorStop(1, 'rgba(0,0,0,0)');
+      gradient.addColorStop(0, 'rgba(6, 182, 212, 0.08)'); // cyan glow
+      gradient.addColorStop(0.4, 'rgba(139, 92, 246, 0.04)'); // purple mid
+      gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
       
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, width, height);
@@ -249,11 +254,11 @@ export default function StarfieldBackground() {
             
             // Create gradient for the connection line
             const grad = ctx.createLinearGradient(p1.x, p1.y, p2.x, p2.y);
-            grad.addColorStop(0, `rgba(${themeColors.connectionColor},${connectionAlpha})`);
-            grad.addColorStop(1, `rgba(${themeColors.connectionColor},${connectionAlpha * 0.3})`);
+            grad.addColorStop(0, `rgba(${themeColors.connectionColor},${connectionAlpha.toFixed(3)})`);
+            grad.addColorStop(1, `rgba(${themeColors.connectionColor},${(connectionAlpha * 0.5).toFixed(3)})`);
             
             ctx.strokeStyle = grad;
-            ctx.lineWidth = 0.5;
+            ctx.lineWidth = 1; // Increased from 0.5
             ctx.beginPath();
             ctx.moveTo(p1.x, p1.y);
             ctx.lineTo(p2.x, p2.y);
