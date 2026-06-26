@@ -450,14 +450,18 @@ const translations: Translations = {
 };
 
 export function useTranslation() {
-  const [lang, setLangState] = useState<"en" | "ar">(() => {
+  // Hydration-safe: Start with "en" on server, check localStorage after mount
+  const [lang, setLangState] = useState<"en" | "ar">("en");
+
+  useEffect(() => {
+    // Only read from localStorage after hydration to avoid mismatch
     try {
       const stored = localStorage.getItem("language");
-      return (stored === "ar" ? "ar" : "en") as "en" | "ar";
-    } catch {
-      return "en";
-    }
-  });
+      if (stored === "ar" || stored === "en") {
+        setLangState(stored);
+      }
+    } catch { /* storage blocked */ }
+  }, []);
 
   useEffect(() => {
     try {
