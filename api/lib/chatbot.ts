@@ -51,8 +51,8 @@ let lastWorkingModel = "";
 let lastWorkingTime = 0;
 let modelFailResetTime = 0;
 
-const MODAL_COOLDOWN_MS = 15_000; // back off Modal for 15s after a failure (was 60s — too long for a primary provider)
-const MAX_CONSEC_MODAL_FAILS = 3; // after this many, prefer OpenRouter first briefly
+const MODAL_COOLDOWN_MS = 5 * 60_000; // 5 MINUTES cooldown after Modal failure — GLM reasoning can take time
+const MAX_CONSEC_MODAL_FAILS = 5; // only go to OpenRouter after 5 consecutive failures (very rare for real errors)
 
 // ════════════════════════════════════════════════════════════════════════
 // SYSTEM PROMPT
@@ -647,18 +647,33 @@ export async function getChatResponse(request: {
   const systemPrompt = getSystemPrompt(request.language);
 
   // ─── PRIMARY: Modal (GLM-5.1-FP8) ───
+  // Retry up to 2 times with increasing timeout (reasoning model can be slow)
   if (modalIsAvailable()) {
     if (modalKeyValid === null) {
       await validateModalKey();
     }
     if (modalIsAvailable()) {
-      // GLM-5.1-FP8 is a reasoning model — it thinks before answering.
-      // Give it up to 180s (was 120s — still timing out for complex questions).
-      const result = await tryModal(request.messages, systemPrompt, 180000);
+      // Attempt 1: 3 minutes
+      let result = await tryModal(request.messages, systemPrompt, 180000);
       if (result) {
         return { success: true, reply: result.reply, model: result.model };
       }
-      console.warn("[Chatbot] Modal failed — falling back to OpenRouter cascade.");
+      
+      // Attempt 2: 5 minutes (for very complex reasoning)
+      console.warn("[Chatbot] Modal attempt 1 failed — retrying with longer timeout (5min)...");
+      result = await tryModal(request.messages, systemPrompt, 300000);
+      if (result) {
+        return { success: true, reply: result.reply, model: result.model };
+      }
+      
+      // Attempt 3: 8 minutes (extreme case)
+      console.warn("[Chatbot] Modal attempt 2 failed — FINAL retry with 8min timeout...");
+      result = await tryModal(request.messages, systemPrompt, 480000);
+      if (result) {
+        return { success: true, reply: result.reply, model: result.model };
+      }
+      
+      console.error("[Chatbot] GLM-5.1 completely failed after 3 attempts — falling back to OpenRouter.");
     }
   } else {
     console.info("[Chatbot] Modal not available right now — using OpenRouter fallback.");
@@ -718,69 +733,38 @@ export async function pickWorkingModel(
 > {
   const systemPrompt = getSystemPrompt(language);
 
-  // ─── PRIMARY: Modal ───
+  // ─── PRIMARY: Modal (GLM-5.1) ───
   if (modalIsAvailable()) {
     if (modalKeyValid === null) {
       await validateModalKey();
     }
     if (modalIsAvailable()) {
+      console.info("[Chatbot] Using PRIMARY: GLM-5.1-FP8 (Modal)");
       return { provider: "modal", modelId: MODAL_MODEL, systemPrompt };
     }
   }
 
-  // ─── FALLBACK: OpenRouter ───
+  // ─── FALLBACK: OpenRouter ─── (only if Modal completely unavailable)
+  console.warn("[Chatbot] Modal unavailable — using OpenRouter fallback");
+  
   if (!openrouterKeyValidated) {
     await validateOpenRouterKey();
   }
   if (openrouterKeyValid === false) return null;
 
-  // Reset fail counts every 10 minutes
-  if (!modelFailResetTime || Date.now() - modelFailResetTime > 600000) {
-    for (const k in modelFailCount) { modelFailCount[k] = 0; }
-    modelFailResetTime = Date.now();
-  }
-
-  const globalStartTime = Date.now();
-  const GLOBAL_TIMEOUT_MS = 30000;
-
-  const TIER_TIMEOUTS: Record<number, number> = {
-    1: 10000,
-    2: 8000,
-    3: 6000,
-    4: 5000,
-  };
-
-  // Try last working model first
-  if (lastWorkingModel && (Date.now() - lastWorkingTime) < 300000) {
+  // Use last working model or best tier-1 model — NO PROBING (saves 30s)
+  if (lastWorkingModel && (Date.now() - lastWorkingTime) < 600000) {
     if ((modelFailCount[lastWorkingModel] || 0) < 3) {
-      if (await probeModel(lastWorkingModel, systemPrompt, TIER_TIMEOUTS[1])) {
-        return { provider: "openrouter", modelId: lastWorkingModel, systemPrompt };
-      }
+      console.info("[Chatbot] Using last working OpenRouter model:", lastWorkingModel);
+      return { provider: "openrouter", modelId: lastWorkingModel, systemPrompt };
     }
   }
 
-  // Try all models by tier
-  for (let tier = 1; tier <= 4; tier++) {
-    for (let i = 0; i < AI_MODELS.length; i++) {
-      const model = AI_MODELS[i];
-      if (model.tier !== tier) continue;
-      if ((modelFailCount[model.id] || 0) >= 3) continue;
-      if (Date.now() - globalStartTime > GLOBAL_TIMEOUT_MS) {
-        console.warn("[Chatbot/Stream] Model selection timeout reached");
-        return null;
-      }
-      if (await probeModel(model.id, systemPrompt, TIER_TIMEOUTS[tier])) {
-        return { provider: "openrouter", modelId: model.id, systemPrompt };
-      }
-    }
-  }
-
-  // Last resort
-  for (let i = 0; i < AI_MODELS.length; i++) {
-    modelFailCount[AI_MODELS[i].id] = 0;
-    if (await probeModel(AI_MODELS[i].id, systemPrompt, 5000)) {
-      return { provider: "openrouter", modelId: AI_MODELS[i].id, systemPrompt };
-    }
+  // Use best tier-1 model directly — no probing needed
+  const bestModel = AI_MODELS.find(m => m.tier === 1);
+  if (bestModel) {
+    console.info("[Chatbot] Using best OpenRouter model:", bestModel.id);
+    return { provider: "openrouter", modelId: bestModel.id, systemPrompt };
   }
 
   return null;
@@ -871,52 +855,71 @@ export async function getStreamResponse(request: {
 
   const encoder = new TextEncoder();
 
-  // ─── Modal stream ───
-  // We read the upstream manually (rather than piping through a Transform)
-  // so we can detect the "only reasoning, no content" case and transparently
-  // recover via the OpenRouter fallback before closing the stream.
+  // ─── Modal stream (GLM-5.1) with RETRY ───
   if (picked.provider === "modal") {
-    let response: Response;
-    try {
-      response = await fetch(MODAL_ENDPOINT, {
-        method: "POST",
-        headers: {
-          "Authorization": "Bearer " + MODAL_API_KEY,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: picked.modelId,
-          messages: [
-            { role: "system", content: picked.systemPrompt },
-            ...request.messages.map(function(m) { return { role: m.role, content: m.content }; }),
-          ],
-          temperature: 0.7,
-          max_tokens: 2048,
-          stream: true,
-        }),
-        // Long timeout: reasoning models (GLM-5.1-FP8) think before emitting
-        // content. The initial connection can take 60-90s while the model
-        // reasons. Give it 180s to open the stream.
-        signal: AbortSignal.timeout(180000),
-      });
-    } catch (e) {
-      modalConsecFails++;
-      modalLastFailTime = Date.now();
-      console.warn("[Chatbot/Stream] Modal stream open threw:", String(e), "— falling back to OpenRouter.");
-      return await streamOpenRouterFallback(request, picked.systemPrompt);
+    const timeouts = [180000, 300000, 480000]; // 3min, 5min, 8min
+    let response: Response | null = null;
+
+    for (let attempt = 0; attempt < timeouts.length; attempt++) {
+      const timeout = timeouts[attempt];
+      console.info(`[Chatbot/Stream] GLM-5.1 attempt ${attempt + 1}/${timeouts.length} (${timeout/1000}s timeout)`);
+
+      try {
+        response = await fetch(MODAL_ENDPOINT, {
+          method: "POST",
+          headers: {
+            "Authorization": "Bearer " + MODAL_API_KEY,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: picked.modelId,
+            messages: [
+              { role: "system", content: picked.systemPrompt },
+              ...request.messages.map(function(m) { return { role: m.role, content: m.content }; }),
+            ],
+            temperature: 0.7,
+            max_tokens: 2048,
+            stream: true,
+          }),
+          signal: AbortSignal.timeout(timeout),
+        });
+      } catch (e) {
+        modalConsecFails++;
+        modalLastFailTime = Date.now();
+        console.warn(`[Chatbot/Stream] Modal attempt ${attempt + 1} threw:`, String(e));
+        if (attempt < timeouts.length - 1) {
+          console.info("[Chatbot/Stream] Retrying Modal...");
+          continue;
+        }
+        console.error("[Chatbot/Stream] All Modal attempts failed — falling back to OpenRouter.");
+        return await streamOpenRouterFallback(request, picked.systemPrompt);
+      }
+
+      if (!response.ok || !response.body) {
+        modalConsecFails++;
+        modalLastFailTime = Date.now();
+        console.warn(`[Chatbot/Stream] Modal attempt ${attempt + 1} failed: HTTP ${response.status}`);
+        if (attempt < timeouts.length - 1) {
+          console.info("[Chatbot/Stream] Retrying Modal...");
+          continue;
+        }
+        console.error("[Chatbot/Stream] All Modal attempts failed — falling back to OpenRouter.");
+        return await streamOpenRouterFallback(request, picked.systemPrompt);
+      }
+
+      // SUCCESS
+      modalConsecFails = 0;
+      modalLastSuccess = Date.now();
+      modalKeyValid = true;
+      console.info(`[Chatbot/Stream] GLM-5.1 attempt ${attempt + 1} SUCCESS`);
+      break; // Exit retry loop, proceed with stream
     }
 
-    if (!response.ok || !response.body) {
-      modalConsecFails++;
-      modalLastFailTime = Date.now();
-      console.warn("[Chatbot/Stream] Modal stream open failed (" + response.status + ") — falling back to OpenRouter.");
+    // If we got here without a response, something went wrong
+    if (!response || !response.body) {
+      console.error("[Chatbot/Stream] No Modal response after all attempts");
       return await streamOpenRouterFallback(request, picked.systemPrompt);
     }
-
-    // Reset Modal health — stream opened successfully.
-    modalConsecFails = 0;
-    modalLastSuccess = Date.now();
-    modalKeyValid = true;
 
     const upstream = response.body;
     const decoder = new TextDecoder();
