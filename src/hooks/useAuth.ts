@@ -1,5 +1,5 @@
 import { trpc } from "@/providers/trpc";
-import { useCallback, useMemo, useEffect, useRef } from "react";
+import { useCallback, useMemo, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { identifyUser } from "@/lib/clarity";
 import { hasStoredAuth, removeStoredToken } from "@/lib/auth-storage";
@@ -8,14 +8,27 @@ import { hasStoredAuth, removeStoredToken } from "@/lib/auth-storage";
 export function useAuth() {
   const utils = trpc.useUtils();
   const clarityIdentified = useRef(false);
+  
+  // Hydration safety: Track if we've mounted yet
+  const [hasMounted, setHasMounted] = useState(false);
+
+  // Check auth after mount to avoid hydration mismatch
+  const [storedAuth, setStoredAuth] = useState(false);
+
+  useEffect(() => {
+    // Defer auth check to after hydration
+    setStoredAuth(hasStoredAuth());
+    setHasMounted(true);
+  }, []);
 
   const {
     data: user,
-    isLoading,
+    isLoading: queryLoading,
     error,
     refetch,
   } = trpc.auth.me.useQuery(undefined, {
-    enabled: hasStoredAuth(),
+    // Only run the query after we've checked for stored auth (post-hydration)
+    enabled: hasMounted && storedAuth,
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 10,
     retry: false,
@@ -54,6 +67,10 @@ export function useAuth() {
     removeStoredToken();
     navigate("/login", { replace: true });
   }, [logoutMutation, navigate]);
+
+  // During initial render (before hydration), show as loading to avoid mismatch
+  // After mount, show query loading state if query is running
+  const isLoading = !hasMounted || queryLoading;
 
   return useMemo(
     () => ({
