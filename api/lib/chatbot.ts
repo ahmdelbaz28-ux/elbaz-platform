@@ -926,16 +926,18 @@ export async function getStreamResponse(request: {
         const reader = upstream.getReader();
         let sawContent = false;
         let buffer = "";
+        let streamClosed = false;
         try {
           while (true) {
             const { done, value } = await reader.read();
-            if (done) break;
+            if (done || streamClosed) break;
             buffer += decoder.decode(value, { stream: true });
 
             const lines = buffer.split("\n");
             buffer = lines.pop() || ""; // keep incomplete line
 
             for (const line of lines) {
+              if (streamClosed) break;
               const trimmed = line.trim();
               if (!trimmed || trimmed === "data: [DONE]") continue;
               if (!trimmed.startsWith("data: ")) continue;
@@ -946,9 +948,7 @@ export async function getStreamResponse(request: {
                 // ✅ Forward ONLY `content`. Discard `reasoning_content` (chain-of-thought).
                 if (delta.content) {
                   sawContent = true;
-                  controller.enqueue(
-                    encoder.encode("data: " + JSON.stringify({ text: delta.content }) + "\n\n")
-                  );
+                  try { controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: delta.content }) + "\n\n")); } catch { streamClosed = true; break; }
                 }
               } catch {
                 // Skip malformed JSON chunks
@@ -957,23 +957,23 @@ export async function getStreamResponse(request: {
           }
 
           // Flush any trailing buffered line
-          const rest = buffer.trim();
-          if (rest.startsWith("data: ") && rest.slice(6).trim() !== "[DONE]") {
-            try {
-              const parsed = JSON.parse(rest.slice(6).trim());
-              const delta = parsed.choices?.[0]?.delta;
-              if (delta && delta.content) {
-                sawContent = true;
-                controller.enqueue(
-                  encoder.encode("data: " + JSON.stringify({ text: delta.content }) + "\n\n")
-                );
+          if (!streamClosed) {
+            const rest = buffer.trim();
+            if (rest.startsWith("data: ") && rest.slice(6).trim() !== "[DONE]") {
+              try {
+                const parsed = JSON.parse(rest.slice(6).trim());
+                const delta = parsed.choices?.[0]?.delta;
+                if (delta && delta.content) {
+                  sawContent = true;
+                  try { controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: delta.content }) + "\n\n")); } catch { /* already closed */ }
+                }
+              } catch {
+                // Skip malformed trailing chunk
               }
-            } catch {
-              // Skip malformed trailing chunk
             }
           }
         } catch (e) {
-          controller.error(e);
+          try { controller.error(e); } catch { /* already closed */ }
           return;
         } finally {
           try { reader.releaseLock(); } catch { /* already released */ }
@@ -984,12 +984,12 @@ export async function getStreamResponse(request: {
           console.warn("[Chatbot/Stream] Modal returned no content (only reasoning) — recovering via OpenRouter.");
           const fb = await openRouterFallback(request.messages, picked.systemPrompt, request.language);
           if (fb) {
-            controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: fb.reply }) + "\n\n"));
+            try { controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: fb.reply }) + "\n\n")); } catch { /* controller already closed */ }
           }
         }
 
-        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-        controller.close();
+        try { controller.enqueue(encoder.encode("data: [DONE]\n\n")); } catch { /* controller already closed */ }
+        try { controller.close(); } catch { /* already closed */ }
       },
     });
 
@@ -1030,30 +1030,32 @@ export async function getStreamResponse(request: {
     const decoder = new TextDecoder();
     const transformStream = new TransformStream<Uint8Array, Uint8Array>({
       async transform(chunk, controller) {
-        const text = decoder.decode(chunk, { stream: true });
-        const lines = text.split("\n");
+        try {
+          const text = decoder.decode(chunk, { stream: true });
+          const lines = text.split("\n");
 
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || trimmed === "data: [DONE]") continue;
-          if (!trimmed.startsWith("data: ")) continue;
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed === "data: [DONE]") continue;
+            if (!trimmed.startsWith("data: ")) continue;
 
-          try {
-            const parsed = JSON.parse(trimmed.slice(6));
-            const delta = parsed.choices?.[0]?.delta;
-            if (delta && delta.content) {
-              controller.enqueue(
-                encoder.encode("data: " + JSON.stringify({ text: delta.content }) + "\n\n")
-              );
+            try {
+              const parsed = JSON.parse(trimmed.slice(6));
+              const delta = parsed.choices?.[0]?.delta;
+              if (delta && delta.content) {
+                try {
+                  controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: delta.content }) + "\n\n"));
+                } catch { /* stream closed */ }
+              }
+            } catch {
+              // Skip malformed JSON chunks
             }
-          } catch {
-            // Skip malformed JSON chunks
           }
-        }
+        } catch { /* decode error - skip */ }
       },
       flush(controller) {
-        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-        controller.terminate();
+        try { controller.enqueue(encoder.encode("data: [DONE]\n\n")); } catch { /* already closed */ }
+        try { controller.terminate(); } catch { /* already terminated */ }
       },
     });
 
@@ -1088,9 +1090,11 @@ async function streamOpenRouterFallback(
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: orResult.reply }) + "\n\n"));
-      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-      controller.close();
+      try {
+        controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: orResult.reply }) + "\n\n"));
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      } catch { /* controller already closed */ }
     },
   });
   return { stream, model: orResult.model };
