@@ -20,7 +20,7 @@ compatibility_flags = []
 
 # Account ID is injected via Cloudflare dashboard / `CLOUDFLARE_ACCOUNT_ID` env
 # when wrangler runs inside Workers Builds. Locally you can set it with:
-#   export CLOUDFLARE_ACCOUNT_ID=fd43879d968b0358dc82ab3be03fd970
+#   export CLOUDFLARE_ACCOUNT_ID=951840a21847d5c55c8284d4ded7cffc
 
 # ─── Production routes ───────────────────────────────────────────────────────
 # Binds the Worker to the custom domain. The route + zone_id tell Cloudflare

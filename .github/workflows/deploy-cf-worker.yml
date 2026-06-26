@@ -8,14 +8,15 @@
 #   which is more reliable and gives us full control over the deploy.
 #
 # HOW TO USE:
-#   1. Create a GitHub Secret named `CLOUDFLARE_API_TOKEN` with a Cloudflare
-#      API Token that has permission to edit Workers in account
-#      fd43879d968b0358dc82ab3be03fd970.
-#      (Dashboard → My Profile → API Tokens → Create Token →
-#       "Edit Cloudflare Workers" template)
-#   2. Push to main. The Worker will deploy automatically.
-#   3. Disable the broken Workers Build in Cloudflare dashboard:
-#      Workers & Pages → ahmedelbaz → Settings → Build → Remove
+#   1. GitHub Secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`
+#      are already configured in this repo.
+#   2. Push to main. The Worker will deploy automatically when the
+#      Worker source code or wrangler.toml changes.
+#   3. You can also trigger this workflow manually via the Actions tab.
+#
+# DISABLE THE BROKEN WORKERS BUILD:
+#   Workers & Pages → ahmedelbaz → Settings → Build → Remove
+#   (Once removed, this workflow is the only deploy path.)
 # ════════════════════════════════════════════════════════════════════════════
 name: Deploy Cloudflare Worker
 
@@ -46,9 +47,9 @@ jobs:
       - name: Deploy Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: fd43879d968b0358dc82ab3be03fd970
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          echo "=== Deploying Worker 'ahmedelbaz' ==="
+          echo "=== Deploying Worker 'ahmedelbaz' to account ${CLOUDFLARE_ACCOUNT_ID} ==="
           wrangler deploy \
             --name ahmedelbaz \
             --compatibility-date 2025-09-23 \
@@ -57,13 +58,24 @@ jobs:
       - name: Verify deployment
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: fd43879d968b0358dc82ab3be03fd970
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           sleep 5
-          STATUS=$(curl -sS -o /dev/null -w "%{http_code}" https://ahmedelbaz.ahmdelbaz28.workers.dev)
-          echo "Worker endpoint returned HTTP $STATUS"
-          if [ "$STATUS" = "200" ] || [ "$STATUS" = "302" ] || [ "$STATUS" = "404" ]; then
-            echo "✅ Worker is responding"
+          # Test worker.dev endpoint
+          WORKER_STATUS=$(curl -sS -o /dev/null -w "%{http_code}" \
+            -H "User-Agent: Mozilla/5.0" \
+            https://ahmedelbaz.ahmdelbaz28.workers.dev)
+          echo "Worker.dev returned HTTP $WORKER_STATUS"
+
+          # Test custom domain
+          DOMAIN_STATUS=$(curl -sS -o /dev/null -w "%{http_code}" \
+            -H "User-Agent: Mozilla/5.0" \
+            https://ahmedelbaz.qzz.io)
+          echo "Custom domain returned HTTP $DOMAIN_STATUS"
+
+          if [ "$WORKER_STATUS" = "200" ] || [ "$WORKER_STATUS" = "302" ] || [ "$WORKER_STATUS" = "404" ]; then
+            echo "✅ Worker is responding correctly"
           else
-            echo "⚠️ Worker returned unexpected status, check logs"
+            echo "⚠️ Worker returned unexpected status ($WORKER_STATUS), check logs"
+            exit 1
           fi
