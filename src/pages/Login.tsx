@@ -92,11 +92,14 @@ export default function Login() {
         "invalid_user_info": { ar: "معلومات المستخدم من جوجل غير مكتملة. حاول مرة أخرى.", en: "Incomplete user info from Google. Please try again." },
         "not_configured": { ar: "تسجيل الدخول بجوجل غير مُفعّل على الخادم. تواصل مع الإدارة.", en: "Google sign-in is not configured on the server. Please contact support." },
         "origin_mismatch": { ar: "النطاق غير مصرح به في Google Cloud Console. تواصل مع الإدارة.", en: "This domain is not authorized in Google Cloud Console. Please contact support." },
-        "redirect_uri_mismatch": { ar: "رابط إعادة التوجيه غير مصرح به في Google Cloud Console. تواصل مع الإدارة.", en: "Redirect URI not authorized in Google Cloud Console. Please contact support." },
+        "redirect_uri_mismatch": {
+          ar: "⚠️ رابط إعادة التوجيه غير مسجل في Google Cloud Console. يجب إضافة: https://ahmedelbaz.qzz.io/api/google-auth/callback في Authorized redirect URIs.",
+          en: "⚠️ Redirect URI not registered in Google Cloud Console. Add: https://ahmedelbaz.qzz.io/api/google-auth/callback to Authorized redirect URIs."
+        },
       };
       const msg = errorMessages[googleError]?.[lang] || (lang === "ar" ? `حدث خطأ في تسجيل الدخول بجوجل: ${googleError}` : `Google sign-in error occurred: ${googleError}`);
       setError(msg);
-      toast.error(msg);
+      toast.error(msg, { duration: 8000 });
       // Clean the URL
       window.history.replaceState({}, "", window.location.pathname);
     }
