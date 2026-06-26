@@ -44,10 +44,26 @@ export default function Login() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleClientId, setGoogleClientId] = useState("");
 
-  // Fetch Google Client ID from the dedicated /api/env endpoint.
+  // Fetch Google Client ID from public env vars.
+  // 🔧 ROOT CAUSE FIX: Read from window.__ENV__ (injected by server into HTML)
+  // FIRST, before falling back to /api/env fetch. The fetch was being blocked
+  // by Cloudflare Bot Management on some browsers, causing the Google Sign-In
+  // button to never render.
   useEffect(() => {
+    // 1. Synchronous: read from injected window.__ENV__
+    const injected = (window as any).__ENV__ as Record<string, string> | undefined;
+    if (injected?.GOOGLE_CLIENT_ID) {
+      setGoogleClientId(injected.GOOGLE_CLIENT_ID);
+      return; // ✅ Got it — no need to fetch
+    }
+
+    // 2. Fallback: fetch /api/env (may be blocked by Cloudflare Bot Management)
+    console.warn("[GoogleAuth] window.__ENV__ not found, falling back to /api/env fetch");
     fetch("/api/env", { cache: "no-store" })
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then(data => {
         if (data?.GOOGLE_CLIENT_ID) {
           setGoogleClientId(data.GOOGLE_CLIENT_ID);
@@ -179,9 +195,28 @@ export default function Login() {
   // The GIS popup flow was causing "origin_mismatch" errors because the
   // custom domain wasn't registered in Google Cloud Console.
   const handleGoogleSignIn = useCallback(() => {
-    // Redirect to our backend endpoint which will redirect to Google
-    window.location.href = "/api/google-auth/redirect";
-  }, []);
+    // 🔧 FIX: Show immediate loading state so the user knows the click registered
+    setGoogleLoading(true);
+    setError("");
+
+    // Use a small timeout so React can paint the loading spinner before the
+    // browser navigates away. This gives the user visual feedback that the
+    // button was clicked, even on slow connections.
+    setTimeout(() => {
+      try {
+        // Redirect to our backend endpoint which will redirect to Google
+        window.location.href = "/api/google-auth/redirect";
+      } catch (err) {
+        console.error("[GoogleAuth] Failed to redirect:", err);
+        setGoogleLoading(false);
+        const errMsg = lang === "ar"
+          ? "تعذر بدء تسجيل الدخول بجوجل. حاول مرة أخرى."
+          : "Could not start Google sign-in. Please try again.";
+        setError(errMsg);
+        toast.error(errMsg);
+      }
+    }, 50);
+  }, [lang]);
 
   const loginMutation = trpc.auth.login.useMutation({
     onSuccess: (data) => {
