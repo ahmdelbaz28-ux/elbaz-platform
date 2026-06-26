@@ -160,13 +160,17 @@
     <script src="rtl-detect.js?v=%%CACHE_BUST%%"></script>
 
     <!-- ⚡ Theme detection — runs BEFORE React to prevent flash of wrong theme.
-         Reads from localStorage or falls back to prefers-color-scheme.
-         Sets data-theme on <html> so CSS overrides apply instantly. -->
+         Dark Mode is the DEFAULT. Only switch to Light if user explicitly chose it.
+         (Previously used prefers-color-scheme which caused issues on browsers
+         that default to light mode — making dark-themed text invisible on
+         light backgrounds.) -->
     <script>
       (function() {
         try {
           var saved = localStorage.getItem('elbaz-theme');
-          var theme = saved || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+          // ✅ FIX: Dark Mode is ALWAYS the default unless user explicitly
+          // chose 'light' via the theme toggle.
+          var theme = saved === 'light' ? 'light' : 'dark';
           document.documentElement.setAttribute('data-theme', theme);
         } catch(e) {
           document.documentElement.setAttribute('data-theme', 'dark');

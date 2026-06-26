@@ -67,6 +67,21 @@ export default function StarfieldBackground() {
       typeof window !== 'undefined' &&
       window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
+    // ✅ FIX: Detect mobile devices to reduce particle count and disable
+    // connection lines (the O(n²) loop is the most CPU-intensive part).
+    // Desktop keeps full 80 particles + connections for a rich look.
+    // Mobile gets 25 particles + NO connection lines = much smoother.
+    const isMobile = typeof window !== 'undefined' &&
+      (window.matchMedia?.('(max-width: 768px)').matches ||
+       /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
+
+    // Effective particle count based on device
+    const effectiveParticleCount = isMobile ? 25 : PARTICLE_COUNT;
+    // Disable connections on mobile (O(n²) is too expensive for mobile CPUs)
+    const enableConnections = !isMobile;
+    // Disable shooting stars on mobile (saves CPU + battery)
+    const enableShootingStars = !isMobile;
+
     // Theme detection
     const getThemeColors = () => {
       const isLight = document.documentElement.getAttribute('data-theme') === 'light';
@@ -105,8 +120,8 @@ export default function StarfieldBackground() {
 
     // Seed particles with slow random drift
     const seedParticles = () => {
-      // Fixed number of particles for consistent constellation effect
-      const target = PARTICLE_COUNT;
+      // ✅ FIX: Use effectiveParticleCount (25 on mobile, 80 on desktop)
+      const target = effectiveParticleCount;
       particles = new Array(target).fill(0).map(() => {
         const shouldTwinkle = Math.random() < 0.25;
         // Random slow drift direction
@@ -243,30 +258,33 @@ export default function StarfieldBackground() {
       }
 
       // Draw connection lines between nearby particles
-      for (let i = 0; i < particles.length; i++) {
-        const p1 = particles[i];
-        for (let j = i + 1; j < particles.length; j++) {
-          const p2 = particles[j];
-          const dx = p2.x - p1.x;
-          const dy = p2.y - p1.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          
-          // Only connect if within range
-          if (dist < MAX_CONNECTION_DIST && dist > MIN_CONNECTION_DIST) {
-            // Calculate alpha based on distance (closer = more visible)
-            const connectionAlpha = CONNECTION_ALPHA * (1 - dist / MAX_CONNECTION_DIST);
+      // ✅ FIX: Skip connection lines on mobile (O(n²) loop is too expensive)
+      if (enableConnections) {
+        for (let i = 0; i < particles.length; i++) {
+          const p1 = particles[i];
+          for (let j = i + 1; j < particles.length; j++) {
+            const p2 = particles[j];
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
             
-            // Create gradient for the connection line
-            const grad = ctx.createLinearGradient(p1.x, p1.y, p2.x, p2.y);
-            grad.addColorStop(0, `rgba(${themeColors.connectionColor},${connectionAlpha.toFixed(3)})`);
-            grad.addColorStop(1, `rgba(${themeColors.connectionColor},${(connectionAlpha * 0.5).toFixed(3)})`);
-            
-            ctx.strokeStyle = grad;
-            ctx.lineWidth = 1; // Increased from 0.5
-            ctx.beginPath();
+            // Only connect if within range
+            if (dist < MAX_CONNECTION_DIST && dist > MIN_CONNECTION_DIST) {
+              // Calculate alpha based on distance (closer = more visible)
+              const connectionAlpha = CONNECTION_ALPHA * (1 - dist / MAX_CONNECTION_DIST);
+              
+              // Create gradient for the connection line
+              const grad = ctx.createLinearGradient(p1.x, p1.y, p2.x, p2.y);
+              grad.addColorStop(0, `rgba(${themeColors.connectionColor},${connectionAlpha.toFixed(3)})`);
+              grad.addColorStop(1, `rgba(${themeColors.connectionColor},${(connectionAlpha * 0.5).toFixed(3)})`);
+              
+              ctx.strokeStyle = grad;
+              ctx.lineWidth = 1; // Increased from 0.5
+              ctx.beginPath();
             ctx.moveTo(p1.x, p1.y);
             ctx.lineTo(p2.x, p2.y);
             ctx.stroke();
+            }
           }
         }
       }
@@ -357,8 +375,8 @@ export default function StarfieldBackground() {
         drawShootings(dtSec);
       }
 
-      // Spawn next shooting star
-      if (!prefersReduced && ts >= nextShootAt) {
+      // Spawn next shooting star (disabled on mobile for performance)
+      if (enableShootingStars && !prefersReduced && ts >= nextShootAt) {
         nextShootAt = ts + 3000 + Math.random() * 4000;
         shootings.push(spawnShooting());
       }

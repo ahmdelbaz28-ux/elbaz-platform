@@ -3,12 +3,13 @@ import { useCallback, useEffect, useState } from 'react';
 /* -------------------------------------------------------------------------- */
 /*  useTheme                                                                   */
 /*  ─────────────────────────────────────────────────────────────────────────  */
-/*  Dark/Light theme hook with localStorage persistence + system preference.  */
+/*  Dark/Light theme hook with localStorage persistence.                      */
 /*                                                                             */
-/*  - Default: respects prefers-color-scheme on first visit                   */
+/*  - Default: Dark Mode (always — site is designed dark-first)               */
 /*  - Persists choice in localStorage under 'elbaz-theme'                     */
 /*  - Sets data-theme attribute on <html> for CSS override selectors          */
 /*  - Exposes current theme + toggle function                                 */
+/*  - User can switch to Light Mode via the theme toggle button               */
 /* -------------------------------------------------------------------------- */
 
 export type Theme = 'dark' | 'light';
@@ -18,20 +19,18 @@ const STORAGE_KEY = 'elbaz-theme';
 function getInitialTheme(): Theme {
   if (typeof window === 'undefined') return 'dark';
 
-  // 1. Check localStorage first (user's explicit choice)
+  // ✅ FIX: Dark Mode is ALWAYS the default.
+  // Only switch to Light if user EXPLICITLY chose it.
+  // Previously used prefers-color-scheme which caused invisible text
+  // on browsers that default to light mode.
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved === 'dark' || saved === 'light') return saved;
+    if (saved === 'light') return 'light';
   } catch {
     // localStorage might be blocked (private mode) — fall through
   }
 
-  // 2. Fall back to system preference
-  if (window.matchMedia?.('(prefers-color-scheme: light)').matches) {
-    return 'light';
-  }
-
-  // 3. Default: dark (matches the site's original design)
+  // Default: dark (matches the site's original design)
   return 'dark';
 }
 
@@ -68,23 +67,10 @@ export function useTheme() {
     applyTheme(theme);
   }, [theme, applyTheme]);
 
-  // Listen to system preference changes (only if user hasn't explicitly chosen)
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const handler = (e: MediaQueryListEvent) => {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        // Only follow system if user hasn't explicitly set a preference
-        if (!saved) {
-          setThemeState(e.matches ? 'dark' : 'light');
-        }
-      } catch {
-        // Ignore
-      }
-    };
-    mq.addEventListener?.('change', handler);
-    return () => mq.removeEventListener?.('change', handler);
-  }, []);
+  // ✅ NOTE: System preference listener removed.
+  // Dark Mode is always the default. User must explicitly toggle to Light.
+  // This prevents the "invisible text" bug where browsers defaulting to
+  // light mode would override the site's dark design.
 
   const toggleTheme = useCallback(() => {
     setThemeState((prev) => (prev === 'dark' ? 'light' : 'dark'));
