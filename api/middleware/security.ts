@@ -20,6 +20,9 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
     c.header("Pragma", "no-cache");
     c.header("Vary", "Authorization, Accept-Language, Accept-Encoding");
   } else if (isAsset) {
+    // 🚀 PERFORMANCE: Don't set Cache-Control here — cacheMiddleware handles it.
+    // This middleware runs first, but cacheMiddleware (registered before serveStatic)
+    // will set the proper Cache-Control: immutable for assets.
     c.header("Vary", "Accept-Encoding");
   }
 

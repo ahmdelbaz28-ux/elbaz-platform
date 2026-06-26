@@ -294,8 +294,49 @@ function stage9_requestSizeLimit(request) {
 
 // ─── Response Headers ───────────────────────────────────────────────────────
 
+// 🚀 PERFORMANCE: Cache static assets at Cloudflare edge for 1 year.
+// This means repeat visitors get assets from the nearest Cloudflare PoP
+// instead of going all the way to the HF Space origin.
+function addCacheHeaders(newHeaders, url) {
+  const pathname = url.pathname;
+  const ext = pathname.substring(pathname.lastIndexOf('.') + 1).toLowerCase();
+
+  // Critical files: never cache
+  const noCacheFiles = ['sw.js', 'cache-nuke.js', 'rtl-detect.js', 'clarity.js', 'pii-mask.js', 'build-id.json'];
+  const filename = pathname.substring(pathname.lastIndexOf('/') + 1);
+
+  if (noCacheFiles.includes(filename) || filename.startsWith('workbox-')) {
+    // Already has no-cache from origin, don't override
+    return;
+  }
+
+  // Hashed assets in /assets/ → cache for 1 year at edge
+  if (pathname.startsWith('/assets/') && ['js', 'css', 'mjs'].includes(ext)) {
+    newHeaders.set('Cache-Control', 'public, max-age=31536000, immutable');
+    newHeaders.set('CDN-Cache-Control', 'public, max-age=31536000');
+    newHeaders.set('Cloudflare-CDN-Cache-Control', 'public, max-age=31536000');
+    return;
+  }
+
+  // Images and fonts → cache for 1 year at edge
+  if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'avif', 'ico', 'woff', 'woff2', 'ttf', 'eot'].includes(ext)) {
+    newHeaders.set('Cache-Control', 'public, max-age=31536000, immutable');
+    newHeaders.set('CDN-Cache-Control', 'public, max-age=31536000');
+    newHeaders.set('Cloudflare-CDN-Cache-Control', 'public, max-age=31536000');
+    return;
+  }
+
+  // HTML pages: short cache at edge (30 seconds) for fast navigation
+  // while still allowing updates to propagate quickly
+  if (ext === '' || ext === 'html') {
+    if (!newHeaders.get('Cache-Control') || newHeaders.get('Cache-Control').includes('no-cache')) {
+      newHeaders.set('CDN-Cache-Control', 'public, max-age=30');
+    }
+  }
+}
+
 // Add security headers (v7: X-Frame-Options = SAMEORIGIN, + X-Request-ID)
-function addSecurityHeaders(response) {
+function addSecurityHeaders(response, url) {
   const newHeaders = new Headers(response.headers);
   newHeaders.set('X-Content-Type-Options', 'nosniff');
   newHeaders.set('X-Frame-Options', 'SAMEORIGIN');  // v7: was DENY
@@ -309,6 +350,11 @@ function addSecurityHeaders(response) {
   // Remove server fingerprinting
   newHeaders.delete('X-Powered-By');
   newHeaders.delete('Server');
+
+  // 🚀 PERFORMANCE: Add cache headers for static assets
+  if (url) {
+    addCacheHeaders(newHeaders, url);
+  }
 
   return new Response(response.body, {
     status: response.status,
@@ -357,9 +403,11 @@ function addRequestHeaders(request) {
 // ─── Main Handler ───────────────────────────────────────────────────────────
 
 async function handleRequest(request, env, ctx) {
+  const requestUrl = new URL(request.url);
+
   // Handle CORS preflight
   if (request.method === 'OPTIONS') {
-    return addSecurityHeaders(addCORSHeaders(new Response(null, { status: 204 })));
+    return addSecurityHeaders(addCORSHeaders(new Response(null, { status: 204 })), requestUrl);
   }
 
   // Security stages pipeline (v7: no botScoring, no rateLimit)
@@ -377,7 +425,7 @@ async function handleRequest(request, env, ctx) {
 
   for (const stage of securityStages) {
     const result = stage(request);
-    if (result) return addSecurityHeaders(result);
+    if (result) return addSecurityHeaders(result, requestUrl);
   }
 
   // Proxy to origin
@@ -387,7 +435,7 @@ async function handleRequest(request, env, ctx) {
     const originResponse = await fetch(originRequest);
     let response = originResponse;
     response = addCORSHeaders(response);
-    response = addSecurityHeaders(response);
+    response = addSecurityHeaders(response, requestUrl);
     return response;
   } catch (err) {
     return new Response(JSON.stringify({ error: 'Bad Gateway' }), {
