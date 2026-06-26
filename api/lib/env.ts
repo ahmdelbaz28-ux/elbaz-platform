@@ -43,6 +43,10 @@ const envSchema = z.object({
 
   GOOGLE_CLIENT_ID: z.string().min(1, "GOOGLE_CLIENT_ID is required"),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
+  // 🔧 FIX: Hardcoded OAuth redirect URI to avoid redirect_uri_mismatch errors
+  // when users access via different domains (custom domain vs HF Space URL).
+  // Must be registered in Google Cloud Console → Credentials → Authorized redirect URIs
+  GOOGLE_OAUTH_REDIRECT_URI: z.string().url().optional(),
 
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM_EMAIL: z.string().default("noreply@ahmedelbaz.qzz.io").transform(v => {

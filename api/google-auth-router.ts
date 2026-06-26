@@ -1,11 +1,16 @@
 /**
  * Google OAuth Router
  *
- * Handles Google Sign-In using the ID Token flow:
- *   POST /api/google-auth   — exchanges Google ID token for a session
+ * Handles Google Sign-In using TWO flows:
+ *   1. OAuth Redirect flow (primary): GET /api/google-auth/redirect → /callback
+ *   2. GIS ID Token flow (fallback):  POST /api/google-auth  (body: { idToken })
  *
- * The frontend uses Google Identity Services (GIS) to obtain an ID token,
- * then sends it here. We verify it, find/create the user, and set an auth cookie.
+ * 🔧 ROOT CAUSE FIX (v2):
+ *   - Always use a HARDCODED production redirect URI (env.GOOGLE_OAUTH_REDIRECT_URI).
+ *     This avoids redirect_uri mismatches when users access via different domains
+ *     (ahmedelbaz.qzz.io vs ahmdelbaz28-ahmdrtap.hf.space).
+ *   - State cookie uses SameSite=Lax so it survives the Google OAuth redirect.
+ *   - Detailed error logging + user-friendly redirect with localized error codes.
  */
 
 import { Hono } from "hono";
@@ -20,6 +25,19 @@ import { checkRateLimit } from "./lib/rate-limiter";
 import { logger } from "./lib/logger";
 
 const googleAuthRouter = new Hono();
+
+// ─── Helper: determine the canonical redirect URI for Google OAuth ───
+// We ALWAYS use the production URL to avoid redirect_uri mismatches.
+// This URL must be registered in Google Cloud Console under:
+//   APIs & Services → Credentials → OAuth 2.0 Client → Authorized redirect URIs
+function getOAuthRedirectUri(): string {
+  // 1. Explicit env override (highest priority)
+  if (env.GOOGLE_OAUTH_REDIRECT_URI) {
+    return env.GOOGLE_OAUTH_REDIRECT_URI;
+  }
+  // 2. Default: production URL
+  return `${env.FRONTEND_URL}/api/google-auth/callback`;
+}
 
 // ─── Helper: set both auth cookies on a Hono response ───
 function setAuthCookies(c: any, token: string): void {
@@ -117,19 +135,21 @@ googleAuthRouter.options("/", (c) => c.body(null, 204));
 googleAuthRouter.get("/redirect", (c) => {
   const clientId = env.GOOGLE_CLIENT_ID;
   if (!clientId) {
-    return c.json({ error: "Google OAuth not configured" }, 500);
+    logger.error("Google OAuth: GOOGLE_CLIENT_ID not set");
+    return c.redirect("/?google_error=not_configured");
   }
 
-  // Build the redirect URI — must match what's in Google Cloud Console
-  const proto = c.req.header("x-forwarded-proto") || "https";
-  const host = c.req.header("x-forwarded-host") || c.req.header("host") || "";
-  const origin = `${proto}://${host}`;
-  const redirectUri = `${origin}/api/google-auth/callback`;
+  // 🔧 FIX: Always use the canonical redirect URI (not derived from request headers).
+  // This ensures Google sees the SAME redirect_uri on both /redirect and /callback,
+  // avoiding "redirect_uri_mismatch" errors.
+  const redirectUri = getOAuthRedirectUri();
 
   // State parameter for CSRF protection
   const state = crypto.randomUUID?.() || Math.random().toString(36).slice(2);
 
-  // Store state in a short-lived cookie for verification
+  // Store state in a short-lived cookie for verification.
+  // SameSite=Lax is REQUIRED so the cookie is sent on the top-level GET redirect
+  // back from Google. SameSite=Strict would block it.
   c.header("Set-Cookie", `google_oauth_state=${state}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`);
 
   const params = new URLSearchParams({
@@ -141,6 +161,7 @@ googleAuthRouter.get("/redirect", (c) => {
     prompt: "select_account",
   });
 
+  logger.info("Google OAuth redirect initiated", { redirectUri });
   return c.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
 });
 
@@ -159,30 +180,41 @@ googleAuthRouter.get("/callback", async (c) => {
 
     // If Google returned an error (user denied, etc.)
     if (error) {
+      logger.warn("Google OAuth callback: Google returned error", { error });
       return c.redirect(`/?google_error=${encodeURIComponent(error)}`);
     }
 
     if (!code || !state) {
+      logger.warn("Google OAuth callback: missing code or state", { hasCode: !!code, hasState: !!state });
       return c.redirect("/?google_error=missing_params");
     }
 
     // Verify state (CSRF protection)
     const cookieHeader = c.req.header("cookie") || "";
-    const cookies = Object.fromEntries(
-      cookieHeader.split(";").map(s => s.trim().split("=").map(decodeURIComponent) as [string, string])
-    );
-    if (cookies.google_oauth_state !== state) {
+    const cookieMap = new Map<string, string>();
+    for (const part of cookieHeader.split(";")) {
+      const trimmed = part.trim();
+      if (!trimmed) continue;
+      const eqIdx = trimmed.indexOf("=");
+      if (eqIdx === -1) continue;
+      const key = decodeURIComponent(trimmed.substring(0, eqIdx));
+      const val = decodeURIComponent(trimmed.substring(eqIdx + 1));
+      cookieMap.set(key, val);
+    }
+    const storedState = cookieMap.get("google_oauth_state");
+    if (!storedState || storedState !== state) {
+      logger.warn("Google OAuth callback: state mismatch", {
+        hasStoredState: !!storedState,
+        stateMatch: storedState === state,
+      });
       return c.redirect("/?google_error=state_mismatch");
     }
 
     // Clear the state cookie
-    c.header("Set-Cookie", "google_oauth_state=; Path=/; HttpOnly; Secure; Max-Age=0");
+    c.header("Set-Cookie", "google_oauth_state=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0");
 
-    // Build redirect URI (must match the one used in /redirect)
-    const proto = c.req.header("x-forwarded-proto") || "https";
-    const host = c.req.header("x-forwarded-host") || c.req.header("host") || "";
-    const origin = `${proto}://${host}`;
-    const redirectUri = `${origin}/api/google-auth/callback`;
+    // 🔧 FIX: Use the same canonical redirect URI that was used in /redirect
+    const redirectUri = getOAuthRedirectUri();
 
     // Exchange authorization code for tokens
     const tokenResp = await fetch("https://oauth2.googleapis.com/token", {
@@ -200,7 +232,11 @@ googleAuthRouter.get("/callback", async (c) => {
 
     if (!tokenResp.ok) {
       const errBody = await tokenResp.text().catch(() => "");
-      console.error("[GoogleAuth] Token exchange failed:", tokenResp.status, errBody);
+      logger.error("Google OAuth: token exchange failed", {
+        status: tokenResp.status,
+        body: errBody,
+        redirectUri,
+      });
       return c.redirect("/?google_error=token_exchange_failed");
     }
 
