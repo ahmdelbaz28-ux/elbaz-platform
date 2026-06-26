@@ -146,6 +146,15 @@ export default defineConfig({
             urlPattern: /\/api\/trpc\/.*/i,
             handler: 'NetworkOnly',
           },
+          // ── Google OAuth: Network-only, NEVER cache ──
+          // 🔧 FIX: /api/google-auth/redirect returns a 302, which the SW
+          // was trying to cache as a "0" status response (opaque) and serving
+          // a blank page on subsequent visits. This pattern must be matched
+          // BEFORE the generic /api/* pattern below.
+          {
+            urlPattern: /\/api\/google-auth\/.*/i,
+            handler: 'NetworkOnly',
+          },
           // ── Other API routes: Network-first with 5-minute cache fallback ──
           {
             urlPattern: /\/api\/.*/i,

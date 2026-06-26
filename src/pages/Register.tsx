@@ -45,13 +45,32 @@ export default function Register() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleClientId, setGoogleClientId] = useState("");
 
+  // Fetch Google Client ID from public env vars.
+  // 🔧 ROOT CAUSE FIX: Read from window.__ENV__ (injected by server into HTML)
+  // FIRST, before falling back to /api/health fetch. The fetch was being blocked
+  // by Cloudflare Bot Management on some browsers, causing the Google Sign-Up
+  // button to never render (same fix as Login.tsx).
   useEffect(() => {
+    // 1. Synchronous: read from injected window.__ENV__
+    const injected = (window as any).__ENV__ as Record<string, string> | undefined;
+    if (injected?.GOOGLE_CLIENT_ID) {
+      setGoogleClientId(injected.GOOGLE_CLIENT_ID);
+      return; // ✅ Got it — no need to fetch
+    }
+
+    // 2. Fallback: fetch /api/health (may be blocked by Cloudflare Bot Management)
+    console.warn("[GoogleAuth] window.__ENV__ not found, falling back to /api/health fetch");
     fetch("/api/health", { cache: "no-store" })
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then(data => {
         if (data?.env?.GOOGLE_CLIENT_ID) setGoogleClientId(data.env.GOOGLE_CLIENT_ID);
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.warn("[GoogleAuth] Could not fetch /api/health:", err.message);
+      });
   }, []);
 
   const handleGoogleCallback = useCallback(async (response: GoogleCredentialResponse) => {
@@ -126,19 +145,31 @@ export default function Register() {
     };
   }, [googleClientId, handleGoogleCallback]);
 
+  // Trigger Google Sign-Up — uses OAuth redirect flow (works on any domain,
+  // doesn't require GIS popup that needs Authorized JavaScript origins).
+  // 🔧 FIX: Same approach as Login.tsx — use redirect flow instead of GIS prompt
+  // because the GIS popup was failing with origin_mismatch on the custom domain.
   const handleGoogleSignIn = useCallback(() => {
-    if (!window.google?.accounts?.id) {
-      toast.error(lang === "ar" ? "جوجل غير متاح حالياً. حاول مرة أخرى." : "Google Sign-In not available yet. Please try again.");
-      return;
-    }
-    window.google.accounts.id.prompt((response) => {
-      if (response.error) {
-        console.log("[GoogleAuth] User dismissed or error:", response.error);
-        if (response.error !== "user_closed") {
-          toast.error(lang === "ar" ? "حدث خطأ في تسجيل جوجل" : "Google Sign-In error occurred");
-        }
+    // Show immediate loading state so the user knows the click registered
+    setGoogleLoading(true);
+    setError("");
+
+    // Small timeout so React can paint the loading spinner before the
+    // browser navigates away.
+    setTimeout(() => {
+      try {
+        // Redirect to our backend endpoint which will redirect to Google
+        window.location.href = "/api/google-auth/redirect";
+      } catch (err) {
+        console.error("[GoogleAuth] Failed to redirect:", err);
+        setGoogleLoading(false);
+        const errMsg = lang === "ar"
+          ? "تعذر بدء التسجيل بجوجل. حاول مرة أخرى."
+          : "Could not start Google sign-up. Please try again.";
+        setError(errMsg);
+        toast.error(errMsg);
       }
-    });
+    }, 50);
   }, [lang]);
 
   const registerMutation = trpc.auth.register.useMutation({
