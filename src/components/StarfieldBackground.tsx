@@ -48,7 +48,11 @@ const MAX_CONNECTION_DIST = 200; // Maximum distance for connecting lines (incre
 const MIN_CONNECTION_DIST = 60;  // Minimum distance to consider connection
 const PARTICLE_SPEED = 40;        // Drift speed in pixels per second (visible movement)
 const CONNECTION_ALPHA = 0.4;    // Base alpha for connection lines (increased for visibility)
-const PARTICLE_COUNT = 200;      // Number of particles (increased for more connections)
+// ✅ FIX: Reduced particle count from 200 to 80 to prevent O(n²) performance issues.
+// 200 particles = 20,000 distance checks per frame = 1.2M checks/sec at 60fps.
+// 80 particles = 3,160 distance checks per frame = 190K checks/sec — 6x lighter.
+// Visual impact is minimal because connection lines make it look dense.
+const PARTICLE_COUNT = 80;
 
 export default function StarfieldBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);

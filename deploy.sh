@@ -1,6 +1,12 @@
 #!/bin/bash
 set -e
-cd /home/z/my-project/elbaz-platform
+
+# ✅ FIX: Use dynamic script directory instead of hardcoded path.
+# Previously: cd /home/z/my-project/elbaz-platform (hardcoded, breaks on other machines)
+# Now: cd to the directory where this script lives
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
 
 echo "=== Current directory ==="
 pwd

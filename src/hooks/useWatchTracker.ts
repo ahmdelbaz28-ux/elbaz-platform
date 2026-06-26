@@ -164,9 +164,17 @@ export function useWatchTracker({
       const onLoaded = () => {
         // Seek to saved position minus 3 seconds (re-watch a bit for context)
         video.currentTime = Math.max(0, resumePosition - 3);
+        // ✅ FIX: Remove listener immediately after firing (was only removed inside
+        // the callback, but if loadedmetadata never fires, the listener leaks).
         video.removeEventListener("loadedmetadata", onLoaded);
       };
       video.addEventListener("loadedmetadata", onLoaded);
+
+      // ✅ FIX: Return cleanup function so the listener is removed if the
+      // component unmounts before loadedmetadata fires.
+      return () => {
+        video.removeEventListener("loadedmetadata", onLoaded);
+      };
     }
   }, [enabled, lessonId, videoRef, resumePosition]);
 

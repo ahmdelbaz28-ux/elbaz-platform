@@ -1,12 +1,11 @@
 import React from "react";
 import { motion, type MotionProps } from "framer-motion";
-import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
+// ✅ FIX: Import cn() from utils.ts instead of duplicating it.
+// Duplicate cn() functions cause maintenance issues and bundle size bloat.
+import { cn } from "@/lib/utils";
 
-// Utility for Tailwind classes
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
+// ✅ Re-export cn for backward compatibility (4 files import cn from motion.tsx)
+export { cn };
 
 // ─── Animation Variants ───
 
