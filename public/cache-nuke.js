@@ -37,10 +37,32 @@
 
   async function checkVersion() {
     try {
-      var resp = await fetch("/api/version", { cache: "no-store" });
-      if (!resp.ok) return;
-      var data = await resp.json();
-      var newBuildId = data.buildId;
+      // 🔧 ROOT CAUSE FIX: Read buildId from window.__ENV__ first.
+      // This is injected by the server into the HTML, so it's always available
+      // without a network fetch. The /api/version fetch was being blocked by
+      // Cloudflare Bot Management on some browsers, causing stale CSS/JS
+      // to persist and making page elements invisible.
+      var newBuildId = null;
+
+      // 1. Try window.__ENV__.buildId (injected by server, always available)
+      if (window.__ENV__ && window.__ENV__.buildId) {
+        newBuildId = window.__ENV__.buildId;
+      }
+
+      // 2. Fallback: fetch /api/version (may be blocked by Cloudflare)
+      if (!newBuildId) {
+        try {
+          var resp = await fetch("/api/version", { cache: "no-store" });
+          if (!resp.ok) return;
+          var data = await resp.json();
+          newBuildId = data.buildId;
+        } catch (fetchErr) {
+          console.warn("[Cache-Nuke] Could not fetch /api/version (likely Cloudflare challenge):", fetchErr.message);
+          // Can't determine version — don't nuke, just continue
+          return;
+        }
+      }
+
       if (!newBuildId) return;
 
       var oldBuildId = localStorage.getItem(BUILD_ID_KEY);
