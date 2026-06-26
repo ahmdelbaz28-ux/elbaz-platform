@@ -116,8 +116,13 @@ googleAuthRouter.options("/", (c) => c.body(null, 204));
  */
 googleAuthRouter.get("/redirect", (c) => {
   const clientId = env.GOOGLE_CLIENT_ID;
+  const clientSecret = env.GOOGLE_CLIENT_SECRET;
   if (!clientId) {
-    return c.json({ error: "Google OAuth not configured" }, 500);
+    return c.json({ error: "Google OAuth not configured (missing GOOGLE_CLIENT_ID)" }, 500);
+  }
+  if (!clientSecret) {
+    console.error("[GoogleAuth] GOOGLE_CLIENT_SECRET is not set — OAuth redirect flow requires a client secret");
+    return c.json({ error: "Google OAuth not fully configured (missing GOOGLE_CLIENT_SECRET)" }, 500);
   }
 
   // Build the redirect URI — must match what's in Google Cloud Console
@@ -125,6 +130,8 @@ googleAuthRouter.get("/redirect", (c) => {
   const host = c.req.header("x-forwarded-host") || c.req.header("host") || "";
   const origin = `${proto}://${host}`;
   const redirectUri = `${origin}/api/google-auth/callback`;
+  
+  console.log(`[GoogleAuth/Redirect] Origin: ${origin}, Redirect URI: ${redirectUri}`);
 
   // State parameter for CSRF protection
   const state = crypto.randomUUID?.() || Math.random().toString(36).slice(2);
@@ -200,7 +207,14 @@ googleAuthRouter.get("/callback", async (c) => {
 
     if (!tokenResp.ok) {
       const errBody = await tokenResp.text().catch(() => "");
-      console.error("[GoogleAuth] Token exchange failed:", tokenResp.status, errBody);
+      console.error("[GoogleAuth/Callback] Token exchange failed:", tokenResp.status, errBody);
+      // Log more details for debugging
+      console.error("[GoogleAuth/Callback] Debug info:", {
+        clientId: env.GOOGLE_CLIENT_ID ? "set" : "missing",
+        hasSecret: !!env.GOOGLE_CLIENT_SECRET,
+        redirectUri,
+        status: tokenResp.status,
+      });
       return c.redirect("/?google_error=token_exchange_failed");
     }
 
