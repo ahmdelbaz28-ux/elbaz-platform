@@ -99,7 +99,13 @@ export default defineConfig({
         navigationPreload: false,
 
         // PWA offline fallback page
+        // 🔧 FIX: Deny navigation fallback for /api/ routes.
+        // Previously, navigateFallback: '/index.html' was intercepting
+        // /api/google-auth/callback requests and serving cached index.html
+        // instead of letting the server process the OAuth callback.
+        // This caused a white screen after Google redirected back.
         navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api\//, /^\/admin\//],
         runtimeCaching: [
           // ── External Fonts: Cache-first with 1-year expiry ──
           {
