@@ -147,19 +147,47 @@ export default function Register() {
 
   // Trigger Google Sign-Up — uses OAuth redirect flow (works on any domain,
   // doesn't require GIS popup that needs Authorized JavaScript origins).
-  // 🔧 FIX: Same approach as Login.tsx — use redirect flow instead of GIS prompt
-  // because the GIS popup was failing with origin_mismatch on the custom domain.
+  // 🔧 FIX: Same approach as Login.tsx — build the Google OAuth URL directly
+  // on the client to avoid Cloudflare Bot Management challenge on
+  // /api/google-auth/redirect (which was causing a white screen).
   const handleGoogleSignIn = useCallback(() => {
     // Show immediate loading state so the user knows the click registered
     setGoogleLoading(true);
     setError("");
 
-    // Small timeout so React can paint the loading spinner before the
-    // browser navigates away.
     setTimeout(() => {
       try {
-        // Redirect to our backend endpoint which will redirect to Google
-        window.location.href = "/api/google-auth/redirect";
+        const clientId = googleClientId;
+        if (!clientId) {
+          setGoogleLoading(false);
+          const errMsg = lang === "ar"
+            ? "تعذر بدء التسجيل بجوجل. أعد تحميل الصفحة وحاول مرة أخرى."
+            : "Could not start Google sign-up. Please reload the page and try again.";
+          setError(errMsg);
+          toast.error(errMsg);
+          return;
+        }
+
+        // Generate state for CSRF protection
+        const state = crypto.randomUUID?.() || Math.random().toString(36).slice(2);
+        // Store state in cookie so the /api/google-auth/callback can verify it
+        document.cookie = `google_oauth_state=${state}; Path=/; Secure; SameSite=Lax; Max-Age=600`;
+        sessionStorage.setItem("google_oauth_state", state);
+
+        // Canonical redirect URI — must match what's registered in Google Console
+        const redirectUri = `${window.location.origin}/api/google-auth/callback`;
+
+        const params = new URLSearchParams({
+          client_id: clientId,
+          redirect_uri: redirectUri,
+          response_type: "code",
+          scope: "openid email profile",
+          state: state,
+          prompt: "select_account",
+        });
+
+        // Direct navigation to Google — no server round-trip, no Cloudflare challenge
+        window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
       } catch (err) {
         console.error("[GoogleAuth] Failed to redirect:", err);
         setGoogleLoading(false);
@@ -170,7 +198,7 @@ export default function Register() {
         toast.error(errMsg);
       }
     }, 50);
-  }, [lang]);
+  }, [lang, googleClientId]);
 
   const registerMutation = trpc.auth.register.useMutation({
     onSuccess: (data) => {
