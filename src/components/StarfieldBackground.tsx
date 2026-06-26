@@ -403,12 +403,13 @@ export default function StarfieldBackground() {
       aria-hidden="true"
       style={{
         position: 'fixed',
-        inset: 0,
-        width: '100vw',
-        height: '100vh',
-        zIndex: -1,
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        zIndex: 0,
         pointerEvents: 'none',
-        background: 'transparent',
+        background: '#070b12', // Dark background that matches the site
       }}
     />
   );
