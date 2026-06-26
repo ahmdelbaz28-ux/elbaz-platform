@@ -46,7 +46,7 @@ interface Shooting {
 
 const MAX_CONNECTION_DIST = 150; // Maximum distance for connecting lines
 const MIN_CONNECTION_DIST = 50;  // Minimum distance to consider connection
-const PARTICLE_SPEED = 0.15;     // Very slow drift speed (px/frame)
+const PARTICLE_SPEED = 1.2;      // Drift speed (px/frame) - increased for visible movement
 const CONNECTION_ALPHA = 0.15;   // Base alpha for connection lines
 
 export default function StarfieldBackground() {
