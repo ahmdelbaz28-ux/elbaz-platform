@@ -89,11 +89,12 @@ chatbotRouter.post("/", async (c) => {
 
 // ── Streaming chat endpoint (SSE) ──
 chatbotRouter.post("/stream", async (c) => {
-  // CreateAbortController for timeout
-  const timeoutMs = 45_000; // 45 second timeout for AI response
+  // GLM-5.1-FP8 is a REASONING model - needs 60-120s to think before generating
+  // 180s timeout: 2 minutes for reasoning models (Modal GLM)
+  const timeoutMs = 180_000; // 3 minutes - give GLM time to think
   const timeoutController = new AbortController();
   const timeoutId = setTimeout(() => {
-    console.warn("[Chatbot] Stream timeout - aborting request");
+    console.warn("[Chatbot] Stream timeout (180s) - aborting request");
     timeoutController.abort();
   }, timeoutMs);
 
@@ -125,14 +126,14 @@ chatbotRouter.post("/stream", async (c) => {
         streamPromise,
         new Promise<never>((_, reject) => {
           timeoutController.signal.addEventListener("abort", () => {
-            reject(new Error("AI response timeout (45s)"));
+            reject(new Error("AI response timeout (180s)"));
           });
         }),
       ]);
     } catch (raceErr: any) {
       clearTimeout(timeoutId);
       console.warn("[Chatbot] Stream race failed:", raceErr.message);
-      return c.json({ success: false, error: "Request timeout. Please try again.", chatId: body.chatId }, 504);
+      return c.json({ success: false, error: "Request timeout. GLM is thinking, please try again.", chatId: body.chatId }, 504);
     }
 
     if ("error" in result) {
