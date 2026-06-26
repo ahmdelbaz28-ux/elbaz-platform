@@ -82,19 +82,25 @@ export default function StarfieldBackground() {
     // Disable shooting stars on mobile (saves CPU + battery)
     const enableShootingStars = !isMobile;
 
-    // Theme detection
+    // Theme detection — refined for both dark and light modes
     const getThemeColors = () => {
       const isLight = document.documentElement.getAttribute('data-theme') === 'light';
       return {
         isLight,
-        particleColor: isLight ? '15,23,42' : '255,255,255',
-        particleGlow: isLight ? '15,23,42' : '6,182,212',
-        connectionColor: isLight ? '100,116,139' : '6,182,212',
-        shootingColor: isLight ? '8,145,178' : '255,255,255',
-        gridColor: isLight ? 'rgba(15,23,42,0.04)' : 'rgba(6,182,212,0.035)',
-        gridColorMajor: isLight ? 'rgba(15,23,42,0.07)' : 'rgba(6,182,212,0.06)',
-        gradientFrom: isLight ? 'rgba(241,245,249,0.3)' : 'rgba(6,182,212,0.05)',
-        gradientTo: isLight ? 'rgba(226,232,240,0.1)' : 'rgba(139,92,246,0.03)',
+        // Particles: white dots on dark, subtle gray-blue on light
+        particleColor: isLight ? '148,163,184' : '255,255,255',
+        // Glow particles: accent cyan on dark, muted slate on light
+        particleGlow: isLight ? '100,116,139' : '6,182,212',
+        // Connection lines: subtle on dark, very light on light
+        connectionColor: isLight ? '148,163,184' : '6,182,212',
+        // Shooting stars: cyan accent on dark, warm gray on light
+        shootingColor: isLight ? '100,116,139' : '255,255,255',
+        // Grid lines: barely visible on both
+        gridColor: isLight ? 'rgba(148,163,184,0.06)' : 'rgba(6,182,212,0.035)',
+        gridColorMajor: isLight ? 'rgba(148,163,184,0.1)' : 'rgba(6,182,212,0.06)',
+        // Cosmic gradient: soft warm white to cool gray on light, deep cyan to purple on dark
+        gradientFrom: isLight ? 'rgba(241,245,249,0.5)' : 'rgba(6,182,212,0.06)',
+        gradientTo: isLight ? 'rgba(226,232,240,0.15)' : 'rgba(139,92,246,0.03)',
       };
     };
     let themeColors = getThemeColors();
@@ -177,27 +183,48 @@ export default function StarfieldBackground() {
       };
     };
 
-    // Draw cosmic gradient background
+    // Draw cosmic gradient background — adapts to theme
     const drawCosmicGradient = () => {
-      // Fill with dark background first
-      ctx.fillStyle = 'rgba(7, 11, 18, 1)'; // Match site bg color
-      ctx.fillRect(0, 0, width, height);
+      const isLight = document.documentElement.getAttribute('data-theme') === 'light';
       
-      // Add subtle radial glow from top center
-      const centerX = width * 0.5;
-      const centerY = height * 0.2;
-      const radius = Math.max(width, height) * 0.6;
-      
-      const gradient = ctx.createRadialGradient(
-        centerX, centerY, 0,
-        centerX, centerY, radius
-      );
-      gradient.addColorStop(0, 'rgba(6, 182, 212, 0.08)'); // cyan glow
-      gradient.addColorStop(0.4, 'rgba(139, 92, 246, 0.04)'); // purple mid
-      gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, width, height);
+      if (isLight) {
+        // Light mode: soft ambient gradient
+        const centerX = width * 0.5;
+        const centerY = height * 0.15;
+        const radius = Math.max(width, height) * 0.8;
+        
+        const gradient = ctx.createRadialGradient(
+          centerX, centerY, 0,
+          centerX, centerY, radius
+        );
+        // Subtle warm center fading to pure white edges
+        gradient.addColorStop(0, 'rgba(6, 182, 212, 0.04)'); // very subtle cyan center
+        gradient.addColorStop(0.3, 'rgba(241, 245, 249, 0.6)'); // soft gray-white
+        gradient.addColorStop(1, 'rgba(248, 250, 252, 1)'); // near-white edges
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, width, height);
+      } else {
+        // Dark mode: deep cosmic background
+        ctx.fillStyle = 'rgba(7, 11, 18, 1)'; // Match site bg color
+        ctx.fillRect(0, 0, width, height);
+        
+        // Subtle radial glow from top center
+        const centerX = width * 0.5;
+        const centerY = height * 0.2;
+        const radius = Math.max(width, height) * 0.6;
+        
+        const gradient = ctx.createRadialGradient(
+          centerX, centerY, 0,
+          centerX, centerY, radius
+        );
+        gradient.addColorStop(0, 'rgba(6, 182, 212, 0.08)'); // cyan glow
+        gradient.addColorStop(0.4, 'rgba(139, 92, 246, 0.04)'); // purple mid
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, width, height);
+      }
     };
 
     // Draw subtle grid overlay
@@ -290,12 +317,22 @@ export default function StarfieldBackground() {
       }
 
       // Draw particles with glow effect
+      const isLight = document.documentElement.getAttribute('data-theme') === 'light';
       for (const p of particles) {
         // Glow effect for brighter particles
         if (p.color === themeColors.particleGlow) {
           ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r * (isLight ? 1.5 : 2), 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(${p.color},${p.alpha * (isLight ? 0.15 : 0.2)})`;
+          ctx.fill();
+        }
+        
+        // Main particle with subtle outer glow in light mode
+        if (isLight) {
+          // Soft glow behind particle
+          ctx.beginPath();
           ctx.arc(p.x, p.y, p.r * 2, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(${p.color},${p.alpha * 0.2})`;
+          ctx.fillStyle = `rgba(${p.color},${p.alpha * 0.1})`;
           ctx.fill();
         }
         

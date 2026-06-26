@@ -241,7 +241,7 @@ function SectionHeader({ badge, title, subtitle }: { badge: string; title: strin
         whileInView={{ opacity: 1, scale: 1 }}
         viewport={{ once: true }}
         transition={{ type: "spring", stiffness: 300, damping: 20 }}
-        className="inline-flex items-center gap-2 rounded-full border border-[rgba(6,182,212,0.2)] bg-[rgba(6,182,212,0.05)] px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.15em] text-[#06b6d4]"
+        className="inline-flex items-center gap-2 rounded-full border border-[rgba(var(--animation-accent-rgb),0.25)] bg-[rgba(var(--animation-accent-rgb),0.08)] px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.15em] text-[var(--animation-accent)]"
       >
         <Sparkles className="h-3 w-3" />
         {badge}
@@ -251,7 +251,7 @@ function SectionHeader({ badge, title, subtitle }: { badge: string; title: strin
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
         transition={{ delay: 0.1, duration: 0.6 }}
-        className="mt-4 text-3xl font-bold text-[#f0f4f8] lg:text-5xl section-header-glow"
+        className="mt-4 text-3xl font-bold text-[var(--animation-text)] lg:text-5xl section-header-glow"
       >
         {title}
       </motion.h2>
@@ -261,7 +261,7 @@ function SectionHeader({ badge, title, subtitle }: { badge: string; title: strin
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ delay: 0.2, duration: 0.6 }}
-          className="mx-auto mt-4 max-w-lg text-[#94a3b8]"
+          className="mx-auto mt-4 max-w-lg text-[var(--animation-muted)]"
         >
           {subtitle}
         </motion.p>
@@ -306,13 +306,13 @@ export default function Home() {
 
       {/* ═══════════════════ HERO ═══════════════════ */}
       <section className="relative min-h-screen overflow-hidden pt-20">
-        {/* Subtle radial glow behind hero content — keeps depth without electrical effects */}
+        {/* Subtle radial glow behind hero content — theme-aware */}
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0"
           style={{
             background:
-              "radial-gradient(ellipse 60% 50% at 50% 35%, rgba(6,182,212,0.06) 0%, transparent 70%)",
+              "radial-gradient(ellipse 60% 50% at 50% 35%, rgba(var(--animation-accent-rgb),0.08) 0%, transparent 70%)",
           }}
         />
 
@@ -321,16 +321,16 @@ export default function Home() {
             <StaggerItem>
               <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.5, type: "spring" }} className="flex items-center justify-center gap-2 lg:justify-start">
                 <motion.div animate={{ opacity: [0.5, 1, 0.5], scale: [0.95, 1.05, 0.95] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}>
-                  <Zap className="h-4 w-4 text-[#06b6d4]" />
+                  <Zap className="h-4 w-4 text-[var(--animation-accent)]" />
                 </motion.div>
-                <span className="text-xs font-medium uppercase tracking-[0.15em] text-[#06b6d4]">
+                <span className="text-xs font-medium uppercase tracking-[0.15em] text-[var(--animation-accent)]">
                   {lang === "en" ? "PREMIUM ELECTRICAL ENGINEERING" : "تعليم هندسي كهربي متميز"}
                 </span>
               </motion.div>
             </StaggerItem>
 
             <StaggerItem>
-              <h1 className="mt-6 text-5xl font-extrabold leading-[1.06] tracking-tight text-[#f0f4f8] sm:text-5xl lg:text-[64px]">
+              <h1 className="mt-6 text-5xl font-extrabold leading-[1.06] tracking-tight text-[var(--animation-text)] sm:text-5xl lg:text-[64px]">
                 {lang === "en" ? "Master the Power" : "أتقن قوة"}
                 <br />
                 <span className="gradient-text">
@@ -340,7 +340,7 @@ export default function Home() {
             </StaggerItem>
 
             <StaggerItem>
-              <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, duration: 0.6 }} className="mx-auto mt-5 max-w-lg text-base leading-relaxed text-[#94a3b8] lg:mx-0 lg:text-lg">
+              <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, duration: 0.6 }} className="mx-auto mt-5 max-w-lg text-base leading-relaxed text-[var(--animation-muted)] lg:mx-0 lg:text-lg">
                 {lang === "en" ? "From electrical network design to advanced simulations in ETAP, SKM, PowerFactory, and PVSyst. Learn from an industry expert with real-world project experience." : "من تصميم الشبكات الكهربية إلى المحاكاة المتقدمة في ETAP وSKM وPowerFactory وPVSyst. تعلم من خبير صناعة ذي خبرة عملية."}
               </motion.p>
             </StaggerItem>
@@ -362,10 +362,10 @@ export default function Home() {
 
             <StaggerItem>
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5, duration: 0.5 }} className="mt-10 flex flex-wrap items-center justify-center gap-8 lg:justify-start">
-                <AnimatedCounter value={resolvedStats.totalStudents} label={t("studentsEnrolled")} color="#06b6d4" suffix="+" />
-                <div className="h-10 w-px bg-[#1f2d44]" />
+                <AnimatedCounter value={resolvedStats.totalStudents} label={t("studentsEnrolled")} color="var(--animation-accent)" suffix="+" />
+                <div className="h-10 w-px bg-[var(--animation-border)]" />
                 <AnimatedCounter value={resolvedStats.satisfactionRate} label={t("satisfactionRate")} color="#10b981" suffix="%" />
-                <div className="h-10 w-px bg-[#1f2d44]" />
+                <div className="h-10 w-px bg-[var(--animation-border)]" />
                 <AnimatedCounter value={resolvedStats.totalCourses} label={t("premiumCourses")} color="#f59e0b" suffix="+" />
               </motion.div>
             </StaggerItem>

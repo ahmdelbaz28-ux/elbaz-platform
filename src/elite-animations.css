@@ -3,6 +3,44 @@
    Inspired by detego.app + expert enhancements
    ════════════════════════════════════════════════════════════════════ */
 
+/* ── Light Mode Adjustments ── */
+[data-theme="light"] {
+  --animation-accent: #0891b2;
+  --animation-accent-rgb: 8, 145, 178;
+  --animation-secondary: #0e7490;
+  --animation-glow: rgba(8, 145, 178, 0.3);
+  --animation-bg: #f8fafc;
+  --animation-card-bg: rgba(255, 255, 255, 0.8);
+  --animation-border: rgba(226, 232, 240, 0.6);
+  --animation-text: #0f172a;
+  --animation-muted: #64748b;
+}
+
+[data-theme="dark"] {
+  --animation-accent: #06b6d4;
+  --animation-accent-rgb: 6, 182, 212;
+  --animation-secondary: #0891b2;
+  --animation-glow: rgba(6, 182, 212, 0.3);
+  --animation-bg: #070b12;
+  --animation-card-bg: rgba(17, 24, 39, 0.6);
+  --animation-border: rgba(31, 45, 68, 0.5);
+  --animation-text: #e8f0fe;
+  --animation-muted: #94a3b8;
+}
+
+/* Default to dark theme variables */
+:root {
+  --animation-accent: #06b6d4;
+  --animation-accent-rgb: 6, 182, 212;
+  --animation-secondary: #0891b2;
+  --animation-glow: rgba(6, 182, 212, 0.3);
+  --animation-bg: #070b12;
+  --animation-card-bg: rgba(17, 24, 39, 0.6);
+  --animation-border: rgba(31, 45, 68, 0.5);
+  --animation-text: #e8f0fe;
+  --animation-muted: #94a3b8;
+}
+
 
 
 /* ── Icon Orbit Animation ── */
@@ -87,8 +125,8 @@
   position: relative;
   overflow: hidden;
   border-radius: 1rem;
-  border: 1px solid rgba(31, 45, 68, 0.5);
-  background: rgba(17, 24, 39, 0.6);
+  border: 1px solid var(--animation-border);
+  background: var(--animation-card-bg);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -101,9 +139,9 @@
   border-radius: inherit;
   background: linear-gradient(
     135deg,
-    rgba(6, 182, 212, 0.05) 0%,
+    rgba(var(--animation-accent-rgb), 0.08) 0%,
     transparent 50%,
-    rgba(139, 92, 246, 0.03) 100%
+    rgba(var(--animation-accent-rgb), 0.03) 100%
   );
   opacity: 0;
   transition: opacity 0.4s ease;
@@ -112,12 +150,24 @@
   opacity: 1;
 }
 .bento-card:hover {
-  border-color: rgba(6, 182, 212, 0.3);
+  border-color: rgba(var(--animation-accent-rgb), 0.4);
   box-shadow:
-    0 0 30px rgba(6, 182, 212, 0.08),
-    0 20px 40px rgba(0, 0, 0, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    0 0 30px rgba(var(--animation-accent-rgb), 0.12),
+    0 20px 40px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
   transform: translateY(-4px) scale(1.01);
+}
+
+/* Light mode bento card enhancements */
+[data-theme="light"] .bento-card {
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+[data-theme="light"] .bento-card:hover {
+  box-shadow:
+    0 0 20px rgba(8, 145, 178, 0.1),
+    0 12px 32px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 /* ── Bento Card Shimmer ── */
@@ -243,7 +293,7 @@
   inset: 0;
   background: radial-gradient(
     600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
-    rgba(6, 182, 212, 0.06),
+    rgba(var(--animation-accent-rgb), 0.06),
     transparent 40%
   );
   opacity: 0;
@@ -252,6 +302,15 @@
 }
 .spotlight:hover::before {
   opacity: 1;
+}
+
+/* ── Light mode spotlight ── */
+[data-theme="light"] .spotlight::before {
+  background: radial-gradient(
+    600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+    rgba(var(--animation-accent-rgb), 0.04),
+    transparent 40%
+  );
 }
 
 /* ── Animated Border ── */
@@ -275,16 +334,27 @@
   padding: 1px;
   background: conic-gradient(
     from var(--angle),
-    rgba(6, 182, 212, 0.5),
+    rgba(var(--animation-accent-rgb), 0.5),
     rgba(139, 92, 246, 0.3),
     rgba(16, 185, 129, 0.5),
-    rgba(6, 182, 212, 0.5)
+    rgba(var(--animation-accent-rgb), 0.5)
   );
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   animation: borderRotate 4s linear infinite;
+}
+
+/* Light mode animated border */
+[data-theme="light"] .animated-border::before {
+  background: conic-gradient(
+    from var(--angle),
+    rgba(var(--animation-accent-rgb), 0.4),
+    rgba(139, 92, 246, 0.2),
+    rgba(16, 185, 129, 0.4),
+    rgba(var(--animation-accent-rgb), 0.4)
+  );
 }
 
 /* ── Glitch Text Effect ── */
@@ -351,12 +421,47 @@
   background: linear-gradient(
     90deg,
     transparent,
-    rgba(6, 182, 212, 0.3),
-    rgba(6, 182, 212, 0.6),
-    rgba(6, 182, 212, 0.3),
+    rgba(var(--animation-accent-rgb), 0.3),
+    rgba(var(--animation-accent-rgb), 0.6),
+    rgba(var(--animation-accent-rgb), 0.3),
     transparent
   );
-  box-shadow: 0 0 10px rgba(6, 182, 212, 0.2);
+  box-shadow: 0 0 10px rgba(var(--animation-accent-rgb), 0.2);
+}
+
+/* ── Section Header Glow ── */
+.section-header-glow {
+  position: relative;
+}
+.section-header-glow::after {
+  content: '';
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60px;
+  height: 3px;
+  background: linear-gradient(90deg, var(--animation-accent), #10b981);
+  border-radius: 2px;
+  box-shadow: 0 0 12px rgba(var(--animation-accent-rgb), 0.4);
+}
+
+/* Light mode adjustments */
+[data-theme="light"] .neon-divider {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(var(--animation-accent-rgb), 0.2),
+    rgba(var(--animation-accent-rgb), 0.4),
+    rgba(var(--animation-accent-rgb), 0.2),
+    transparent
+  );
+  box-shadow: 0 0 8px rgba(var(--animation-accent-rgb), 0.15);
+}
+
+[data-theme="light"] .section-header-glow::after {
+  background: linear-gradient(90deg, var(--animation-accent), #059669);
+  box-shadow: 0 0 8px rgba(var(--animation-accent-rgb), 0.3);
 }
 
 /* ── Floating Badge ── */
@@ -569,16 +674,32 @@
 }
 .hover-lift:hover {
   transform: translateY(-6px);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
 }
 
 /* ── Glow Ring ── */
 @keyframes glowRingPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(6, 182, 212, 0.3); }
-  50% { box-shadow: 0 0 0 8px rgba(6, 182, 212, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--animation-accent-rgb), 0.3); }
+  50% { box-shadow: 0 0 0 8px rgba(var(--animation-accent-rgb), 0); }
 }
 .glow-ring {
   animation: glowRingPulse 2s ease-in-out infinite;
+}
+
+/* ── Inline Edit Highlight ── */
+.inline-editable {
+  position: relative;
+  cursor: text;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+.inline-editable:hover {
+  background: rgba(var(--animation-accent-rgb), 0.05);
+  outline: 1px dashed rgba(var(--animation-accent-rgb), 0.3);
+}
+.inline-editable:focus {
+  background: rgba(var(--animation-accent-rgb), 0.08);
+  outline: 1px solid rgba(var(--animation-accent-rgb), 0.5);
 }
 
 /* ── Text Reveal ── */
@@ -616,7 +737,61 @@
   left: 0;
   right: 0;
   height: 4px;
-  background: linear-gradient(90deg, #06b6d4, #10b981, #06b6d4);
+  background: linear-gradient(90deg, var(--animation-accent), #10b981, var(--animation-accent));
   animation: wave 3s ease-in-out infinite;
   transform-origin: center bottom;
+}
+
+/* ── Light Mode Specific Enhancements ── */
+[data-theme="light"] .hover-lift {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+[data-theme="light"] .hover-lift:hover {
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+/* Light mode glow ring */
+[data-theme="light"] .glow-ring {
+  animation: glowRingPulseLight 2s ease-in-out infinite;
+}
+@keyframes glowRingPulseLight {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(8, 145, 178, 0.25); }
+  50% { box-shadow: 0 0 0 8px rgba(8, 145, 178, 0); }
+}
+
+/* ── Gradient Text Enhanced ── */
+[data-theme="light"] .gradient-text {
+  background: linear-gradient(135deg, #0891b2, #22d3ee, #059669);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Scroll Reveal Light Mode ── */
+[data-theme="light"] .scroll-reveal {
+  text-shadow: none;
+}
+
+/* ── Hero Image Light Mode ── */
+[data-theme="light"] .hero-image-glow-ring {
+  background: linear-gradient(135deg, rgba(8,145,178,0.6), rgba(5,150,105,0.3), rgba(8,145,178,0.6));
+}
+
+[data-theme="light"] .hero-image-shimmer {
+  background: linear-gradient(90deg, transparent, rgba(8,145,178,0.4), transparent);
+}
+
+/* ── Stagger Children Light Mode ── */
+[data-theme="light"] .stagger-children > * {
+  text-shadow: none;
+}
+
+/* ── Cursor Glow Light Mode ── */
+[data-theme="light"] .cursor-glow {
+  background: radial-gradient(circle, rgba(8,145,178,0.04) 0%, transparent 70%);
+}
+
+/* ── Floating Badge Light Mode ── */
+[data-theme="light"] .floating-badge {
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
 }
