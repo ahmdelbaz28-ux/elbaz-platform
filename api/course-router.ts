@@ -361,14 +361,17 @@ export const courseRouter = createRouter({
      }
 
     const db = getDb();
-    const rows = await db.execute(sql`
+    // 🔧 FIX: Drizzle's db.execute() for mysql2 returns [rows, fields].
+    // Must destructure to get the rows array. Without this, rows[0] would
+    // be the entire rows array (not the first row), causing all stats to be 0.
+    const [rawRows] = await db.execute(sql`
       SELECT
         (SELECT COUNT(*) FROM courses WHERE isPublished = 1) AS totalCourses,
         (SELECT COUNT(*) FROM users WHERE role = 'user') AS totalStudents,
         (SELECT COUNT(*) FROM lessons) AS totalLessons,
         COALESCE((SELECT AVG(rating) FROM courses WHERE isPublished = 1), 0) AS avgRating
-    `) as unknown as Array<{ totalCourses: number; totalStudents: number; totalLessons: number; avgRating: string }>;
-    const row = rows[0];
+    `) as unknown as [Array<{ totalCourses: number; totalStudents: number; totalLessons: number; avgRating: string }>, unknown];
+    const row = rawRows[0];
 
     const totalCourses = Number(row?.totalCourses ?? 0) || 0;
     const totalStudents = Number(row?.totalStudents ?? 0) || 0;
