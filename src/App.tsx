@@ -14,6 +14,7 @@ import StarfieldBackground from "@/components/StarfieldBackground";
 import { NotificationProvider } from "@/components/NotificationToast";
 import ThemeProvider from "@/components/ThemeProvider";
 import { EngineeringModeProvider } from "@/components/ui/EngineeringMode";
+import AmbientOrbs from "@/components/ui/AmbientOrbs";
 import "@/engineering-mode.css";
 
 const Home = lazy(() => import("./pages/Home").then(m => ({ default: m.default })));
@@ -52,6 +53,8 @@ function Layout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen overflow-x-hidden w-full relative flex flex-col">
       {/* ── Animated starfield + shooting stars background (all pages) ── */}
       <StarfieldBackground />
+      {/* ── Ambient floating orbs for visual depth ── */}
+      <AmbientOrbs />
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:rounded-lg focus:bg-[#06b6d4] focus:px-4 focus:py-2 focus:text-[#0a0e17] focus:font-semibold focus:outline-none focus:ring-2 focus:ring-[#06b6d4]">
         Skip to main content
       </a>

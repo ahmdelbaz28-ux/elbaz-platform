@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { motion, type MotionProps } from "framer-motion";
 // ✅ FIX: Import cn() from utils.ts instead of duplicating it.
 // Duplicate cn() functions cause maintenance issues and bundle size bloat.
@@ -202,23 +202,106 @@ export function Magnetic({ children, ...props }: { children: React.ReactElement 
 /**
  * Electric Pulse Aura
  * Subtle breathing neon glow for premium elements.
+ * Theme-aware: adapts intensity and color based on light/dark mode.
  */
-export function NeonGlow({ children, className, color = "#06b6d4", ...props }: { children: React.ReactNode, className?: string, color?: string }) {
+export function NeonGlow({ children, className, color = "#06b6d4", intensity = 1, ...props }: { 
+  children: React.ReactNode; 
+  className?: string; 
+  color?: string;
+  intensity?: number;
+}) {
   return (
     <motion.div
       animate={{ 
         boxShadow: [
           `0 0 0px ${color}33`, 
-          `0 0 20px ${color}66`, 
+          `0 0 ${20 * intensity}px ${color}55`, 
           `0 0 0px ${color}33`
         ] 
       }}
-      transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+      transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
       className={cn("rounded-xl", className)}
       {...props}
     >
       {children}
     </motion.div>
+  );
+}
+
+/**
+ * Text Gradient Animation
+ * Creates an animated gradient text effect for headings.
+ */
+export function AnimatedGradientText({ children, className, ...props }: React.HTMLAttributes<HTMLSpanElement>) {
+  return (
+    <motion.span
+      animate={{ 
+        backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"]
+      }}
+      transition={{ 
+        duration: 4, 
+        repeat: Infinity, 
+        ease: "linear" 
+      }}
+      style={{
+        backgroundSize: "200% 200%"
+      }}
+      className={cn(
+        "bg-gradient-to-r from-[#06b6d4] via-[#22d3ee] to-[#10b981] bg-clip-text text-transparent",
+        className
+      )}
+      {...props}
+    >
+      {children}
+    </motion.span>
+  );
+}
+
+/**
+ * Typewriter Text Effect
+ * Reveals text character by character.
+ */
+export function TypewriterText({ 
+  children, 
+  className, 
+  delay = 0,
+  speed = 0.05,
+  ...props 
+}: { 
+  children: string; 
+  className?: string;
+  delay?: number;
+  speed?: number;
+} & React.HTMLAttributes<HTMLSpanElement>) {
+  const [displayed, setDisplayed] = useState("");
+  
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      let index = 0;
+      const interval = setInterval(() => {
+        if (index <= children.length) {
+          setDisplayed(children.slice(0, index));
+          index++;
+        } else {
+          clearInterval(interval);
+        }
+      }, speed * 1000);
+      
+      return () => clearInterval(interval);
+    }, delay * 1000);
+    
+    return () => clearTimeout(timeout);
+  }, [children, delay, speed]);
+  
+  return (
+    <span className={cn("font-mono", className)} {...props}>
+      {displayed}
+      <motion.span
+        animate={{ opacity: [1, 0] }}
+        transition={{ duration: 0.5, repeat: Infinity }}
+        className="inline-block w-[2px] h-[1em] bg-current align-middle mr-[1px]"
+      />
+    </span>
   );
 }
 
