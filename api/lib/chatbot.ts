@@ -15,6 +15,9 @@
 
 import { env } from "../lib/env";
 
+// Helper sleep function for retry backoff
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 // ════════════════════════════════════════════════════════════════════════
 // PROVIDER CONFIG
 // ════════════════════════════════════════════════════════════════════════
@@ -646,8 +649,7 @@ export async function getChatResponse(request: {
 }): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
   const systemPrompt = getSystemPrompt(request.language);
 
-  // ─── PRIMARY: Modal (GLM-5.1-FP8) ───
-  // Retry up to 2 times with increasing timeout (reasoning model can be slow)
+  // ─── PRIMARY: Modal (GLM-5.1-FP8) with smart retry ───
   if (modalIsAvailable()) {
     if (modalKeyValid === null) {
       await validateModalKey();
@@ -659,15 +661,17 @@ export async function getChatResponse(request: {
         return { success: true, reply: result.reply, model: result.model };
       }
       
-      // Attempt 2: 5 minutes (for very complex reasoning)
-      console.warn("[Chatbot] Modal attempt 1 failed — retrying with longer timeout (5min)...");
+      // Attempt 2: 5 minutes (with 5s backoff for queue congestion)
+      console.warn("[Chatbot] Modal attempt 1 failed — waiting 5s then retrying (5min timeout)...");
+      await sleep(5000);
       result = await tryModal(request.messages, systemPrompt, 300000);
       if (result) {
         return { success: true, reply: result.reply, model: result.model };
       }
       
-      // Attempt 3: 8 minutes (extreme case)
-      console.warn("[Chatbot] Modal attempt 2 failed — FINAL retry with 8min timeout...");
+      // Attempt 3: 8 minutes (with 10s backoff)
+      console.warn("[Chatbot] Modal attempt 2 failed — waiting 10s then FINAL retry (8min timeout)...");
+      await sleep(10000);
       result = await tryModal(request.messages, systemPrompt, 480000);
       if (result) {
         return { success: true, reply: result.reply, model: result.model };
@@ -855,7 +859,7 @@ export async function getStreamResponse(request: {
 
   const encoder = new TextEncoder();
 
-  // ─── Modal stream (GLM-5.1) with RETRY ───
+  // ─── Modal stream (GLM-5.1) with smart RETRY ───
   if (picked.provider === "modal") {
     const timeouts = [180000, 300000, 480000]; // 3min, 5min, 8min
     let response: Response | null = null;
@@ -888,10 +892,26 @@ export async function getStreamResponse(request: {
         modalLastFailTime = Date.now();
         console.warn(`[Chatbot/Stream] Modal attempt ${attempt + 1} threw:`, String(e));
         if (attempt < timeouts.length - 1) {
-          console.info("[Chatbot/Stream] Retrying Modal...");
+          console.info("[Chatbot/Stream] Retrying Modal in 5s (queue congestion)...");
+          await sleep(5000); // Wait 5s before retry (Modal queue might clear)
           continue;
         }
         console.error("[Chatbot/Stream] All Modal attempts failed — falling back to OpenRouter.");
+        return await streamOpenRouterFallback(request, picked.systemPrompt);
+      }
+
+      // Check for "too many concurrent requests" — retry with backoff
+      if (response.status === 429 || response.status === 503) {
+        modalConsecFails++;
+        modalLastFailTime = Date.now();
+        const retryAfter = response.headers.get("retry-after") || "5";
+        console.warn(`[Chatbot/Stream] Modal overloaded (${response.status}) — waiting ${retryAfter}s before retry...`);
+        await sleep(parseInt(retryAfter) * 1000);
+        if (attempt < timeouts.length - 1) {
+          console.info("[Chatbot/Stream] Retrying Modal after queue clear...");
+          continue;
+        }
+        console.error("[Chatbot/Stream] Modal still overloaded after retries — falling back to OpenRouter.");
         return await streamOpenRouterFallback(request, picked.systemPrompt);
       }
 
@@ -901,6 +921,7 @@ export async function getStreamResponse(request: {
         console.warn(`[Chatbot/Stream] Modal attempt ${attempt + 1} failed: HTTP ${response.status}`);
         if (attempt < timeouts.length - 1) {
           console.info("[Chatbot/Stream] Retrying Modal...");
+          await sleep(3000);
           continue;
         }
         console.error("[Chatbot/Stream] All Modal attempts failed — falling back to OpenRouter.");
