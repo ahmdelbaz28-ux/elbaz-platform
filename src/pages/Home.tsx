@@ -104,7 +104,8 @@ const SOFTWARE_LOGOS = [
   { name: "MATLAB", logo: "/software-logos/matlab.webp", logoFallback: "/software-logos/matlab.png" },
 ];
 
-const FALLBACK_STATS = { totalStudents: 2400, satisfactionRate: 98, totalCourses: 35 };
+// Realistic fallback stats — updated to match actual platform data
+const FALLBACK_STATS = { totalStudents: 390, satisfactionRate: 96, totalCourses: 4 };
 
 function useRevealOnce() {
   const ref = useRef<HTMLDivElement>(null);
@@ -394,7 +395,7 @@ export default function Home() {
               <motion.div animate={{ y: [0, 6, 0] }} transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut", delay: 0.5 }} className="absolute -top-2 -left-2 z-20 hidden lg:flex">
                 <motion.div animate={{ boxShadow: ["0 0 15px rgba(16,185,129,0.3)", "0 0 25px rgba(16,185,129,0.5)", "0 0 15px rgba(16,185,129,0.3)"] }} transition={{ duration: 2, repeat: Infinity }} className="flex items-center gap-2 rounded-xl bg-[#111827] border border-[#1f2d44] px-3 py-2 shadow-xl">
                   <Zap className="h-5 w-5 text-[#10b981]" />
-                  <span className="text-xs font-semibold text-white">2,400+ {lang === "ar" ? "طالب" : "Students"}</span>
+                  <span className="text-xs font-semibold text-white">{resolvedStats.totalStudents}+ {lang === "ar" ? "طالب" : "Students"}</span>
                 </motion.div>
               </motion.div>
             </motion.div>
@@ -603,9 +604,9 @@ export default function Home() {
             <ScrollReveal direction="right" className="grid flex-1 grid-cols-2 gap-4 lg:max-w-sm">
               {[
                 { icon: <Briefcase className="h-6 w-6" />, value: "10+", label: t("yearsExperience"), color: "#06b6d4" },
-                { icon: <GraduationCap className="h-6 w-6" />, value: "35+", label: t("coursesTaught"), color: "#10b981" },
-                { icon: <Users className="h-6 w-6" />, value: "2,400+", label: t("studentsReached"), color: "#f59e0b" },
-                { icon: <Trophy className="h-6 w-6" />, value: "98%", label: t("satisfactionRate"), color: "#8b5cf6" },
+                { icon: <GraduationCap className="h-6 w-6" />, value: `${resolvedStats.totalCourses}+`, label: t("coursesTaught"), color: "#10b981" },
+                { icon: <Users className="h-6 w-6" />, value: `${resolvedStats.totalStudents}+`, label: t("studentsReached"), color: "#f59e0b" },
+                { icon: <Trophy className="h-6 w-6" />, value: `${resolvedStats.satisfactionRate}%`, label: t("satisfactionRate"), color: "#8b5cf6" },
               ].map((item, i) => (
                 <motion.div key={i} whileHover={{ y: -4, scale: 1.03 }} whileTap={{ scale: 0.97 }} transition={{ type: "spring", stiffness: 400, damping: 20 }} className="rounded-xl border border-[#1f2d44] bg-[#0a0e17] p-5 text-center">
                   <motion.div whileHover={{ rotate: [0, -10, 10, -5, 5, 0], scale: 1.1 }} transition={{ duration: 0.4 }} className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-lg" style={{ background: `rgba(${hexToRgb(item.color)}, 0.1)` }}>
@@ -672,7 +673,7 @@ export default function Home() {
               {t("readyToPowerUp")}
             </motion.h2>
             <motion.p initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.2 }} className="mt-3 text-base text-[#94a3b8]">
-              {lang === "en" ? "Join 2,400+ engineers mastering the tools that matter. Start learning today — no credit card required for free courses." : "انضم لأكثر من 2400 مهندس يتقنون الأدوات المهمة. ابدأ التعلم اليوم — لا تحتاج بطاقة ائتمان للكورسات المجانية."}
+              {lang === "en" ? `Join ${resolvedStats.totalStudents}+ engineers mastering the tools that matter. Start learning today — no credit card required for free courses.` : `انضم لأكثر من ${resolvedStats.totalStudents} مهندس يتقنون الأدوات المهمة. ابدأ التعلم اليوم — لا تحتاج بطاقة ائتمان للكورسات المجانية.`}
             </motion.p>
             <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.3 }} className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
               <Link to="/courses">
