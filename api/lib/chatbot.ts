@@ -25,17 +25,17 @@ const MODAL_API_KEY =
 const MODAL_ENDPOINT = "https://api.us-west-2.modal.direct/v1/chat/completions";
 const MODAL_MODEL = "zai-org/GLM-5.1-FP8";
 
-// ── TIER 2: OpenCode — Secondary (free models) ─────────────────────────
-const OPENCODE_API_KEY =
-  env.OPENCODE_API_KEY || process.env.OPENCODE_API_KEY || "";
-const OPENCODE_ENDPOINT = "https://opencode.ai/api/v1/chat/completions";
-// Models in priority order (best first)
-const OPENCODE_MODELS = [
-  "deepseek/deepseek-v4-fc",
-  "deepseek/deepseek-chat-v3-fc",
-  "mimo/mimo-v2.5",
-  "big-pickle/big-pickle",
-  "north/north-mini-code",
+// ── TIER 2: Groq — Secondary (free ultra-fast models) ───────────────────
+const GROQ_API_KEY =
+  env.GROQ_API_KEY || process.env.GROQ_API_KEY || "";
+const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
+// Groq free-tier models — ultra fast inference
+const GROQ_MODELS = [
+  "deepseek-r1-distill-qwen-32b",
+  "qwen-3-32b-a3b",
+  "llama-3.3-70b-versatile",
+  "mixtral-8x7b-32768",
+  "llama-3.1-8b-instant",
 ];
 
 // ── TIER 3: OpenRouter — Fallback cascade ──────────────────────────────
@@ -54,11 +54,11 @@ let modalLastSuccess = 0;
 let modalLastFailTime = 0;
 
 // OpenCode (Tier 2) health
-let opencodeKeyValid: boolean | null = null;
-let opencodeConsecFails = 0;
-let opencodeLastSuccess = 0;
-let opencodeLastFailTime = 0;
-let opencodeCurrentModelIndex = 0; // which model we're trying
+let groqKeyValid: boolean | null = null;
+let groqConsecFails = 0;
+let groqLastSuccess = 0;
+let groqLastFailTime = 0;
+let groqCurrentModelIndex = 0; // which model we're trying
 
 // OpenRouter (Tier 3) health
 let openrouterKeyValidated = false;
@@ -73,8 +73,8 @@ let modelFailResetTime = 0;
 
 const MODAL_COOLDOWN_MS = 5 * 60_000; // 5 MINUTES cooldown after Modal failure — GLM reasoning can take time
 const MAX_CONSEC_MODAL_FAILS = 5; // only go to OpenCode after 5 consecutive Modal failures
-const OPENCODE_COOLDOWN_MS = 2 * 60_000; // 2 MINUTES cooldown after OpenCode failure
-const MAX_CONSEC_OPENCODE_FAILS = 5; // only go to OpenRouter after 5 consecutive OpenCode failures
+const GROQ_COOLDOWN_MS = 2 * 60_000; // 2 MINUTES cooldown after OpenCode failure
+const MAX_CONSEC_GROQ_FAILS = 5; // only go to OpenRouter after 5 consecutive OpenCode failures
 
 // ════════════════════════════════════════════════════════════════════════
 // SYSTEM PROMPT
@@ -465,28 +465,28 @@ async function tryModal(
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// OPENCODE (TIER 2 — free models cascade)
+// GROQ (TIER 2 — free models cascade)
 // ════════════════════════════════════════════════════════════════════════
 
-async function validateOpenCodeKey(): Promise<boolean> {
-  if (!OPENCODE_API_KEY) {
-    opencodeKeyValid = false;
+async function validateGroqKey(): Promise<boolean> {
+  if (!GROQ_API_KEY) {
+    groqKeyValid = false;
     return false;
   }
   // OpenCode keys are simple tokens
-  opencodeKeyValid = true;
-  console.log("[Chatbot/OpenCode] API key configured.");
+  groqKeyValid = true;
+  console.log("[Chatbot/Groq] API key configured.");
   return true;
 }
 
 /**
  * Should we try OpenCode right now?
  */
-function opencodeIsAvailable(): boolean {
-  if (!OPENCODE_API_KEY) return false;
-  if (opencodeKeyValid === false) return false;
-  if (opencodeConsecFails >= MAX_CONSEC_OPENCODE_FAILS) {
-    if (opencodeLastFailTime && Date.now() - opencodeLastFailTime < OPENCODE_COOLDOWN_MS) {
+function groqIsAvailable(): boolean {
+  if (!GROQ_API_KEY) return false;
+  if (groqKeyValid === false) return false;
+  if (groqConsecFails >= MAX_CONSEC_GROQ_FAILS) {
+    if (groqLastFailTime && Date.now() - groqLastFailTime < GROQ_COOLDOWN_MS) {
       return false;
     }
   }
@@ -496,7 +496,7 @@ function opencodeIsAvailable(): boolean {
 /**
  * Try OpenCode once (non-streaming). Returns null on any failure.
  */
-async function tryOpenCode(
+async function tryGroq(
   messages: { role: string; content: string }[],
   systemPrompt: string,
   modelId: string,
@@ -507,10 +507,10 @@ async function tryOpenCode(
     const controller = new AbortController();
     timeoutId = setTimeout(function() { controller.abort(); }, timeoutMs);
 
-    const response = await fetch(OPENCODE_ENDPOINT, {
+    const response = await fetch(GROQ_ENDPOINT, {
       method: "POST",
       headers: {
-        "Authorization": "Bearer " + OPENCODE_API_KEY,
+        "Authorization": "Bearer " + GROQ_API_KEY,
         "Content-Type": "application/json",
       },
       signal: controller.signal,
@@ -528,16 +528,16 @@ async function tryOpenCode(
     if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
 
     if (response.status === 401 || response.status === 403) {
-      opencodeKeyValid = false;
-      opencodeConsecFails++;
-      opencodeLastFailTime = Date.now();
-      console.error("[Chatbot/OpenCode] request rejected (" + response.status + ")");
+      groqKeyValid = false;
+      groqConsecFails++;
+      groqLastFailTime = Date.now();
+      console.error("[Chatbot/Groq] request rejected (" + response.status + ")");
       return null;
     }
 
     if (!response.ok) {
-      opencodeConsecFails++;
-      opencodeLastFailTime = Date.now();
+      groqConsecFails++;
+      groqLastFailTime = Date.now();
       return null;
     }
 
@@ -547,29 +547,29 @@ async function tryOpenCode(
     };
 
     if (data.error) {
-      opencodeConsecFails++;
-      opencodeLastFailTime = Date.now();
+      groqConsecFails++;
+      groqLastFailTime = Date.now();
       return null;
     }
 
     const reply = data.choices?.[0]?.message?.content ?? "";
 
     if (!reply || reply.trim().length === 0) {
-      opencodeConsecFails++;
-      opencodeLastFailTime = Date.now();
+      groqConsecFails++;
+      groqLastFailTime = Date.now();
       return null;
     }
 
     // SUCCESS
-    opencodeConsecFails = 0;
-    opencodeLastSuccess = Date.now();
-    opencodeKeyValid = true;
+    groqConsecFails = 0;
+    groqLastSuccess = Date.now();
+    groqKeyValid = true;
     return { reply: reply.trim(), model: modelId };
   } catch (e) {
     if (timeoutId) clearTimeout(timeoutId);
-    opencodeConsecFails++;
-    opencodeLastFailTime = Date.now();
-    console.warn("[Chatbot/OpenCode] request failed:", String(e));
+    groqConsecFails++;
+    groqLastFailTime = Date.now();
+    console.warn("[Chatbot/Groq] request failed:", String(e));
     return null;
   }
 }
@@ -813,24 +813,24 @@ export async function getChatResponse(request: {
   }
 
   // ─── TIER 2: OpenCode cascade (DeepSeek V4 → MiMo → Big Pickle → North Mini Code) ───
-  if (opencodeIsAvailable()) {
-    if (opencodeKeyValid === null) {
-      await validateOpenCodeKey();
+  if (groqIsAvailable()) {
+    if (groqKeyValid === null) {
+      await validateGroqKey();
     }
-    if (opencodeIsAvailable()) {
+    if (groqIsAvailable()) {
       // Try each OpenCode model in priority order
-      for (let i = 0; i < OPENCODE_MODELS.length; i++) {
-        opencodeCurrentModelIndex = i;
-        const modelId = OPENCODE_MODELS[i];
+      for (let i = 0; i < GROQ_MODELS.length; i++) {
+        groqCurrentModelIndex = i;
+        const modelId = GROQ_MODELS[i];
         
         // Attempt 1: 2 minutes
-        let result = await tryOpenCode(request.messages, systemPrompt, modelId, 120000);
+        let result = await tryGroq(request.messages, systemPrompt, modelId, 120000);
         if (result) {
           return { success: true, reply: result.reply, model: result.model };
         }
         
         // Attempt 2: 3 minutes (no backoff — fast retry for non-streaming)
-        result = await tryOpenCode(request.messages, systemPrompt, modelId, 180000);
+        result = await tryGroq(request.messages, systemPrompt, modelId, 180000);
         if (result) {
           return { success: true, reply: result.reply, model: result.model };
         }
@@ -838,10 +838,10 @@ export async function getChatResponse(request: {
         console.warn(`[Chatbot] OpenCode/${modelId} failed after 2 attempts — trying next model...`);
       }
       
-      console.error("[Chatbot] All OpenCode models failed — falling back to OpenRouter.");
+      console.error("[Chatbot] All Groq models failed — falling back to OpenRouter.");
     }
   } else {
-    console.info("[Chatbot] OpenCode not available — using OpenRouter fallback.");
+    console.info("[Chatbot] Groq not available — using OpenRouter fallback.");
   }
 
   // ─── TIER 3: OpenRouter cascade ───
@@ -852,10 +852,10 @@ export async function getChatResponse(request: {
 
   // ─── ALL TIERS FAILED ───
   const modalDead = modalKeyValid === false || !MODAL_API_KEY;
-  const opencodeDead = opencodeKeyValid === false || !OPENCODE_API_KEY;
+  const groqDead = groqKeyValid === false || !GROQ_API_KEY;
   const orDead = openrouterKeyValid === false || !OPENROUTER_API_KEY;
 
-  if (modalDead && opencodeDead && orDead) {
+  if (modalDead && groqDead && orDead) {
     return {
       success: false,
       error: request.language === "ar"
@@ -886,7 +886,7 @@ export async function pickWorkingModel(
   language?: string
 ): Promise<
   | { provider: "modal"; modelId: string; systemPrompt: string }
-  | { provider: "opencode"; modelId: string; systemPrompt: string }
+  | { provider: "groq"; modelId: string; systemPrompt: string }
   | { provider: "openrouter"; modelId: string; systemPrompt: string }
   | null
 > {
@@ -904,14 +904,14 @@ export async function pickWorkingModel(
   }
 
   // ─── TIER 2: OpenCode ─── (if Modal unavailable)
-  if (opencodeIsAvailable()) {
-    if (opencodeKeyValid === null) {
-      await validateOpenCodeKey();
+  if (groqIsAvailable()) {
+    if (groqKeyValid === null) {
+      await validateGroqKey();
     }
-    if (opencodeIsAvailable()) {
-      const modelId = OPENCODE_MODELS[opencodeCurrentModelIndex] || OPENCODE_MODELS[0];
+    if (groqIsAvailable()) {
+      const modelId = GROQ_MODELS[groqCurrentModelIndex] || GROQ_MODELS[0];
       console.info("[Chatbot] Using TIER 2: " + modelId + " (OpenCode)");
-      return { provider: "opencode", modelId, systemPrompt };
+      return { provider: "groq", modelId, systemPrompt };
     }
   }
 
@@ -1064,7 +1064,7 @@ export async function getStreamResponse(request: {
           continue;
         }
         console.error("[Chatbot/Stream] All Modal attempts failed — falling back to OpenCode.");
-        return await streamOpenCodeFallback(request, picked.systemPrompt);
+        return await streamGroqFallback(request, picked.systemPrompt);
       }
 
       // Check for "too many concurrent requests" — retry with backoff
@@ -1079,7 +1079,7 @@ export async function getStreamResponse(request: {
           continue;
         }
         console.error("[Chatbot/Stream] Modal still overloaded after retries — falling back to OpenCode.");
-        return await streamOpenCodeFallback(request, picked.systemPrompt);
+        return await streamGroqFallback(request, picked.systemPrompt);
       }
 
       if (!response.ok || !response.body) {
@@ -1092,7 +1092,7 @@ export async function getStreamResponse(request: {
           continue;
         }
         console.error("[Chatbot/Stream] All Modal attempts failed — falling back to OpenCode.");
-        return await streamOpenCodeFallback(request, picked.systemPrompt);
+        return await streamGroqFallback(request, picked.systemPrompt);
       }
 
       // SUCCESS
@@ -1106,7 +1106,7 @@ export async function getStreamResponse(request: {
     // If we got here without a response, something went wrong
     if (!response || !response.body) {
       console.error("[Chatbot/Stream] No Modal response after all attempts");
-      return await streamOpenCodeFallback(request, picked.systemPrompt);
+      return await streamGroqFallback(request, picked.systemPrompt);
     }
 
     const upstream = response.body;
@@ -1174,7 +1174,7 @@ export async function getStreamResponse(request: {
         if (!sawContent) {
           console.warn("[Chatbot/Stream] Modal returned no content (only reasoning) — trying OpenCode...");
           // Try OpenCode first
-          const fb2 = await openCodeFallback(request.messages, picked.systemPrompt);
+          const fb2 = await groqFallback(request.messages, picked.systemPrompt);
           if (fb2) {
             try { controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: fb2.reply }) + "\n\n")); } catch { /* controller already closed */ }
           } else {
@@ -1195,11 +1195,11 @@ export async function getStreamResponse(request: {
   }
 
   // ─── OpenCode stream (DeepSeek V4 → MiMo → Big Pickle → North Mini Code) ───
-  if (picked.provider === "opencode") {
+  if (picked.provider === "groq") {
     // Try each OpenCode model in cascade
-    for (let i = 0; i < OPENCODE_MODELS.length; i++) {
-      const modelId = OPENCODE_MODELS[i];
-      opencodeCurrentModelIndex = i;
+    for (let i = 0; i < GROQ_MODELS.length; i++) {
+      const modelId = GROQ_MODELS[i];
+      groqCurrentModelIndex = i;
 
       const timeouts = [120000, 180000]; // 2min, 3min with backoff
       let response: Response | null = null;
@@ -1207,10 +1207,10 @@ export async function getStreamResponse(request: {
       for (let attempt = 0; attempt < timeouts.length; attempt++) {
         const timeout = timeouts[attempt];
         try {
-          response = await fetch(OPENCODE_ENDPOINT, {
+          response = await fetch(GROQ_ENDPOINT, {
             method: "POST",
             headers: {
-              "Authorization": "Bearer " + OPENCODE_API_KEY,
+              "Authorization": "Bearer " + GROQ_API_KEY,
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
@@ -1226,7 +1226,7 @@ export async function getStreamResponse(request: {
             signal: AbortSignal.timeout(timeout),
           });
         } catch (e) {
-          console.warn(`[Chatbot/Stream/OpenCode] ${modelId} attempt ${attempt + 1} threw:`, String(e));
+          console.warn(`[Chatbot/Stream/Groq] ${modelId} attempt ${attempt + 1} threw:`, String(e));
           if (attempt < timeouts.length - 1) {
             await sleep(5000);
             continue;
@@ -1237,12 +1237,12 @@ export async function getStreamResponse(request: {
         // Check for overload — try next model
         if (response.status === 429 || response.status === 503) {
           const retryAfter = response.headers.get("retry-after") || "5";
-          console.warn(`[Chatbot/Stream/OpenCode] ${modelId} overloaded (${response.status}) — trying next model...`);
+          console.warn(`[Chatbot/Stream/Groq] ${modelId} overloaded (${response.status}) — trying next model...`);
           break; // Try next model
         }
 
         if (!response.ok || !response.body) {
-          console.warn(`[Chatbot/Stream/OpenCode] ${modelId} attempt ${attempt + 1} failed: HTTP ${response.status}`);
+          console.warn(`[Chatbot/Stream/Groq] ${modelId} attempt ${attempt + 1} failed: HTTP ${response.status}`);
           if (attempt < timeouts.length - 1) {
             await sleep(3000);
             continue;
@@ -1251,10 +1251,10 @@ export async function getStreamResponse(request: {
         }
 
         // SUCCESS
-        opencodeConsecFails = 0;
-        opencodeLastSuccess = Date.now();
-        opencodeKeyValid = true;
-        console.info(`[Chatbot/Stream/OpenCode] ${modelId} SUCCESS`);
+        groqConsecFails = 0;
+        groqLastSuccess = Date.now();
+        groqKeyValid = true;
+        console.info(`[Chatbot/Stream/Groq] ${modelId} SUCCESS`);
 
         const decoderOC = new TextDecoder();
         const transformStreamOC = new TransformStream<Uint8Array, Uint8Array>({
@@ -1285,9 +1285,9 @@ export async function getStreamResponse(request: {
       }
 
       // Model exhausted — try next
-      opencodeConsecFails++;
-      opencodeLastFailTime = Date.now();
-      console.warn(`[Chatbot/Stream/OpenCode] ${modelId} exhausted — trying next model...`);
+      groqConsecFails++;
+      groqLastFailTime = Date.now();
+      console.warn(`[Chatbot/Stream/Groq] ${modelId} exhausted — trying next model...`);
     }
 
     // All OpenCode models failed
@@ -1373,13 +1373,13 @@ export async function getStreamResponse(request: {
 /**
  * Non-streaming OpenCode fallback — try all OpenCode models in cascade.
  */
-async function openCodeFallback(
+async function groqFallback(
   messages: { role: string; content: string }[],
   systemPrompt: string
 ): Promise<{ reply: string; model: string } | null> {
-  for (let i = 0; i < OPENCODE_MODELS.length; i++) {
-    const modelId = OPENCODE_MODELS[i];
-    const result = await tryOpenCode(messages, systemPrompt, modelId, 120000);
+  for (let i = 0; i < GROQ_MODELS.length; i++) {
+    const modelId = GROQ_MODELS[i];
+    const result = await tryGroq(messages, systemPrompt, modelId, 120000);
     if (result) return result;
   }
   return null;
@@ -1389,11 +1389,11 @@ async function openCodeFallback(
  * If a Modal stream fails, try OpenCode fallback,
  * then emit as a single SSE text chunk so the client sees one clean reply.
  */
-async function streamOpenCodeFallback(
+async function streamGroqFallback(
   request: { messages: { role: string; content: string }[]; language?: string },
   systemPrompt: string
 ): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
-  const ocResult = await openCodeFallback(request.messages, systemPrompt);
+  const ocResult = await groqFallback(request.messages, systemPrompt);
   if (ocResult) {
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
@@ -1474,14 +1474,14 @@ export function getChatbotStats() {
       available: modalIsAvailable(),
     },
     tier2: {
-      provider: "opencode",
-      models: OPENCODE_MODELS,
-      currentModel: OPENCODE_MODELS[opencodeCurrentModelIndex] || OPENCODE_MODELS[0],
-      configured: !!OPENCODE_API_KEY,
-      keyValid: opencodeKeyValid,
-      consecFails: opencodeConsecFails,
-      lastSuccessAgo: opencodeLastSuccess ? Math.round((Date.now() - opencodeLastSuccess) / 1000) + "s ago" : "never",
-      available: opencodeIsAvailable(),
+      provider: "groq",
+      models: GROQ_MODELS,
+      currentModel: GROQ_MODELS[groqCurrentModelIndex] || GROQ_MODELS[0],
+      configured: !!GROQ_API_KEY,
+      keyValid: groqKeyValid,
+      consecFails: groqConsecFails,
+      lastSuccessAgo: groqLastSuccess ? Math.round((Date.now() - groqLastSuccess) / 1000) + "s ago" : "never",
+      available: groqIsAvailable(),
     },
     tier3: {
       provider: "openrouter",
