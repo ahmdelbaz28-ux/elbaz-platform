@@ -34,13 +34,13 @@ describe("Chatbot Module", () => {
    * provider is disabled and tests exercise the OpenRouter FALLBACK cascade.
    * Pass { modal: true } to enable Modal with a test key.
    */
-  async function importChatbot(opts?: { modal?: boolean; opencode?: boolean }) {
+  async function importChatbot(opts?: { modal?: boolean; groq?: boolean }) {
     vi.doMock("../lib/env", () => ({
       env: {
         OPENROUTER_API_KEY: "sk-or-v1-test-key-12345",
         CHATBOT_API_KEY: "",
         MODAL_API_KEY: opts?.modal ? "modal-test-key-12345" : "",
-        OPENCODE_API_KEY: opts?.opencode ? "opencode-test-key-12345" : "",
+        GROQ_API_KEY: opts?.groq ? "groq-test-key-12345" : "",
         isProduction: false,
       },
     }));
@@ -399,12 +399,12 @@ describe("Chatbot Module", () => {
       expect(stats.tier3.lastWorkingModel).toBe(""); // OpenRouter never invoked
     });
 
-    it("falls back to OpenCode then OpenRouter when Modal returns an error", async () => {
+    it("falls back to Groq then OpenRouter when Modal returns an error", async () => {
       mockFetch.mockImplementation(async (url: string) => {
         if (url.includes("modal.direct")) {
           return { ok: false, status: 500, json: async () => ({ error: "boom" }) };
         }
-        if (url.includes("opencode")) {
+        if (url.includes("groq.com")) {
           return { ok: false, status: 500, json: async () => ({ error: "boom" }) };
         }
         if (url.includes("/auth/key")) {
@@ -419,7 +419,7 @@ describe("Chatbot Module", () => {
         };
       });
 
-      const { getChatResponse, getChatbotStats } = await importChatbot({ modal: true, opencode: true });
+      const { getChatResponse, getChatbotStats } = await importChatbot({ modal: true, groq: true });
       const result = await getChatResponse({
         messages: [{ role: "user", content: "Hi" }],
       });
