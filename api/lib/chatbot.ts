@@ -1,16 +1,13 @@
 /**
- * GENIUS CHATBOT — Modal (primary) + OpenRouter (auto fallback)
+ * GENIUS CHATBOT — 3-tier provider cascade
  *
  * Strategy:
- *   1. PRIMARY: Modal — zai-org/GLM-5.1-FP8 (the assistant "replies as itself").
- *      GLM-5.1 is a REASONING model: it emits `reasoning_content` (chain-of-thought)
- *      BEFORE the final `content`. The reasoning is ALWAYS filtered out — the user
- *      only ever sees the polished answer in `content`.
- *   2. FALLBACK: OpenRouter free-model cascade (21 models, tiered) — used
- *      automatically if Modal is unavailable, rate-limited, or errors.
+ *   1. PRIMARY: Modal — zai-org/GLM-5.1-FP8 (reasoning model, best quality)
+ *   2. SECONDARY: OpenCode — DeepSeek V4, MiMo, Big Pickle, North Mini Code (free, fast)
+ *   3. FALLBACK: OpenRouter — free-model cascade (21 models)
  *
  * The user never sees which provider answered, never sees any error, and never
- * sees internal reasoning. If Modal fails, OpenRouter takes over instantly.
+ * sees internal reasoning. If all tiers fail, a friendly error is shown.
  */
 
 import { env } from "../lib/env";
@@ -22,13 +19,26 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 // PROVIDER CONFIG
 // ════════════════════════════════════════════════════════════════════════
 
-// ── Primary provider: Modal ────────────────────────────────────────────
+// ── TIER 1: Modal (GLM-5.1-FP8) — Primary ─────────────────────────────
 const MODAL_API_KEY =
   env.MODAL_API_KEY || process.env.MODAL_API_KEY || "";
 const MODAL_ENDPOINT = "https://api.us-west-2.modal.direct/v1/chat/completions";
 const MODAL_MODEL = "zai-org/GLM-5.1-FP8";
 
-// ── Fallback provider: OpenRouter ──────────────────────────────────────
+// ── TIER 2: OpenCode — Secondary (free models) ─────────────────────────
+const OPENCODE_API_KEY =
+  env.OPENCODE_API_KEY || process.env.OPENCODE_API_KEY || "";
+const OPENCODE_ENDPOINT = "https://opencode.ai/api/v1/chat/completions";
+// Models in priority order (best first)
+const OPENCODE_MODELS = [
+  "deepseek/deepseek-v4-fc",
+  "deepseek/deepseek-chat-v3-fc",
+  "mimo/mimo-v2.5",
+  "big-pickle/big-pickle",
+  "north/north-mini-code",
+];
+
+// ── TIER 3: OpenRouter — Fallback cascade ──────────────────────────────
 // Support both CHATBOT_API_KEY (from .env template) and OPENROUTER_API_KEY (legacy)
 const OPENROUTER_API_KEY =
   env.OPENROUTER_API_KEY || process.env.CHATBOT_API_KEY || "";
@@ -37,13 +47,20 @@ const OPENROUTER_API_KEY =
 // HEALTH TRACKING — remember which provider works to optimize routing
 // ════════════════════════════════════════════════════════════════════════
 
-// Modal health
+// Modal (Tier 1) health
 let modalKeyValid: boolean | null = null; // null = not tested yet
 let modalConsecFails = 0;
 let modalLastSuccess = 0;
 let modalLastFailTime = 0;
 
-// OpenRouter health
+// OpenCode (Tier 2) health
+let opencodeKeyValid: boolean | null = null;
+let opencodeConsecFails = 0;
+let opencodeLastSuccess = 0;
+let opencodeLastFailTime = 0;
+let opencodeCurrentModelIndex = 0; // which model we're trying
+
+// OpenRouter (Tier 3) health
 let openrouterKeyValidated = false;
 let openrouterKeyValid: boolean | null = null;
 
@@ -55,7 +72,9 @@ let lastWorkingTime = 0;
 let modelFailResetTime = 0;
 
 const MODAL_COOLDOWN_MS = 5 * 60_000; // 5 MINUTES cooldown after Modal failure — GLM reasoning can take time
-const MAX_CONSEC_MODAL_FAILS = 5; // only go to OpenRouter after 5 consecutive failures (very rare for real errors)
+const MAX_CONSEC_MODAL_FAILS = 5; // only go to OpenCode after 5 consecutive Modal failures
+const OPENCODE_COOLDOWN_MS = 2 * 60_000; // 2 MINUTES cooldown after OpenCode failure
+const MAX_CONSEC_OPENCODE_FAILS = 5; // only go to OpenRouter after 5 consecutive OpenCode failures
 
 // ════════════════════════════════════════════════════════════════════════
 // SYSTEM PROMPT
@@ -446,6 +465,116 @@ async function tryModal(
 }
 
 // ════════════════════════════════════════════════════════════════════════
+// OPENCODE (TIER 2 — free models cascade)
+// ════════════════════════════════════════════════════════════════════════
+
+async function validateOpenCodeKey(): Promise<boolean> {
+  if (!OPENCODE_API_KEY) {
+    opencodeKeyValid = false;
+    return false;
+  }
+  // OpenCode keys are simple tokens
+  opencodeKeyValid = true;
+  console.log("[Chatbot/OpenCode] API key configured.");
+  return true;
+}
+
+/**
+ * Should we try OpenCode right now?
+ */
+function opencodeIsAvailable(): boolean {
+  if (!OPENCODE_API_KEY) return false;
+  if (opencodeKeyValid === false) return false;
+  if (opencodeConsecFails >= MAX_CONSEC_OPENCODE_FAILS) {
+    if (opencodeLastFailTime && Date.now() - opencodeLastFailTime < OPENCODE_COOLDOWN_MS) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Try OpenCode once (non-streaming). Returns null on any failure.
+ */
+async function tryOpenCode(
+  messages: { role: string; content: string }[],
+  systemPrompt: string,
+  modelId: string,
+  timeoutMs: number
+): Promise<{ reply: string; model: string } | null> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  try {
+    const controller = new AbortController();
+    timeoutId = setTimeout(function() { controller.abort(); }, timeoutMs);
+
+    const response = await fetch(OPENCODE_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + OPENCODE_API_KEY,
+        "Content-Type": "application/json",
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: modelId,
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...messages.map(function(m) { return { role: m.role, content: m.content }; }),
+        ],
+        temperature: 0.7,
+        max_tokens: 2048,
+      }),
+    });
+
+    if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
+
+    if (response.status === 401 || response.status === 403) {
+      opencodeKeyValid = false;
+      opencodeConsecFails++;
+      opencodeLastFailTime = Date.now();
+      console.error("[Chatbot/OpenCode] request rejected (" + response.status + ")");
+      return null;
+    }
+
+    if (!response.ok) {
+      opencodeConsecFails++;
+      opencodeLastFailTime = Date.now();
+      return null;
+    }
+
+    const data = await response.json() as {
+      error?: unknown;
+      choices?: { message?: { content?: string | null } }[];
+    };
+
+    if (data.error) {
+      opencodeConsecFails++;
+      opencodeLastFailTime = Date.now();
+      return null;
+    }
+
+    const reply = data.choices?.[0]?.message?.content ?? "";
+
+    if (!reply || reply.trim().length === 0) {
+      opencodeConsecFails++;
+      opencodeLastFailTime = Date.now();
+      return null;
+    }
+
+    // SUCCESS
+    opencodeConsecFails = 0;
+    opencodeLastSuccess = Date.now();
+    opencodeKeyValid = true;
+    return { reply: reply.trim(), model: modelId };
+  } catch (e) {
+    if (timeoutId) clearTimeout(timeoutId);
+    opencodeConsecFails++;
+    opencodeLastFailTime = Date.now();
+    console.warn("[Chatbot/OpenCode] request failed:", String(e));
+    return null;
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════
 // OPENROUTER (FALLBACK)
 // ════════════════════════════════════════════════════════════════════════
 
@@ -649,7 +778,7 @@ export async function getChatResponse(request: {
 }): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
   const systemPrompt = getSystemPrompt(request.language);
 
-  // ─── PRIMARY: Modal (GLM-5.1-FP8) with smart retry ───
+  // ─── TIER 1: Modal (GLM-5.1-FP8) with smart retry ───
   if (modalIsAvailable()) {
     if (modalKeyValid === null) {
       await validateModalKey();
@@ -677,23 +806,56 @@ export async function getChatResponse(request: {
         return { success: true, reply: result.reply, model: result.model };
       }
       
-      console.error("[Chatbot] GLM-5.1 completely failed after 3 attempts — falling back to OpenRouter.");
+      console.error("[Chatbot] GLM-5.1 completely failed after 3 attempts.");
     }
   } else {
-    console.info("[Chatbot] Modal not available right now — using OpenRouter fallback.");
+    console.info("[Chatbot] Modal not available — trying OpenCode next.");
   }
 
-  // ─── FALLBACK: OpenRouter cascade ───
+  // ─── TIER 2: OpenCode cascade (DeepSeek V4 → MiMo → Big Pickle → North Mini Code) ───
+  if (opencodeIsAvailable()) {
+    if (opencodeKeyValid === null) {
+      await validateOpenCodeKey();
+    }
+    if (opencodeIsAvailable()) {
+      // Try each OpenCode model in priority order
+      for (let i = 0; i < OPENCODE_MODELS.length; i++) {
+        opencodeCurrentModelIndex = i;
+        const modelId = OPENCODE_MODELS[i];
+        
+        // Attempt 1: 2 minutes
+        let result = await tryOpenCode(request.messages, systemPrompt, modelId, 120000);
+        if (result) {
+          return { success: true, reply: result.reply, model: result.model };
+        }
+        
+        // Attempt 2: 3 minutes (no backoff — fast retry for non-streaming)
+        result = await tryOpenCode(request.messages, systemPrompt, modelId, 180000);
+        if (result) {
+          return { success: true, reply: result.reply, model: result.model };
+        }
+        
+        console.warn(`[Chatbot] OpenCode/${modelId} failed after 2 attempts — trying next model...`);
+      }
+      
+      console.error("[Chatbot] All OpenCode models failed — falling back to OpenRouter.");
+    }
+  } else {
+    console.info("[Chatbot] OpenCode not available — using OpenRouter fallback.");
+  }
+
+  // ─── TIER 3: OpenRouter cascade ───
   const orResult = await openRouterFallback(request.messages, systemPrompt, request.language);
   if (orResult) {
     return { success: true, reply: orResult.reply, model: orResult.model };
   }
 
-  // ─── BOTH PROVIDERS FAILED ───
+  // ─── ALL TIERS FAILED ───
   const modalDead = modalKeyValid === false || !MODAL_API_KEY;
+  const opencodeDead = opencodeKeyValid === false || !OPENCODE_API_KEY;
   const orDead = openrouterKeyValid === false || !OPENROUTER_API_KEY;
 
-  if (modalDead && orDead) {
+  if (modalDead && opencodeDead && orDead) {
     return {
       success: false,
       error: request.language === "ar"
@@ -702,7 +864,7 @@ export async function getChatResponse(request: {
     };
   }
 
-  console.error("[Chatbot] All providers failed (Modal + OpenRouter).");
+  console.error("[Chatbot] All tiers failed (Modal + OpenCode + OpenRouter).");
   return {
     success: false,
     error: request.language === "ar"
@@ -717,39 +879,44 @@ export async function getChatResponse(request: {
 
 /**
  * Pick the best provider/model to stream from.
- *
- * Returns one of:
- *   - { provider: "modal",   modelId, systemPrompt }       → stream from Modal
- *   - { provider: "openrouter", modelId, systemPrompt }    → stream from OpenRouter
- *   - null                                                     → nothing available
- *
- * For Modal we probe with a tiny request (reasoning models can't be cheaply
- * "first-byte" probed because content arrives only after reasoning completes,
- * so we just verify the key/gateway and trust the real stream).
+ * Cascade: Modal → OpenCode → OpenRouter
  */
 export async function pickWorkingModel(
   _messages: { role: string; content: string }[],
   language?: string
 ): Promise<
   | { provider: "modal"; modelId: string; systemPrompt: string }
+  | { provider: "opencode"; modelId: string; systemPrompt: string }
   | { provider: "openrouter"; modelId: string; systemPrompt: string }
   | null
 > {
   const systemPrompt = getSystemPrompt(language);
 
-  // ─── PRIMARY: Modal (GLM-5.1) ───
+  // ─── TIER 1: Modal (GLM-5.1) ───
   if (modalIsAvailable()) {
     if (modalKeyValid === null) {
       await validateModalKey();
     }
     if (modalIsAvailable()) {
-      console.info("[Chatbot] Using PRIMARY: GLM-5.1-FP8 (Modal)");
+      console.info("[Chatbot] Using TIER 1: GLM-5.1-FP8 (Modal)");
       return { provider: "modal", modelId: MODAL_MODEL, systemPrompt };
     }
   }
 
-  // ─── FALLBACK: OpenRouter ─── (only if Modal completely unavailable)
-  console.warn("[Chatbot] Modal unavailable — using OpenRouter fallback");
+  // ─── TIER 2: OpenCode ─── (if Modal unavailable)
+  if (opencodeIsAvailable()) {
+    if (opencodeKeyValid === null) {
+      await validateOpenCodeKey();
+    }
+    if (opencodeIsAvailable()) {
+      const modelId = OPENCODE_MODELS[opencodeCurrentModelIndex] || OPENCODE_MODELS[0];
+      console.info("[Chatbot] Using TIER 2: " + modelId + " (OpenCode)");
+      return { provider: "opencode", modelId, systemPrompt };
+    }
+  }
+
+  // ─── TIER 3: OpenRouter ─── (if Modal and OpenCode unavailable)
+  console.warn("[Chatbot] Modal + OpenCode unavailable — using TIER 3: OpenRouter");
   
   if (!openrouterKeyValidated) {
     await validateOpenRouterKey();
@@ -896,8 +1063,8 @@ export async function getStreamResponse(request: {
           await sleep(5000); // Wait 5s before retry (Modal queue might clear)
           continue;
         }
-        console.error("[Chatbot/Stream] All Modal attempts failed — falling back to OpenRouter.");
-        return await streamOpenRouterFallback(request, picked.systemPrompt);
+        console.error("[Chatbot/Stream] All Modal attempts failed — falling back to OpenCode.");
+        return await streamOpenCodeFallback(request, picked.systemPrompt);
       }
 
       // Check for "too many concurrent requests" — retry with backoff
@@ -911,8 +1078,8 @@ export async function getStreamResponse(request: {
           console.info("[Chatbot/Stream] Retrying Modal after queue clear...");
           continue;
         }
-        console.error("[Chatbot/Stream] Modal still overloaded after retries — falling back to OpenRouter.");
-        return await streamOpenRouterFallback(request, picked.systemPrompt);
+        console.error("[Chatbot/Stream] Modal still overloaded after retries — falling back to OpenCode.");
+        return await streamOpenCodeFallback(request, picked.systemPrompt);
       }
 
       if (!response.ok || !response.body) {
@@ -924,8 +1091,8 @@ export async function getStreamResponse(request: {
           await sleep(3000);
           continue;
         }
-        console.error("[Chatbot/Stream] All Modal attempts failed — falling back to OpenRouter.");
-        return await streamOpenRouterFallback(request, picked.systemPrompt);
+        console.error("[Chatbot/Stream] All Modal attempts failed — falling back to OpenCode.");
+        return await streamOpenCodeFallback(request, picked.systemPrompt);
       }
 
       // SUCCESS
@@ -939,7 +1106,7 @@ export async function getStreamResponse(request: {
     // If we got here without a response, something went wrong
     if (!response || !response.body) {
       console.error("[Chatbot/Stream] No Modal response after all attempts");
-      return await streamOpenRouterFallback(request, picked.systemPrompt);
+      return await streamOpenCodeFallback(request, picked.systemPrompt);
     }
 
     const upstream = response.body;
@@ -1003,12 +1170,19 @@ export async function getStreamResponse(request: {
           try { reader.releaseLock(); } catch { /* already released */ }
         }
 
-        // Modal produced only reasoning (or nothing usable) — recover via fallback.
+        // Modal produced only reasoning (or nothing usable) — recover via OpenCode then OpenRouter.
         if (!sawContent) {
-          console.warn("[Chatbot/Stream] Modal returned no content (only reasoning) — recovering via OpenRouter.");
-          const fb = await openRouterFallback(request.messages, picked.systemPrompt, request.language);
-          if (fb) {
-            try { controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: fb.reply }) + "\n\n")); } catch { /* controller already closed */ }
+          console.warn("[Chatbot/Stream] Modal returned no content (only reasoning) — trying OpenCode...");
+          // Try OpenCode first
+          const fb2 = await openCodeFallback(request.messages, picked.systemPrompt);
+          if (fb2) {
+            try { controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: fb2.reply }) + "\n\n")); } catch { /* controller already closed */ }
+          } else {
+            // Fall back to OpenRouter
+            const fb = await openRouterFallback(request.messages, picked.systemPrompt, request.language);
+            if (fb) {
+              try { controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: fb.reply }) + "\n\n")); } catch { /* controller already closed */ }
+            }
           }
         }
 
@@ -1018,6 +1192,107 @@ export async function getStreamResponse(request: {
     });
 
     return { stream, model: picked.modelId };
+  }
+
+  // ─── OpenCode stream (DeepSeek V4 → MiMo → Big Pickle → North Mini Code) ───
+  if (picked.provider === "opencode") {
+    // Try each OpenCode model in cascade
+    for (let i = 0; i < OPENCODE_MODELS.length; i++) {
+      const modelId = OPENCODE_MODELS[i];
+      opencodeCurrentModelIndex = i;
+
+      const timeouts = [120000, 180000]; // 2min, 3min with backoff
+      let response: Response | null = null;
+
+      for (let attempt = 0; attempt < timeouts.length; attempt++) {
+        const timeout = timeouts[attempt];
+        try {
+          response = await fetch(OPENCODE_ENDPOINT, {
+            method: "POST",
+            headers: {
+              "Authorization": "Bearer " + OPENCODE_API_KEY,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: modelId,
+              messages: [
+                { role: "system", content: picked.systemPrompt },
+                ...request.messages.map(function(m) { return { role: m.role, content: m.content }; }),
+              ],
+              temperature: 0.7,
+              max_tokens: 2048,
+              stream: true,
+            }),
+            signal: AbortSignal.timeout(timeout),
+          });
+        } catch (e) {
+          console.warn(`[Chatbot/Stream/OpenCode] ${modelId} attempt ${attempt + 1} threw:`, String(e));
+          if (attempt < timeouts.length - 1) {
+            await sleep(5000);
+            continue;
+          }
+          break; // Try next model
+        }
+
+        // Check for overload — try next model
+        if (response.status === 429 || response.status === 503) {
+          const retryAfter = response.headers.get("retry-after") || "5";
+          console.warn(`[Chatbot/Stream/OpenCode] ${modelId} overloaded (${response.status}) — trying next model...`);
+          break; // Try next model
+        }
+
+        if (!response.ok || !response.body) {
+          console.warn(`[Chatbot/Stream/OpenCode] ${modelId} attempt ${attempt + 1} failed: HTTP ${response.status}`);
+          if (attempt < timeouts.length - 1) {
+            await sleep(3000);
+            continue;
+          }
+          break; // Try next model
+        }
+
+        // SUCCESS
+        opencodeConsecFails = 0;
+        opencodeLastSuccess = Date.now();
+        opencodeKeyValid = true;
+        console.info(`[Chatbot/Stream/OpenCode] ${modelId} SUCCESS`);
+
+        const decoderOC = new TextDecoder();
+        const transformStreamOC = new TransformStream<Uint8Array, Uint8Array>({
+          async transform(chunk, controller) {
+            try {
+              const text = decoderOC.decode(chunk, { stream: true });
+              const lines = text.split("\n");
+              for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed || trimmed === "data: [DONE]") continue;
+                if (!trimmed.startsWith("data: ")) continue;
+                try {
+                  const parsed = JSON.parse(trimmed.slice(6));
+                  const delta = parsed.choices?.[0]?.delta;
+                  if (delta && delta.content) {
+                    try { controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: delta.content }) + "\n\n")); } catch { /* closed */ }
+                  }
+                } catch { /* skip */ }
+              }
+            } catch { /* decode error */ }
+          },
+          flush(controller) {
+            try { controller.enqueue(encoder.encode("data: [DONE]\n\n")); } catch { /* closed */ }
+            try { controller.terminate(); } catch { /* terminated */ }
+          },
+        });
+        return { stream: response!.body!.pipeThrough(transformStreamOC), model: modelId };
+      }
+
+      // Model exhausted — try next
+      opencodeConsecFails++;
+      opencodeLastFailTime = Date.now();
+      console.warn(`[Chatbot/Stream/OpenCode] ${modelId} exhausted — trying next model...`);
+    }
+
+    // All OpenCode models failed
+    console.error("[Chatbot/Stream] All OpenCode models exhausted — falling back to OpenRouter.");
+    return await streamOpenRouterFallback(request, picked.systemPrompt);
   }
 
   // ─── OpenRouter stream ───
@@ -1096,6 +1371,66 @@ export async function getStreamResponse(request: {
 }
 
 /**
+ * Non-streaming OpenCode fallback — try all OpenCode models in cascade.
+ */
+async function openCodeFallback(
+  messages: { role: string; content: string }[],
+  systemPrompt: string
+): Promise<{ reply: string; model: string } | null> {
+  for (let i = 0; i < OPENCODE_MODELS.length; i++) {
+    const modelId = OPENCODE_MODELS[i];
+    const result = await tryOpenCode(messages, systemPrompt, modelId, 120000);
+    if (result) return result;
+  }
+  return null;
+}
+
+/**
+ * If a Modal stream fails, try OpenCode fallback,
+ * then emit as a single SSE text chunk so the client sees one clean reply.
+ */
+async function streamOpenCodeFallback(
+  request: { messages: { role: string; content: string }[]; language?: string },
+  systemPrompt: string
+): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
+  const ocResult = await openCodeFallback(request.messages, systemPrompt);
+  if (ocResult) {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        try {
+          controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: ocResult.reply }) + "\n\n"));
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        } catch { /* controller already closed */ }
+      },
+    });
+    return { stream, model: ocResult.model };
+  }
+
+  // OpenCode also failed — try OpenRouter
+  const orResult = await openRouterFallback(request.messages, systemPrompt, request.language);
+  if (!orResult) {
+    return {
+      error: request.language === "ar"
+        ? "جميع نماذج الذكاء الاصطناعي مشغولة حالياً. يرجى المحاولة بعد قليل."
+        : "All AI models are temporarily busy. Please try again in a few seconds.",
+    };
+  }
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      try {
+        controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: orResult.reply }) + "\n\n"));
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      } catch { /* controller already closed */ }
+    },
+  });
+  return { stream, model: orResult.model };
+}
+
+/**
  * If a Modal stream fails, fall back to a NON-streaming OpenRouter response,
  * then emit it as a single SSE text chunk so the client sees one clean reply.
  */
@@ -1129,7 +1464,7 @@ async function streamOpenRouterFallback(
  */
 export function getChatbotStats() {
   return {
-    primary: {
+    tier1: {
       provider: "modal",
       model: MODAL_MODEL,
       configured: !!MODAL_API_KEY,
@@ -1138,7 +1473,17 @@ export function getChatbotStats() {
       lastSuccessAgo: modalLastSuccess ? Math.round((Date.now() - modalLastSuccess) / 1000) + "s ago" : "never",
       available: modalIsAvailable(),
     },
-    fallback: {
+    tier2: {
+      provider: "opencode",
+      models: OPENCODE_MODELS,
+      currentModel: OPENCODE_MODELS[opencodeCurrentModelIndex] || OPENCODE_MODELS[0],
+      configured: !!OPENCODE_API_KEY,
+      keyValid: opencodeKeyValid,
+      consecFails: opencodeConsecFails,
+      lastSuccessAgo: opencodeLastSuccess ? Math.round((Date.now() - opencodeLastSuccess) / 1000) + "s ago" : "never",
+      available: opencodeIsAvailable(),
+    },
+    tier3: {
       provider: "openrouter",
       configured: !!OPENROUTER_API_KEY,
       keyValid: openrouterKeyValid,

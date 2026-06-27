@@ -37,8 +37,10 @@ const envSchema = z.object({
 
   // ── AI Chatbot providers ──────────────────────────────────────
   // MODAL_API_KEY is the PRIMARY provider (zai-org/GLM-5.1-FP8 via Modal).
+  // OPENCODE_API_KEY is the SECONDARY provider (DeepSeek V4, MiMo, Big Pickle, North Mini Code).
   // OPENROUTER_API_KEY is the FALLBACK provider (free model cascade).
   MODAL_API_KEY: z.string().optional(),
+  OPENCODE_API_KEY: z.string().optional(),
   OPENROUTER_API_KEY: z.string().optional(),
 
   GOOGLE_CLIENT_ID: z.string().min(1, "GOOGLE_CLIENT_ID is required"),

@@ -34,12 +34,13 @@ describe("Chatbot Module", () => {
    * provider is disabled and tests exercise the OpenRouter FALLBACK cascade.
    * Pass { modal: true } to enable Modal with a test key.
    */
-  async function importChatbot(opts?: { modal?: boolean }) {
+  async function importChatbot(opts?: { modal?: boolean; opencode?: boolean }) {
     vi.doMock("../lib/env", () => ({
       env: {
         OPENROUTER_API_KEY: "sk-or-v1-test-key-12345",
         CHATBOT_API_KEY: "",
         MODAL_API_KEY: opts?.modal ? "modal-test-key-12345" : "",
+        OPENCODE_API_KEY: opts?.opencode ? "opencode-test-key-12345" : "",
         isProduction: false,
       },
     }));
@@ -53,18 +54,18 @@ describe("Chatbot Module", () => {
       const { getChatbotStats } = await importChatbot();
       const stats = getChatbotStats();
 
-      // Primary (Modal) defaults
-      expect(stats.primary.provider).toBe("modal");
-      expect(stats.primary.configured).toBe(false); // no MODAL_API_KEY in mock
-      expect(stats.primary.consecFails).toBe(0);
-      expect(stats.primary.lastSuccessAgo).toBe("never");
+      // Tier 1 (Modal) defaults
+      expect(stats.tier1.provider).toBe("modal");
+      expect(stats.tier1.configured).toBe(false); // no MODAL_API_KEY in mock
+      expect(stats.tier1.consecFails).toBe(0);
+      expect(stats.tier1.lastSuccessAgo).toBe("never");
 
       // Fallback (OpenRouter) defaults
-      expect(stats.fallback.totalModels).toBe(21);
-      expect(stats.fallback.lastWorkingModel).toBe("");
-      expect(stats.fallback.lastWorkingTimeAgo).toBe("never");
-      expect(stats.fallback.modelSuccessCounts).toEqual({});
-      expect(stats.fallback.modelFailCounts).toEqual({});
+      expect(stats.tier3.totalModels).toBe(21);
+      expect(stats.tier3.lastWorkingModel).toBe("");
+      expect(stats.tier3.lastWorkingTimeAgo).toBe("never");
+      expect(stats.tier3.modelSuccessCounts).toEqual({});
+      expect(stats.tier3.modelFailCounts).toEqual({});
     });
   });
 
@@ -73,7 +74,7 @@ describe("Chatbot Module", () => {
   describe("model pool", () => {
     it("has 21 models", async () => {
       const { getChatbotStats } = await importChatbot();
-      expect(getChatbotStats().fallback.totalModels).toBe(21);
+      expect(getChatbotStats().tier3.totalModels).toBe(21);
     });
 
     it("models are ordered by tier (all tier 1 before tier 2, etc.)", async () => {
@@ -344,9 +345,9 @@ describe("Chatbot Module", () => {
       expect(result.success).toBe(true);
 
       const stats = getChatbotStats();
-      expect(stats.fallback.lastWorkingModel).toBe(result.model);
-      expect(stats.fallback.lastWorkingTimeAgo).not.toBe("never");
-      expect(stats.fallback.modelSuccessCounts[result.model!]).toBe(1);
+      expect(stats.tier3.lastWorkingModel).toBe(result.model);
+      expect(stats.tier3.lastWorkingTimeAgo).not.toBe("never");
+      expect(stats.tier3.modelSuccessCounts[result.model!]).toBe(1);
     });
   });
 
@@ -393,20 +394,23 @@ describe("Chatbot Module", () => {
 
       // Modal recorded as healthy; OpenRouter untouched.
       const stats = getChatbotStats();
-      expect(stats.primary.consecFails).toBe(0);
-      expect(stats.primary.lastSuccessAgo).not.toBe("never");
-      expect(stats.fallback.lastWorkingModel).toBe(""); // OpenRouter never invoked
+      expect(stats.tier1.consecFails).toBe(0);
+      expect(stats.tier1.lastSuccessAgo).not.toBe("never");
+      expect(stats.tier3.lastWorkingModel).toBe(""); // OpenRouter never invoked
     });
 
-    it("falls back to OpenRouter cascade when Modal returns an error", async () => {
+    it("falls back to OpenCode then OpenRouter when Modal returns an error", async () => {
       mockFetch.mockImplementation(async (url: string) => {
         if (url.includes("modal.direct")) {
+          return { ok: false, status: 500, json: async () => ({ error: "boom" }) };
+        }
+        if (url.includes("opencode")) {
           return { ok: false, status: 500, json: async () => ({ error: "boom" }) };
         }
         if (url.includes("/auth/key")) {
           return { ok: true, json: async () => ({}) };
         }
-        // First OpenRouter model succeeds
+        // OpenRouter succeeds
         return {
           ok: true,
           json: async () => ({
@@ -415,17 +419,17 @@ describe("Chatbot Module", () => {
         };
       });
 
-      const { getChatResponse, getChatbotStats } = await importChatbot({ modal: true });
+      const { getChatResponse, getChatbotStats } = await importChatbot({ modal: true, opencode: true });
       const result = await getChatResponse({
         messages: [{ role: "user", content: "Hi" }],
       });
 
       expect(result.success).toBe(true);
       expect(result.reply).toBe("Recovered via OpenRouter!");
-      // Modal health degraded; OpenRouter now has a working model.
+      // Modal and OpenCode health degraded; OpenRouter has a working model.
       const stats = getChatbotStats();
-      expect(stats.primary.consecFails).toBeGreaterThan(0);
-      expect(stats.fallback.lastWorkingModel).toBeTruthy();
+      expect(stats.tier1.consecFails).toBeGreaterThan(0);
+      expect(stats.tier3.lastWorkingModel).toBeTruthy();
     });
 
     it("treats a reply that is only reasoning (empty content) as a Modal failure", async () => {
