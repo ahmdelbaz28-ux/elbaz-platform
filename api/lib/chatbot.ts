@@ -29,13 +29,13 @@ const MODAL_MODEL = "zai-org/GLM-5.1-FP8";
 const GROQ_API_KEY =
   env.GROQ_API_KEY || process.env.GROQ_API_KEY || "";
 const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
-// Groq free-tier models — ultra fast inference
+// Groq free-tier models — all verified working 2026-06-27
 const GROQ_MODELS = [
-  "deepseek-r1-distill-qwen-32b",
-  "qwen-3-32b-a3b",
-  "llama-3.3-70b-versatile",
-  "mixtral-8x7b-32768",
-  "llama-3.1-8b-instant",
+  "llama-3.3-70b-versatile",           // 374ms | Best quality free
+  "qwen/qwen3-32b",                    // 732ms | New reasoning model
+  "llama-3.1-8b-instant",              // 200ms | Fastest, 131K context
+  "meta-llama/llama-4-scout-17b-16e-instruct", // 435ms | New Llama 4
+  "qwen/qwen3.6-27b",                  // 565ms | Qwen 3.6 latest
 ];
 
 // ── TIER 3: OpenRouter — Fallback cascade ──────────────────────────────
