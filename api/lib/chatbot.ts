@@ -38,6 +38,12 @@ const GROQ_MODELS = [
   "qwen/qwen3.6-27b",                  // 565ms | Qwen 3.6 latest
 ];
 
+// ── TIER 2.5: NVIDIA (MiniMax-M3) — Third tier (free with NVIDIA API key) ─
+const NVIDIA_API_KEY =
+  env.NVIDIA_API_KEY || process.env.NVIDIA_API_KEY || "";
+const NVIDIA_ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions";
+const NVIDIA_MODEL = "minimaxai/minimax-m3";
+
 // ── TIER 3: OpenRouter — Fallback cascade ──────────────────────────────
 // Support both CHATBOT_API_KEY (from .env template) and OPENROUTER_API_KEY (legacy)
 const OPENROUTER_API_KEY =
@@ -60,6 +66,12 @@ let groqLastSuccess = 0;
 let groqLastFailTime = 0;
 let groqCurrentModelIndex = 0; // which model we're trying
 
+// NVIDIA (Tier 2.5) health
+let nvidiaKeyValid: boolean | null = null;
+let nvidiaConsecFails = 0;
+let nvidiaLastSuccess = 0;
+let nvidiaLastFailTime = 0;
+
 // OpenRouter (Tier 3) health
 let openrouterKeyValidated = false;
 let openrouterKeyValid: boolean | null = null;
@@ -75,6 +87,8 @@ const MODAL_COOLDOWN_MS = 5 * 60_000; // 5 MINUTES cooldown after Modal failure 
 const MAX_CONSEC_MODAL_FAILS = 5; // only go to OpenCode after 5 consecutive Modal failures
 const GROQ_COOLDOWN_MS = 2 * 60_000; // 2 MINUTES cooldown after OpenCode failure
 const MAX_CONSEC_GROQ_FAILS = 5; // only go to OpenRouter after 5 consecutive OpenCode failures
+const NVIDIA_COOLDOWN_MS = 2 * 60_000; // 2 MINUTES cooldown after NVIDIA failure
+const MAX_CONSEC_NVIDIA_FAILS = 5; // only go to OpenRouter after 5 consecutive NVIDIA failures
 
 // ════════════════════════════════════════════════════════════════════════
 // SYSTEM PROMPT
@@ -563,6 +577,108 @@ async function tryGroq(
     return null;
   }
 }
+// ════════════════════════════════════════════════════════════════════════
+// NVIDIA (MINIMAX-M3)
+// ════════════════════════════════════════════════════════════════════════
+
+function nvidiaIsAvailable(): boolean {
+  if (!NVIDIA_API_KEY) return false;
+  if (nvidiaKeyValid === false) return false;
+  if (nvidiaConsecFails >= MAX_CONSEC_NVIDIA_FAILS) {
+    if (nvidiaLastFailTime && Date.now() - nvidiaLastFailTime < NVIDIA_COOLDOWN_MS) {
+      return false;
+    }
+  }
+  return true;
+}
+
+async function tryNvidia(
+  messages: { role: string; content: string }[],
+  systemPrompt: string,
+  timeoutMs: number
+): Promise<{ reply: string; model: string } | null> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  try {
+    const controller = new AbortController();
+    timeoutId = setTimeout(function() { controller.abort(); }, timeoutMs);
+
+    const response = await fetch(NVIDIA_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + NVIDIA_API_KEY,
+        "Content-Type": "application/json",
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: NVIDIA_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...messages.map(function(m) { return { role: m.role, content: m.content }; }),
+        ],
+        temperature: 0.7,
+        max_tokens: 2048,
+      }),
+    });
+
+    if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
+
+    if (response.status === 401 || response.status === 403) {
+      nvidiaKeyValid = false;
+      nvidiaConsecFails++;
+      nvidiaLastFailTime = Date.now();
+      console.error("[Chatbot/NVIDIA] request rejected (" + response.status + ")");
+      return null;
+    }
+
+    if (!response.ok) {
+      nvidiaConsecFails++;
+      nvidiaLastFailTime = Date.now();
+      return null;
+    }
+
+    const data = await response.json() as {
+      error?: unknown;
+      choices?: { message?: { content?: string | null } }[];
+    };
+
+    if (data.error) {
+      nvidiaConsecFails++;
+      nvidiaLastFailTime = Date.now();
+      return null;
+    }
+
+    const reply = data.choices?.[0]?.message?.content ?? "";
+
+    if (!reply || reply.trim().length === 0) {
+      nvidiaConsecFails++;
+      nvidiaLastFailTime = Date.now();
+      return null;
+    }
+
+    // SUCCESS
+    nvidiaConsecFails = 0;
+    nvidiaLastSuccess = Date.now();
+    nvidiaKeyValid = true;
+    return { reply: reply.trim(), model: NVIDIA_MODEL };
+  } catch (e) {
+    if (timeoutId) clearTimeout(timeoutId);
+    nvidiaConsecFails++;
+    nvidiaLastFailTime = Date.now();
+    console.warn("[Chatbot/NVIDIA] request failed:", String(e));
+    return null;
+  }
+}
+
+async function nvidiaFallback(
+  messages: { role: string; content: string }[],
+  systemPrompt: string
+): Promise<{ reply: string; model: string } | null> {
+  if (!nvidiaIsAvailable()) return null;
+  // Try NVIDIA with 30s timeout (MiniMax-M3 can be slow on first request)
+  const result = await tryNvidia(messages, systemPrompt, 30000);
+  return result;
+}
+
 
 // ════════════════════════════════════════════════════════════════════════
 // OPENROUTER (FALLBACK)
@@ -828,10 +944,20 @@ export async function getChatResponse(request: {
         console.warn(`[Chatbot] OpenCode/${modelId} failed after 2 attempts — trying next model...`);
       }
       
-      console.error("[Chatbot] All Groq models failed — falling back to OpenRouter.");
+      console.error("[Chatbot] All Groq models failed — falling back to NVIDIA (MiniMax-M3).");
+      const nvidiaResult = await nvidiaFallback(request.messages, systemPrompt);
+      if (nvidiaResult) {
+        return { success: true, reply: nvidiaResult.reply, model: nvidiaResult.model };
+      }
+      console.error("[Chatbot] NVIDIA also failed — falling back to OpenRouter.");
     }
   } else {
-    console.info("[Chatbot] Groq not available — using OpenRouter fallback.");
+    console.info("[Chatbot] Groq not available — trying NVIDIA...");
+    const nvidiaResult = await nvidiaFallback(request.messages, systemPrompt);
+    if (nvidiaResult) {
+      return { success: true, reply: nvidiaResult.reply, model: nvidiaResult.model };
+    }
+    console.info("[Chatbot] NVIDIA also not available — using OpenRouter fallback.");
   }
 
   // ─── TIER 3: OpenRouter cascade ───
@@ -1398,7 +1524,23 @@ async function streamGroqFallback(
     return { stream, model: ocResult.model };
   }
 
-  // OpenCode also failed — try OpenRouter
+  // Groq failed — try NVIDIA (MiniMax-M3)
+  const nvidiaResult = await nvidiaFallback(request.messages, systemPrompt);
+  if (nvidiaResult) {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        try {
+          controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: nvidiaResult.reply }) + "\n\n"));
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        } catch { /* controller already closed */ }
+      },
+    });
+    return { stream, model: nvidiaResult.model };
+  }
+
+  // NVIDIA also failed — try OpenRouter
   const orResult = await openRouterFallback(request.messages, systemPrompt, request.language);
   if (!orResult) {
     return {
@@ -1472,6 +1614,15 @@ export function getChatbotStats() {
       consecFails: groqConsecFails,
       lastSuccessAgo: groqLastSuccess ? Math.round((Date.now() - groqLastSuccess) / 1000) + "s ago" : "never",
       available: groqIsAvailable(),
+    },
+    tier2_5: {
+      provider: "nvidia",
+      model: NVIDIA_MODEL,
+      configured: !!NVIDIA_API_KEY,
+      keyValid: nvidiaKeyValid,
+      consecFails: nvidiaConsecFails,
+      lastSuccessAgo: nvidiaLastSuccess ? Math.round((Date.now() - nvidiaLastSuccess) / 1000) + "s ago" : "never",
+      available: nvidiaIsAvailable(),
     },
     tier3: {
       provider: "openrouter",
