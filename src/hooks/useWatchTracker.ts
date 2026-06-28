@@ -179,19 +179,30 @@ export function useWatchTracker({
   }, [enabled, lessonId, videoRef, resumePosition]);
 
   // Save position when tab is hidden (user switches tabs)
+  // 🚀 PERFORMANCE + INTEGRITY (Task ID 7): Also PAUSE the video when the tab
+  // is hidden. This (a) stops bandwidth waste on R2 presigned URL streaming,
+  // (b) prevents the HLS buffer from running ahead and being discarded on
+  // return, and (c) ensures watch-time tracking reflects actual viewing —
+  // critical for certificate eligibility (courses require N minutes watched).
   useEffect(() => {
     if (!enabled || !lessonId) return;
 
     const handleVisibilityChange = () => {
       if (document.hidden && isPlayingRef.current) {
-        // Tab hidden while playing — save position
+        // Tab hidden while playing — pause the video and save position.
+        // We pause via the video element directly (not via the player UI) so
+        // the user's play button state stays in sync when they return.
+        const video = videoRef.current;
+        if (video && !video.paused) {
+          video.pause();
+        }
         sendHeartbeat();
       }
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [enabled, lessonId, sendHeartbeat]);
+  }, [enabled, lessonId, sendHeartbeat, videoRef]);
 
   // Save position when page is about to unload (navigation, close)
   useEffect(() => {

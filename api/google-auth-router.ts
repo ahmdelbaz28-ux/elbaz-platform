@@ -15,7 +15,6 @@
 
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
-import { TRPCError } from "@trpc/server";
 import { users } from "@db/schema";
 import { getDb } from "./queries/connection";
 import { createToken } from "./lib/jwt";

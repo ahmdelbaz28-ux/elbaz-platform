@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { desc, eq, sql, and, count } from "drizzle-orm";
 import { createRouter, adminQuery } from "./middleware";
 import { getDb } from "./queries/connection";
-import { users, payments, enrollments, courses, supportTickets, ticketReplies, categories, lessons } from "@db/schema";
+import { users, payments, enrollments, courses, supportTickets, ticketReplies, lessons } from "@db/schema";
 import type { SafeUser } from "./context";
 
 export const adminRouter = createRouter({

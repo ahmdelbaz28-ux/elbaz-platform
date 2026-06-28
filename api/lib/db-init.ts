@@ -29,6 +29,35 @@ export async function ensureDatabase(): Promise<void> {
   try {
     const conn = await getRawConnection();
 
+    // 🔒 MIGRATION LOCK (Task ID 5): MySQL GET_LOCK prevents concurrent schema
+    // initialization when multiple HPA pods boot simultaneously (or when the
+    // HF Space restarts while a request is in-flight). The lock is named
+    // 'elbaz_db_migration' and is automatically released when the connection
+    // closes (or on RELEASE_LOCK()). Timeout: 30 seconds — if another pod is
+    // already mid-migration, we wait up to 30s; if it doesn't finish by then,
+    // we proceed (worst case: idempotent CREATE TABLE IF NOT EXISTS no-ops).
+    // This is a cooperative lock — it does NOT block normal queries, only
+    // other connections that also call GET_LOCK with the same name.
+    let acquiredLock = false;
+    try {
+      const [lockResult] = await conn.execute(
+        "SELECT GET_LOCK('elbaz_db_migration', 30) AS acquired"
+      );
+      const acquired = (lockResult as { acquired: number }[])[0]?.acquired;
+      if (acquired === 1) {
+        acquiredLock = true;
+        console.log("[DB] 🔒 Acquired migration lock 'elbaz_db_migration'");
+      } else if (acquired === 0) {
+        console.warn("[DB] ⚠️ Migration lock timeout — proceeding anyway (idempotent migrations will no-op)");
+      } else {
+        console.warn("[DB] ⚠️ Migration lock error — proceeding anyway (idempotent migrations will no-op)");
+      }
+    } catch (lockErr) {
+      // GET_LOCK may not be available on all MySQL-compatible engines (e.g.,
+      // PlanetScale). Fall through to unlocked migration — relies on IF NOT EXISTS.
+      console.warn("[DB] GET_LOCK unavailable, proceeding without migration lock:", (lockErr as Error).message);
+    }
+
     try {
     // ── Step 1: Check if users table exists ──
     const [rows] = await conn.execute(
@@ -338,6 +367,107 @@ export async function ensureDatabase(): Promise<void> {
         console.warn("[DB] Course deduplication warning:", message);
       }
 
+      // ── v4 features: 2FA columns + userSessions + userNotes + licenses tables ──
+      // Previously these were only created by migration-v4-features.sql which
+      // db-init.ts never ran → existing databases had broken 2FA / notes / licenses.
+      // We now add them inline so existing DBs get upgraded on next boot.
+      console.log("[DB] Running v4 features migration (2FA columns + sessions/notes/licenses)...");
+
+      // 2FA columns on users table
+      if (!(await columnExists("users", "totpSecret"))) {
+        try { await conn.execute(`ALTER TABLE users ADD COLUMN totpSecret VARCHAR(255) NULL`); console.log("[DB]   + users.totpSecret"); } catch (e) { console.warn("[DB] totpSecret:", (e as Error).message); }
+      }
+      if (!(await columnExists("users", "totpEnabled"))) {
+        try { await conn.execute(`ALTER TABLE users ADD COLUMN totpEnabled BOOLEAN NOT NULL DEFAULT FALSE`); console.log("[DB]   + users.totpEnabled"); } catch (e) { console.warn("[DB] totpEnabled:", (e as Error).message); }
+      }
+      if (!(await columnExists("users", "totpBackupCodes"))) {
+        try { await conn.execute(`ALTER TABLE users ADD COLUMN totpBackupCodes JSON NULL`); console.log("[DB]   + users.totpBackupCodes"); } catch (e) { console.warn("[DB] totpBackupCodes:", (e as Error).message); }
+      }
+      if (!(await columnExists("users", "deviceFingerprint"))) {
+        try { await conn.execute(`ALTER TABLE users ADD COLUMN deviceFingerprint VARCHAR(255) NULL`); console.log("[DB]   + users.deviceFingerprint"); } catch (e) { console.warn("[DB] deviceFingerprint:", (e as Error).message); }
+      }
+      // Email verification columns (restored by migration_restore_email_verification.sql,
+      // now applied inline so existing DBs that ran v2_cleanup get them back)
+      if (!(await columnExists("users", "emailVerificationToken"))) {
+        try { await conn.execute(`ALTER TABLE users ADD COLUMN emailVerificationToken VARCHAR(255) NULL`); console.log("[DB]   + users.emailVerificationToken"); } catch (e) { console.warn("[DB] emailVerificationToken:", (e as Error).message); }
+      }
+      if (!(await columnExists("users", "emailVerificationExpiry"))) {
+        try { await conn.execute(`ALTER TABLE users ADD COLUMN emailVerificationExpiry TIMESTAMP NULL`); console.log("[DB]   + users.emailVerificationExpiry"); } catch (e) { console.warn("[DB] emailVerificationExpiry:", (e as Error).message); }
+      }
+      if (!(await columnExists("users", "emailVerifiedAt"))) {
+        try { await conn.execute(`ALTER TABLE users ADD COLUMN emailVerifiedAt TIMESTAMP NULL`); console.log("[DB]   + users.emailVerifiedAt"); } catch (e) { console.warn("[DB] emailVerifiedAt:", (e as Error).message); }
+      }
+      if (!(await columnExists("users", "pendingEmail"))) {
+        try { await conn.execute(`ALTER TABLE users ADD COLUMN pendingEmail VARCHAR(320) NULL`); console.log("[DB]   + users.pendingEmail"); } catch (e) { console.warn("[DB] pendingEmail:", (e as Error).message); }
+      }
+
+      // v4 tables (CREATE TABLE IF NOT EXISTS — safe to re-run)
+      try {
+        await conn.query(`
+          CREATE TABLE IF NOT EXISTS \`userSessions\` (
+            \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            \`userId\` BIGINT UNSIGNED NOT NULL,
+            \`deviceFingerprint\` VARCHAR(255) NULL,
+            \`deviceName\` VARCHAR(255) NULL,
+            \`browser\` VARCHAR(100) NULL,
+            \`os\` VARCHAR(100) NULL,
+            \`ipAddress\` VARCHAR(45) NULL,
+            \`lastActiveAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            \`isRevoked\` BOOLEAN NOT NULL DEFAULT FALSE,
+            PRIMARY KEY (\`id\`),
+            INDEX \`user_sessions_user_idx\` (\`userId\`),
+            INDEX \`user_sessions_fingerprint_idx\` (\`deviceFingerprint\`),
+            CONSTRAINT \`fk_user_sessions_user\` FOREIGN KEY (\`userId\`) REFERENCES \`users\` (\`id\`) ON DELETE CASCADE ON UPDATE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+        await conn.query(`
+          CREATE TABLE IF NOT EXISTS \`userNotes\` (
+            \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            \`userId\` BIGINT UNSIGNED NOT NULL,
+            \`courseId\` BIGINT UNSIGNED NULL,
+            \`lessonId\` BIGINT UNSIGNED NULL,
+            \`title\` VARCHAR(500) NULL,
+            \`content\` TEXT NOT NULL,
+            \`tags\` JSON NULL,
+            \`isPinned\` BOOLEAN NOT NULL DEFAULT FALSE,
+            \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            \`updatedAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (\`id\`),
+            INDEX \`user_notes_user_idx\` (\`userId\`),
+            INDEX \`user_notes_course_idx\` (\`courseId\`),
+            INDEX \`user_notes_lesson_idx\` (\`lessonId\`),
+            CONSTRAINT \`fk_user_notes_user\` FOREIGN KEY (\`userId\`) REFERENCES \`users\` (\`id\`) ON DELETE CASCADE ON UPDATE CASCADE,
+            CONSTRAINT \`fk_user_notes_course\` FOREIGN KEY (\`courseId\`) REFERENCES \`courses\` (\`id\`) ON DELETE CASCADE ON UPDATE CASCADE,
+            CONSTRAINT \`fk_user_notes_lesson\` FOREIGN KEY (\`lessonId\`) REFERENCES \`lessons\` (\`id\`) ON DELETE CASCADE ON UPDATE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+        await conn.query(`
+          CREATE TABLE IF NOT EXISTS \`licenses\` (
+            \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            \`userId\` BIGINT UNSIGNED NOT NULL,
+            \`courseId\` BIGINT UNSIGNED NULL,
+            \`licenseKey\` VARCHAR(255) NOT NULL,
+            \`type\` VARCHAR(50) NOT NULL DEFAULT 'course',
+            \`status\` VARCHAR(50) NOT NULL DEFAULT 'active',
+            \`validFrom\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            \`validUntil\` TIMESTAMP NULL,
+            \`maxDevices\` INT NOT NULL DEFAULT 3,
+            \`activatedAt\` TIMESTAMP NULL,
+            \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (\`id\`),
+            UNIQUE INDEX \`licenses_key_unique\` (\`licenseKey\`),
+            INDEX \`licenses_user_idx\` (\`userId\`),
+            INDEX \`licenses_status_idx\` (\`status\`),
+            CONSTRAINT \`fk_licenses_user\` FOREIGN KEY (\`userId\`) REFERENCES \`users\` (\`id\`) ON DELETE CASCADE ON UPDATE CASCADE,
+            CONSTRAINT \`fk_licenses_course\` FOREIGN KEY (\`courseId\`) REFERENCES \`courses\` (\`id\`) ON DELETE SET NULL ON UPDATE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+        console.log("[DB] ✅ v4 tables verified (userSessions, userNotes, licenses)");
+      } catch (err) {
+        console.warn("[DB] v4 tables migration warning:", (err as Error).message);
+      }
+
       migrationDone = true;
       return;
     }
@@ -348,7 +478,7 @@ export async function ensureDatabase(): Promise<void> {
     const schemaPath = join(__dirname, "..", "..", "db", "init-schema.sql");
     const schemaSql = readFileSync(schemaPath, "utf-8");
     await conn.query(schemaSql);
-    console.log("[DB] ✅ All 22 tables created");
+    console.log("[DB] ✅ All 24 tables created (incl. userSessions, userNotes, licenses)");
 
     // ── Step 3: Seed admin user + categories + courses + testimonials ──
     // ✅ SECURITY: Generate a random admin password if ADMIN_PASSWORD not set
@@ -487,6 +617,16 @@ export async function ensureDatabase(): Promise<void> {
     console.log("[DB] ✅ Seed data inserted (admin user, 4 categories, 4 courses, 3 testimonials, contact settings)");
     migrationDone = true;
     } finally {
+      // 🔒 Release the migration lock so other pods can proceed.
+      // Safe to call even if the lock was never acquired (RELEASE_LOCK returns 0).
+      if (acquiredLock) {
+        try {
+          await conn.execute("SELECT RELEASE_LOCK('elbaz_db_migration')");
+          console.log("[DB] 🔓 Released migration lock");
+        } catch {
+          // Connection may already be closing — release happens automatically on conn close.
+        }
+      }
       conn.release();
     }
   } catch (err) {

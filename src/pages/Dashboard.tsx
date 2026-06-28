@@ -3,7 +3,6 @@ import { useNavigate, Link } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "@/hooks/useTranslation";
 import { trpc } from "@/providers/trpc";
-import { Progress } from "@/components/ui/progress";
 import { motion } from "framer-motion";
 import {
   GraduationCap,

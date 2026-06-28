@@ -103,12 +103,21 @@
     </script>
 
     <!-- Microsoft Clarity Analytics — GDPR-Compliant CDN Integration -->
+    <!-- 🔧 FIX (Task ID 4): Clarity Project ID is now read from window.__ENV__
+         (injected by boot.ts from CLARITY_PROJECT_ID / CLARITY_ID env var).
+         Previously this was a hardcoded numeric ID "3311349506496452" which
+         didn't match the env var and couldn't be changed without a rebuild.
+         If no ID is configured, Clarity is not loaded. -->
     <script type="text/javascript">
-      (function(c,l,a,r,i,t,y){
-          c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
-          t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
-          y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
-      })(window,document,"clarity","script","3311349506496452");
+      (function(){
+        var clarityId = (window.__ENV__ && window.__ENV__.CLARITY_PROJECT_ID) || "";
+        if (!clarityId) return; // No Clarity ID configured — skip loading
+        window.clarity = window.clarity || function(){(window.clarity.q = window.clarity.q || []).push(arguments)};
+        var s = document.createElement("script");
+        s.async = 1; s.src = "https://www.clarity.ms/tag/" + clarityId;
+        var y = document.getElementsByTagName("script")[0];
+        y.parentNode.insertBefore(s, y);
+      })();
     </script>
 
     <!-- JSON-LD Structured Data — inlined so search engines can read it -->

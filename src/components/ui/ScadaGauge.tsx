@@ -19,7 +19,7 @@ export default function ScadaGauge({
 
   useEffect(() => {
     if (!enabled || !displayRef.current) return;
-    let start = 0;
+    const start = 0;
     const duration = 2000;
     const startTime = performance.now();
 
