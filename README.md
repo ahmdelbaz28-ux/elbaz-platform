@@ -1,3 +1,20 @@
+---
+title: AHMDRTAP
+emoji: ⚡
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+tags:
+  - education
+  - lms
+  - electrical-engineering
+  - react
+  - hono
+  - trpc
+---
+
 # Elbaz Platform — Electrical Engineering LMS
 
 A production-grade learning management system for electrical engineering
