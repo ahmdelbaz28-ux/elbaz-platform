@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { desc, eq, and, count } from "drizzle-orm";
-import { createRouter, authQuery, authMutation, publicMutation } from "./middleware";
+import { createRouter, authQuery, authMutation, adminQuery, adminMutation, publicMutation } from "./middleware";
 import { getDb } from "./queries/connection";
 import { reviews, courses, users } from "@db/schema";
 
@@ -122,7 +122,10 @@ export const reviewRouter = createRouter({
       return { average: sum / result.length, total: result.length };
     }),
 
-  adminList: authQuery
+  // 🔒 SECURITY FIX (Task ID 6): Changed authQuery → adminQuery.
+  // Previously any logged-in user could list all reviews across all courses
+  // (information disclosure of user names + review content + moderation status).
+  adminList: adminQuery
     .input(z.object({ page: z.number().int().min(1).default(1), limit: z.number().int().min(1).max(100).default(20), courseId: z.number().optional() }))
     .query(async ({ input }) => {
       const db = getDb();
@@ -158,7 +161,9 @@ export const reviewRouter = createRouter({
       return { items, total: total ?? 0 };
     }),
 
-  adminTogglePublish: authMutation
+  // 🔒 SECURITY FIX (Task ID 6): Changed authMutation → adminMutation.
+  // Previously any logged-in user could hide/show ANY review (PR/defacement).
+  adminTogglePublish: adminMutation
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const db = getDb();

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "./queries/connection.js";
-import { eq, and, sql, lt, lte, gte, isNull, or, count, gt } from "drizzle-orm";
+import { eq, and, sql, lt, lte, gte, isNull, or, count } from "drizzle-orm";
 import { rateLimit } from "./lib/rate-limiter.js";
 import { env } from "./lib/env.js";
 import { createHmac, timingSafeEqual } from "crypto";

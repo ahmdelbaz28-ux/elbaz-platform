@@ -1,6 +1,5 @@
 import { z } from "zod";
-import { TRPCError } from "@trpc/server";
-import { desc, eq, count } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { createRouter, publicQuery, adminMutation } from "./middleware";
 import { getDb } from "./queries/connection";
 import { softwareDownloads } from "@db/schema";

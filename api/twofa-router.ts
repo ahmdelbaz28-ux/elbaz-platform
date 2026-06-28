@@ -5,6 +5,7 @@ import { createRouter, authQuery, authMutation } from "./middleware";
 import { getDb } from "./queries/connection";
 import { users } from "@db/schema";
 import { randomBytes, createHmac } from "crypto";
+import { env } from "./lib/env";
 
 const BASE32_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
@@ -63,8 +64,24 @@ function verifyTotp(secret: string, token: string, window: number = 1): boolean 
   return false;
 }
 
+// 🔒 SECURITY FIX (Task ID 3): Use APP_SECRET (or a dedicated WATERMARK_SECRET) as the
+// HMAC key for hashing 2FA backup codes. Previously this was a hardcoded string
+// "elbaz-2fa-backup" — anyone with repo access could forge backup codes.
+// We derive a 32-byte key from APP_SECRET so the hash is bound to the deployment.
+function getBackupCodeHmacKey(): string {
+  const base = env.APP_SECRET || env.WATERMARK_SECRET || "";
+  if (!base) {
+    // In dev with no APP_SECRET, fall back to a clearly-marked dev key.
+    // env.ts would have already thrown in production if APP_SECRET was missing.
+    return "dev-only-2fa-backup-key-not-for-production-use-32chars";
+  }
+  // Stretch with HKDF-like derivation (SHA-256 of "2fa-backup" || APP_SECRET)
+  // to domain-separate from JWT signing (which also uses APP_SECRET directly).
+  return createHmac("sha256", base).update("elbaz-2fa-backup-codes-v1").digest("hex");
+}
+
 function hashToken(token: string): string {
-  return createHmac("sha256", "elbaz-2fa-backup").update(token.toLowerCase()).digest("hex").substring(0, 32);
+  return createHmac("sha256", getBackupCodeHmacKey()).update(token.toLowerCase()).digest("hex").substring(0, 32);
 }
 
 export const twoFaRouter = createRouter({
@@ -172,33 +189,12 @@ export const twoFaRouter = createRouter({
     return { backupCodes };
   }),
 
-  verifyForLogin: authMutation
-    .input(z.object({ token: z.string(), userId: z.number() }))
-    .mutation(async ({ input }) => {
-      const db = getDb();
-      const [user] = await db
-        .select({ totpSecret: users.totpSecret, totpEnabled: users.totpEnabled, totpBackupCodes: users.totpBackupCodes, username: users.username })
-        .from(users)
-        .where(eq(users.id, input.userId))
-        .limit(1);
-
-      if (!user?.totpSecret || !user.totpEnabled) throw new TRPCError({ code: "BAD_REQUEST", message: "2FA not enabled" });
-
-      if (verifyTotp(user.totpSecret, input.token)) return { success: true };
-
-      const backupCodes = user.totpBackupCodes ? (user.totpBackupCodes as string[]) : [];
-      const tokenHash = hashToken(input.token);
-      const backupIndex = backupCodes.findIndex((code) => code === tokenHash);
-
-      if (backupIndex !== -1) {
-        backupCodes.splice(backupIndex, 1);
-        await db
-          .update(users)
-          .set({ totpBackupCodes: JSON.stringify(backupCodes) })
-          .where(eq(users.id, input.userId));
-        return { success: true, usedBackup: true, remaining: backupCodes.length };
-      }
-
-      throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid 2FA code" });
-    }),
+  // 🔒 SECURITY FIX (Task ID 6): Removed `verifyForLogin` procedure.
+  // It was (a) declared as authMutation so 2FA users couldn't actually log in
+  // through it (no way to issue a JWT after successful verification), (b) accepted
+  // a client-supplied userId (IDOR — any user could test 2FA codes against any
+  // other user's account), and (c) had no rate limit (allowed TOTP brute-force).
+  // 2FA login verification is now handled inline in local-auth-router.ts
+  // (login procedure) which already verifies credentials first, then asks for
+  // the TOTP code with the same 30s window + brute-force protection.
 });

@@ -53,8 +53,16 @@ function requireRole(role: string) {
   });
 }
 
+// 🔒 SECURITY FIX (Task ID 6): authMutation previously bypassed globalRateLimit,
+// which meant login/register/forgotPassword were only protected by the per-IP
+// shieldMiddleware (200 req / 10s = 1200/min). That's far too lenient for auth
+// endpoints — bcrypt-12 at ~3 hashes/sec/core means 1200 login attempts/min
+// would let an attacker test ~20k passwords/hour against a known email.
+// We now apply globalRateLimit to ALL procedures, and sensitive auth actions
+// additionally call checkRateLimit(ip, 'login') etc. with a much smaller
+// per-action quota inside the procedure body.
 export const authedQuery = t.procedure.use(globalRateLimit).use(requireAuth);
 export const authQuery = authedQuery;
-export const authMutation = t.procedure.use(requireAuth);
+export const authMutation = t.procedure.use(globalRateLimit).use(requireAuth);
 export const adminQuery = t.procedure.use(globalRateLimit).use(requireAuth).use(requireRole("admin"));
-export const adminMutation = t.procedure.use(requireAuth).use(requireRole("admin"));
+export const adminMutation = t.procedure.use(globalRateLimit).use(requireAuth).use(requireRole("admin"));

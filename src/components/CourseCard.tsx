@@ -2,7 +2,6 @@ import { Link } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
 import { Clock, Star, Users, Zap, ChevronRight } from "lucide-react";
 import { TiltCard } from "@/components/ui/motion";
-import { motion } from "framer-motion";
 
 interface CourseCardProps {
   course: {

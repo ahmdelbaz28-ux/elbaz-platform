@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -7,8 +7,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import "@/elite-animations.css";
 import {
   LayoutDashboard, Users, BookOpen, Headphones, DollarSign, Phone, FileText, Palette, Tag, Megaphone,
-  Plus, Pencil, Trash2, Save, Eye, X, Copy, Zap, TrendingUp, CheckCircle, Search, ChevronLeft, ChevronRight,
-  BarChart3, Settings, LogOut, ArrowUpRight, ArrowDownRight, MoreVertical, Edit3, Shield, GripVertical,
+  Plus, Pencil, Trash2, Save, Eye, Zap, TrendingUp, CheckCircle, ChevronLeft, ChevronRight,
+  LogOut, ArrowUpRight, Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

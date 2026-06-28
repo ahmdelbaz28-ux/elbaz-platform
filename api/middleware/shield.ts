@@ -1,5 +1,4 @@
 import { createMiddleware } from "hono/factory";
-import { env } from "../lib/env.js";
 
 /**
  * 🛡️ Elite Shield Middleware v1

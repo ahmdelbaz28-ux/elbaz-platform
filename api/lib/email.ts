@@ -217,23 +217,24 @@ export async function initiatePasswordReset(email: string, headers?: Headers): P
 
   if (!sendResult.ok) {
     console.error("[Email] Failed to send password reset email to:", user.email, "-", sendResult.reason);
-    // ── Fallback: log the reset link so the operator can recover the flow ──
+    // 🔒 SECURITY FIX (Task ID 3): NEVER surface the reset URL in the API response.
+    // Previously this returned `recoveryLink: resetUrl` which allowed anyone who
+    // knows a user's email to trigger a reset and immediately receive the live
+    // reset token in the JSON response — a complete account-takeover primitive.
+    // The reset link is now ONLY delivered via email. If email delivery is broken,
+    // the operator must investigate server logs (which still print the link for
+    // recovery purposes) or use the admin password-reset tool.
     console.warn(
       "[Email/Recovery] Password reset link for " + user.email +
-      " (email delivery failed — use this link to reset manually):\n" +
+      " (email delivery failed — operator must investigate):\n" +
       resetUrl
     );
-    // Surface the actual reason + recovery link to the caller so the user
-    // can reset their password WITHOUT email. This is critical when the
-    // email system isn't set up (Resend sandbox, unverified domain).
-    // The link is single-use and expires in 15 minutes.
     return {
       success: true,
       message: genericMessage,
       deliveryWarning: sendResult.needsDomainVerification
-        ? "Email delivery is currently limited (email domain not verified). Use the link below to reset your password directly."
-        : sendResult.reason,
-      recoveryLink: resetUrl,
+        ? "Email delivery is currently limited (email domain not verified). Please contact support to reset your password."
+        : "Password reset email could not be delivered. Please try again later or contact support.",
     };
   }
 
