@@ -109,8 +109,8 @@ export default function Logo3D({
   const accentRgb = isLight ? ACCENT_RGB_LIGHT : ACCENT_RGB_DARK;
   const badgeTop = isLight ? BADGE_TOP_LIGHT : BADGE_TOP_DARK;
   const badgeBottom = isLight ? BADGE_BOTTOM_LIGHT : BADGE_BOTTOM_DARK;
-  const haloAlpha = isHovered ? 0.45 : 0.14 + breath * 0.10;
-  const ringAlpha = isHovered ? 0.55 : 0.30 + breath * 0.06;
+  const haloAlpha = isHovered ? 0.45 : 0.14 + breath * 0.1;
+  const ringAlpha = isHovered ? 0.55 : 0.3 + breath * 0.06;
   const innerRingAlpha = isHovered ? 0.25 : 0.08 + breath * 0.04;
   const lift = isHovered && interactive ? -1 : 0;
   const haloBlur = Math.max(4, Math.round(px * 0.22));
@@ -179,7 +179,7 @@ export default function Logo3D({
           aria-hidden="true"
           style={{
             position: 'absolute',
-            inset: Math.max(2, Math.round(px * 0.10)),
+            inset: Math.max(2, Math.round(px * 0.1)),
             borderRadius: '50%',
             border: `1px solid rgba(${accentRgb}, ${innerRingAlpha})`,
             pointerEvents: 'none',
@@ -218,7 +218,7 @@ export default function Logo3D({
               objectFit: 'contain',
               filter: isHovered
                 ? `drop-shadow(0 0 9px rgba(${accentRgb},0.55)) brightness(1.08)`
-                : `drop-shadow(0 0 3px rgba(${accentRgb},${0.20 + breath * 0.10}))`,
+                : `drop-shadow(0 0 3px rgba(${accentRgb},${0.2 + breath * 0.1}))`,
               transition: 'filter 0.5s ease',
             }}
           />

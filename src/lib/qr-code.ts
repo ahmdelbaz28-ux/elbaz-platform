@@ -84,8 +84,8 @@ function rsEncode(data: number[], ecCount: number): number[] {
 
   // Polynomial division
   const result = new Array(ecCount).fill(0);
-  for (let i = 0; i < data.length; i++) {
-    const coef = data[i] ^ result[0];
+  for (const dataByte of data) {
+    const coef = dataByte ^ result[0];
     result.shift();
     result.push(0);
     for (let j = 0; j < gen.length; j++) {
@@ -220,12 +220,12 @@ function buildMatrix(
   for (let i = 0; i < 6; i++) matrix[5 - i][8] = formatBits[9 + i];
 
   // Around top-right and bottom-left finders
-  for (let i = 0; i < 7; i++) matrix[size - 1 - i][8] = formatBits[i];
-  for (let i = 0; i < 8; i++) matrix[8][size - 8 + i] = formatBits[7 + i];
+  for (let i = 0; i < 7; i++) { matrix[size - 1 - i][8] = formatBits[i]; }
+  for (let i = 0; i < 8; i++) { matrix[8][size - 8 + i] = formatBits[7 + i]; }
 
-   // Apply mask pattern 0 (no masking for simplicity)
-   return matrix;
- }
+  // Apply mask pattern 0 (no masking for simplicity)
+  return matrix;
+}
 
 /**
  * Convert data bytes and EC bytes into a bit array

@@ -58,8 +58,16 @@ class CacheMonitor {
     ].join('\n');
   }
 
-  resetAllMetrics(): void { defaultCacheEngine.resetMetrics(); shortTTLCache.resetMetrics(); longTTLCache.resetMetrics(); this.snapshots = []; }
-  destroy(): void { if (this.snapshotInterval) clearInterval(this.snapshotInterval); this.alertCallbacks = []; }
+  resetAllMetrics(): void {
+    defaultCacheEngine.resetMetrics();
+    shortTTLCache.resetMetrics();
+    longTTLCache.resetMetrics();
+    this.snapshots = [];
+  }
+  destroy(): void {
+    if (this.snapshotInterval) { clearInterval(this.snapshotInterval); }
+    this.alertCallbacks = [];
+  }
 }
 
 const cacheMonitor = new CacheMonitor();

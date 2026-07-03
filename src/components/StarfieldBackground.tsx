@@ -264,9 +264,7 @@ export default function StarfieldBackground() {
       }
 
       // Update positions
-      for (let i = 0; i < particles.length; i++) {
-        const p = particles[i];
-        
+      for (const p of particles) {
         // Slow drift movement - use dtSec for time-based animation
         p.x += p.vx * dtSec;
         p.y += p.vy * dtSec;

@@ -50,7 +50,7 @@ export function setupTracing(): void {
     spanProcessors.push(new SimpleSpanProcessor(consoleExporter));
   }
 
-  const sampler = OTEL_TRACES_SAMPLER_RATIO >= 1.0
+  const sampler = OTEL_TRACES_SAMPLER_RATIO >= 1
     ? new AlwaysOnSampler()
     : new TraceIdRatioBasedSampler(OTEL_TRACES_SAMPLER_RATIO);
 
