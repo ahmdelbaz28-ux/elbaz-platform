@@ -176,7 +176,7 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
  */
 export function useNotificationHistory(): NotificationHistoryState {
   const [notifications, setNotifications] = useState<NotificationRecord[]>(() => {
-    if (typeof window === "undefined") return [];
+    if (typeof globalThis === "undefined") return [];
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return [];
@@ -279,7 +279,7 @@ export function usePushNotification(
   const [isSubscribed, setIsSubscribed] = useState(false);
 
   const isSupported =
-    typeof window !== "undefined" &&
+    typeof globalThis !== "undefined" &&
     "serviceWorker" in navigator &&
     "PushManager" in window;
 
@@ -396,7 +396,7 @@ export function useRealtimeNotifications(
       if (lastEventIdRef.current) {
         params.set("after", lastEventIdRef.current);
       }
-      const baseUrl = (window as any).Capacitor?.isNativePlatform?.() ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io") : "";
+      const baseUrl = (globalThis as any).Capacitor?.isNativePlatform?.() ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io") : "";
       const res = await fetch(`${baseUrl}/api/notifications/poll?${params.toString()}`);
       if (!res.ok) {
         // Not found / not implemented — this is acceptable for now

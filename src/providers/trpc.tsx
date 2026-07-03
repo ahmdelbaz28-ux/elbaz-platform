@@ -24,7 +24,7 @@ const queryClient = new QueryClient({
 });
 
 const persister = createSyncStoragePersister({
-  storage: typeof window !== 'undefined' ? globalThis.localStorage : undefined,
+  storage: typeof globalThis !== 'undefined' ? globalThis.localStorage : undefined,
   key: 'ELBAZ_QUERY_CACHE',
 });
 
@@ -36,7 +36,7 @@ const persister = createSyncStoragePersister({
  */
 function getApiBaseUrl(): string {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const capacitor = (window as any).Capacitor;
+  const capacitor = (globalThis as any).Capacitor;
   if (capacitor?.isNativePlatform?.()) {
     return import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io";
   }

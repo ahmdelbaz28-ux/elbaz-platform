@@ -20,7 +20,7 @@ for (const { name, path } of pagesToTest) {
           });
           observer.observe({ type: "largest-contentful-paint", buffered: true });
 
-          if ((window as any).performance?.getEntriesByType) {
+          if ((globalThis as any).performance?.getEntriesByType) {
             const existing = performance.getEntriesByType("largest-contentful-paint");
             if (existing.length > 0) {
               observer.disconnect();

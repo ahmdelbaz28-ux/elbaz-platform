@@ -1601,7 +1601,7 @@ export default function AdminNotificationPanel({
                         max={300}
                         onChange={(e) => {
                           const val = Number.parseInt(e.target.value, 10);
-                          if (!isNaN(val)) {
+                          if (!Number.isNaN(val)) {
                             setSettingCooldown(val);
                           }
                         }}

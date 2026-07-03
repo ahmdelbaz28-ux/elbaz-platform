@@ -80,6 +80,6 @@ export async function verifyToken(token: string, expectedFingerprint?: string): 
 export function getTokenRemainingSeconds(payload: TokenPayload): number {
   // jose decodes 'exp' as a number (Unix timestamp)
   const exp = (payload as unknown as Record<string, unknown>).exp as number | undefined;
-  if (!exp || typeof exp !== 'number' || !isFinite(exp)) return 0;
+  if (!exp || typeof exp !== 'number' || !Number.isFinite(exp)) return 0;
   return Math.max(0, Math.floor(exp - Date.now() / 1000));
 }

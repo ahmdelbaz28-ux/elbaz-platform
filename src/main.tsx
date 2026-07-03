@@ -18,7 +18,7 @@ import App from './App.tsx'
  * The session guard 'elbaz-cache-nuke-reloading' is SET by cache-nuke.js
  * when it triggers a reload. We check it here to avoid racing with cache-nuke.
  */
-if ('serviceWorker' in navigator && !(window as any).Capacitor?.isNativePlatform?.()) {
+if ('serviceWorker' in navigator && !(globalThis as any).Capacitor?.isNativePlatform?.()) {
   import('virtual:pwa-register').then(({ registerSW }: { registerSW: (opts: {
     immediate?: boolean;
     onNeedRefresh?: () => void;
