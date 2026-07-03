@@ -7,8 +7,7 @@ import { RedisInstrumentation } from '@opentelemetry/instrumentation-redis-4';
 import { MySQLInstrumentation } from '@opentelemetry/instrumentation-mysql';
 import { Resource } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION, ATTR_DEPLOYMENT_ENVIRONMENT } from '@opentelemetry/semantic-conventions';
-import { BatchSpanProcessor, SimpleSpanProcessor, ConsoleSpanExporter } from '@opentelemetry/sdk-trace-base';
-import { AlwaysOnSampler, TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace-base';
+import { AlwaysOnSampler, BatchSpanProcessor, ConsoleSpanExporter, SimpleSpanProcessor, TraceIdRatioBasedSampler } from "@opentelemetry/sdk-trace-base";
 import type { Context } from 'hono';
 import type { Bindings } from 'hono/types';
 
