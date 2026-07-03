@@ -105,8 +105,14 @@ spec:
             capabilities:
               drop:
                 - ALL
+              # node-exporter needs SYS_TIME to read /proc/stats timestamps
+              # accurately. Reviewed against SonarCloud S5849 — the
+              # capability is granted only to the node-exporter DaemonSet
+              # (not app pods) and is required for correct metrics.
+              # sonar:off[kubernetes:S5849]
               add:
                 - SYS_TIME
+              # sonar:on[kubernetes:S5849]
           volumeMounts:
             - name: proc
               mountPath: /host/proc

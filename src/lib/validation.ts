@@ -26,10 +26,10 @@
  */
 export function isValidEmail(value: string): boolean {
   // Anchored, no overlapping quantifiers, no nested quantifiers that can
-  // match the same character. The `(?:\.[^\s@]+)+` group is the only
-  // place `.` is allowed, so the engine has exactly one way to split the
-  // local part from the domain part.
-  return /^[^\s@]+@[^\s@]+(?:\.[^\s@]+)+$/.test(value);
+  // match the same character. The `[^\\s@.]+` class excludes `.` so each
+  // dot-segment is a single label — the engine has exactly one way to
+  // split local-part vs. domain (SonarCloud S5852 / S8786).
+  return /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(value);
 }
 
 /**

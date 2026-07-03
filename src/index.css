@@ -57,8 +57,11 @@ body {
 
 /* ── Theme-aware body backgrounds ── */
 [data-theme="light"] body {
-  background-color: #f8fafc;
-  color: #0f172a;
+  /* Use !important to override Tailwind's `bg-*` utilities that set body
+     background elsewhere. (Previously two duplicate rules — merged per
+     SonarCloud S4666.) */
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
 }
 
 /* ════════════════════════════════════════════════════════════════════
@@ -467,25 +470,26 @@ body {
   background: radial-gradient(ellipse at 80% 30%, rgba(6,182,212,0.08) 0%, transparent 50%);
 }
 
-/* Mirror shimmer direction for RTL */
+/* Mirror shimmer direction for RTL — combined with the animation-name
+   declaration below to avoid a duplicate selector (SonarCloud S4666). */
 [dir="rtl"] .hero-image-shimmer {
   background: linear-gradient(270deg, transparent, rgba(6,182,212,0.5), transparent);
+  animation-name: heroShimmerRtl;
 }
 @keyframes heroShimmerRtl {
   0% { transform: translateX(100%); }
   50% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
 }
-[dir="rtl"] .hero-image-shimmer {
-  animation-name: heroShimmerRtl;
-}
 
-/* Safe area insets for notch phones */
+/* Safe area insets for notch phones + smooth scrolling. The two `html`
+   rules were merged per SonarCloud S4666. */
 html {
   --sat: env(safe-area-inset-top);
   --sab: env(safe-area-inset-bottom);
   --sal: env(safe-area-inset-left);
   --sar: env(safe-area-inset-right);
+  scroll-behavior: smooth;
 }
 
 /* Ensure proper touch targets on mobile */
@@ -545,9 +549,8 @@ html {
 /* ════════════════════════════════════════════════════════════════════
    PERFORMANCE: Smooth scrolling & render optimization
    ════════════════════════════════════════════════════════════════════ */
-html {
-  scroll-behavior: smooth;
-}
+/* Merged with the `html` rule above (L486) per SonarCloud S4666. The
+   scroll-behavior declaration has been added to that block. */
 
 /* Only use paint containment to avoid clipping absolute children and breaking backdrop-filter.
    layout containment creates new stacking/containing blocks that break fixed/absolute positioning. */
@@ -771,10 +774,8 @@ img[loading="lazy"] {
   color-scheme: light;
 }
 
-[data-theme="light"] body {
-  background-color: #f8fafc !important;
-  color: #0f172a !important;
-}
+/* Body background for light theme — declared earlier at L59. Duplicate
+   rule removed per SonarCloud S4666. */
 
 /* ── Background colors ─────────────────────────────────────────────── */
 [data-theme="light"] .bg-\[\#070b12\],          /* main bg */
@@ -1011,10 +1012,8 @@ img[loading="lazy"] {
   border-color: #0891b2 !important;
 }
 
-/* ── INVERTED: Mobile menu backdrop ── */
-[data-theme="light"] .mobile-menu-backdrop {
-  background: rgba(248, 250, 252, 0.98) !important;
-}
+/* ── INVERTED: Mobile menu backdrop (merged with earlier rule at L833) ── */
+/* The duplicate selector was removed per SonarCloud S4666. */
 
 /* ── INVERTED: Dropdown menus ── */
 [data-theme="light"] [data-user-menu] .absolute.end-0.top-full.mt-2 {
