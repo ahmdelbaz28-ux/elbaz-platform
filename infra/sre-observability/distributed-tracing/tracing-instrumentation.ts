@@ -16,10 +16,8 @@ import type { Bindings } from 'hono/types';
 // cluster-internal service (`otel-collector:4317`) and is reached over
 // plain gRPC. We use `http://` here because (a) gRPC inherits TLS from
 // the channel config not the URL scheme, and (b) mTLS is terminated at
-// the service mesh sidecar. Marked as reviewed for SonarCloud S5332.
-// sonar:off[typescript:S5332]
-const OTEL_EXPORTER_OTLP_ENDPOINT = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://otel-collector:4317';
-// sonar:on[typescript:S5332]
+// the service mesh sidecar. Reviewed against SonarCloud S5332.
+const OTEL_EXPORTER_OTLP_ENDPOINT = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://otel-collector:4317'; // NOSONAR — internal cluster service, TLS handled at mesh layer
 const OTEL_SERVICE_NAME = process.env.OTEL_SERVICE_NAME || 'ahmedelbaz-lms-backend';
 const OTEL_SERVICE_VERSION = process.env.OTEL_SERVICE_VERSION || '1.0.0';
 const OTEL_DEPLOYMENT_ENVIRONMENT = process.env.OTEL_DEPLOYMENT_ENVIRONMENT || 'production';

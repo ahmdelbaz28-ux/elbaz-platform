@@ -13,14 +13,17 @@ RUN set -o pipefail && \
     echo "=== Dependencies installed ===" && \
     ls node_modules | wc -l
 
-# Copy everything including .git for LFS checkout.
-# Note (docker:S6470): we deliberately use `COPY . .` rather than enumerating
-# every directory because the comprehensive .dockerignore at the repo root
-# already excludes every known sensitive path (.env*, .git*, infra/, docs/,
-# Dockerfile itself, etc.). Enumerating dirs manually would be brittle: any
-# new source folder added later would silently be missing from the image.
-# NOSONAR — see justification above.
-COPY . .
+# Copy source directories explicitly instead of `COPY . .` to satisfy
+# SonarCloud docker:S6470 (recursive copy could leak secrets). The
+# .dockerignore at the repo root also excludes .env*, .git*, infra/,
+# docs/, etc. — these explicit COPYs are belt-and-braces.
+COPY src/ ./src/
+COPY api/ ./api/
+COPY db/ ./db/
+COPY public/ ./public/
+COPY scripts/ ./scripts/
+COPY contracts/ ./contracts/
+COPY index.html vite.config.ts tsconfig*.json tailwind.config.js postcss.config.js capacitor.config.ts drizzle.config.ts vitest.config.ts ./
 
 # Initialize git (needed for LFS checkout) and convert LFS pointers to real files
 # ✅ FIX: Use set -e to fail fast if LFS checkout fails (was silently ignored before)
