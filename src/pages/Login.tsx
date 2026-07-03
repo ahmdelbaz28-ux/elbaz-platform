@@ -176,25 +176,23 @@ export default function Login() {
           auto_select: false,
           cancel_on_tap_outside: true,
         });
-      } else {
+      } else if (!document.querySelector('script[src*="accounts.google.com/gsi/client"]')) {
         // Load GIS script on demand if not already loaded
-        if (!document.querySelector('script[src*="accounts.google.com/gsi/client"]')) {
-          // Use the __loadGsi helper from index.html if available
-          if (typeof (window as any).__loadGsi === 'function') {
-            (window as any).__loadGsi();
-          } else {
-            const s = document.createElement('script');
-            s.src = 'https://accounts.google.com/gsi/client';
-            s.async = true;
-            s.defer = true;
-            s.crossOrigin = 'anonymous';
-            document.head.appendChild(s);
-          }
-          // Wait for script to load
-          retryTimer = setTimeout(waitForGoogle, 500);
+        // Use the __loadGsi helper from index.html if available
+        if (typeof (window as any).__loadGsi === 'function') {
+          (window as any).__loadGsi();
         } else {
-          retryTimer = setTimeout(waitForGoogle, 200);
+          const s = document.createElement('script');
+          s.src = 'https://accounts.google.com/gsi/client';
+          s.async = true;
+          s.defer = true;
+          s.crossOrigin = 'anonymous';
+          document.head.appendChild(s);
         }
+        // Wait for script to load
+        retryTimer = setTimeout(waitForGoogle, 500);
+      } else {
+        retryTimer = setTimeout(waitForGoogle, 200);
       }
     };
     waitForGoogle();

@@ -78,7 +78,10 @@ class SessionCache {
     return count;
   }
 
-  destroy(): void { if (this.heartbeatInterval) clearInterval(this.heartbeatInterval); this.cache.invalidateAll(); }
+  destroy(): void {
+    if (this.heartbeatInterval) { clearInterval(this.heartbeatInterval); }
+    this.cache.invalidateAll();
+  }
 }
 
 const sessionCache = new SessionCache();

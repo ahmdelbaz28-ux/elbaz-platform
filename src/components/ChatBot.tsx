@@ -278,8 +278,8 @@ export default function ChatBot() {
               const lines = buffer.split("\n");
               buffer = lines.pop() || ""; // Keep incomplete line in buffer
 
-              for (let li = 0; li < lines.length; li++) {
-                const line = lines[li].trim();
+              for (const rawLine of lines) {
+                const line = rawLine.trim();
                 if (!line.startsWith("data: ")) continue;
                 const payload = line.slice(6).trim();
 
@@ -375,17 +375,17 @@ export default function ChatBot() {
           const words = fullReply.split(/(\s+)/); // Split keeping whitespace
           let displayed = "";
 
-          for (let wi = 0; wi < words.length; wi++) {
+          for (const word of words) {
             if (abortControllerRef.current?.signal.aborted) break;
-            displayed += words[wi];
+            displayed += word;
             setStreamingContent(displayed);
 
             // Vary the delay slightly to feel natural:
             // - Shorter delay for short words (a, the, و، في)
             // - Longer delay after punctuation
-            const word = words[wi].trim();
-            const isPunctuation = /[.!?,،؛:]/.test(word);
-            const delay = isPunctuation ? 80 : (word.length <= 2 ? 20 : 35);
+            const trimmed = word.trim();
+            const isPunctuation = /[.!?,،؛:]/.test(trimmed);
+            const delay = isPunctuation ? 80 : (trimmed.length <= 2 ? 20 : 35);
 
             // Use a promise + setTimeout to yield to the event loop
             await new Promise<void>(function(resolve) {

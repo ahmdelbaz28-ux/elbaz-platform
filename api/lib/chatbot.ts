@@ -845,8 +845,7 @@ async function openRouterFallback(
     let tierTried = 0;
     let tierSkipped = 0;
 
-    for (let i = 0; i < AI_MODELS.length; i++) {
-      const model = AI_MODELS[i];
+    for (const model of AI_MODELS) {
       if (model.tier !== tier) continue;
       if ((modelFailCount[model.id] || 0) >= 3) {
         tierSkipped++;
@@ -866,8 +865,7 @@ async function openRouterFallback(
 
   // Step 3: ABSOLUTE LAST RESORT - try ALL models including known-bad ones
   console.warn("[Chatbot/OpenRouter] All tiers exhausted with skips. Trying all models as last resort...");
-  for (let i = 0; i < AI_MODELS.length; i++) {
-    const model = AI_MODELS[i];
+  for (const model of AI_MODELS) {
     modelFailCount[model.id] = 0;
     const result = await tryModel(model.id, messages, systemPrompt, 10000);
     if (result) return result;
@@ -1500,8 +1498,7 @@ async function groqFallback(
   messages: { role: string; content: string }[],
   systemPrompt: string
 ): Promise<{ reply: string; model: string } | null> {
-  for (let i = 0; i < GROQ_MODELS.length; i++) {
-    const modelId = GROQ_MODELS[i];
+  for (const modelId of GROQ_MODELS) {
     const result = await tryGroq(messages, systemPrompt, modelId, 120000);
     if (result) return result;
   }

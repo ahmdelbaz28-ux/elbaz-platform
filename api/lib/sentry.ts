@@ -11,7 +11,7 @@ function initSentry(): void {
     dsn: env.SENTRY_DSN,
     environment: env.NODE_ENV,
     release: process.env.npm_package_version ?? "unknown",
-    tracesSampleRate: env.NODE_ENV === "production" ? 0.1 : 1.0,
+    tracesSampleRate: env.NODE_ENV === "production" ? 0.1 : 1,
     profilesSampleRate: 0.1,
     maxBreadcrumbs: 20,
     attachStacktrace: true,
