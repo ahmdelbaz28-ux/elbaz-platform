@@ -191,7 +191,7 @@ export async function initiatePasswordReset(email: string, headers?: Headers): P
   const resetUrl = `${getFrontendUrl(headers)}/reset-password?token=${resetToken}&uid=${user.id}`;
 
   // Send the reset email
-  const name = (user.name || user.username).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const name = (user.name || user.username).replaceAll(/&/g, "&amp;").replaceAll(/</g, "&lt;").replaceAll(/>/g, "&gt;").replaceAll(/"/g, "&quot;");
   const sendResult = await sendEmailWithDiagnostics({
     to: user.email,
     subject: "Password Reset — Ahmed Elbaz Electrical Engineering Platform",
@@ -340,7 +340,7 @@ export async function initiateEmailVerification(userId: number, newEmail?: strin
 
   const verificationUrl = `${getFrontendUrl(headers)}/verify-email?token=${verificationToken}&uid=${userId}`;
 
-  const name = (user.name || user.username).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const name = (user.name || user.username).replaceAll(/&/g, "&amp;").replaceAll(/</g, "&lt;").replaceAll(/>/g, "&gt;").replaceAll(/"/g, "&quot;");
 
   const emailSubject = newEmail
     ? "Confirm Your New Email — Ahmed Elbaz Electrical Engineering Platform"

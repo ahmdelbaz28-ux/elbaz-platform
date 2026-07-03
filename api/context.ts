@@ -72,7 +72,7 @@ export async function createContext(
     if (!token) {
       token =
         opts.req.headers.get("x-auth-token") ||
-        opts.req.headers.get("authorization")?.replace("Bearer ", "");
+        opts.req.headers.get("authorization")?.replaceAll("Bearer ", "");
     }
     if (token) {
       const payload = await verifyToken(token);

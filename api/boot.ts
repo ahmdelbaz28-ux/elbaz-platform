@@ -229,7 +229,7 @@ app.get("/sitemap.xml", async (c) => {
     ];
 
     // Escape XML special characters in slugs to prevent XML injection
-    const escapeXml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+    const escapeXml = (s: string) => s.replaceAll(/&/g, "&amp;").replaceAll(/</g, "&lt;").replaceAll(/>/g, "&gt;").replaceAll(/"/g, "&quot;").replaceAll(/'/g, "&apos;");
 
     const courseUrls = publishedCourses.map((course) => ({
       loc: `${baseUrl}/courses/${escapeXml(course.slug)}`,
@@ -405,8 +405,8 @@ app.use("*", async (c, next) => {
     const nonce = c.get("cspNonce") as string | undefined;
 
     const courseCount = await getCourseCount();
-    html = html.replace(/"%%OFFER_COUNT%%"/g, `"${courseCount}"`);
-    html = html.replace(/%%CACHE_BUST%%/g, process.env.BUILD_ID || "dev");
+    html = html.replaceAll(/"%%OFFER_COUNT%%"/g, `"${courseCount}"`);
+    html = html.replaceAll(/%%CACHE_BUST%%/g, process.env.BUILD_ID || "dev");
 
     if (nonce) {
       // Inject the nonce meta tag into <head>
@@ -417,8 +417,7 @@ app.use("*", async (c, next) => {
       // Add nonce attribute to ALL inline <script> tags (those without src).
       // This prevents CSP "script-src-elem" violations for inline scripts.
       // External scripts (with src=) are unaffected — allowed via 'self'.
-      html = html.replace(
-        /<script(?![^>]*\ssrc=)([^>]*)>/g,
+      html = html.replaceAll(/<script(?![^>]*\ssrc=)([^>]*)>/g,
         `<script nonce="${nonce}"$1>`
       );
 

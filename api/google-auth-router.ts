@@ -69,7 +69,7 @@ async function verifyGoogleToken(idToken: string): Promise<Record<string, unknow
   if (parts.length !== 3) {
     throw new Error("Invalid token format");
   }
-  const headerB64 = parts[0].replace(/-/g, "+").replace(/_/g, "/");
+  const headerB64 = parts[0].replaceAll(/-/g, "+").replaceAll(/_/g, "/");
   const headerJson = JSON.parse(Buffer.from(headerB64, "base64").toString("utf-8"));
   const kid = headerJson.kid as string | undefined;
 
@@ -90,14 +90,14 @@ async function verifyGoogleToken(idToken: string): Promise<Record<string, unknow
 
   const verify = crypto.createVerify("RSA-SHA256");
   verify.update(Buffer.from(parts[0] + "." + parts[1], "utf-8"));
-  const signature = Buffer.from(parts[2].replace(/-/g, "+").replace(/_/g, "/"), "base64");
+  const signature = Buffer.from(parts[2].replaceAll(/-/g, "+").replaceAll(/_/g, "/"), "base64");
 
   if (!verify.verify(publicKey, signature)) {
     throw new Error("Token signature verification failed");
   }
 
   // Step 5: Decode and validate the payload
-  const payloadB64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+  const payloadB64 = parts[1].replaceAll(/-/g, "+").replaceAll(/_/g, "/");
   const payload = JSON.parse(Buffer.from(payloadB64, "base64").toString("utf-8")) as Record<string, unknown>;
 
   if (payload.iss !== "accounts.google.com" && payload.iss !== "https://accounts.google.com") {
@@ -321,7 +321,7 @@ googleAuthRouter.get("/callback", async (c) => {
         userRole = user.role;
       } else {
         // Create new user
-        let baseUsername = googleEmail.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_").toLowerCase();
+        let baseUsername = googleEmail.split("@")[0].replaceAll(/[^a-zA-Z0-9_]/g, "_").toLowerCase();
         if (baseUsername.length < 3) baseUsername = "user_" + googleId.slice(0, 6);
 
         let newUsername = baseUsername;
@@ -487,7 +487,7 @@ googleAuthRouter.post("/", async (c) => {
     }
 
     // ── Step 3: Create a new user from Google ──
-    let baseUsername = googleEmail.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_").toLowerCase();
+    let baseUsername = googleEmail.split("@")[0].replaceAll(/[^a-zA-Z0-9_]/g, "_").toLowerCase();
     if (baseUsername.length < 3) baseUsername = "user_" + googleId.slice(0, 6);
 
     // Ensure username uniqueness

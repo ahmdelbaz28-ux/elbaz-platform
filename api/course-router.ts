@@ -105,7 +105,7 @@ export const courseRouter = createRouter({
       if (input?.search && input.search.trim().length > 0) {
         const rawSearch = input.search.trim();
         // Escape special LIKE characters: % → \%, _ → \_, \ → \\
-        const escapedSearch = rawSearch.replace(/[%_\\]/g, (char) => `\\${char}`);
+        const escapedSearch = rawSearch.replaceAll(/[%_\\]/g, (char) => `\\${char}`);
         const term = `%${escapedSearch}%`;
         conditions.push(
           or(

@@ -1,4 +1,4 @@
-import { trace, context, propagation, SpanStatusCode, type Span, type Tracer } from '@opentelemetry/api';
+import { trace, SpanStatusCode, type Span, type Tracer } from '@opentelemetry/api';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
 import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
@@ -9,7 +9,7 @@ import { Resource } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION, ATTR_DEPLOYMENT_ENVIRONMENT } from '@opentelemetry/semantic-conventions';
 import { BatchSpanProcessor, SimpleSpanProcessor, ConsoleSpanExporter } from '@opentelemetry/sdk-trace-base';
 import { AlwaysOnSampler, TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace-base';
-import type { Context, HonoRequest } from 'hono';
+import type { Context } from 'hono';
 import type { Bindings } from 'hono/types';
 
 // OpenTelemetry Collector endpoint. Inside the k8s cluster this is a
