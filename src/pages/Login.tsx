@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { trackPlatform, identifyUser } from "@/lib/clarity";
 import { isNativePlatform, setStoredToken } from "@/lib/auth-storage";
+import { bilingualByLang } from "@/lib/i18n";
 
 // ─── Google Identity Types ───
 interface GoogleCredentialResponse {
@@ -313,9 +314,7 @@ export default function Login() {
                   <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
                 </svg>
               )}
-              {googleLoading
-                ? (lang === "ar" ? "جارٍ تسجيل الدخول..." : "Signing in...")
-                : (lang === "ar" ? "تسجيل الدخول بجوجل" : "Sign in with Google")
+              {googleLoading ? bilingualByLang("جارٍ تسجيل الدخول...", "Signing in...", lang) : bilingualByLang("تسجيل الدخول بجوجل", "Sign in with Google", lang)
               }
             </button>
           </div>
@@ -388,7 +387,7 @@ export default function Login() {
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748b] hover:text-[#94a3b8]"
-                    aria-label={showPassword ? (lang === "ar" ? "إخفاء كلمة المرور" : "Hide password") : (lang === "ar" ? "إظهار كلمة المرور" : "Show password")}
+                    aria-label={showPassword ? bilingualByLang("إخفاء كلمة المرور", "Hide password", lang) : bilingualByLang("إظهار كلمة المرور", "Show password", lang)}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>

@@ -12,6 +12,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { bilingualByLang } from "@/lib/i18n";
 
 type VerifyState = "idle" | "loading" | "success" | "error" | "expired" | "already";
 
@@ -217,9 +218,7 @@ export default function VerifyEmail() {
                 disabled={verifyMutation.isPending}
                 className="glow-btn w-full bg-gradient-to-r from-[#06b6d4] to-[#0891b2] font-semibold text-[#0a0e17]"
               >
-                {verifyMutation.isPending
-                  ? (lang === "ar" ? "جاري إعادة المحاولة..." : "Retrying...")
-                  : (lang === "ar" ? "إعادة المحاولة" : "Retry")}
+                {verifyMutation.isPending ? bilingualByLang("جاري إعادة المحاولة...", "Retrying...", lang) : bilingualByLang("إعادة المحاولة", "Retry", lang)}
               </Button>
               <Link
                 to="/"

@@ -4,12 +4,12 @@ type PersistFn<K, V> = (key: K, value: V) => Promise<void>;
 type FetchFn<K, V> = (key: K) => Promise<V | null>;
 
 class WriteThroughStrategy<K extends string, V> {
-  private cache: CacheEngine;
-  private persistFn: PersistFn<K, V>;
-  private fetchFn: FetchFn<K, V>;
-  private keyPrefix: string;
-  private ttl: number;
-  private tags: string[];
+  private readonly cache: CacheEngine;
+  private readonly persistFn: PersistFn<K, V>;
+  private readonly fetchFn: FetchFn<K, V>;
+  private readonly keyPrefix: string;
+  private readonly ttl: number;
+  private readonly tags: string[];
 
   constructor(options: { cache?: CacheEngine; persistFn: PersistFn<K, V>; fetchFn: FetchFn<K, V>; keyPrefix: string; ttl?: number; tags?: string[] }) {
     this.cache = options.cache ?? defaultCacheEngine;
@@ -39,15 +39,15 @@ class WriteThroughStrategy<K extends string, V> {
 }
 
 class WriteBackStrategy<K extends string, V> {
-  private cache: CacheEngine;
-  private persistFn: PersistFn<K, V>;
-  private fetchFn: FetchFn<K, V>;
-  private keyPrefix: string;
-  private ttl: number;
-  private tags: string[];
-  private writeDelay: number;
-  private dirtyKeys: Set<string>;
-  private pendingWrites: Map<string, { key: K; value: V; timestamp: number; timeoutId: ReturnType<typeof setTimeout> }>;
+  private readonly cache: CacheEngine;
+  private readonly persistFn: PersistFn<K, V>;
+  private readonly fetchFn: FetchFn<K, V>;
+  private readonly keyPrefix: string;
+  private readonly ttl: number;
+  private readonly tags: string[];
+  private readonly writeDelay: number;
+  private readonly dirtyKeys: Set<string>;
+  private readonly pendingWrites: Map<string, { key: K; value: V; timestamp: number; timeoutId: ReturnType<typeof setTimeout> }>;
 
   constructor(options: { cache?: CacheEngine; persistFn: PersistFn<K, V>; fetchFn: FetchFn<K, V>; keyPrefix: string; ttl?: number; tags?: string[]; writeDelay?: number }) {
     this.cache = options.cache ?? defaultCacheEngine;
@@ -141,11 +141,11 @@ class WriteBackStrategy<K extends string, V> {
 }
 
 class ReadThroughStrategy<K extends string, V> {
-  private cache: CacheEngine;
-  private fetchFn: FetchFn<K, V>;
-  private keyPrefix: string;
-  private ttl: number;
-  private tags: string[];
+  private readonly cache: CacheEngine;
+  private readonly fetchFn: FetchFn<K, V>;
+  private readonly keyPrefix: string;
+  private readonly ttl: number;
+  private readonly tags: string[];
 
   constructor(options: { cache?: CacheEngine; fetchFn: FetchFn<K, V>; keyPrefix: string; ttl?: number; tags?: string[] }) {
     this.cache = options.cache ?? defaultCacheEngine;

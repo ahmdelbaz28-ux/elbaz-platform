@@ -41,16 +41,15 @@ export default function ScrollReveal({
     return () => observer.disconnect();
   }, [delay, once, threshold]);
 
-  const directionClass =
-    direction === "up"
-      ? "scroll-reveal"
-      : direction === "left"
-      ? "scroll-reveal-left"
-      : direction === "right"
-      ? "scroll-reveal-right"
-      : direction === "scale"
-      ? "scroll-reveal-scale"
-      : "";
+  // Map direction → CSS class with an explicit lookup to avoid the nested
+  // ternary chain that SonarCloud S3358 flags.
+  const directionClassMap: Record<string, string> = {
+    up: "scroll-reveal",
+    left: "scroll-reveal-left",
+    right: "scroll-reveal-right",
+    scale: "scroll-reveal-scale",
+  };
+  const directionClass = directionClassMap[direction] ?? "";
 
   return (
     <div ref={ref} className={cn(directionClass, revealed ? "revealed" : "", className)}>

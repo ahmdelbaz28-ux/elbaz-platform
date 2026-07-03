@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trackPlatform } from "@/lib/clarity";
+import { bilingualByLang } from "@/lib/i18n";
 
 type ResetState = "form" | "submitting" | "success" | "error" | "invalid";
 
@@ -234,14 +235,7 @@ export default function ResetPassword() {
                         onClick={() => setShowPassword(!showPassword)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748b] hover:text-[#94a3b8]"
                         aria-label={
-                          showPassword
-                            ? lang === "ar"
-                              ? "إخفاء كلمة المرور"
-                              : "Hide password"
-                            : lang === "ar"
-                              ? "إظهار كلمة المرور"
-                              : "Show password"
-                        }
+                          showPassword ? bilingualByLang("إخفاء كلمة المرور", "Hide password", lang) : bilingualByLang("إظهار كلمة المرور", "Show password", lang)}
                       >
                         {showPassword ? (
                           <EyeOff className="h-4 w-4" />
@@ -325,14 +319,7 @@ export default function ResetPassword() {
                         onClick={() => setShowConfirm(!showConfirm)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748b] hover:text-[#94a3b8]"
                         aria-label={
-                          showConfirm
-                            ? lang === "ar"
-                              ? "إخفاء كلمة المرور"
-                              : "Hide password"
-                            : lang === "ar"
-                              ? "إظهار كلمة المرور"
-                              : "Show password"
-                        }
+                          showConfirm ? bilingualByLang("إخفاء كلمة المرور", "Hide password", lang) : bilingualByLang("إظهار كلمة المرور", "Show password", lang)}
                       >
                         {showConfirm ? (
                           <EyeOff className="h-4 w-4" />

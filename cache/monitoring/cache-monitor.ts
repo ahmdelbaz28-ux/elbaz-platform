@@ -7,11 +7,11 @@ interface AggregatedMetrics { default: CacheMetrics; short: CacheMetrics; long: 
 
 class CacheMonitor {
   private snapshots: MetricsSnapshot[] = [];
-  private maxSnapshots: number;
-  private snapshotInterval: ReturnType<typeof setInterval> | null;
-  private alertRules: AlertRule[];
+  private readonly maxSnapshots: number;
+  private readonly snapshotInterval: ReturnType<typeof setInterval> | null;
+  private readonly alertRules: AlertRule[];
   private alertCallbacks: Array<(rule: AlertRule, metrics: AggregatedMetrics) => void>;
-  private enabled: boolean;
+  private readonly enabled: boolean;
 
   constructor(options: { maxSnapshots?: number; snapshotIntervalMs?: number } = {}) {
     this.maxSnapshots = options.maxSnapshots ?? 1440;

@@ -385,7 +385,15 @@ export default function ChatBot() {
             // - Longer delay after punctuation
             const trimmed = word.trim();
             const isPunctuation = /[.!?,،؛:]/.test(trimmed);
-            const delay = isPunctuation ? 80 : (trimmed.length <= 2 ? 20 : 35);
+            // Compute delay without a nested ternary (SonarCloud S3358).
+            let delay: number;
+            if (isPunctuation) {
+              delay = 80;
+            } else if (trimmed.length <= 2) {
+              delay = 20;
+            } else {
+              delay = 35;
+            }
 
             // Use a promise + setTimeout to yield to the event loop
             await new Promise<void>(function(resolve) {

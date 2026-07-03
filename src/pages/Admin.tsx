@@ -20,6 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { bilingual } from "@/lib/i18n";
 
 interface SettingItem { id?: string; key: string; value: string; section: string; type?: string; }
 interface ThemeItem { id: string; name: string; primaryColor: string; secondaryColor: string; accentColor: string; bgColor: string; textColor: string; cardBgColor: string; borderColor: string; isActive: boolean; createdAt: string; }
@@ -139,6 +140,18 @@ export default function Admin() {
   const allUsers = usersData?.items ?? [];
   const allPayments = paymentsData?.items ?? [];
   const allCourses = (coursesData as any)?.items ?? [];
+
+  // Status badge colour lookup maps — replace multi-branch ternaries that
+  // SonarCloud S3358 flags.
+  const ticketStatusBadgeClass: Record<string, string> = {
+    open: "bg-[rgba(16,185,129,0.15)] text-[#10b981]",
+    in_progress: "bg-[rgba(6,182,212,0.15)] text-[#06b6d4]",
+    resolved: "bg-[rgba(34,211,238,0.15)] text-[#22d3ee]",
+  };
+  const paymentStatusBadgeClass: Record<string, string> = {
+    completed: "bg-[rgba(16,185,129,0.15)] text-[#10b981]",
+    pending: "bg-[rgba(245,158,11,0.15)] text-[#f59e0b]",
+  };
 
   if (isLoading) return <div className="flex min-h-screen items-center justify-center bg-[#0a0e17]"><div className="h-10 w-10 animate-spin rounded-full border-4 border-[#1f2d44] border-t-[#06b6d4]" /></div>;
   if (!isAdmin) return null;
@@ -347,13 +360,13 @@ export default function Admin() {
                               updateCourse.mutate({ id: course.id, isPublished: newPublished });
                             }}>
                               <Eye className="h-3 w-3 mr-1" />
-                              {course.isPublished ? (isRTL ? "إخفاء" : "Hide") : (isRTL ? "نشر" : "Publish")}
+                              {course.isPublished ? bilingual("إخفاء", "Hide", isRTL) : bilingual("نشر", "Publish", isRTL)}
                             </Button>
                             <Button size="sm" variant="ghost" className="flex-1 text-xs text-[#f59e0b] hover:bg-[rgba(245,158,11,0.05)]" onClick={() => {
                               updateCourse.mutate({ id: course.id, isFeatured: !course.isFeatured });
                             }}>
                               <Zap className="h-3 w-3 mr-1" />
-                              {course.isFeatured ? (isRTL ? "إزالة التميز" : "Unfeature") : (isRTL ? "تمييز" : "Feature")}
+                              {course.isFeatured ? bilingual("إزالة التميز", "Unfeature", isRTL) : bilingual("تمييز", "Feature", isRTL)}
                             </Button>
                           </div>
                         </div>
@@ -376,7 +389,7 @@ export default function Admin() {
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <Badge className={`text-xs ${ticket.status === "open" ? "bg-[rgba(16,185,129,0.15)] text-[#10b981]" : ticket.status === "in_progress" ? "bg-[rgba(6,182,212,0.15)] text-[#06b6d4]" : ticket.status === "resolved" ? "bg-[rgba(34,211,238,0.15)] text-[#22d3ee]" : "bg-[#1a2233] text-[#64748b]"}`}>{ticket.status}</Badge>
+                              <Badge className={`text-xs ${ticketStatusBadgeClass[ticket.status] ?? "bg-[#1a2233] text-[#64748b]"}`}>{ticket.status}</Badge>
                               <Badge variant="outline" className="border-[#1f2d44] text-[10px] text-[#94a3b8]">{ticket.category}</Badge>
                               <span className="text-xs text-[#64748b]">{ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString() : ""}</span>
                             </div>
@@ -429,7 +442,7 @@ export default function Admin() {
                             <td className="p-4 text-[#f0f4f8] font-mono text-xs">#{p.id}</td>
                             <td className="p-4 font-semibold text-[#06b6d4]">{p.amount} {p.currency}</td>
                             <td className="p-4 text-[#94a3b8]">{p.paymentMethod}</td>
-                            <td className="p-4"><Badge className={`text-xs ${p.status === "completed" ? "bg-[rgba(16,185,129,0.15)] text-[#10b981]" : p.status === "pending" ? "bg-[rgba(245,158,11,0.15)] text-[#f59e0b]" : "bg-[rgba(244,63,94,0.15)] text-[#f43f5e]"}`}>{p.status}</Badge></td>
+                            <td className="p-4"><Badge className={`text-xs ${paymentStatusBadgeClass[p.status] ?? "bg-[rgba(244,63,94,0.15)] text-[#f43f5e]"}`}>{p.status}</Badge></td>
                             <td className="p-4 text-[#64748b] text-xs">{p.createdAt ? new Date(p.createdAt).toLocaleDateString() : "—"}</td>
                           </tr>
                         ))}
@@ -637,7 +650,7 @@ export default function Admin() {
                             <h3 className="font-semibold text-[#f0f4f8]">{lang === "en" ? p.titleEn : p.titleAr}</h3>
                             <p className="text-sm text-[#94a3b8] mt-1">{lang === "en" ? p.subtitleEn : p.subtitleAr}</p>
                           </div>
-                          <Badge className={p.isActive ? "bg-[rgba(16,185,129,0.15)] text-[#10b981]" : "bg-[#1a2233] text-[#64748b]"}>{p.isActive ? (isRTL ? "نشط" : "Active") : (isRTL ? "غير نشط" : "Inactive")}</Badge>
+                          <Badge className={p.isActive ? "bg-[rgba(16,185,129,0.15)] text-[#10b981]" : "bg-[#1a2233] text-[#64748b]"}>{p.isActive ? bilingual("نشط", "Active", isRTL) : bilingual("غير نشط", "Inactive", isRTL)}</Badge>
                         </div>
                         <div className="mt-3 flex gap-2">
                           <Button size="sm" variant="ghost" onClick={() => { setEditingPromotion(p); setShowPromotionForm(true); }} className="text-[#06b6d4] hover:bg-[rgba(6,182,212,0.05)]"><Pencil className="mr-1 h-3 w-3" />{isRTL ? "تعديل" : "Edit"}</Button>
@@ -659,7 +672,7 @@ export default function Admin() {
       {/* Theme Dialog */}
       <Dialog open={themeDialogOpen} onOpenChange={setThemeDialogOpen}>
         <DialogContent className="border-[#1f2d44] bg-[#111827] sm:max-w-2xl">
-          <DialogHeader><DialogTitle className="text-[#f0f4f8]">{editingTheme?.id ? (isRTL ? "تعديل الثيم" : "Edit Theme") : (isRTL ? "إنشاء ثيم جديد" : "Create New Theme")}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-[#f0f4f8]">{editingTheme?.id ? bilingual("تعديل الثيم", "Edit Theme", isRTL) : bilingual("إنشاء ثيم جديد", "Create New Theme", isRTL)}</DialogTitle></DialogHeader>
           <div className="space-y-4 max-h-[60vh] overflow-y-auto">
             <div className="grid gap-1.5">
               <Label className="text-[#94a3b8]">{isRTL ? "اسم الثيم" : "Theme Name"}</Label>
@@ -696,7 +709,7 @@ export default function Admin() {
       {/* Promo Form Dialog */}
       <Dialog open={showPromoForm} onOpenChange={setShowPromoForm}>
         <DialogContent className="border-[#1f2d44] bg-[#111827] sm:max-w-lg">
-          <DialogHeader><DialogTitle className="text-[#f0f4f8]">{editingPromo?.id ? (isRTL ? "تعديل الكود" : "Edit Promo") : (isRTL ? "إنشاء كود جديد" : "Create Promo")}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-[#f0f4f8]">{editingPromo?.id ? bilingual("تعديل الكود", "Edit Promo", isRTL) : bilingual("إنشاء كود جديد", "Create Promo", isRTL)}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="grid gap-1.5"><Label className="text-[#94a3b8]">{isRTL ? "الكود" : "Code"}</Label><Input value={editingPromo?.code || ""} onChange={(e) => setEditingPromo((p) => (p ? { ...p, code: e.target.value } : p))} className="border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" dir="ltr" /></div>
             <div className="grid grid-cols-2 gap-4">
@@ -715,7 +728,7 @@ export default function Admin() {
       {/* Promotion Form Dialog */}
       <Dialog open={showPromotionForm} onOpenChange={setShowPromotionForm}>
         <DialogContent className="border-[#1f2d44] bg-[#111827] sm:max-w-lg max-h-[80vh] overflow-y-auto">
-          <DialogHeader><DialogTitle className="text-[#f0f4f8]">{editingPromotion?.id ? (isRTL ? "تعديل العرض" : "Edit Promotion") : (isRTL ? "إنشاء عرض جديد" : "Create Promotion")}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-[#f0f4f8]">{editingPromotion?.id ? bilingual("تعديل العرض", "Edit Promotion", isRTL) : bilingual("إنشاء عرض جديد", "Create Promotion", isRTL)}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="grid gap-1.5"><Label className="text-[#94a3b8]">{isRTL ? "العنوان (إنجليزي)" : "Title (English)"}</Label><Input value={editingPromotion?.titleEn || ""} onChange={(e) => setEditingPromotion((p) => (p ? { ...p, titleEn: e.target.value } : p))} className="border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" dir="ltr" /></div>
             <div className="grid gap-1.5"><Label className="text-[#94a3b8]">{isRTL ? "العنوان (عربي)" : "Title (Arabic)"}</Label><Input value={editingPromotion?.titleAr || ""} onChange={(e) => setEditingPromotion((p) => (p ? { ...p, titleAr: e.target.value } : p))} className="border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" dir="rtl" /></div>
