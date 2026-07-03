@@ -21,7 +21,11 @@ const ORIGIN = 'https://ahmdelbaz28-ahmdrtap.hf.space';
 const ALLOWED_DOMAIN = 'ahmedelbaz.qzz.io';
 
 // ─── IP Ranges ───────────────────────────────────────────────────────────────
-const CLOUDFLARE_IP_RANGES = [
+// Cloudflare's published IPv4/IPv6 CIDR blocks, used to allowlist
+// Cloudflare edge traffic. These MUST be hardcoded — they are published
+// constants from https://www.cloudflare.com/ips/. Reviewed against
+// SonarCloud S1313. NOSONAR for the entire array.
+const CLOUDFLARE_IP_RANGES = [ // NOSONAR — Cloudflare published IP ranges
   '173.245.48.0/20',
   '103.21.244.0/22',
   '103.22.200.0/22',

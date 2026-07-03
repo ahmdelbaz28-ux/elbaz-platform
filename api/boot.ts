@@ -272,7 +272,11 @@ app.get("/sitemap.xml", async (c) => {
 // ── Webhook status (internal) ──
 app.get("/__webhook/status", async (c) => {
   const clientIp = c.req.header("cf-connecting-ip") || c.req.header("x-forwarded-for")?.split(",").pop()?.trim() || "";
-  const internalRanges = ["127.0.0.1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1"];
+  // Private/internal CIDR ranges for the trust check. These are IANA
+  // reserved blocks (RFC 1918) — they cannot be reached from the public
+  // internet, so the values are intentionally hardcoded. NOSONAR —
+  // reviewed against SonarCloud S1313.
+  const internalRanges = ["127.0.0.1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1"]; // NOSONAR
   const isInternal = internalRanges.some((range) => {
     if (!clientIp) return false;
     if (!range.includes("/")) return clientIp === range;
