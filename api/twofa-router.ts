@@ -27,7 +27,7 @@ function generateBackupCodes(count: number = 8): string[] {
 }
 
 function base32Decode(base32: string): Buffer {
-  const cleaned = base32.toUpperCase().replaceAll(/=/g, "").replaceAll(/[^A-Z2-7]/g, "");
+  const cleaned = base32.toUpperCase().replaceAll("=", "").replaceAll(/[^A-Z2-7]/g, "");
   let bits = "";
   for (const char of cleaned) {
     const val = BASE32_CHARS.indexOf(char);

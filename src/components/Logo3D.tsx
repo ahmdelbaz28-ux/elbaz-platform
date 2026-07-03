@@ -18,9 +18,9 @@ import { useEffect, useRef, useState } from 'react';
 /* -------------------------------------------------------------------------- */
 
 interface Logo3DProps {
-  size?: 'sm' | 'md' | 'lg' | 'xl';
-  className?: string;
-  interactive?: boolean;
+  readonly size?: 'sm' | 'md' | 'lg' | 'xl';
+  readonly className?: string;
+  readonly interactive?: boolean;
 }
 
 const ACCENT_RGB_DARK = '6,182,212';

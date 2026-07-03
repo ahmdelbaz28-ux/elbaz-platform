@@ -3,16 +3,16 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "@/components/ui/motion";
 
 interface AnimatedCounterProps {
-  value: number;
-  label?: string;
-  suffix?: string;
-  prefix?: string;
-  duration?: number;
-  className?: string;
-  valueClassName?: string;
-  labelClassName?: string;
-  decimals?: number;
-  color?: string;
+  readonly value: number;
+  readonly label?: string;
+  readonly suffix?: string;
+  readonly prefix?: string;
+  readonly duration?: number;
+  readonly className?: string;
+  readonly valueClassName?: string;
+  readonly labelClassName?: string;
+  readonly decimals?: number;
+  readonly color?: string;
 }
 
 export default function AnimatedCounter({

@@ -2,9 +2,9 @@ import { useEffect, useState, useRef } from "react";
 import { motion, useSpring } from "framer-motion";
 
 interface MagneticCursorProps {
-  enabled?: boolean;
-  color?: string;
-  size?: number;
+  readonly enabled?: boolean;
+  readonly color?: string;
+  readonly size?: number;
 }
 
 export default function MagneticCursor({

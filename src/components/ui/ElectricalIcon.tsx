@@ -3,10 +3,10 @@ import React, { useState, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 
 interface ElectricalIconProps extends React.HTMLAttributes<HTMLDivElement> {
-  children: React.ReactNode;
-  variant?: "arc" | "shock" | "ripple" | "glow";
-  color?: string;
-  size?: "sm" | "md" | "lg";
+  readonly children: React.ReactNode;
+  readonly variant?: "arc" | "shock" | "ripple" | "glow";
+  readonly color?: string;
+  readonly size?: "sm" | "md" | "lg";
 }
 
 export function ElectricalIcon({

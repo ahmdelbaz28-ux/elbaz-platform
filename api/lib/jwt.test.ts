@@ -50,7 +50,7 @@ describe("JWT Module", () => {
       const token = await createToken(TEST_PAYLOAD);
       // Decode manually to check payload without verification
       const parts = token.split(".");
-      const payload = JSON.parse(atob(parts[1].replaceAll(/-/g, "+").replaceAll(/_/g, "/")));
+      const payload = JSON.parse(atob(parts[1].replaceAll("-", "+").replaceAll("_", "/")));
       expect(payload.userId).toBe(42);
       expect(payload.username).toBe("testengineer");
       expect(payload.role).toBe("admin");
@@ -60,7 +60,7 @@ describe("JWT Module", () => {
     it("sets issuer and audience claims", async () => {
       const token = await createToken(TEST_PAYLOAD);
       const parts = token.split(".");
-      const payload = JSON.parse(atob(parts[1].replaceAll(/-/g, "+").replaceAll(/_/g, "/")));
+      const payload = JSON.parse(atob(parts[1].replaceAll("-", "+").replaceAll("_", "/")));
       expect(payload.iss).toBe("elbaz-platform");
       expect(payload.aud).toBe("elbaz-platform-users");
     });
@@ -69,7 +69,7 @@ describe("JWT Module", () => {
       const now = Date.now() / 1000;
       const token = await createToken(TEST_PAYLOAD);
       const parts = token.split(".");
-      const payload = JSON.parse(atob(parts[1].replaceAll(/-/g, "+").replaceAll(/_/g, "/")));
+      const payload = JSON.parse(atob(parts[1].replaceAll("-", "+").replaceAll("_", "/")));
       expect(payload.exp).toBeDefined();
       expect(typeof payload.exp).toBe("number");
       // Should expire ~30 days from now (30 * 24 * 3600 = 2592000 seconds)
@@ -81,7 +81,7 @@ describe("JWT Module", () => {
       const now = Date.now() / 1000;
       const token = await createToken(TEST_PAYLOAD);
       const parts = token.split(".");
-      const payload = JSON.parse(atob(parts[1].replaceAll(/-/g, "+").replaceAll(/_/g, "/")));
+      const payload = JSON.parse(atob(parts[1].replaceAll("-", "+").replaceAll("_", "/")));
       expect(payload.iat).toBeDefined();
       expect(payload.iat).toBeLessThanOrEqual(now + 1);
     });

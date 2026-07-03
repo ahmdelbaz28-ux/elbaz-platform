@@ -20,19 +20,19 @@ import { cn } from "@/components/ui/motion";
 /* -------------------------------------------------------------------------- */
 
 interface AnimatedIconProps {
-  icon: ReactNode;
-  label?: string;
-  className?: string;
-  labelClassName?: string;
-  variant?: "default" | "glow" | "orbit" | "morph" | "flip" | "bounce" | "pulse" | "ripple" | "tilt" | "float";
-  delay?: number;
-  size?: "sm" | "md" | "lg" | "xl";
-  color?: string;
+  readonly icon: ReactNode;
+  readonly label?: string;
+  readonly className?: string;
+  readonly labelClassName?: string;
+  readonly variant?: "default" | "glow" | "orbit" | "morph" | "flip" | "bounce" | "pulse" | "ripple" | "tilt" | "float";
+  readonly delay?: number;
+  readonly size?: "sm" | "md" | "lg" | "xl";
+  readonly color?: string;
   onClick?: () => void;
   /** Enable parallax floating effect on scroll */
-  parallax?: boolean;
+  readonly parallax?: boolean;
   /** Custom parallax intensity (default: 0.5) */
-  parallaxIntensity?: number;
+  readonly parallaxIntensity?: number;
 }
 
 const sizeMap = {

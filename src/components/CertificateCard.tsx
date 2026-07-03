@@ -12,8 +12,8 @@ export interface CertificateData {
 }
 
 interface CertificateCardProps {
-  data: CertificateData;
-  lang?: "en" | "ar";
+  readonly data: CertificateData;
+  readonly lang?: "en" | "ar";
 }
 
 function getGradeClass(grade: string): string {

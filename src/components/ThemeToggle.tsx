@@ -12,7 +12,7 @@ import { useTheme } from '@/hooks/useTheme';
 
 interface ThemeToggleProps {
   /** "compact" = navbar pill style, "full" = mobile menu pill style */
-  variant?: 'compact' | 'full';
+  readonly variant?: 'compact' | 'full';
 }
 
 export default function ThemeToggle({ variant = 'compact' }: ThemeToggleProps) {

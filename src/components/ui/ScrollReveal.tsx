@@ -2,12 +2,12 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/components/ui/motion";
 
 interface ScrollRevealProps {
-  children: ReactNode;
-  className?: string;
-  direction?: "up" | "left" | "right" | "scale" | "none";
-  delay?: number;
-  threshold?: number;
-  once?: boolean;
+  readonly children: ReactNode;
+  readonly className?: string;
+  readonly direction?: "up" | "left" | "right" | "scale" | "none";
+  readonly delay?: number;
+  readonly threshold?: number;
+  readonly once?: boolean;
 }
 
 export default function ScrollReveal({

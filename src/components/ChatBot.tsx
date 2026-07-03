@@ -74,11 +74,11 @@ function loadMessagesFromStorage(_lang: string): Message[] | null {
 function renderMarkdown(text: string): string {
   // Escape HTML entities first (preserve markdown markers)
   let html = text
-    .replaceAll(/&/g, "&amp;")
-    .replaceAll(/</g, "&lt;")
-    .replaceAll(/>/g, "&gt;")
-    .replaceAll(/"/g, "&quot;")
-    .replaceAll(/'/g, "&#x27;");
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&#x27;");
 
   // Code blocks (``` ... ```). The `([\s\S]*?)` lazy quantifier is
   // bounded by the closing ``` so it cannot backtrack super-linearly.

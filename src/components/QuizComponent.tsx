@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { CheckCircle, XCircle, ArrowRight, ArrowLeft, RotateCcw } from "lucide-react";
 
 interface QuizComponentProps {
-  lessonId: number;
+  readonly lessonId: number;
   // ✅ SECURITY FIX: userId removed — server extracts it from JWT
 }
 

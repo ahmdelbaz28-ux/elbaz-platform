@@ -69,7 +69,7 @@ async function verifyGoogleToken(idToken: string): Promise<Record<string, unknow
   if (parts.length !== 3) {
     throw new Error("Invalid token format");
   }
-  const headerB64 = parts[0].replaceAll(/-/g, "+").replaceAll(/_/g, "/");
+  const headerB64 = parts[0].replaceAll("-", "+").replaceAll("_", "/");
   const headerJson = JSON.parse(Buffer.from(headerB64, "base64").toString("utf-8"));
   const kid = headerJson.kid as string | undefined;
 
@@ -90,14 +90,14 @@ async function verifyGoogleToken(idToken: string): Promise<Record<string, unknow
 
   const verify = crypto.createVerify("RSA-SHA256");
   verify.update(Buffer.from(parts[0] + "." + parts[1], "utf-8"));
-  const signature = Buffer.from(parts[2].replaceAll(/-/g, "+").replaceAll(/_/g, "/"), "base64");
+  const signature = Buffer.from(parts[2].replaceAll("-", "+").replaceAll("_", "/"), "base64");
 
   if (!verify.verify(publicKey, signature)) {
     throw new Error("Token signature verification failed");
   }
 
   // Step 5: Decode and validate the payload
-  const payloadB64 = parts[1].replaceAll(/-/g, "+").replaceAll(/_/g, "/");
+  const payloadB64 = parts[1].replaceAll("-", "+").replaceAll("_", "/");
   const payload = JSON.parse(Buffer.from(payloadB64, "base64").toString("utf-8")) as Record<string, unknown>;
 
   if (payload.iss !== "accounts.google.com" && payload.iss !== "https://accounts.google.com") {

@@ -229,7 +229,7 @@ app.get("/sitemap.xml", async (c) => {
     ];
 
     // Escape XML special characters in slugs to prevent XML injection
-    const escapeXml = (s: string) => s.replaceAll(/&/g, "&amp;").replaceAll(/</g, "&lt;").replaceAll(/>/g, "&gt;").replaceAll(/"/g, "&quot;").replaceAll(/'/g, "&apos;");
+    const escapeXml = (s: string) => s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\"", "&quot;").replaceAll("'", "&apos;");
 
     const courseUrls = publishedCourses.map((course) => ({
       loc: `${baseUrl}/courses/${escapeXml(course.slug)}`,
