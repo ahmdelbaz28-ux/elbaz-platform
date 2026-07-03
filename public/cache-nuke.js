@@ -29,7 +29,7 @@
       // 3. Set flag so we don't loop
       sessionStorage.setItem(RELOAD_FLAG, "1");
       // 4. Force reload (bypass cache)
-      window.location.reload();
+      globalThis.location.reload();
     } catch (err) {
       console.error("[Cache-Nuke] Failed:", err);
     }
@@ -45,8 +45,8 @@
       var newBuildId = null;
 
       // 1. Try window.__ENV__.buildId (injected by server, always available)
-      if (window.__ENV__ && window.__ENV__.buildId) {
-        newBuildId = window.__ENV__.buildId;
+      if (globalThis.__ENV__ && globalThis.__ENV__.buildId) {
+        newBuildId = globalThis.__ENV__.buildId;
       }
 
       // 2. Fallback: fetch /api/version (may be blocked by Cloudflare)

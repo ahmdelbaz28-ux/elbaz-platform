@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { eq, sql } from "drizzle-orm";
@@ -10,6 +11,28 @@ import { initiatePasswordReset, completePasswordReset, initiateEmailVerification
 // ✅ SECURITY FIX: Import auth cookie helpers for httpOnly cookie auth
 import { serializeAuthCookie, serializeAuthFlagCookie, clearAuthCookies } from "./lib/cookies";
 import { logger } from "./lib/logger";
+
+// ─── Dummy hash for constant-time login ───────────────────────────────────────
+// To prevent username enumeration via response timing, when a login attempt
+// targets a user that does not exist we still run bcrypt against a valid hash.
+// We deliberately do NOT hard-code any real hash here (SonarCloud S8215):
+// instead we generate a fresh hash for a random nonce on first use. The hash
+// is process-local, never persisted, and unique per cold start, so it cannot
+// be used to authenticate even if leaked.
+let _dummyHashPromise: Promise<string> | null = null;
+function getDummyHash(): Promise<string> {
+  if (!_dummyHashPromise) {
+    const nonce = randomBytes(16).toString("hex");
+    _dummyHashPromise = hashPassword(`dummy-${nonce}`).catch((err) => {
+      logger.error("Failed to compute dummy bcrypt hash", { error: (err as Error).message });
+      // Best-effort fallback: a clearly-invalid sentinel. verifyPassword will
+      // throw, which we catch in the login flow, returning the same generic
+      // "Invalid username or password" error the user would see anyway.
+      return "$2a$12$invalidsentinel.invalidsentinel.invalidsentinel.invalidsentinel.invalidsentinel";
+    });
+  }
+  return _dummyHashPromise;
+}
 
 // ─── Shared Response Types ─────────────────────────────────────────────────────
 
@@ -143,7 +166,9 @@ export const localAuthRouter = createRouter({
         }
 
         const token = await createToken({ userId, username: input.username, role: "user", tokenVersion: 0 });
-        await clearRateLimit(ip, "register");
+        // clearRateLimit() is a synchronous void function; do not `await` it
+        // (SonarCloud S4123: awaiting a non-Promise is a code smell).
+        clearRateLimit(ip, "register");
 
         const authCookie = serializeAuthCookie(ctx.req.headers, token);
         const flagCookie = serializeAuthFlagCookie(ctx.req.headers);
@@ -234,11 +259,12 @@ export const localAuthRouter = createRouter({
         });
       }
 
-      // ✅ SECURITY FIX: Use a pre-computed valid bcrypt hash (cost=12) as dummy.
-      // Using an invalid hash format caused bcrypt to short-circuit and return
-      // immediately, leaking username existence via response timing.
-      // This hash is for the string "dummy-password-never-used" — never changes.
-      const dummyHash = "$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8fENH6L0y7P9fz.kFe6";
+      // ✅ SECURITY FIX: To equalise response timing and prevent username
+      // enumeration, we run bcrypt against a *real* hash even when the user
+      // does not exist. The hash is generated lazily for a random nonce at
+      // first use (see getDummyHash above) so that no real password hash is
+      // ever disclosed in source code (SonarCloud S8215).
+      const dummyHash = await getDummyHash();
       let valid = false;
       try {
         valid = user
@@ -285,7 +311,8 @@ export const localAuthRouter = createRouter({
       const forwarded2 = ctx.req.headers.get("x-forwarded-for");
       const realIp2 = ctx.req.headers.get("x-real-ip");
       const loginIp = (cfIp2 || realIp2 || (forwarded2 ? forwarded2.split(",").shift()?.trim() : "unknown")) ?? "unknown";
-      await clearRateLimit(loginIp, "login");
+      // clearRateLimit() is synchronous; no `await` needed (SonarCloud S4123).
+      clearRateLimit(loginIp, "login");
 
       // ✅ SECURITY FIX: Set JWT in httpOnly cookie instead of returning only in body
       const remember = input.remember !== false; // default true

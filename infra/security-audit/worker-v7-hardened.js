@@ -168,9 +168,9 @@ function isStaticAsset(pathname) {
 
 function ipInCidr(ip, cidr) {
   const [range, bits] = cidr.split('/');
-  const mask = ~(2 ** (32 - parseInt(bits, 10)) - 1);
-  const ipInt = ip.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0) >>> 0;
-  const rangeInt = range.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0) >>> 0;
+  const mask = ~(2 ** (32 - Number.parseInt(bits, 10)) - 1);
+  const ipInt = ip.split('.').reduce((acc, octet) => (acc << 8) + Number.parseInt(octet, 10), 0) >>> 0;
+  const rangeInt = range.split('.').reduce((acc, octet) => (acc << 8) + Number.parseInt(octet, 10), 0) >>> 0;
   return (ipInt & mask) === (rangeInt & mask);
 }
 
@@ -283,7 +283,7 @@ function stage8_blockScannersOnly(request) {
 // Stage 9: Request Size Limit (v7: 20MB)
 function stage9_requestSizeLimit(request) {
   const contentLength = request.headers.get('Content-Length');
-  if (contentLength && parseInt(contentLength, 10) > MAX_REQUEST_SIZE) {
+  if (contentLength && Number.parseInt(contentLength, 10) > MAX_REQUEST_SIZE) {
     return new Response(JSON.stringify({ error: 'Payload too large' }), {
       status: 413,
       headers: { 'Content-Type': 'application/json' },

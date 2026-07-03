@@ -15,6 +15,7 @@
 
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import { users } from "@db/schema";
 import { getDb } from "./queries/connection";
 import { createToken } from "./lib/jwt";
@@ -144,8 +145,10 @@ googleAuthRouter.get("/redirect", (c) => {
   // avoiding "redirect_uri_mismatch" errors.
   const redirectUri = getOAuthRedirectUri();
 
-  // State parameter for CSRF protection
-  const state = crypto.randomUUID?.() || Math.random().toString(36).slice(2);
+  // State parameter for CSRF protection — must come from a CSPRNG, never
+  // Math.random() (SonarCloud S2245). crypto.randomUUID() is available in
+  // Node 19+ (we target Node 22, see Dockerfile).
+  const state = randomUUID();
 
   // Store state in a short-lived cookie for verification.
   // SameSite=Lax is REQUIRED so the cookie is sent on the top-level GET redirect
@@ -507,7 +510,9 @@ googleAuthRouter.post("/", async (c) => {
       counter++;
     }
     if (counter > 100) {
-      username = baseUsername + "_" + Math.random().toString(36).slice(2, 8);
+      // Append a 6-char random suffix from a CSPRNG so generated usernames
+      // are not predictable. Avoids Math.random() (SonarCloud S2245).
+      username = baseUsername + "_" + randomUUID().split("-")[0];
     }
 
     const insertResult = await db.insert(users).values({

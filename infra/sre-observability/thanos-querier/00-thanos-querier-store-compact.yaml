@@ -82,9 +82,11 @@ spec:
             requests:
               cpu: 100m
               memory: 256Mi
+              ephemeral-storage: 512Mi
             limits:
               cpu: "1"
               memory: 1Gi
+              ephemeral-storage: 2Gi
           securityContext:
             runAsUser: 65534
             readOnlyRootFilesystem: true
@@ -108,6 +110,7 @@ spec:
             periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 3
+      automountServiceAccountToken: false
 ---
 apiVersion: v1
 kind: Service
@@ -200,9 +203,11 @@ spec:
             requests:
               cpu: 100m
               memory: 512Mi
+              ephemeral-storage: 512Mi
             limits:
               cpu: "1"
               memory: 2Gi
+              ephemeral-storage: 2Gi
           securityContext:
             runAsUser: 65534
             readOnlyRootFilesystem: true
@@ -246,6 +251,7 @@ spec:
         - name: config
           configMap:
             name: thanos-store-config
+      automountServiceAccountToken: false
   volumeClaimTemplates:
     - metadata:
         name: data
@@ -324,9 +330,11 @@ spec:
             requests:
               cpu: 100m
               memory: 512Mi
+              ephemeral-storage: 512Mi
             limits:
               cpu: "1"
               memory: 2Gi
+              ephemeral-storage: 2Gi
           securityContext:
             runAsUser: 65534
             readOnlyRootFilesystem: true
@@ -362,6 +370,7 @@ spec:
         - name: config
           configMap:
             name: thanos-sidecar-config
+      automountServiceAccountToken: false
 ---
 apiVersion: v1
 kind: Service

@@ -1,5 +1,5 @@
 import { defineConfig } from "vitest/config";
-import path from "path";
+import path from "node:path";
 
 const templateRoot = path.resolve(import.meta.dirname);
 

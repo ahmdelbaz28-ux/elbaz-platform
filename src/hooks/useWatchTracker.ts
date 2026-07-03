@@ -226,8 +226,8 @@ export function useWatchTracker({
       }
     };
 
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+    globalThis.addEventListener("beforeunload", handleBeforeUnload);
+    return () => globalThis.removeEventListener("beforeunload", handleBeforeUnload);
   }, [enabled, lessonId, videoRef]);
 
   // Cleanup on unmount

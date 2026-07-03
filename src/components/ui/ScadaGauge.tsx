@@ -19,7 +19,9 @@ export default function ScadaGauge({
 
   useEffect(() => {
     if (!enabled || !displayRef.current) return;
-    const start = 0;
+    // `start` was previously declared as `const start = 0;` but never read
+    // — the animation always begins from 0 by convention. Removed
+    // (SonarCloud S1854 / tsc TS6133).
     const duration = 2000;
     const startTime = performance.now();
 

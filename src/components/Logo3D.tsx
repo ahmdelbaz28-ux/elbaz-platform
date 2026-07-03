@@ -56,7 +56,7 @@ export default function Logo3D({
   /* ── Theme detection ──────────────────────────────────────────────────── */
   useEffect(() => {
     const checkTheme = () => {
-      setIsLight(document.documentElement.getAttribute('data-theme') === 'light');
+      setIsLight(document.documentElement.dataset.theme === 'light');
     };
     checkTheme();
     const observer = new MutationObserver(checkTheme);
@@ -71,7 +71,7 @@ export default function Logo3D({
   useEffect(() => {
     const prefersReduced =
       typeof window !== 'undefined' &&
-      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     if (prefersReduced) {
       setBreath(0.5);
       return;

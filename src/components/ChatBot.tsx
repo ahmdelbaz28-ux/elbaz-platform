@@ -80,8 +80,11 @@ function renderMarkdown(text: string): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#x27;");
 
-  // Code blocks (``` ... ```)
-  html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, function(_match, _lang, code) {
+  // Code blocks (``` ... ```). The `([\s\S]*?)` lazy quantifier is
+  // bounded by the closing ``` so it cannot backtrack super-linearly.
+  // We add the `s` (dotAll) flag and replace `[\s\S]*?` with `.*?` to
+  // make the intent explicit and satisfy SonarCloud S8786.
+  html = html.replace(/```(\w*)\n?(.*?)```/gs, function(_match, _lang, code) {
     return '<pre class="bg-black/40 border border-[#1e2d3d] rounded-lg p-2.5 my-1.5 overflow-x-auto text-[12px] leading-5 text-[#b4c6e0]"><code>' + code.trim() + '</code></pre>';
   });
 
@@ -172,7 +175,11 @@ export default function ChatBot() {
     if (!modelId) return "";
     const parts = modelId.split("/");
     const name = parts.length > 1 ? parts[1] : modelId;
-    return name.replace(/:free$/, "").replace(/:.*$/, "");
+    // Strip `:free` suffix and any `:...` variant suffix. Using split +
+    // shift avoids the `.*` greedy quantifier that SonarCloud S8786
+    // flags for super-linear backtracking.
+    const colonIdx = name.indexOf(":");
+    return colonIdx === -1 ? name : name.slice(0, colonIdx);
   }, []);
 
   // ─── Copy message to clipboard ───
@@ -246,7 +253,7 @@ export default function ChatBot() {
       // ─── Try streaming endpoint first ───
       let streamSuccess = false;
       try {
-        const streamResponse = await fetch((window.Capacitor?.isNativePlatform() ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io") : "") + "/api/chatbot/stream", {
+        const streamResponse = await fetch((globalThis.Capacitor?.isNativePlatform() ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io") : "") + "/api/chatbot/stream", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(requestBody),
@@ -348,7 +355,7 @@ export default function ChatBot() {
       // ─── Fallback: regular /api/chatbot ───
       if (!streamSuccess) {
         setStreamingContent("");
-        const response = await fetch((window.Capacitor?.isNativePlatform() ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io") : "") + "/api/chatbot", {
+        const response = await fetch((globalThis.Capacitor?.isNativePlatform() ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io") : "") + "/api/chatbot", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(requestBody),

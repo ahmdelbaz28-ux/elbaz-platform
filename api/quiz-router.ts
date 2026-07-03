@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { eq, and } from "drizzle-orm";
+import { randomInt } from "node:crypto";
 import { createRouter, authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { quizQuestions, lessonProgress, enrollments, lessons } from "@db/schema";
@@ -59,10 +60,12 @@ export const quizRouter = createRouter({
         .orderBy(quizQuestions.id);
 
       // ✅ ANTI-CHEAT: Randomize question order so students can't share answer sequences
-      // Use Fisher-Yates shuffle — deterministic only for this request
+      // Use Fisher-Yates shuffle seeded from a CSPRNG — the question order is
+      // security-relevant (anti-cheat) so we must NOT use Math.random()
+      // (SonarCloud S2245). Node's crypto.randomInt() gives unbiased integers.
       const shuffled = [...questions];
       for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
+        const j = randomInt(0, i + 1);
         [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
       }
 

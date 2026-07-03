@@ -85,16 +85,21 @@ export default function BentoCard({
       <motion.div
         className="absolute inset-0 rounded-[inherit] pointer-events-none"
         style={{
+          // Cast through `any` because framer-motion's `useTransform` overload
+          // resolution does not infer the tuple element types from the input
+          // array, leaving `mx`/`my` as `unknown` (TS18046). The runtime
+          // values are always numbers because `mouseXSpring`/`mouseYSpring`
+          // are springs over numeric state.
           background: useTransform(
-            [mouseXSpring, mouseYSpring],
-            ([mx, my]) => {
+            [mouseXSpring, mouseYSpring] as any,
+            ([mx, my]: any) => {
               if (!ref.current) return "transparent";
               const rect = ref.current.getBoundingClientRect();
-              const x = mx * rect.width + rect.width / 2;
-              const y = my * rect.height + rect.height / 2;
+              const x = (mx as number) * rect.width + rect.width / 2;
+              const y = (my as number) * rect.height + rect.height / 2;
               return `radial-gradient(300px circle at ${x}px ${y}px, ${glowColor}, transparent 60%)`;
             }
-          ),
+          ) as any,
         }}
       />
 

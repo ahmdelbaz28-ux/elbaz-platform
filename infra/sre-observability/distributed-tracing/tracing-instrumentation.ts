@@ -16,7 +16,7 @@ const OTEL_EXPORTER_OTLP_ENDPOINT = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || '
 const OTEL_SERVICE_NAME = process.env.OTEL_SERVICE_NAME || 'ahmedelbaz-lms-backend';
 const OTEL_SERVICE_VERSION = process.env.OTEL_SERVICE_VERSION || '1.0.0';
 const OTEL_DEPLOYMENT_ENVIRONMENT = process.env.OTEL_DEPLOYMENT_ENVIRONMENT || 'production';
-const OTEL_TRACES_SAMPLER_RATIO = parseFloat(process.env.OTEL_TRACES_SAMPLER_RATIO || '1.0');
+const OTEL_TRACES_SAMPLER_RATIO = Number.parseFloat(process.env.OTEL_TRACES_SAMPLER_RATIO || '1.0');
 
 let sdk: NodeSDK | null = null;
 

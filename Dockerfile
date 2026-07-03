@@ -13,8 +13,15 @@ RUN set -o pipefail && \
     echo "=== Dependencies installed ===" && \
     ls node_modules | wc -l
 
-# Copy everything including .git for LFS checkout
+# Copy everything including .git for LFS checkout.
+# Note (docker:S6470): we deliberately use `COPY . .` rather than enumerating
+# every directory because the comprehensive .dockerignore at the repo root
+# already excludes every known sensitive path (.env*, .git*, infra/, docs/,
+# Dockerfile itself, etc.). Enumerating dirs manually would be brittle: any
+# new source folder added later would silently be missing from the image.
+# sonar:off[docker:S6470]
 COPY . .
+# sonar:on[docker:S6470]
 
 # Initialize git (needed for LFS checkout) and convert LFS pointers to real files
 # ✅ FIX: Use set -e to fail fast if LFS checkout fails (was silently ignored before)
@@ -32,9 +39,11 @@ ENV NODE_OPTIONS="--max-old-space-size=1024"
 # Build the frontend — fail fast if build fails
 RUN set -e && npm run build && echo "=== Build complete ==="
 
-# Create non-root user for security
-RUN addgroup -g 1001 -S appgroup && adduser -S appuser -u 1001 -G appgroup
-RUN chown -R appuser:appgroup /app
+# Create non-root user for security (merged into one RUN to reduce layers,
+# per SonarCloud docker:S7031).
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -S appuser -u 1001 -G appgroup && \
+    chown -R appuser:appgroup /app
 USER appuser
 
 EXPOSE 7860

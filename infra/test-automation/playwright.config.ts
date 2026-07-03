@@ -24,21 +24,24 @@ export default defineConfig({
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
-      testMatch: /.*\.spec\.ts$/,
+      // Anchored regex avoids super-linear backtracking (SonarCloud S8786).
+      // `^` ensures the engine tries the literal `\.spec\.ts$` suffix
+      // first instead of greedily matching `.*` and backtracking.
+      testMatch: /^.*\.spec\.ts$/,
     },
     {
       name: "firefox",
       use: { ...devices["Desktop Firefox"] },
-      testMatch: /.*\.spec\.ts$/,
+      testMatch: /^.*\.spec\.ts$/,
     },
     {
       name: "webkit",
       use: { ...devices["Desktop Safari"] },
-      testMatch: /.*\.spec\.ts$/,
+      testMatch: /^.*\.spec\.ts$/,
     },
     {
       name: "API",
-      testMatch: /.*-api\.spec\.ts$/,
+      testMatch: /^.*-api\.spec\.ts$/,
       use: {
         baseURL: process.env.TEST_BASE_URL || "https://ahmedelbaz.qzz.io",
         extraHTTPHeaders: {

@@ -54,10 +54,11 @@
       "name": "Service Token - Internal API Access",
       "decision": "allow",
       "precedence": 2,
+      "_comment": "The real service token id MUST be supplied at apply-time via the CI/CD pipeline (e.g. `jq` substitution) or via Cloudflare Terraform. Never hard-code it here — SonarCloud S6418.",
       "include": [
         {
           "service_token": {
-            "token_id": "svc_a7b3c9d2e4f6g8h0j2k4l6m8n0p2r4"
+            "token_id": "${CLOUDFLARE_ZERO_TRUST_SERVICE_TOKEN_ID}"
           }
         }
       ],

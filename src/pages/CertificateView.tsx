@@ -27,14 +27,14 @@ export default function CertificateView() {
   );
 
   const handlePrint = () => {
-    window.print();
+    globalThis.print();
   };
 
   const handleDownloadPDF = async () => {
     // Use browser's print dialog as PDF download
     // The print-optimized CSS will handle the layout
     try {
-      window.print();
+      globalThis.print();
     } catch {
       toast.error(lang === "ar" ? "فشل تحميل الشهادة" : "Failed to download certificate");
     }
@@ -49,12 +49,12 @@ export default function CertificateView() {
         : "I've earned a certificate from Elbaz Platform!";
 
     const linkedInUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(certUrl)}&summary=${encodeURIComponent(shareText)}`;
-    window.open(linkedInUrl, "_blank", "width=600,height=500");
+    globalThis.open(linkedInUrl, "_blank", "width=600,height=500");
     setShowLinkedInShare(false);
   };
 
   const handleCopyLink = async () => {
-    const url = window.location.href;
+    const url = globalThis.location.href;
     try {
       await navigator.clipboard.writeText(url);
       toast.success(lang === "ar" ? "تم نسخ الرابط" : "Link copied to clipboard");
@@ -133,7 +133,22 @@ export default function CertificateView() {
               {/* Share Dropdown */}
               {showLinkedInShare && (
                 <>
-                  <div className="fixed inset-0 z-40" onClick={() => setShowLinkedInShare(false)} />
+                  {/* Dropdown backdrop — keyboard-accessible via Escape so
+                      screen-reader users can close the menu without a mouse
+                      (SonarCloud S1082). */}
+                  <div
+                    className="fixed inset-0 z-40"
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Close share menu"
+                    onClick={() => setShowLinkedInShare(false)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        e.preventDefault();
+                        setShowLinkedInShare(false);
+                      }
+                    }}
+                  />
                   <div className="absolute end-0 top-full z-50 mt-2 w-56 rounded-xl border border-[#1f2d44] bg-[#111827] p-2 shadow-xl">
                     <button
                       onClick={handleShareLinkedIn}

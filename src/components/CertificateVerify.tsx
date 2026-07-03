@@ -240,9 +240,9 @@ export default function CertificateVerify() {
                   ? "كل شهادة تحتوي على رمز QR قابل للمسح"
                   : "Each certificate has a scannable QR code",
               },
-            ].map((item, i) => (
+            ].map((item) => (
               <div
-                key={i}
+                key={item.title}
                 className="rounded-xl border border-[#1f2d44] bg-[#111827] p-6 text-center"
               >
                 <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-[rgba(6,182,212,0.1)] text-[#06b6d4]">

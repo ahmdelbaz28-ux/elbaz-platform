@@ -115,9 +115,11 @@ spec:
             requests:
               cpu: 200m
               memory: 512Mi
+              ephemeral-storage: 512Mi
             limits:
               cpu: "2"
               memory: 2Gi
+              ephemeral-storage: 2Gi
           securityContext:
             runAsUser: 65534
             runAsGroup: 65534
@@ -164,6 +166,7 @@ spec:
             name: loki-config
         - name: tmp
           emptyDir: {}
+      automountServiceAccountToken: false
   volumeClaimTemplates:
     - metadata:
         name: data

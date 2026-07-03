@@ -50,7 +50,7 @@ export default function SEO({ title, description, image, url, type = 'website', 
       if (!script) {
         script = document.createElement('script');
         script.setAttribute('type', 'application/ld+json');
-        script.setAttribute('data-seo-jsonld', 'true');
+        script.dataset.seoJsonld = 'true';
         document.head.appendChild(script);
       }
       script.textContent = JSON.stringify(jsonLd);

@@ -59,7 +59,7 @@ export default function Login() {
     }
 
     // 2. Fallback: fetch /api/env (may be blocked by Cloudflare Bot Management)
-    console.warn("[GoogleAuth] window.__ENV__ not found, falling back to /api/env fetch");
+    console.warn("[GoogleAuth] globalThis.__ENV__ not found, falling back to /api/env fetch");
     fetch("/api/env", { cache: "no-store" })
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -79,7 +79,7 @@ export default function Login() {
 
   // Check for Google OAuth error/success in URL params (from redirect flow)
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(globalThis.location.search);
     const googleError = params.get("google_error");
     if (googleError) {
       const googleDetail = params.get("google_detail");
@@ -113,7 +113,7 @@ export default function Login() {
       setError(msg);
       toast.error(msg, { duration: 10000 });
       // Clean the URL
-      window.history.replaceState({}, "", window.location.pathname);
+      globalThis.history.replaceState({}, "", globalThis.location.pathname);
     }
   }, [lang]);
 
@@ -169,8 +169,8 @@ export default function Login() {
 
     const waitForGoogle = () => {
       if (disposed) return;
-      if (window.google?.accounts?.id) {
-        window.google.accounts.id.initialize({
+      if (globalThis.google?.accounts?.id) {
+        globalThis.google.accounts.id.initialize({
           client_id: googleClientId,
           callback: handleGoogleCallback,
           auto_select: false,

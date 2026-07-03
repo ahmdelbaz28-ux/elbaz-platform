@@ -107,26 +107,9 @@ const SOFTWARE_LOGOS = [
 // Realistic fallback stats — updated to match actual platform data
 const FALLBACK_STATS = { totalStudents: 390, satisfactionRate: 96, totalCourses: 4 };
 
-function useRevealOnce() {
-  const ref = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(false);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setVisible(true);
-          observer.disconnect();
-        }
-      },
-      { threshold: 0.1 }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-  return [ref, visible] as const;
-}
+// `useRevealOnce` was previously defined here but never called anywhere in
+// the file. The component now uses `framer-motion`'s `whileInView` for the
+// same reveal-on-scroll behaviour. Removed (SonarCloud S2933 / tsc TS6133).
 
 function PromoBanner({ promotion }: { promotion: any }) {
   const { lang } = useTranslation();
@@ -140,7 +123,7 @@ function PromoBanner({ promotion }: { promotion: any }) {
   useEffect(() => {
     if (dismissed || !promotion.showCountdown) return;
     const calcTimeLeft = () => {
-      const now = new Date().getTime();
+      const now = Date.now();
       const end = new Date(promotion.endsAt).getTime();
       const diff = Math.max(0, end - now);
       setTimeLeft({
@@ -566,8 +549,8 @@ export default function Home() {
                     { icon: <Globe className="h-5 w-5" />, label: lang === "en" ? "Any Device" : "أي جهاز", color: "#10b981" },
                     { icon: <BarChart3 className="h-5 w-5" />, label: lang === "en" ? "Progress Tracking" : "متابعة التقدم", color: "#f59e0b" },
                     { icon: <Sparkles className="h-5 w-5" />, label: lang === "en" ? "AI Recommendations" : "توصيات ذكية", color: "#8b5cf6" },
-                  ].map((item, i) => (
-                    <motion.div key={i} whileHover={{ y: -4, scale: 1.05 }} className="rounded-xl border border-[#1f2d44] bg-[#0a0e17] p-4 text-center">
+                  ].map((item) => (
+                    <motion.div key={item.label} whileHover={{ y: -4, scale: 1.05 }} className="rounded-xl border border-[#1f2d44] bg-[#0a0e17] p-4 text-center">
                       <motion.div whileHover={{ rotate: [0, -10, 10, 0] }} transition={{ duration: 0.4 }} className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg" style={{ background: `rgba(${hexToRgb(item.color)}, 0.1)`, color: item.color }}>
                         {item.icon}
                       </motion.div>
@@ -607,8 +590,8 @@ export default function Home() {
                 { icon: <GraduationCap className="h-6 w-6" />, value: `${resolvedStats.totalCourses}+`, label: t("coursesTaught"), color: "#10b981" },
                 { icon: <Users className="h-6 w-6" />, value: `${resolvedStats.totalStudents}+`, label: t("studentsReached"), color: "#f59e0b" },
                 { icon: <Trophy className="h-6 w-6" />, value: `${resolvedStats.satisfactionRate}%`, label: t("satisfactionRate"), color: "#8b5cf6" },
-              ].map((item, i) => (
-                <motion.div key={i} whileHover={{ y: -4, scale: 1.03 }} whileTap={{ scale: 0.97 }} transition={{ type: "spring", stiffness: 400, damping: 20 }} className="rounded-xl border border-[#1f2d44] bg-[#0a0e17] p-5 text-center">
+              ].map((item) => (
+                <motion.div key={item.label} whileHover={{ y: -4, scale: 1.03 }} whileTap={{ scale: 0.97 }} transition={{ type: "spring", stiffness: 400, damping: 20 }} className="rounded-xl border border-[#1f2d44] bg-[#0a0e17] p-5 text-center">
                   <motion.div whileHover={{ rotate: [0, -10, 10, -5, 5, 0], scale: 1.1 }} transition={{ duration: 0.4 }} className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-lg" style={{ background: `rgba(${hexToRgb(item.color)}, 0.1)` }}>
                     <span style={{ color: item.color }}>{item.icon}</span>
                   </motion.div>
@@ -658,8 +641,8 @@ export default function Home() {
           <SectionHeader badge={t("faq")} title={t("commonQuestions")} />
 
           <div>
-            {faqData.map((faq, i) => (
-              <FAQItem key={i} question={faq.q} answer={faq.a} />
+            {faqData.map((faq) => (
+              <FAQItem key={faq.q} question={faq.q} answer={faq.a} />
             ))}
           </div>
         </div>
@@ -713,5 +696,5 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
 
 function hexToRgb(hex: string): string {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : "6, 182, 212";
+  return result ? `${Number.parseInt(result[1], 16)}, ${Number.parseInt(result[2], 16)}, ${Number.parseInt(result[3], 16)}` : "6, 182, 212";
 }

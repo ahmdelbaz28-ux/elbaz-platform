@@ -46,7 +46,7 @@ export class DashboardPage {
         const textMatch = await this.page.locator(selector).first().textContent().catch(() => null);
         if (textMatch) {
           const match = textMatch.match(/\d+/);
-          if (match) return parseInt(match[0], 10);
+          if (match) return Number.parseInt(match[0], 10);
         }
         continue;
       }
@@ -54,7 +54,7 @@ export class DashboardPage {
       const text = await element.textContent().catch(() => null);
       if (text) {
         const match = text.match(/\d+/);
-        if (match) return parseInt(match[0], 10);
+        if (match) return Number.parseInt(match[0], 10);
       }
     }
     const courseCards = this.page.locator('[class*="course"], [data-testid="course-card"], .enrolled-course');

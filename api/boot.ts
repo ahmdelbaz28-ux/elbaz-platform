@@ -278,7 +278,7 @@ app.get("/__webhook/status", async (c) => {
     if (!range.includes("/")) return clientIp === range;
     const parts = range.split("/");
     const networkStr = parts[0];
-    const cidrBits = parseInt(parts[1], 10);
+    const cidrBits = Number.parseInt(parts[1], 10);
     const networkParts = networkStr.split(".").map(Number);
     const ipParts = clientIp.split(".").map(Number);
     if (networkParts.length !== 4 || ipParts.length !== 4 || networkParts.some(isNaN) || ipParts.some(isNaN)) {
@@ -434,7 +434,7 @@ app.use("*", async (c, next) => {
       // without fetching /api/version (which is also blocked by Cloudflare
       // Bot Management on some browsers, causing stale CSS/JS to persist).
       const envWithBuild = { ...publicEnv, buildId: buildId || process.env.BUILD_ID || "dev" };
-      const envScript = `<script nonce="${nonce}">window.__ENV__=${JSON.stringify(envWithBuild)};</script>`;
+      const envScript = `<script nonce="${nonce}">globalThis.__ENV__=${JSON.stringify(envWithBuild)};</script>`;
       // Insert right after the CSP nonce meta tag (before any other scripts)
       html = html.replace(
         /<meta name="csp-nonce"[^>]*>/,

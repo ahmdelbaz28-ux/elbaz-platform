@@ -33,19 +33,26 @@ spec:
             requests:
               cpu: 50m
               memory: 64Mi
+              ephemeral-storage: 512Mi
             limits:
               cpu: 200m
               memory: 256Mi
+              ephemeral-storage: 2Gi
           securityContext:
             runAsUser: 65534
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           env:
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: redis-secrets
                   key: redis-password
+      serviceAccountName: redis-exporter
+      automountServiceAccountToken: false
 ---
 apiVersion: v1
 kind: Service

@@ -12,7 +12,7 @@ export default function PrivacyPolicy() {
       <div className="mx-auto max-w-3xl px-4 pb-20 lg:px-6">
         {/* Back */}
         <button
-          onClick={() => window.history.back()}
+          onClick={() => globalThis.history.back()}
           className="mb-6 flex items-center gap-1 text-sm text-[#94a3b8] transition-colors hover:text-[#06b6d4]"
         >
           <ChevronLeft className="h-4 w-4" />

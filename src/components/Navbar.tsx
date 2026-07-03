@@ -27,9 +27,9 @@ export default function Navbar() {
 
   // Scroll detection for navbar glass effect upgrade
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    const onScroll = () => setScrolled(globalThis.scrollY > 20);
+    globalThis.addEventListener("scroll", onScroll, { passive: true });
+    return () => globalThis.removeEventListener("scroll", onScroll);
   }, []);
 
   // Close mobile menu on route change

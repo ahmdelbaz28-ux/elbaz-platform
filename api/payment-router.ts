@@ -71,7 +71,7 @@ export const paymentRouter = createRouter({
         }
 
         const amount = course.price;
-        const isFree = parseFloat(amount) === 0;
+        const isFree = Number.parseFloat(amount) === 0;
         const transactionId = isFree
           ? `FREE-${nanoid(12)}`
           : `TXN-${nanoid(16)}`;
@@ -93,12 +93,12 @@ export const paymentRouter = createRouter({
             if (now >= promo.validFrom && (promo.validUntil === null || now <= promo.validUntil)) {
               if (promo.maxUses === null || promo.usedCount < promo.maxUses) {
                 if (promo.discountType === "percentage") {
-                  discountAmount = (parseFloat(amount) * parseFloat(String(promo.discountValue))) / 100;
+                  discountAmount = (Number.parseFloat(amount) * Number.parseFloat(String(promo.discountValue))) / 100;
                 } else {
-                  discountAmount = parseFloat(String(promo.discountValue));
+                  discountAmount = Number.parseFloat(String(promo.discountValue));
                 }
-                discountAmount = Math.min(discountAmount, parseFloat(amount));
-                finalAmount = Math.max(parseFloat(amount) - discountAmount, 0).toString();
+                discountAmount = Math.min(discountAmount, Number.parseFloat(amount));
+                finalAmount = Math.max(Number.parseFloat(amount) - discountAmount, 0).toString();
                 appliedPromoCodeId = promo.id;
               }
             }

@@ -376,7 +376,7 @@ export const courseRouter = createRouter({
     const totalCourses = Number(row?.totalCourses ?? 0) || 0;
     const totalStudents = Number(row?.totalStudents ?? 0) || 0;
     const totalLessons = Number(row?.totalLessons ?? 0) || 0;
-    const satisfactionRate = row?.avgRating ? Math.round(parseFloat(row.avgRating) * 20) : 0;
+    const satisfactionRate = row?.avgRating ? Math.round(Number.parseFloat(row.avgRating) * 20) : 0;
 
     const result = { totalCourses, totalStudents, totalLessons, satisfactionRate };
 

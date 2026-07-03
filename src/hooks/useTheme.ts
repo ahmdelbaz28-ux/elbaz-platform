@@ -44,7 +44,7 @@ export function useTheme() {
     // Add transitioning class for smooth color change (removed after 300ms)
     root.classList.add('theme-transitioning');
 
-    root.setAttribute('data-theme', next);
+    root.dataset.theme = next;
     // Update the theme-color meta tag for mobile browser chrome
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) {
@@ -57,7 +57,7 @@ export function useTheme() {
     }
 
     // Remove transitioning class after the animation completes
-    window.setTimeout(() => {
+    globalThis.setTimeout(() => {
       root.classList.remove('theme-transitioning');
     }, 300);
   }, []);

@@ -1,3 +1,4 @@
+import { visualRandom } from "@/lib/random";
 import { useEffect, useRef, useState, useCallback } from "react";
 
 interface SLDProps {
@@ -51,14 +52,17 @@ export default function SingleLineDiagram({ color = "#06b6d4", enabled = true }:
   const svgRef = useRef<SVGSVGElement>(null);
   const [particles, setParticles] = useState<{ id: number; progress: number; pathIndex: number }[]>([]);
   const [activePathIdx, setActivePathIdx] = useState<number | null>(null);
-  const animFrameRef = useRef<number>();
+  // `useRef<number>()` requires an initial value in the current React typings
+  // (TS2554). Use `undefined` explicitly so the type is `MutableRefObject<
+  // number | undefined>`.
+  const animFrameRef = useRef<number | undefined>(undefined);
   const particleId = useRef(0);
 
   // Animate particles along paths
   useEffect(() => {
     if (!enabled) return;
     const spawn = setInterval(() => {
-      const pathIdx = Math.floor(Math.random() * PATHS.length);
+      const pathIdx = Math.floor(visualRandom() * PATHS.length);
       setParticles(prev => [
         ...prev.filter(p => p.progress < 1),
         { id: particleId.current++, progress: 0, pathIndex: pathIdx },
@@ -131,7 +135,7 @@ export default function SingleLineDiagram({ color = "#06b6d4", enabled = true }:
       {/* Lines */}
       {PATHS.map((d, i) => (
         <path
-          key={i}
+          key={`path-${i}`}
           d={d}
           stroke={color}
           strokeWidth={activePathIdx === i ? 2 : 1}
@@ -143,17 +147,17 @@ export default function SingleLineDiagram({ color = "#06b6d4", enabled = true }:
       ))}
 
       {/* Transformer circles */}
-      {TRANSFORMERS.map((t, i) => (
-        <g key={i}>
+      {TRANSFORMERS.map((t) => (
+        <g key={`xfmr-${t.x}-${t.y}`}>
           <circle cx={t.x} cy={t.y - 8} r={t.r} stroke={color} strokeWidth={1} fill="none" opacity={0.3} />
           <circle cx={t.x} cy={t.y + 8} r={t.r} stroke={color} strokeWidth={1} fill="none" opacity={0.3} />
         </g>
       ))}
 
       {/* Breakers */}
-      {BREAKERS.map((b, i) => (
+      {BREAKERS.map((b) => (
         <rect
-          key={i}
+          key={`brk-${b.x}-${b.y}`}
           x={b.x} y={b.y} width={b.w} height={b.h}
           fill={`${color}22`}
           stroke={color}
@@ -164,8 +168,8 @@ export default function SingleLineDiagram({ color = "#06b6d4", enabled = true }:
       ))}
 
       {/* Load symbols */}
-      {LOADS.map((l, i) => (
-        <g key={i} opacity={0.35}>
+      {LOADS.map((l) => (
+        <g key={`load-${l.x}-${l.y}`} opacity={0.35}>
           <line x1={l.x - 14} y1={l.y} x2={l.x + 14} y2={l.y} stroke={color} strokeWidth={1.5} />
           <line x1={l.x - 10} y1={l.y + 7} x2={l.x + 10} y2={l.y + 7} stroke={color} strokeWidth={1.5} />
           <line x1={l.x - 5} y1={l.y + 14} x2={l.x + 5} y2={l.y + 14} stroke={color} strokeWidth={1.5} />

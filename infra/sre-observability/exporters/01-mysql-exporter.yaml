@@ -37,19 +37,26 @@ spec:
             requests:
               cpu: 50m
               memory: 64Mi
+              ephemeral-storage: 512Mi
             limits:
               cpu: 200m
               memory: 256Mi
+              ephemeral-storage: 2Gi
           securityContext:
             runAsUser: 65534
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           env:
             - name: DATA_SOURCE_NAME
               valueFrom:
                 secretKeyRef:
                   name: mysql-secrets
                   key: exporter-dsn
+      serviceAccountName: mysql-exporter
+      automountServiceAccountToken: false
 ---
 apiVersion: v1
 kind: Service

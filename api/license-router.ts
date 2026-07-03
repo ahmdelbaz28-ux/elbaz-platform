@@ -3,7 +3,7 @@ import { desc, eq, and, count } from "drizzle-orm";
 import { createRouter, authQuery, adminMutation, publicMutation } from "./middleware";
 import { getDb } from "./queries/connection";
 import { licenses, users, courses } from "@db/schema";
-import { randomBytes } from "crypto";
+import { randomBytes } from "node:crypto";
 
 function generateLicenseKey(): string {
   const segments = [];

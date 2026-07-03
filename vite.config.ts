@@ -1,5 +1,5 @@
 import devServer from "@hono/vite-dev-server"
-import path from "path"
+import path from "node:path"
 import { randomBytes } from "node:crypto"
 import { writeFile } from "node:fs/promises"
 const __dirname = import.meta.dirname

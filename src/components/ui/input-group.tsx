@@ -74,6 +74,16 @@ function InputGroupAddon({
         }
         e.currentTarget.parentElement?.querySelector("input")?.focus()
       }}
+      // Make the addon keyboard-activable so screen-reader users can focus
+      // the linked input without a mouse (SonarCloud S1082).
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          if ((e.target as HTMLElement).closest("button")) return
+          e.preventDefault()
+          e.currentTarget.parentElement?.querySelector("input")?.focus()
+        }
+      }}
+      tabIndex={0}
       {...props}
     />
   )

@@ -200,8 +200,8 @@ export default function Admin() {
                       { icon: TrendingUp, label: t("totalEnrollments"), value: stats?.totalEnrollments || 0, color: "#10b981", change: analytics?.newEnrollments30d },
                       { icon: DollarSign, label: t("totalRevenue"), value: `${stats?.totalRevenue || 0} EGP`, color: "#f59e0b", change: analytics?.revenue30d },
                       { icon: Headphones, label: t("openTickets"), value: stats?.openTickets || 0, color: "#f43f5e" },
-                    ].map((stat, i) => (
-                      <motion.div key={i} whileHover={{ y: -4 }} className="admin-stat-card p-5">
+                    ].map((stat) => (
+                      <motion.div key={stat.label} whileHover={{ y: -4 }} className="admin-stat-card p-5">
                         <div className="flex items-center justify-between">
                           <div className="flex h-10 w-10 items-center justify-center rounded-lg" style={{ background: `rgba(${hexToRgb(stat.color)}, 0.1)` }}>
                             <stat.icon className="h-5 w-5" style={{ color: stat.color }} />
@@ -225,8 +225,8 @@ export default function Admin() {
                       { icon: Users, label: isRTL ? "إدارة المستخدمين" : "Manage Users", tab: "users", color: "#10b981" },
                       { icon: FileText, label: isRTL ? "تعديل المحتوى" : "Edit Content", tab: "cms", color: "#f59e0b" },
                       { icon: Palette, label: isRTL ? "تخصيص الثيم" : "Customize Theme", tab: "themes", color: "#8b5cf6" },
-                    ].map((action, i) => (
-                      <motion.button key={i} whileHover={{ y: -4, scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setActiveTab(action.tab)} className="rounded-xl border border-[#1f2d44] bg-[#111827] p-6 text-start hover:border-[rgba(6,182,212,0.3)] transition-all">
+                    ].map((action) => (
+                      <motion.button key={action.tab} whileHover={{ y: -4, scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setActiveTab(action.tab)} className="rounded-xl border border-[#1f2d44] bg-[#111827] p-6 text-start hover:border-[rgba(6,182,212,0.3)] transition-all">
                         <div className="flex h-12 w-12 items-center justify-center rounded-lg mb-4" style={{ background: `rgba(${hexToRgb(action.color)}, 0.1)` }}>
                           <action.icon className="h-6 w-6" style={{ color: action.color }} />
                         </div>
@@ -742,5 +742,5 @@ export default function Admin() {
 
 function hexToRgb(hex: string): string {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : "6, 182, 212";
+  return result ? `${Number.parseInt(result[1], 16)}, ${Number.parseInt(result[2], 16)}, ${Number.parseInt(result[3], 16)}` : "6, 182, 212";
 }
