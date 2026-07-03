@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { createRouter, authQuery, authMutation } from "./middleware";
 import { getDb } from "./queries/connection";
 import { users } from "@db/schema";
-import { randomBytes, createHmac } from "crypto";
+import { randomBytes, createHmac } from "node:crypto";
 import { env } from "./lib/env";
 
 const BASE32_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
@@ -36,7 +36,7 @@ function base32Decode(base32: string): Buffer {
   }
   const bytes: number[] = [];
   for (let i = 0; i + 8 <= bits.length; i += 8) {
-    bytes.push(parseInt(bits.substring(i, i + 8), 2));
+    bytes.push(Number.parseInt(bits.substring(i, i + 8), 2));
   }
   return Buffer.from(bytes);
 }

@@ -78,7 +78,7 @@ if ('serviceWorker' in navigator && !(window as any).Capacitor?.isNativePlatform
           startInterval();
 
           // ✅ FIX: Clean up interval on page unload (prevents leak)
-          window.addEventListener('beforeunload', () => {
+          globalThis.addEventListener('beforeunload', () => {
             stopInterval();
           });
         }

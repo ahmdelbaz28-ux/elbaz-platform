@@ -121,13 +121,18 @@ spec:
             requests:
               cpu: 100m
               memory: 256Mi
+              ephemeral-storage: 512Mi
             limits:
               cpu: 500m
               memory: 1Gi
+              ephemeral-storage: 2Gi
           securityContext:
             runAsUser: 65534
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           volumeMounts:
             - name: config
               mountPath: /etc/otelcol
@@ -139,6 +144,7 @@ spec:
             name: otel-collector-config
         - name: tmp
           emptyDir: {}
+      automountServiceAccountToken: false
 ---
 apiVersion: v1
 kind: Service

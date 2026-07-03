@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: ahmdelbaz28/ahmdrtap-frontend:latest
+          image: ahmdelbaz28/ahmdrtap-frontend:v1.0.0
           ports:
             - containerPort: 80
               protocol: TCP
@@ -27,9 +27,11 @@ spec:
             requests:
               cpu: 100m
               memory: 128Mi
+              ephemeral-storage: 512Mi
             limits:
               cpu: 500m
               memory: 512Mi
+              ephemeral-storage: 2Gi
           livenessProbe:
             httpGet:
               path: /
@@ -46,3 +48,20 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+      serviceAccountName: frontend
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault

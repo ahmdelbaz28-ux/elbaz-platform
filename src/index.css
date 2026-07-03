@@ -926,7 +926,7 @@ img[loading="lazy"] {
 [data-theme="light"] nav button:hover {
   color: #0891b2 !important;
 }
-[data-theme="light"] nav a\[aria-current="page"\] {
+[data-theme="light"] nav a[aria-current="page"] {
   color: #0891b2 !important;
 }
 
@@ -1017,15 +1017,15 @@ img[loading="lazy"] {
 }
 
 /* ── INVERTED: Dropdown menus ── */
-[data-theme="light"] \[data-user-menu\] .absolute.end-0.top-full.mt-2 {
+[data-theme="light"] [data-user-menu] .absolute.end-0.top-full.mt-2 {
   background-color: #ffffff !important;
   border-color: #e2e8f0 !important;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.1) !important;
 }
-[data-theme="light"] \[data-user-menu\] .text-\[\#94a3b8\] {
+[data-theme="light"] [data-user-menu] .text-\[\#94a3b8\] {
   color: #64748b !important;
 }
-[data-theme="light"] \[data-user-menu\] .text-\[\#94a3b8\]:hover {
+[data-theme="light"] [data-user-menu] .text-\[\#94a3b8\]:hover {
   color: #0891b2 !important;
 }
 
@@ -1124,7 +1124,7 @@ img[loading="lazy"] {
 }
 
 /* ── Toast notifications: light bg ── */
-[data-theme="light"] \[data-sonner-toast\] {
+[data-theme="light"] [data-sonner-toast] {
   background-color: #ffffff !important;
   color: #0f172a !important;
   border: 1px solid #e2e8f0 !important;

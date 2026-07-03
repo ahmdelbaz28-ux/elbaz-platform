@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useSearchParams, Link, useNavigate } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
+import { hasPasswordStrengthChars } from "@/lib/validation";
 import { trpc } from "@/providers/trpc";
 import { toast } from "sonner";
 import {
@@ -92,7 +93,7 @@ export default function ResetPassword() {
     }
 
     if (
-      !/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(newPassword)
+      !hasPasswordStrengthChars(newPassword)
     ) {
       const msg =
         lang === "ar"
@@ -120,7 +121,7 @@ export default function ResetPassword() {
 
     setState("submitting");
     resetMutation.mutate({
-      userId: parseInt(uid, 10),
+      userId: Number.parseInt(uid, 10),
       token,
       newPassword,
     });
@@ -391,9 +392,9 @@ export default function ResetPassword() {
                         label:
                           lang === "ar" ? "رقم واحد على الأقل" : "At least one number",
                       },
-                    ].map((req, i) => (
+                    ].map((req) => (
                       <li
-                        key={i}
+                        key={req.label}
                         className="flex items-center gap-2 text-xs"
                       >
                         <div

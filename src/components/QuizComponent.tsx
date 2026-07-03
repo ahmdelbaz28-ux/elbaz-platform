@@ -106,10 +106,10 @@ export default function QuizComponent({ lessonId }: QuizComponentProps) {
 
         {/* Detailed results */}
         <div className="mt-6 space-y-4">
-          {result.results.map((r: any, i: number) => {
+          {result.results.map((r: any) => {
             const q = questions.find((q) => q.id === r.questionId);
             return (
-              <div key={i} className="rounded-lg border border-[#1f2d44] p-4">
+              <div key={r.questionId} className="rounded-lg border border-[#1f2d44] p-4">
                 <div className="flex items-start gap-2">
                   {r.isCorrect ? (
                     <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#10b981]" />
@@ -163,7 +163,7 @@ export default function QuizComponent({ lessonId }: QuizComponentProps) {
       <div className="space-y-2">
         {options?.map((opt: string, i: number) => (
           <button
-            key={i}
+            key={`${currentQ}-${opt.slice(0, 20)}`}
             onClick={() => handleSelect(i)}
             className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left text-sm transition-colors ${
               isSelected(i)

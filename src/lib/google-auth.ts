@@ -2,9 +2,16 @@
  * Google OAuth utilities — client-side OAuth flow helper
  */
 
-// Generate CSRF state for OAuth request
+// Generate CSRF state for OAuth request.
+// We use crypto.randomUUID() (available in all modern browsers and Node ≥ 19)
+// and never fall back to Math.random() — the state protects against CSRF so a
+// CSPRNG is mandatory (SonarCloud S2245).
 function generateState(): string {
-  return crypto.randomUUID?.() || Math.random().toString(36).slice(2);
+  // crypto.randomUUID is guaranteed to be available in the runtime targets we
+  // support (see tsconfig + Dockerfile). The optional-chain in the original
+  // code was a leftover from a Node 16 era; remove it so the fallback to
+  // Math.random() can never silently engage.
+  return crypto.randomUUID();
 }
 
 // Store state in cookie (for server callback verification) and sessionStorage (backup)
@@ -18,7 +25,7 @@ export function initiateGoogleOAuth(clientId: string): void {
   const state = generateState();
   storeOAuthState(state);
 
-  const redirectUri = `${window.location.origin}/api/google-auth/callback`;
+  const redirectUri = `${globalThis.location.origin}/api/google-auth/callback`;
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -28,5 +35,5 @@ export function initiateGoogleOAuth(clientId: string): void {
     prompt: "select_account",
   });
 
-  window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+  globalThis.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }

@@ -45,7 +45,7 @@ export const shieldMiddleware = createMiddleware(async (c, next) => {
 
   // ── 2. Payload Size Guard (Anti-OOM) ──
   const method = c.req.method;
-  const contentLength = parseInt(c.req.header("Content-Length") || "0", 10);
+  const contentLength = Number.parseInt(c.req.header("Content-Length") || "0", 10);
 
   if (method === "POST" || method === "PUT" || method === "PATCH") {
     const isFileUpload = path.includes("/upload") || path.includes("/r2");

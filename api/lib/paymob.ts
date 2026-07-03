@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "../lib/env.js";
 
 /**
@@ -21,7 +21,7 @@ function getIntegrationIdForMethod(paymentMethod: string): number {
   const envKey = PAYMENT_METHOD_INTEGRATION_IDS[paymentMethod];
   if (envKey) {
     const val = (process.env as Record<string, string | undefined>)[envKey];
-    if (val) return parseInt(val, 10);
+    if (val) return Number.parseInt(val, 10);
   }
   // Fallback to default integration ID
   return env.PAYMOB_INTEGRATION_ID ?? 0;
@@ -117,7 +117,7 @@ function verifyPaymobAmount(
   expectedAmount: number,
   expectedCurrency: string
 ): boolean {
-  const amount = typeof webhookAmount === "string" ? parseFloat(webhookAmount) : webhookAmount;
+  const amount = typeof webhookAmount === "string" ? Number.parseFloat(webhookAmount) : webhookAmount;
   if (isNaN(amount)) return false;
   const amountCents = Math.round(amount * 100);
   const expectedCents = Math.round(expectedAmount * 100);
@@ -173,7 +173,7 @@ async function verifyPaymobTransaction(transactionId: number): Promise<PaymobTra
     return {
       success: (txn.success as boolean) ?? false,
       transaction_id: txn.id as number,
-      amount: parseFloat((txn.amount_cents as number | string | undefined ?? 0).toString()) / 100,
+      amount: Number.parseFloat((txn.amount_cents as number | string | undefined ?? 0).toString()) / 100,
       currency: (txn.currency as string) ?? "EGP",
       order_id: (txn.order as { id: number } | undefined)?.id ?? 0,
       created_at: (txn.created_at as string) ?? new Date().toISOString(),
@@ -212,7 +212,7 @@ async function initiatePaymobPayment(
     throw new Error("Paymob is not configured");
   }
 
-  const amountNum = typeof amount === "string" ? parseFloat(amount) : amount;
+  const amountNum = typeof amount === "string" ? Number.parseFloat(amount) : amount;
   if (isNaN(amountNum) || amountNum <= 0) {
     throw new Error("Invalid payment amount");
   }

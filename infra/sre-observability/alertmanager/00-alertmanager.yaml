@@ -35,13 +35,18 @@ spec:
             requests:
               cpu: 100m
               memory: 128Mi
+              ephemeral-storage: 512Mi
             limits:
               cpu: 500m
               memory: 512Mi
+              ephemeral-storage: 2Gi
           securityContext:
             runAsUser: 65534
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           env:
             - name: SLACK_WEBHOOK_URL
               valueFrom:
@@ -79,3 +84,4 @@ spec:
             sizeLimit: 1Gi
         - name: tmp
           emptyDir: {}
+      automountServiceAccountToken: false

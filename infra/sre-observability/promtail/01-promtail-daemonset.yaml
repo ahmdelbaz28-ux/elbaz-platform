@@ -36,9 +36,11 @@ spec:
             requests:
               cpu: 100m
               memory: 128Mi
+              ephemeral-storage: 512Mi
             limits:
               cpu: 500m
               memory: 512Mi
+              ephemeral-storage: 2Gi
           securityContext:
             runAsUser: 65534
             runAsGroup: 65534
@@ -111,6 +113,7 @@ spec:
           effect: NoSchedule
         - key: node-role.kubernetes.io/control-plane
           effect: NoSchedule
+      automountServiceAccountToken: false
 ---
 apiVersion: v1
 kind: ServiceAccount

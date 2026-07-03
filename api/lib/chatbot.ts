@@ -1189,7 +1189,7 @@ export async function getStreamResponse(request: {
         modalLastFailTime = Date.now();
         const retryAfter = response.headers.get("retry-after") || "5";
         console.warn(`[Chatbot/Stream] Modal overloaded (${response.status}) — waiting ${retryAfter}s before retry...`);
-        await sleep(parseInt(retryAfter) * 1000);
+        await sleep(Number.parseInt(retryAfter) * 1000);
         if (attempt < timeouts.length - 1) {
           console.info("[Chatbot/Stream] Retrying Modal after queue clear...");
           continue;

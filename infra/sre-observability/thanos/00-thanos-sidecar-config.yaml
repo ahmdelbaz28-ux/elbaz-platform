@@ -41,13 +41,18 @@ spec:
             requests:
               cpu: 100m
               memory: 256Mi
+              ephemeral-storage: 512Mi
             limits:
               cpu: 500m
               memory: 512Mi
+              ephemeral-storage: 2Gi
           securityContext:
             runAsUser: 65534
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           volumeMounts:
             - name: prometheus-data
               mountPath: /prometheus
@@ -62,6 +67,7 @@ spec:
         - name: config
           configMap:
             name: thanos-sidecar-config
+      automountServiceAccountToken: false
 ---
 apiVersion: v1
 kind: ConfigMap

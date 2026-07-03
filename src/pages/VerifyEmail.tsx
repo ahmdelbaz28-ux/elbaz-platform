@@ -73,7 +73,7 @@ export default function VerifyEmail() {
 
     // Auto-trigger verification on mount
     verifyMutation.mutate({
-      userId: parseInt(uid, 10),
+      userId: Number.parseInt(uid, 10),
       token,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -209,7 +209,7 @@ export default function VerifyEmail() {
                   setErrorMessage("");
                   if (token && uid) {
                     verifyMutation.mutate({
-                      userId: parseInt(uid, 10),
+                      userId: Number.parseInt(uid, 10),
                       token,
                     });
                   }

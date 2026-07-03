@@ -116,8 +116,41 @@ const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVid
     videoRef.current.currentTime = pos * duration;
   }, [duration]);
 
+  // Keyboard seek handler (SonarCloud S1082). The progress bar div has an
+  // onClick handler so it must also be keyboard-accessible. handleSeek
+  // consumes a MouseEvent (it reads clientX), so we cannot reuse it for
+  // keyboard events — instead we step the currentTime directly.
+  const handleSeekKey = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!videoRef.current) return;
+    const v = videoRef.current;
+    const step = Math.max(5, duration * 0.05); // 5% of duration, min 5s
+    switch (e.key) {
+      case "ArrowLeft":
+        e.preventDefault();
+        v.currentTime = Math.max(0, v.currentTime - step);
+        break;
+      case "ArrowRight":
+        e.preventDefault();
+        v.currentTime = Math.min(duration, v.currentTime + step);
+        break;
+      case "Home":
+        e.preventDefault();
+        v.currentTime = 0;
+        break;
+      case "End":
+        e.preventDefault();
+        v.currentTime = duration;
+        break;
+      case "Enter":
+      case " ":
+        e.preventDefault();
+        handleTogglePlay();
+        break;
+    }
+  }, [duration, handleTogglePlay]);
+
   const handleVolumeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = parseFloat(e.target.value);
+    const val = Number.parseFloat(e.target.value);
     setVolume(val);
     if (videoRef.current) {
       videoRef.current.volume = val;
@@ -182,8 +215,8 @@ const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVid
           break;
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    globalThis.addEventListener("keydown", handleKeyDown);
+    return () => globalThis.removeEventListener("keydown", handleKeyDown);
   }, [handleTogglePlay, handleToggleMute, handleFullscreen]);
 
   // ─── Watch Time Tracking ───
@@ -248,7 +281,7 @@ const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVid
       <div className="absolute inset-0 z-10 overflow-hidden pointer-events-none opacity-[0.03]">
         {Array.from({ length: 12 }).map((_, i) => (
           <div
-            key={i}
+            key={`watermark-${i}`}
             className="watermark whitespace-nowrap absolute text-white font-medium"
             style={{
               top: `${(i % 6) * 110 + 30}px`,
@@ -328,9 +361,34 @@ const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVid
         onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
         onMouseLeave={(e) => (e.currentTarget.style.opacity = isPlaying ? "0.6" : "0")}
         onClick={(e) => e.stopPropagation()}
+        // Keyboard support: Escape hides the overlay, Enter/Space toggle
+        // play. Required by SonarCloud S1082 because this div has click +
+        // mouse handlers but is not a native button.
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.currentTarget.style.opacity = "0";
+          } else if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            e.stopPropagation();
+            handleTogglePlay();
+          }
+        }}
+        tabIndex={0}
+        role="group"
+        aria-label="Video controls"
       >
         <div className="group/progress relative mb-2 h-1.5 cursor-pointer rounded-full bg-white/20 transition-all group-hover/progress:h-2.5"
           onClick={handleSeek}
+          // Keyboard seek: ArrowLeft/Right step 5%, Home/End jump to
+          // start/end, Enter/Space toggles play. Required by SonarCloud
+          // S1082 because this div has a click handler but is not a button.
+          onKeyDown={handleSeekKey}
+          role="slider"
+          tabIndex={0}
+          aria-label="Seek video"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(progress)}
         >
           <div className="absolute inset-y-0 start-0 rounded-full bg-white/20" style={{ width: `${bufferedProgress}%` }} />
           <div className="absolute inset-y-0 start-0 rounded-full bg-[#06b6d4]" style={{ width: `${progress}%` }} />
@@ -458,7 +516,7 @@ export default function CourseDetail() {
   );
 
   // ✅ Derive values from course data (must be declared before use in hooks)
-  const price = parseFloat(course?.price || "0");
+  const price = Number.parseFloat(course?.price || "0");
   const title = (lang === "ar" && course?.titleAr) ? course.titleAr : (course?.titleEn ?? "");
 
   // ✅ Promo code validation (fetch-based, not tRPC)
@@ -478,7 +536,7 @@ export default function CourseDetail() {
           discountType: "percentage",
           discountValue: String(discountValue),
           discountAmount,
-          finalAmount: (price - parseFloat(discountAmount)).toFixed(2),
+          finalAmount: (price - Number.parseFloat(discountAmount)).toFixed(2),
         });
       } else {
         setPromoValidation({ valid: false, error: data.error || (lang === "ar" ? "كود غير صالح" : "Invalid code") });
@@ -518,7 +576,7 @@ export default function CourseDetail() {
       // Clean URL after short delay
       const tid = setTimeout(() => {
         setSearchParams({}, { replace: true });
-        window.location.reload();
+        globalThis.location.reload();
       }, 2000);
       pendingTimeouts.current.push(tid);
     } else if (paymentStatus.status === "failed" || paymentStatus.status === "expired") {
@@ -558,7 +616,7 @@ export default function CourseDetail() {
     onSuccess: (data) => {
       if (data.duplicate) {
         // Duplicate payment attempt — just reload
-        window.location.reload();
+        globalThis.location.reload();
         return;
       }
 
@@ -573,12 +631,12 @@ export default function CourseDetail() {
 
         // Redirect to Paymob after a brief moment (to show the redirecting state)
         const tid = setTimeout(() => {
-          window.location.href = data.paymentUrl!;
+          globalThis.location.href = data.paymentUrl!;
         }, 800);
         pendingTimeouts.current.push(tid);
       } else if (!data.requiresRedirect) {
         // ✅ FREE COURSE: Reload to show enrolled state
-        window.location.reload();
+        globalThis.location.reload();
       }
     },
     onError: (error) => {
@@ -593,7 +651,7 @@ export default function CourseDetail() {
       navigate("/login");
       return;
     }
-    if (course?.isPremium && parseFloat(course.price || "0") > 0) {
+    if (course?.isPremium && Number.parseFloat(course.price || "0") > 0) {
       trackEvent("enrollment_click", { courseId: course?.id, slug, source: "enroll_button", isLoggedIn: true, isPremium: true });
       setShowPayment(true);
     } else {
@@ -887,8 +945,8 @@ export default function CourseDetail() {
               <div className="mb-8 rounded-xl border border-[#1f2d44] bg-[#111827] p-6">
                 <h2 className="text-lg font-semibold text-[#f0f4f8]">{t("whatYouWillLearn")}</h2>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  {outcomes.map((outcome: string, i: number) => (
-                    <div key={i} className="flex items-start gap-2">
+                  {outcomes.map((outcome: string) => (
+                    <div key={outcome} className="flex items-start gap-2">
                       <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#10b981]" />
                       <span className="text-sm text-[#94a3b8]">{outcome}</span>
                     </div>
@@ -984,9 +1042,9 @@ export default function CourseDetail() {
                             <span className="text-3xl font-bold text-[#f0f4f8]">
                               {price.toLocaleString()} {lang === "ar" ? "ج.م" : "EGP"}
                             </span>
-                            {course.originalPrice && parseFloat(course.originalPrice) > 0 && (
+                            {course.originalPrice && Number.parseFloat(course.originalPrice) > 0 && (
                               <span className="text-lg text-[#64748b] line-through">
-                                {parseFloat(course.originalPrice).toLocaleString()} {lang === "ar" ? "ج.م" : "EGP"}
+                                {Number.parseFloat(course.originalPrice).toLocaleString()} {lang === "ar" ? "ج.م" : "EGP"}
                               </span>
                             )}
                           </>
@@ -1017,8 +1075,8 @@ export default function CourseDetail() {
                   { icon: <Smartphone className="h-4 w-4" />, text: t("mobileAccess") },
                   { icon: <Award className="h-4 w-4" />, text: t("certificateCompletion") },
                   { icon: <Shield className="h-4 w-4" />, text: t("drmProtected") },
-                ].map((item, i) => (
-                  <div key={i} className="flex items-center gap-2 text-sm text-[#94a3b8]">
+                ].map((item) => (
+                  <div key={item.text} className="flex items-center gap-2 text-sm text-[#94a3b8]">
                     <span className="text-[#06b6d4]">{item.icon}</span>
                     {item.text}
                   </div>
@@ -1100,6 +1158,21 @@ export default function CourseDetail() {
               setShowPayment(false);
             }
           }}
+          // Allow keyboard users to dismiss the modal with Escape
+          // (SonarCloud S1082 — backdrop div has click but no key handler).
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              if (paymentStep === "error") setPaymentStep("idle");
+              setPromoCode("");
+              setPromoValidation(null);
+              setShowPayment(false);
+            }
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Payment dialog"
+          tabIndex={-1}
         >
           <div className="mx-4 w-full max-w-md rounded-xl border border-[#1f2d44] bg-[#111827] p-6 relative">
             {/* Close button */}

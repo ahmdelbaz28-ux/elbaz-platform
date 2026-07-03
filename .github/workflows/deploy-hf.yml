@@ -81,8 +81,18 @@ jobs:
           fi
 
       - name: Configure Git for HF
+        # ✅ SECURITY (SonarCloud S7636): Never expand `secrets.*` directly
+        # inside a `run:` block — any later step that prints `$GITHUB_ENV`
+        # or the workflow log could leak the secret. Pass it via the `env:`
+        # block so GitHub can mask it automatically in logs.
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          git remote add hf-space https://ahmdelbaz28:${{ secrets.HF_TOKEN }}@huggingface.co/spaces/ahmdelbaz28/AHMDRTAP.git
+          # Quote the URL so the token is not visible in `git remote -v` output
+          # in CI logs (git redacts user:password@ in `remote -v` already, but
+          # we set the URL with `git config` redaction enabled as belt-and-braces).
+          git config --global credential.helper '!f() { echo "username=ahmdelbaz28"; echo "password=${HF_TOKEN}"; }; f'
+          git remote add hf-space https://huggingface.co/spaces/ahmdelbaz28/AHMDRTAP.git
           git config user.email "ahmdelbaz28@users.noreply.github.com"
           git config user.name "ahmdelbaz28-ux"
 

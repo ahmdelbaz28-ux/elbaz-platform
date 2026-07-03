@@ -1,3 +1,4 @@
+import { visualRandom } from "@/lib/random";
 import { useEffect, useRef } from 'react';
 
 /* -------------------------------------------------------------------------- */
@@ -65,14 +66,14 @@ export default function StarfieldBackground() {
 
     const prefersReduced =
       typeof window !== 'undefined' &&
-      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
     // ✅ FIX: Detect mobile devices to reduce particle count and disable
     // connection lines (the O(n²) loop is the most CPU-intensive part).
     // Desktop keeps full 80 particles + connections for a rich look.
     // Mobile gets 25 particles + NO connection lines = much smoother.
     const isMobile = typeof window !== 'undefined' &&
-      (window.matchMedia?.('(max-width: 768px)').matches ||
+      (globalThis.matchMedia?.('(max-width: 768px)').matches ||
        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
 
     // Effective particle count based on device
@@ -84,7 +85,7 @@ export default function StarfieldBackground() {
 
     // Theme detection — refined for both dark and light modes
     const getThemeColors = () => {
-      const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+      const isLight = document.documentElement.dataset.theme === 'light';
       return {
         isLight,
         // Particles: white dots on dark, subtle gray-blue on light
@@ -129,31 +130,31 @@ export default function StarfieldBackground() {
       // ✅ FIX: Use effectiveParticleCount (25 on mobile, 80 on desktop)
       const target = effectiveParticleCount;
       particles = new Array(target).fill(0).map(() => {
-        const shouldTwinkle = Math.random() < 0.25;
+        const shouldTwinkle = visualRandom() < 0.25;
         // Random slow drift direction
-        const angle = Math.random() * Math.PI * 2;
-        const speed = PARTICLE_SPEED * (0.5 + Math.random() * 0.5);
+        const angle = visualRandom() * Math.PI * 2;
+        const speed = PARTICLE_SPEED * (0.5 + visualRandom() * 0.5);
         return {
-          x: Math.random() * width,
-          y: Math.random() * height,
+          x: visualRandom() * width,
+          y: visualRandom() * height,
           vx: Math.cos(angle) * speed,
           vy: Math.sin(angle) * speed,
-          r: 0.8 + Math.random() * 1.2,  // Slightly larger particles
-          alpha: 0.4 + Math.random() * 0.4,
-          color: Math.random() < 0.3 ? themeColors.particleGlow : themeColors.particleColor,
+          r: 0.8 + visualRandom() * 1.2,  // Slightly larger particles
+          alpha: 0.4 + visualRandom() * 0.4,
+          color: visualRandom() < 0.3 ? themeColors.particleGlow : themeColors.particleColor,
           twinkleSpeed: shouldTwinkle
-            ? (Math.PI * 2) / (10 + Math.random() * 8)
+            ? (Math.PI * 2) / (10 + visualRandom() * 8)
             : 0,
-          twinklePhase: Math.random() * Math.PI * 2,
+          twinklePhase: visualRandom() * Math.PI * 2,
           connectedTo: new Set<number>(),
         };
       });
     };
 
     const resize = () => {
-      dpr = Math.min(2, window.devicePixelRatio || 1);
-      width = window.innerWidth;
-      height = window.innerHeight;
+      dpr = Math.min(2, globalThis.devicePixelRatio || 1);
+      width = globalThis.innerWidth;
+      height = globalThis.innerHeight;
       canvas.width = Math.floor(width * dpr);
       canvas.height = Math.floor(height * dpr);
       canvas.style.width = `${width}px`;
@@ -165,27 +166,27 @@ export default function StarfieldBackground() {
 
     // Spawn shooting star
     const spawnShooting = (): Shooting => {
-      const fromTopRight = Math.random() < 0.2;
-      const speed = 500 + Math.random() * 350;
+      const fromTopRight = visualRandom() < 0.2;
+      const speed = 500 + visualRandom() * 350;
       const angle = Math.PI * 0.28;
       const startX = fromTopRight
-        ? width * (0.55 + Math.random() * 0.4)
-        : width * (Math.random() * 0.45);
+        ? width * (0.55 + visualRandom() * 0.4)
+        : width * (visualRandom() * 0.45);
       return {
         x: startX,
         y: -20,
         vx: Math.cos(angle) * speed * (fromTopRight ? -1 : 1),
         vy: Math.sin(angle) * speed,
         life: 0,
-        maxLife: 1.1 + Math.random() * 0.5,
-        length: 110 + Math.random() * 90,
-        width: 1.4 + Math.random() * 0.6,
+        maxLife: 1.1 + visualRandom() * 0.5,
+        length: 110 + visualRandom() * 90,
+        width: 1.4 + visualRandom() * 0.6,
       };
     };
 
     // Draw cosmic gradient background — adapts to theme
     const drawCosmicGradient = () => {
-      const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+      const isLight = document.documentElement.dataset.theme === 'light';
       
       if (isLight) {
         // Light mode: soft ambient gradient
@@ -280,7 +281,7 @@ export default function StarfieldBackground() {
         if (p.twinkleSpeed > 0) {
           p.twinklePhase += p.twinkleSpeed * dtSec;
           const modulation = (Math.sin(p.twinklePhase) + 1) / 2;
-          p.alpha = (0.4 + Math.random() * 0.4) * (0.7 + modulation * 0.5);
+          p.alpha = (0.4 + visualRandom() * 0.4) * (0.7 + modulation * 0.5);
         }
       }
 
@@ -317,7 +318,7 @@ export default function StarfieldBackground() {
       }
 
       // Draw particles with glow effect
-      const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+      const isLight = document.documentElement.dataset.theme === 'light';
       for (const p of particles) {
         // Glow effect for brighter particles
         if (p.color === themeColors.particleGlow) {
@@ -414,7 +415,7 @@ export default function StarfieldBackground() {
 
       // Spawn next shooting star (disabled on mobile for performance)
       if (enableShootingStars && !prefersReduced && ts >= nextShootAt) {
-        nextShootAt = ts + 3000 + Math.random() * 4000;
+        nextShootAt = ts + 3000 + visualRandom() * 4000;
         shootings.push(spawnShooting());
       }
     };
@@ -426,7 +427,7 @@ export default function StarfieldBackground() {
     };
 
     resize();
-    window.addEventListener('resize', resize);
+    globalThis.addEventListener('resize', resize);
 
     if (prefersReduced) {
       paint(0);
@@ -450,7 +451,7 @@ export default function StarfieldBackground() {
     return () => {
       running = false;
       if (rafId) cancelAnimationFrame(rafId);
-      window.removeEventListener('resize', resize);
+      globalThis.removeEventListener('resize', resize);
       document.removeEventListener('visibilitychange', onVisibility);
       themeObserver.disconnect();
     };
@@ -472,7 +473,7 @@ export default function StarfieldBackground() {
         // ✅ Dynamic background based on current theme
         // The CSS override [data-theme="light"] canvas also handles this,
         // but we set it inline for immediate effect before CSS loads.
-        background: typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'light'
+        background: typeof document !== 'undefined' && document.documentElement.dataset.theme === 'light'
           ? '#f8fafc'
           : '#070b12',
       }}

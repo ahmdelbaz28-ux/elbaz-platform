@@ -33,12 +33,14 @@ spec:
             limits:
               cpu: 100m
               memory: 128Mi
+              ephemeral-storage: 2Gi
             requests:
               cpu: 50m
               memory: 64Mi
+              ephemeral-storage: 512Mi
           env:
             - name: FLUENT_LOKI_HOST
-              value: "http://loki-gateway.monitoring.svc.cluster.local:80"
+              value: "https://loki-gateway.monitoring.svc.cluster.local:80"
             - name: FLUENT_ELASTICSEARCH_HOST
               value: "https://elasticsearch.monitoring.svc.cluster.local:9200"
             - name: NODE_NAME
@@ -66,6 +68,14 @@ spec:
             - name: parsers
               mountPath: /fluent-bit/etc/parsers.conf
               subPath: parsers.conf
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
       volumes:
         - name: varlog
           hostPath:
@@ -79,6 +89,14 @@ spec:
         - name: parsers
           configMap:
             name: fluent-bit-config
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
 ---
 apiVersion: v1
 kind: ConfigMap

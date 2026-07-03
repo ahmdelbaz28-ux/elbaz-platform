@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
+import { isValidEmail } from "@/lib/validation";
 import { trpc } from "@/providers/trpc";
 import { toast } from "sonner";
 import {
@@ -64,9 +65,10 @@ export default function ForgotPassword() {
       return;
     }
 
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email.trim())) {
+    // Basic email validation — uses the shared isValidEmail helper from
+    // @/lib/validation to avoid the super-linear backtracking regex that
+    // SonarCloud S8786 flags.
+    if (!isValidEmail(email.trim())) {
       const msg =
         lang === "ar"
           ? "صيغة البريد الإلكتروني غير صحيحة"
@@ -143,11 +145,9 @@ export default function ForgotPassword() {
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        placeholder={
-                          lang === "ar"
-                            ? "example@email.com"
-                            : "example@email.com"
-                        }
+                        // Email addresses are language-agnostic; the placeholder
+                        // is the same in both Arabic and English (SonarCloud S3923).
+                        placeholder="example@email.com"
                         className="border-[#1f2d44] bg-[#0a0e17] pl-10 text-[#f0f4f8] placeholder:text-[#64748b] focus:border-[#06b6d4] focus:ring-[#06b6d4]"
                         autoComplete="email"
                         disabled={step === "sending"}

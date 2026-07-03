@@ -43,16 +43,23 @@ spec:
             requests:
               cpu: 100m
               memory: 256Mi
+              ephemeral-storage: 512Mi
             limits:
               cpu: 500m
               memory: 1Gi
+              ephemeral-storage: 2Gi
           securityContext:
             runAsUser: 65534
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           env:
             - name: COLLECTOR_ZIPKIN_HOST_PORT
               value: ":9411"
+      serviceAccountName: jaeger
+      automountServiceAccountToken: false
 ---
 apiVersion: v1
 kind: Service

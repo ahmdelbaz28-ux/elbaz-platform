@@ -1,3 +1,4 @@
+import { visualRandom } from "@/lib/random";
 import { useState, useEffect, useRef } from "react";
 
 interface ArcFlashButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -10,10 +11,12 @@ function generateArcPath(cx: number, cy: number, length: number): string {
   const points = [];
   const steps = 8;
   let x = cx, y = cy;
-  const angle = Math.random() * Math.PI * 2;
+  // Note: `angle` was previously computed here but never used — the arc
+  // points are generated with visualRandom() offsets below. Removed to
+  // satisfy SonarCloud S2933 / tsc TS6133.
   for (let i = 0; i < steps; i++) {
-    x += (Math.random() - 0.5) * length * 0.4;
-    y += (Math.random() - 0.5) * length * 0.4;
+    x += (visualRandom() - 0.5) * length * 0.4;
+    y += (visualRandom() - 0.5) * length * 0.4;
     points.push(`${x},${y}`);
   }
   return `M ${cx} ${cy} L ${points.join(" L ")}`;
@@ -39,12 +42,12 @@ export default function ArcFlashButton({
       const w = containerRef.current.offsetWidth;
       const h = containerRef.current.offsetHeight;
       // Spawn arc from random edge point
-      const edge = Math.floor(Math.random() * 4);
+      const edge = Math.floor(visualRandom() * 4);
       let cx = 0, cy = 0;
-      if (edge === 0) { cx = Math.random() * w; cy = 0; }
-      else if (edge === 1) { cx = w; cy = Math.random() * h; }
-      else if (edge === 2) { cx = Math.random() * w; cy = h; }
-      else { cx = 0; cy = Math.random() * h; }
+      if (edge === 0) { cx = visualRandom() * w; cy = 0; }
+      else if (edge === 1) { cx = w; cy = visualRandom() * h; }
+      else if (edge === 2) { cx = visualRandom() * w; cy = h; }
+      else { cx = 0; cy = visualRandom() * h; }
 
       const newArc = { id: arcId.current++, d: generateArcPath(cx, cy, 30), opacity: 1 };
       setArcs(prev => [...prev.slice(-8), newArc]);

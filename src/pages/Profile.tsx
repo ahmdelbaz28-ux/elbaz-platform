@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "@/hooks/useTranslation";
+import { isValidEmail } from "@/lib/validation";
 import { trpc } from "@/providers/trpc";
 import { toast } from "sonner";
 import {
@@ -67,7 +68,7 @@ export default function Profile() {
       toast.success(lang === "en" ? "Profile updated successfully" : "تم تحديث الملف الشخصي بنجاح");
       setIsEditing(false);
       // Refresh user data
-      window.location.reload();
+      globalThis.location.reload();
     },
     onError: (err) => {
       toast.error(err.message);
@@ -122,7 +123,7 @@ export default function Profile() {
       toast.error(lang === "en" ? "Name is required" : "الاسم مطلوب");
       return;
     }
-    if (editEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editEmail)) {
+    if (editEmail.trim() && !isValidEmail(editEmail)) {
       toast.error(lang === "en" ? "Invalid email format" : "صيغة البريد الإلكتروني غير صحيحة");
       return;
     }

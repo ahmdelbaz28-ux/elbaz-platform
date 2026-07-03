@@ -1,4 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
+import { visualRandom } from "@/lib/random";
 import {
   useState,
   useEffect,
@@ -121,7 +122,7 @@ function toDisplayType(source: SourceToastType): NotificationDisplayType {
 
 /** Generate a unique id. */
 function uid(): string {
-  return `notif-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return `notif-${Date.now()}-${visualRandom().toString(36).slice(2, 8)}`;
 }
 
 /**
@@ -775,7 +776,10 @@ export default function NotificationCenter() {
         aria-label={isRTL ? "مركز الإشعارات" : "Notification Center"}
         dir={isRTL ? "rtl" : "ltr"}
         className={`absolute z-50 mt-2 w-[360px] overflow-hidden rounded-xl border border-[#1e2d3d] bg-[#0d1420] shadow-[0_16px_48px_rgba(0,0,0,0.5)] transition-all duration-200 ${
-          isRTL ? "right-0" : "right-0"
+          // In LTR the dropdown opens to the right edge of the trigger; in
+          // RTL it mirrors to the left edge. Previously both branches were
+          // "right-0" (SonarCloud S3923).
+          isRTL ? "left-0" : "right-0"
         } ${
           isOpen
             ? "pointer-events-auto translate-y-0 opacity-100"

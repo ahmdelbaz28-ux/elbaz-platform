@@ -1,3 +1,4 @@
+import { visualRandom } from "@/lib/random";
 import React, { useState, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 
@@ -25,30 +26,17 @@ export function ElectricalIcon({
   const sizeMap = { sm: 28, md: 44, lg: 64 };
   const iconSizes = { sm: 14, md: 20, lg: 28 };
 
-  const spawnArc = useCallback((e: React.MouseEvent) => {
-    if (variant !== "arc") return;
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const newArc = {
-      id: idRef.current++,
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-      opacity: 1,
-    };
-    setArcs(prev => [...prev.slice(-8), newArc]);
-    setGlowIntensity(1);
-    setTimeout(() => {
-      setArcs(prev => prev.map(a => a.id === newArc.id ? { ...a, opacity: a.opacity - 0.2 } : a).filter(a => a.opacity > 0));
-      setGlowIntensity(0);
-    }, 200);
-  }, [variant]);
+  // Note: a previous `spawnArc` useCallback was defined here but never
+  // attached to any event handler — its logic has been merged into
+  // `handleMouseDown` below (shock variant). Removed to satisfy SonarCloud
+  // S2933 (unused private) and tsc TS6133.
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (variant === "ripple") {
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
-      const cx = rect.width / 2;
-      const cy = rect.height / 2;
+      // Ripple rendering uses `left/top: calc(50% - size/2)` so the centre
+      // of the container is implicit — no need to compute cx/cy here.
       const newRipple = { id: idRef.current++, size: 0, opacity: 0.6 };
       setRipples(prev => [...prev, newRipple]);
       setTimeout(() => {
@@ -120,7 +108,7 @@ export function ElectricalIcon({
           aria-hidden="true"
         >
           <path
-            d={`M ${arc.x} ${arc.y} Q ${arc.x + (Math.random() - 0.5) * 30} ${arc.y + (Math.random() - 0.5) * 30} ${arc.x + (Math.random() - 0.5) * 40} ${arc.y + (Math.random() - 0.5) * 40}`}
+            d={`M ${arc.x} ${arc.y} Q ${arc.x + (visualRandom() - 0.5) * 30} ${arc.y + (visualRandom() - 0.5) * 30} ${arc.x + (visualRandom() - 0.5) * 40} ${arc.y + (visualRandom() - 0.5) * 40}`}
             stroke={color}
             strokeWidth={2}
             fill="none"

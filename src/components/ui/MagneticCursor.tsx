@@ -5,14 +5,12 @@ interface MagneticCursorProps {
   enabled?: boolean;
   color?: string;
   size?: number;
-  intensity?: number;
 }
 
 export default function MagneticCursor({
   enabled = true,
   color = "rgba(6, 182, 212, 0.06)",
   size = 300,
-  intensity = 0.3,
 }: MagneticCursorProps) {
   const [position, setPosition] = useState({ x: -500, y: -500 });
   const [isVisible, setIsVisible] = useState(false);
@@ -34,11 +32,11 @@ export default function MagneticCursor({
       setIsVisible(false);
     };
 
-    window.addEventListener("mousemove", handleMouseMove);
+    globalThis.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseleave", handleMouseLeave);
 
     return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
+      globalThis.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseleave", handleMouseLeave);
     };
   }, [enabled, isVisible]);

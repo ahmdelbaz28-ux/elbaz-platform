@@ -27,7 +27,6 @@ spec:
         runAsUser: 65534
         runAsGroup: 65534
       hostNetwork: false
-      hostPID: true
       containers:
         - name: node-exporter
           image: prom/node-exporter:v1.8.2
@@ -93,9 +92,11 @@ spec:
             requests:
               cpu: 50m
               memory: 64Mi
+              ephemeral-storage: 512Mi
             limits:
               cpu: 200m
               memory: 256Mi
+              ephemeral-storage: 2Gi
           securityContext:
             runAsUser: 65534
             runAsGroup: 65534
@@ -164,6 +165,7 @@ spec:
           effect: NoSchedule
         - key: CriticalAddonsOnly
           operator: Exists
+      automountServiceAccountToken: false
 ---
 apiVersion: v1
 kind: ServiceAccount

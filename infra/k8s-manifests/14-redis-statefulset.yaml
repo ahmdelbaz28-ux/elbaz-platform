@@ -49,9 +49,11 @@ spec:
             requests:
               cpu: 100m
               memory: 128Mi
+              ephemeral-storage: 512Mi
             limits:
               cpu: 500m
               memory: 512Mi
+              ephemeral-storage: 2Gi
           livenessProbe:
             exec:
               command:
@@ -73,6 +75,23 @@ spec:
           volumeMounts:
             - name: redis-data
               mountPath: /data
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+      serviceAccountName: redis
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
   volumeClaimTemplates:
     - metadata:
         name: redis-data

@@ -36,8 +36,8 @@ export default function CourseCard({ course }: CourseCardProps) {
   const title = lang === "ar" && course.titleAr ? course.titleAr : course.titleEn;
   const shortDesc = lang === "ar" && course.shortDescAr ? course.shortDescAr : course.shortDescEn;
   const categoryLabel = lang === "ar" && course.categoryNameAr ? course.categoryNameAr : course.categoryName;
-  const coursePrice = parseFloat(course.price || "0");
-  const originalPrice = course.originalPrice ? parseFloat(course.originalPrice) : 0;
+  const coursePrice = Number.parseFloat(course.price || "0");
+  const originalPrice = course.originalPrice ? Number.parseFloat(course.originalPrice) : 0;
   const discount = originalPrice > coursePrice && originalPrice > 0
     ? Math.round(((originalPrice - coursePrice) / originalPrice) * 100)
     : 0;
@@ -134,7 +134,7 @@ export default function CourseCard({ course }: CourseCardProps) {
                 <div className="flex items-center gap-1">
                   <Star className="h-3.5 w-3.5 fill-[#f59e0b] text-[#f59e0b]" />
                   <span className="text-[12px] font-semibold text-[#e8f0fe]">
-                    {parseFloat(course.rating).toFixed(1)}
+                    {Number.parseFloat(course.rating).toFixed(1)}
                   </span>
                   <span className="text-[11px] text-[#475569]">
                     ({course.reviewCount})

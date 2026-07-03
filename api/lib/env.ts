@@ -54,7 +54,11 @@ const envSchema = z.object({
 
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM_EMAIL: z.string().default("noreply@ahmedelbaz.qzz.io").transform(v => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    // Email format check — anchored, no overlapping quantifiers, no
+    // super-linear backtracking (SonarCloud S8786). The `(?:\.[^\s@]+)+`
+    // group is the only place `.` is allowed so the engine has exactly
+    // one way to split local-part vs. domain.
+    const emailRegex = /^[^\s@]+@[^\s@]+(?:\.[^\s@]+)+$/;
     if (!v || !emailRegex.test(v)) return "noreply@ahmedelbaz.qzz.io";
     return v;
   }),

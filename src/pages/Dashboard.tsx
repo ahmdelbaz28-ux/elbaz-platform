@@ -48,7 +48,7 @@ export default function Dashboard() {
   // ✅ Calculate real statistics from actual data
   const enrolledCoursesCount = myEnrollments?.length || 0;
   const certificatesCount = myCertificates?.length || 0;
-  const totalSpent = Array.isArray(payments) ? payments.reduce((sum, p) => sum + (parseFloat(String(p.amount)) || 0), 0) : 0;
+  const totalSpent = Array.isArray(payments) ? payments.reduce((sum, p) => sum + (Number.parseFloat(String(p.amount)) || 0), 0) : 0;
 
   if (isLoading) {
     return (
@@ -81,7 +81,7 @@ export default function Dashboard() {
             { icon: <TrendingUp className="h-5 w-5" />, label: lang === "en" ? "Total Spent" : "إجمالي المدفوع", value: `${totalSpent.toLocaleString()} ${lang === "ar" ? "ج.م" : "EGP"}` },
           ].map((stat, i) => (
             <motion.div
-              key={i}
+              key={stat.label}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.1, type: "spring", stiffness: 200, damping: 20 }}
@@ -115,7 +115,7 @@ export default function Dashboard() {
           {myEnrollments && myEnrollments.length > 0 ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {myEnrollments.map((enrollment, idx) => {
-                const progress = parseFloat(enrollment.progress || "0");
+                const progress = Number.parseFloat(enrollment.progress || "0");
                 const isComplete = progress >= 100;
                 const courseSlug = enrollment.course?.slug || enrollment.courseId;
                 const courseTitle = enrollment.course

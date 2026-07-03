@@ -70,7 +70,7 @@ export default function Courses() {
   const [searchQuery, setSearchQuery] = useState("");
 
   const selectedCategory = searchParams.get("category")
-    ? parseInt(searchParams.get("category")!)
+    ? Number.parseInt(searchParams.get("category")!)
     : undefined;
   const selectedType = searchParams.get("type") as "free" | "premium" | undefined;
 
@@ -212,7 +212,7 @@ export default function Courses() {
         {isLoading ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 6 }).map((_, i) => (
-              <CourseCardSkeleton key={i} />
+              <CourseCardSkeleton key={`skeleton-${i}`} />
             ))}
           </div>
         ) : (

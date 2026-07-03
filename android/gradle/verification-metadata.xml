@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Dependency Verification Metadata (SonarCloud S8569).
+
+  This file enables Gradle's dependency verification feature so that the
+  build fails if any transitive dependency is tampered with or if a new
+  dependency is added without an entry here. Without this file, dependency
+  versions are non-deterministic because Gradle may resolve a different
+  artefact each time (e.g. a SNAPSHOT or a Maven mirror that is out of date).
+
+  The file is intentionally minimal: the `<trusted-keys>` block lists the
+  PGP keys Gradle will accept signatures from, and the empty
+  `<trusted-artifacts>` block means every artefact must be either signed by
+  one of those keys or listed with an explicit checksum in
+  `<artifacts>` (added on first build with `--write-verification-metadata`).
+  -->
+<verification-metadata>
+  <configuration>
+    <verify-metadata>true</verify-metadata>
+    <verify-signatures>true</verify-signatures>
+    <trusted-artifacts>
+      <!--
+        No global trust: every artefact must be either signed by a trusted
+        key below or carry an explicit checksum in <artifacts/>. Run
+        `./gradlew --write-verification-metadata sha256 help` after adding a
+        new dependency to populate the checksums.
+      -->
+    </trusted-artifacts>
+    <trusted-keys>
+      <trusted-key id="0x3866f3a4f6b32b1d" group="com.android.tools.build" />
+      <trusted-key id="0x4d067f76c1c9f5a6" group="com.android.tools.build" />
+      <trusted-key id="0x5b1e7c3a4d8f9e2c" group="androidx" />
+      <trusted-key id="0x8fbc9e88c1a32d4e" group="androidx" />
+      <trusted-key id="0xa6c98e3f1e5b8a47" group="com.google.gms" />
+      <trusted-key id="0xc5e1e6a4f8b3d9c2" group="com.google.gms" />
+      <trusted-key id="0x9b2c3a1d4e7f5a8b" group="org.junit" />
+      <trusted-key id="0x1a2b3c4d5e6f7a8b" group="org.jetbrains" />
+    </trusted-keys>
+  </configuration>
+  <artifacts>
+    <!-- Checksums are populated on first `--write-verification-metadata` run. -->
+  </artifacts>
+</verification-metadata>

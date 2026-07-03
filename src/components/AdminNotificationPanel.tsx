@@ -1,3 +1,4 @@
+import { visualRandom } from "@/lib/random";
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import {
   Bell,
@@ -196,7 +197,7 @@ const RECIPIENT_FILTER_CONFIG: Record<
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function generateId(): string {
-  return `admin-notif-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return `admin-notif-${Date.now()}-${visualRandom().toString(36).slice(2, 8)}`;
 }
 
 function formatDateTime(iso: string, lang: "en" | "ar"): string {
@@ -1046,9 +1047,7 @@ export default function AdminNotificationPanel({
                       setErrors((prev) => ({ ...prev, titleAr: undefined }));
                       setSuccessMessage("");
                     }}
-                    placeholder={
-                      isRTL ? "أدخل العنوان بالعربية..." : "أدخل العنوان بالعربية..."
-                    }
+                    placeholder="أدخل العنوان بالعربية..."
                     dir="rtl"
                     className={`border-[#1e2d3d] bg-[#0d1420] text-[#e8f0fe] placeholder:text-[#475569] ${
                       errors.titleAr ? "border-[#f87171] focus-visible:border-[#f87171] focus-visible:ring-[#f87171]/30" : ""
@@ -1116,7 +1115,7 @@ export default function AdminNotificationPanel({
                       setErrors((prev) => ({ ...prev, messageAr: undefined }));
                       setSuccessMessage("");
                     }}
-                    placeholder={isRTL ? "اكتب الرسالة بالعربية..." : "اكتب الرسالة بالعربية..."}
+                    placeholder="اكتب الرسالة بالعربية..."
                     dir="rtl"
                     rows={4}
                     className={`min-h-[100px] border-[#1e2d3d] bg-[#0d1420] text-[#e8f0fe] placeholder:text-[#475569] ${
@@ -1601,7 +1600,7 @@ export default function AdminNotificationPanel({
                         min={10}
                         max={300}
                         onChange={(e) => {
-                          const val = parseInt(e.target.value, 10);
+                          const val = Number.parseInt(e.target.value, 10);
                           if (!isNaN(val)) {
                             setSettingCooldown(val);
                           }
@@ -1716,9 +1715,9 @@ export default function AdminNotificationPanel({
                       valueEn: `${MESSAGE_MIN}–${MESSAGE_MAX} chars`,
                       valueAr: `${MESSAGE_MIN}–${MESSAGE_MAX} حرف`,
                     },
-                  ].map((item, idx) => (
+                  ].map((item) => (
                     <div
-                      key={idx}
+                      key={item.labelEn || item.labelAr}
                       className="flex items-center justify-between rounded-lg border border-[#1e2d3d] bg-[#0d1420] px-3 py-2.5"
                     >
                       <div className="flex items-center gap-2.5">
@@ -1771,9 +1770,9 @@ export default function AdminNotificationPanel({
                       value: `${settingCooldown}s`,
                       color: "#06b6d4",
                     },
-                  ].map((stat, idx) => (
+                  ].map((stat) => (
                     <div
-                      key={idx}
+                      key={stat.label}
                       className="rounded-lg border border-[#1e2d3d] bg-[#0d1420] p-3 text-center"
                     >
                       <p

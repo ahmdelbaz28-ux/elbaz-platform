@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { initiateGoogleOAuth } from "@/lib/google-auth";
 import { Link, useNavigate } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
+import { isValidEmail, hasPasswordStrengthChars } from "@/lib/validation";
 import { trpc } from "@/providers/trpc";
 import { toast } from "sonner";
 import { Zap, Eye, EyeOff } from "lucide-react";
@@ -60,7 +61,7 @@ export default function Register() {
     }
 
     // 2. Fallback: fetch /api/health (may be blocked by Cloudflare Bot Management)
-    console.warn("[GoogleAuth] window.__ENV__ not found, falling back to /api/health fetch");
+    console.warn("[GoogleAuth] globalThis.__ENV__ not found, falling back to /api/health fetch");
     fetch("/api/health", { cache: "no-store" })
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -110,8 +111,8 @@ export default function Register() {
 
     const waitForGoogle = () => {
       if (disposed) return;
-      if (window.google?.accounts?.id) {
-        window.google.accounts.id.initialize({
+      if (globalThis.google?.accounts?.id) {
+        globalThis.google.accounts.id.initialize({
           client_id: googleClientId,
           callback: handleGoogleCallback,
           auto_select: false,
@@ -282,7 +283,9 @@ export default function Register() {
       return;
     }
     // === Email validation (if provided) ===
-    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    // Uses the shared isValidEmail helper to avoid the super-linear
+    // backtracking regex flagged by SonarCloud S8786.
+    if (email.trim() && !isValidEmail(email.trim())) {
       const msg = lang === "en" ? "Invalid email format" : "صيغة البريد الإلكتروني غير صحيحة";
       setError(msg);
       toast.error(msg);
@@ -295,7 +298,7 @@ export default function Register() {
       toast.error(msg);
       return;
     }
-    if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
+    if (!hasPasswordStrengthChars(password)) {
       const msg = lang === "en"
         ? "Password must contain at least one uppercase letter, one lowercase letter, and one number"
         : "كلمة المرور يجب أن تحتوي على حرف كبير وحرف صغير ورقم على الأقل";

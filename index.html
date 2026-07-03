@@ -79,21 +79,21 @@
 
     <!-- 🛡️ Elite Self-Healing: Catch ChunkLoadErrors early -->
     <script>
-      window.addEventListener('error', function(e) {
+      globalThis.addEventListener('error', function(e) {
         var msg = (e.message || "").toLowerCase();
         var isChunkError = msg.indexOf('chunk') > -1 || msg.indexOf('loading') > -1;
-        if (isChunkError && typeof window.__nukeAndReload === 'function') {
+        if (isChunkError && typeof globalThis.__nukeAndReload === 'function') {
           console.error('[Self-Healing] Asset failed to load. Triggering recovery...');
-          window.__nukeAndReload('asset_load_failure', 'automatic recovery');
+          globalThis.__nukeAndReload('asset_load_failure', 'automatic recovery');
         }
       }, true);
     </script>
 
-    <!-- Google Identity Services — loaded only when needed by auth pages via window.__loadGsi() -->
+    <!-- Google Identity Services — loaded only when needed by auth pages via globalThis.__loadGsi() -->
     <!-- This avoids a 40-60ms penalty on every non-auth page load -->
     <script>
       // Expose a lazy loader so auth pages can trigger it on demand
-      window.__loadGsi = function() {
+      globalThis.__loadGsi = function() {
         if (document.querySelector('script[src*="accounts.google.com"]')) return;
         var s = document.createElement('script');
         s.src = 'https://accounts.google.com/gsi/client';
@@ -103,16 +103,16 @@
     </script>
 
     <!-- Microsoft Clarity Analytics — GDPR-Compliant CDN Integration -->
-    <!-- 🔧 FIX (Task ID 4): Clarity Project ID is now read from window.__ENV__
+    <!-- 🔧 FIX (Task ID 4): Clarity Project ID is now read from globalThis.__ENV__
          (injected by boot.ts from CLARITY_PROJECT_ID / CLARITY_ID env var).
          Previously this was a hardcoded numeric ID "3311349506496452" which
          didn't match the env var and couldn't be changed without a rebuild.
          If no ID is configured, Clarity is not loaded. -->
     <script type="text/javascript">
       (function(){
-        var clarityId = (window.__ENV__ && window.__ENV__.CLARITY_PROJECT_ID) || "";
+        var clarityId = (globalThis.__ENV__ && globalThis.__ENV__.CLARITY_PROJECT_ID) || "";
         if (!clarityId) return; // No Clarity ID configured — skip loading
-        window.clarity = window.clarity || function(){(window.clarity.q = window.clarity.q || []).push(arguments)};
+        globalThis.clarity = globalThis.clarity || function(){(globalThis.clarity.q = globalThis.clarity.q || []).push(arguments)};
         var s = document.createElement("script");
         s.async = 1; s.src = "https://www.clarity.ms/tag/" + clarityId;
         var y = document.getElementsByTagName("script")[0];
@@ -190,9 +190,9 @@
           // ✅ FIX: Dark Mode is ALWAYS the default unless user explicitly
           // chose 'light' via the theme toggle.
           var theme = saved === 'light' ? 'light' : 'dark';
-          document.documentElement.setAttribute('data-theme', theme);
+          document.documentElement.dataset.theme = theme;
         } catch(e) {
-          document.documentElement.setAttribute('data-theme', 'dark');
+          document.documentElement.dataset.theme = 'dark';
         }
       })();
     </script>

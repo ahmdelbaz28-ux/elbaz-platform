@@ -33,7 +33,7 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
   // This allows the entire site to be themeable without rewriting thousands of classes!
   useEffect(() => {
     const root = document.documentElement;
-    const isLight = document.documentElement.getAttribute("data-theme") === "light";
+    const isLight = document.documentElement.dataset.theme === "light";
     const defaults = isLight ? DEFAULT_LIGHT : DEFAULT_DARK;
 
     // Use API values if available, otherwise use defaults

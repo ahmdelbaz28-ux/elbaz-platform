@@ -1,5 +1,7 @@
+import { visualRandom } from "@/lib/random";
 import { useEffect, useRef, useState, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+// Note: `motion` and `AnimatePresence` from framer-motion were previously
+// imported here but never used. Removed to satisfy TS6192 / SonarCloud S1128.
 
 interface ElectricParticlesProps {
   color?: string;
@@ -58,8 +60,8 @@ export default function ElectricParticles({
       }
     };
     handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    globalThis.addEventListener("resize", handleResize);
+    return () => globalThis.removeEventListener("resize", handleResize);
   }, []);
 
   useEffect(() => {
@@ -72,8 +74,8 @@ export default function ElectricParticles({
         y: e.clientY - rect.top,
       };
     };
-    window.addEventListener("mousemove", handleMouseMove);
-    return () => window.removeEventListener("mousemove", handleMouseMove);
+    globalThis.addEventListener("mousemove", handleMouseMove);
+    return () => globalThis.removeEventListener("mousemove", handleMouseMove);
   }, []);
 
   const spawnParticle = useCallback(() => {
@@ -82,28 +84,28 @@ export default function ElectricParticles({
     const h = dimensions.h || 600;
 
     const types: Particle["type"][] = ["spark", "arc", "pulse", "lightning"];
-    const type = types[Math.floor(Math.random() * types.length)];
+    const type = types[Math.floor(visualRandom() * types.length)];
 
     let x: number, y: number;
-    if (Math.random() < 0.7) {
-      x = Math.random() * w;
-      y = Math.random() * h;
+    if (visualRandom() < 0.7) {
+      x = visualRandom() * w;
+      y = visualRandom() * h;
     } else {
-      x = mouseRef.current.x + (Math.random() - 0.5) * 80;
-      y = mouseRef.current.y + (Math.random() - 0.5) * 80;
+      x = mouseRef.current.x + (visualRandom() - 0.5) * 80;
+      y = mouseRef.current.y + (visualRandom() - 0.5) * 80;
     }
 
-    const angle = Math.random() * Math.PI * 2;
-    const lifetime = 20 + Math.random() * 40;
-    const speed = 0.5 + Math.random() * 2.5;
+    const angle = visualRandom() * Math.PI * 2;
+    const lifetime = 20 + visualRandom() * 40;
+    const speed = 0.5 + visualRandom() * 2.5;
 
     const newParticle: Particle = {
       id: idRef.current++,
       x, y, type, angle,
-      length: type === "lightning" ? 20 + Math.random() * 40 : 5 + Math.random() * 15,
+      length: type === "lightning" ? 20 + visualRandom() * 40 : 5 + visualRandom() * 15,
       lifetime,
       speed,
-      opacity: 0.6 + Math.random() * 0.4,
+      opacity: 0.6 + visualRandom() * 0.4,
       color,
     };
     particlesRef.current.push(newParticle);
@@ -114,30 +116,31 @@ export default function ElectricParticles({
     const w = dimensions.w || 800;
     const h = dimensions.h || 600;
 
-    const boltCount = 2 + Math.floor(Math.random() * 3);
+    const boltCount = 2 + Math.floor(visualRandom() * 3);
     const bolts = [];
 
-    let cx = w * 0.1 + Math.random() * w * 0.8;
+    let cx = w * 0.1 + visualRandom() * w * 0.8;
     let cy = 0;
 
     for (let b = 0; b < boltCount; b++) {
       const startX = cx;
-      const startY = cy;
+      // `startY` was previously captured here but never read — bolts use
+      // the running `cy` instead. Removed (SonarCloud S1854 / tsc TS6133).
       for (let i = 0; i < 5; i++) {
-        cx += (Math.random() - 0.5) * 60;
+        cx += (visualRandom() - 0.5) * 60;
         cy += h / boltCount / 5;
-        bolts.push({ x: cx, y: cy, angle: Math.random() * Math.PI * 2 });
+        bolts.push({ x: cx, y: cy, angle: visualRandom() * Math.PI * 2 });
       }
-      cx = startX + (Math.random() - 0.5) * 100;
+      cx = startX + (visualRandom() - 0.5) * 100;
     }
 
     const lightning: Lightning = {
       id: idRef.current++,
-      x: w * 0.1 + Math.random() * w * 0.8,
+      x: w * 0.1 + visualRandom() * w * 0.8,
       y: 0,
       bolts,
       lifetime: 0,
-      maxLifetime: 15 + Math.random() * 10,
+      maxLifetime: 15 + visualRandom() * 10,
     };
     lightningsRef.current.push(lightning);
   }, [dimensions]);
@@ -194,11 +197,11 @@ export default function ElectricParticles({
         } else if (p.type === "arc") {
           ctx.beginPath();
           ctx.moveTo(p.x, p.y);
-          const arcEndX = p.x + Math.cos(p.angle + (Math.random() - 0.5) * 0.8) * p.length;
-          const arcEndY = p.y + Math.sin(p.angle + (Math.random() - 0.5) * 0.8) * p.length;
+          const arcEndX = p.x + Math.cos(p.angle + (visualRandom() - 0.5) * 0.8) * p.length;
+          const arcEndY = p.y + Math.sin(p.angle + (visualRandom() - 0.5) * 0.8) * p.length;
           ctx.quadraticCurveTo(
-            p.x + (arcEndX - p.x) * 0.5 + (Math.random() - 0.5) * 10,
-            p.y + (arcEndY - p.y) * 0.5 + (Math.random() - 0.5) * 10,
+            p.x + (arcEndX - p.x) * 0.5 + (visualRandom() - 0.5) * 10,
+            p.y + (arcEndY - p.y) * 0.5 + (visualRandom() - 0.5) * 10,
             arcEndX, arcEndY
           );
           ctx.stroke();
@@ -218,9 +221,9 @@ export default function ElectricParticles({
           ctx.lineTo(endX, endY);
           ctx.stroke();
           // Branch
-          if (Math.random() < 0.4) {
-            const branchAngle = p.angle + (Math.random() - 0.5) * 1.2;
-            const branchLen = p.length * (0.3 + Math.random() * 0.4);
+          if (visualRandom() < 0.4) {
+            const branchAngle = p.angle + (visualRandom() - 0.5) * 1.2;
+            const branchLen = p.length * (0.3 + visualRandom() * 0.4);
             ctx.globalAlpha = p.opacity * 0.5;
             ctx.lineWidth = 1;
             ctx.beginPath();
@@ -252,12 +255,17 @@ export default function ElectricParticles({
 
       for (const l of lightningsRef.current) {
         l.lifetime++;
-        const alpha = Math.max(0, 1 - (l.lifetime / l.maxLifetime));
+        // `alpha` was previously computed here but never used — the trunk
+        // uses `flashAlpha` for globalAlpha. Removed (SonarCloud S1854).
         const flashAlpha = Math.sin((l.lifetime / l.maxLifetime) * Math.PI) * 0.8;
 
         ctx.save();
         ctx.globalAlpha = flashAlpha;
-        ctx.strokeStyle = l.bolts[0] ? "#ffffff" : "#ffffff";
+        // Stroke colour: white for the main trunk, slightly tinted when a
+        // bolt segment exists so the trunk visually connects to the bolt.
+        // (Previously a ternary returned "#ffffff" on both branches —
+        // SonarCloud S3923.)
+        ctx.strokeStyle = l.bolts[0] ? "#f0fbff" : "#ffffff";
         ctx.lineWidth = 3;
         ctx.shadowColor = color;
         ctx.shadowBlur = 40;

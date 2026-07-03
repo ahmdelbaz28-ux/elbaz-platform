@@ -88,8 +88,8 @@ paymobWebhook.post("/webhook", async (c) => {
 
       // ── Step 4: Verify amount matches what we expect ──
       if (isSuccess) {
-        const expectedAmount = parseFloat(String(paymentRecord.finalAmount ?? paymentRecord.amount));
-        const webhookAmount = parseFloat(obj.amount_cents?.toString() ?? obj.amount) / 100;
+        const expectedAmount = Number.parseFloat(String(paymentRecord.finalAmount ?? paymentRecord.amount));
+        const webhookAmount = Number.parseFloat(obj.amount_cents?.toString() ?? obj.amount) / 100;
         const amountValid = Math.abs(webhookAmount - expectedAmount) < 0.01;
 
         if (!amountValid) {

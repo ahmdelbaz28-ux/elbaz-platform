@@ -11,6 +11,7 @@
  *   const fabRef = useChatFabAnimation();
  *   <button ref={fabRef}>...</button>
  */
+import { visualRandom } from "@/lib/random";
 
 import { useEffect, useRef, useCallback } from "react";
 
@@ -52,18 +53,18 @@ export function useChatFabAnimation({
     const sparkle = document.createElement("span");
 
     // Random angle (0-360 degrees) and distance (30-70px)
-    const angle = Math.random() * 360;
-    const distance = 30 + Math.random() * 40;
+    const angle = visualRandom() * 360;
+    const distance = 30 + visualRandom() * 40;
     const rad = (angle * Math.PI) / 180;
     const tx = Math.cos(rad) * distance;
     const ty = Math.sin(rad) * distance;
 
     // Random sparkle properties
-    const size = 3 + Math.random() * 4;
+    const size = 3 + visualRandom() * 4;
     const color =
-      SPARKLE_COLORS[Math.floor(Math.random() * SPARKLE_COLORS.length)];
-    const rotation = Math.random() * 180;
-    const scale = 0.5 + Math.random() * 0.8;
+      SPARKLE_COLORS[Math.floor(visualRandom() * SPARKLE_COLORS.length)];
+    const rotation = visualRandom() * 180;
+    const scale = 0.5 + visualRandom() * 0.8;
 
     Object.assign(sparkle.style, {
       position: "absolute",
@@ -141,7 +142,7 @@ export function useChatFabAnimation({
     if (!fab) return;
 
     // Check for reduced-motion preference
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    if (globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       return;
     }
 

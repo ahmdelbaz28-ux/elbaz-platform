@@ -21,7 +21,7 @@
     html.setAttribute("lang", lang);
 
     // Also set a data attribute so CSS can target RTL/LTR before React loads
-    html.setAttribute("data-lang", lang);
+    html.dataset.lang = lang;
   } catch (err) {
     // localStorage might be blocked (private mode) — default to RTL (Arabic)
     document.documentElement.setAttribute("dir", "rtl");

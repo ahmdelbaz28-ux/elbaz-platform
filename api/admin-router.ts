@@ -85,7 +85,7 @@ export const adminRouter = createRouter({
       totalCourses: courseCount?.value ?? 0,
       totalEnrollments: enrollmentCount?.value ?? 0,
       openTickets: ticketOpen?.value ?? 0,
-      totalRevenue: parseFloat(revenueResult?.total ?? "0"),
+      totalRevenue: Number.parseFloat(revenueResult?.total ?? "0"),
     };
   }),
 
@@ -263,9 +263,9 @@ export const adminRouter = createRouter({
     return {
       newUsers30d: recentUsers?.value ?? 0,
       newEnrollments30d: recentEnrollments?.value ?? 0,
-      revenue30d: parseFloat(recentRevenue?.total ?? "0"),
+      revenue30d: Number.parseFloat(recentRevenue?.total ?? "0"),
       totalLessons: totalLessons?.value ?? 0,
-      revenueByDay: recentPayments.map((p: any) => ({ date: p.date, amount: parseFloat(p.amount) })),
+      revenueByDay: recentPayments.map((p: any) => ({ date: p.date, amount: Number.parseFloat(p.amount) })),
     };
   }),
 });

@@ -1,3 +1,4 @@
+import { visualRandom } from "@/lib/random";
 import { useEffect, useState, useCallback, createContext, useContext, type ReactNode } from "react";
 import { X, Bell, Sparkles, Gift, BookOpen } from "lucide-react";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -123,7 +124,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const showNotification = useCallback((toast: Omit<Toast, "id">) => {
-    const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const id = `toast-${Date.now()}-${visualRandom().toString(36).slice(2, 7)}`;
     setToasts((prev) => {
       // Keep max 4 toasts
       const updated = [...prev, { ...toast, id }];

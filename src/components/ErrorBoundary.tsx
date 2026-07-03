@@ -72,7 +72,7 @@ class ErrorBoundary extends Component<Props, State> {
 
             <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
               <button
-                onClick={() => window.location.reload()}
+                onClick={() => globalThis.location.reload()}
                 className="px-6 py-2.5 bg-gradient-to-r from-[#06b6d4] to-[#0891b2] text-[#0a0e17] font-semibold rounded-lg hover:shadow-[0_0_16px_rgba(6,182,212,0.3)] transition-all"
               >
                 {ar ? "إعادة تحميل" : "Reload Page"}
@@ -82,7 +82,7 @@ class ErrorBoundary extends Component<Props, State> {
                 onClick={(e) => {
                   e.preventDefault();
                   this.handleReset();
-                  window.location.href = "/";
+                  globalThis.location.href = "/";
                 }}
                 className="px-6 py-2.5 border border-[#1e2d3d] text-[#94a3b8] font-medium rounded-lg hover:border-[#06b6d4] hover:text-[#06b6d4] transition-all"
               >

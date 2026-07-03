@@ -46,10 +46,28 @@ spec:
             requests:
               cpu: 100m
               memory: 300Mi
+              ephemeral-storage: 512Mi
             limits:
               cpu: 200m
               memory: 600Mi
+              ephemeral-storage: 2Gi
           env:
             - name: AWS_REGION
               value: "us-east-1"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
       hostNetwork: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault

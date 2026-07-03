@@ -27,7 +27,7 @@ spec:
               app: backend
       containers:
         - name: backend
-          image: ahmdelbaz28/ahmdrtap:latest
+          image: ahmdelbaz28/ahmdrtap:v1.0.0
           ports:
             - containerPort: 3001
               protocol: TCP
@@ -40,9 +40,11 @@ spec:
             requests:
               cpu: 250m
               memory: 256Mi
+              ephemeral-storage: 512Mi
             limits:
               cpu: 1000m
               memory: 1Gi
+              ephemeral-storage: 2Gi
           livenessProbe:
             httpGet:
               path: /api/health
@@ -59,3 +61,19 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault

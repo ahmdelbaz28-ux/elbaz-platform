@@ -44,7 +44,7 @@ export default function AuthLayout({
 }) {
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
-    return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
+    return saved ? Number.parseInt(saved, 10) : DEFAULT_WIDTH;
   });
   const { isLoading, user } = useAuth();
 
@@ -71,7 +71,7 @@ export default function AuthLayout({
           </div>
           <Button
             onClick={() => {
-              window.location.href = LOGIN_PATH;
+              globalThis.location.href = LOGIN_PATH;
             }}
             size="lg"
             className="w-full shadow-lg hover:shadow-xl transition-all"

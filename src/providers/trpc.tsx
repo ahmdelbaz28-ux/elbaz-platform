@@ -24,7 +24,7 @@ const queryClient = new QueryClient({
 });
 
 const persister = createSyncStoragePersister({
-  storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+  storage: typeof window !== 'undefined' ? globalThis.localStorage : undefined,
   key: 'ELBAZ_QUERY_CACHE',
 });
 
@@ -64,17 +64,21 @@ const trpcClient = trpc.createClient({
       fetch(input, init) {
           const token = getStoredToken();
           const isNative = isNativePlatform();
-          const platformHeader = isNative
-            ? { "x-capacitor-platform": (window as any).Capacitor?.getPlatform?.() ?? "capacitor" }
+          const platformHeader: Record<string, string> = isNative
+            ? { "x-capacitor-platform": (globalThis as { Capacitor?: { getPlatform?: () => string } }).Capacitor?.getPlatform?.() ?? "capacitor" }
             : {};
+          // Build headers as a plain Record<string, string> so fetch's overload
+          // resolution picks a single HeadersInit signature (TS2769 was firing
+          // because the previous inline object produced a complex union type).
+          const headers: Record<string, string> = {
+            ...(init?.headers as Record<string, string> | undefined),
+            ...platformHeader,
+          };
+          if (token) headers["Authorization"] = `Bearer ${token}`;
           return globalThis.fetch(input, {
             ...(init ?? {}),
             credentials: isNative ? "omit" : "include",
-            headers: {
-              ...(init?.headers ?? {}),
-              ...platformHeader,
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
+            headers,
           });
         },
     }),

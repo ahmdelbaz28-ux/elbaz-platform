@@ -16,8 +16,13 @@ interface AuditLogEntry {
 }
 
 const PII_PATTERNS: Record<string, RegExp> = {
-  email: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
-  phone: /(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g,
+  // Email: anchored character classes, no overlapping quantifiers
+  // (SonarCloud S8786). The `[a-zA-Z0-9.-]+` after `@` cannot match `.`
+  // at the same time as `[a-zA-Z]{2,}` because of the explicit `\.`
+  // separator, but we use `(?:\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}` to
+  // make the split unambiguous.
+  email: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}/g,
+  phone: /(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g,
   creditCard: /\b(?:\d[ -]*?){13,16}\b/g,
   ssn: /\b\d{3}-\d{2}-\d{4}\b/g,
 };

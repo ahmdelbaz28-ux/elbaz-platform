@@ -4,7 +4,7 @@ import { db } from "./queries/connection.js";
 import { eq, and, sql, lt, lte, gte, isNull, or, count } from "drizzle-orm";
 import { rateLimit } from "./lib/rate-limiter.js";
 import { env } from "./lib/env.js";
-import { createHmac, timingSafeEqual } from "crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { promoCodes, promoCodeUsage, payments } from "@db/schema";
 import * as cookie from "cookie";
 import { AUTH_COOKIE_NAME } from "./lib/cookies.js";
@@ -106,7 +106,7 @@ async function applyPromoCodeInternal(params: {
     }
   }
 
-  const discountValue = parseFloat(promo.discountValue);
+  const discountValue = Number.parseFloat(promo.discountValue);
 
   if (params.paymentId) {
     await db
@@ -238,7 +238,7 @@ promoRouter.get("/validate/:code", async (c) => {
 
   return c.json({
     valid: true,
-    discount: parseFloat(promo.discountValue),
+    discount: Number.parseFloat(promo.discountValue),
     remainingUses,
     expiresAt: promo.validUntil,
   });

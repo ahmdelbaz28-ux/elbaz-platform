@@ -1,5 +1,6 @@
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
+import { randomInt } from "node:crypto";
 import { env } from "../lib/env.js";
 
 function sanitizeDbUri(raw: string): string {
@@ -63,11 +64,11 @@ function createPoolConfig(): mysql.PoolOptions {
 
 // ── Connection Pool with Self-Healing Retry Logic ────────────────
 const poolConfig = createPoolConfig();
-let pool: mysql.Pool;
+// `pool` is created once and never reassigned — declare as `const` so the
+// binding cannot be accidentally re-bound elsewhere (SonarCloud S6861:
+// mutable `let` exports are a code smell).
+const pool: mysql.Pool = mysql.createPool(poolConfig);
 let isMockMode = false;
-
-// Create pool once (mysql2.createPool is lazy — doesn't connect immediately)
-pool = mysql.createPool(poolConfig);
 
 async function testConnection(retries = 3, delay = 1000): Promise<void> {
   let lastErr: Error | null = null;
@@ -93,8 +94,23 @@ async function testConnection(retries = 3, delay = 1000): Promise<void> {
   isMockMode = true;
 }
 
-// Fire-and-forget: test connection in background. boot.ts calls ensureDatabase before any queries.
-testConnection();
+// Fire-and-forget: test connection in background. boot.ts calls
+// ensureDatabase before any queries. We use `void` rather than `await` so
+// module load is not blocked (SonarCloud S7785 prefers top-level await
+// only when the result is actually consumed).
+void testConnection();
+
+// Helper: build the in-memory mock query result used in Sandbox Mode.
+// Extracted from the Proxy handler so we do not nest function declarations
+// more than four levels deep (SonarCloud S2004).
+function buildMockQueryResult(): unknown {
+  return {
+    where: () => ({ limit: () => [] }),
+    select: () => ({ from: () => ({ where: () => ({ limit: () => [] }) }) }),
+    insert: () => ({ values: () => [{ insertId: randomInt(1, 10000) }] }),
+    update: () => ({ set: () => ({ where: () => ({}) }) }),
+  };
+}
 
 // Proxy DB object to handle Mock Mode
 const drizzleDb = drizzle(pool);
@@ -103,12 +119,7 @@ const db = new Proxy(drizzleDb, {
     if (isMockMode) {
       return (..._args: any[]) => {
         console.log(`[Sandbox] Intercepted DB call: ${String(prop)}`);
-        return {
-          where: () => ({ limit: () => [] }),
-          select: () => ({ from: () => ({ where: () => ({ limit: () => [] }) }) }),
-          insert: () => ({ values: () => [ { insertId: Math.floor(Math.random() * 10000) } ] }),
-          update: () => ({ set: () => ({ where: () => ({}) }) }),
-        };
+        return buildMockQueryResult();
       };
     }
     return Reflect.get(target, prop, receiver);
