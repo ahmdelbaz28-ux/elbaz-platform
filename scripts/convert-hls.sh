@@ -34,12 +34,12 @@ usage() {
     exit 1
 }
 
-if [ -z "$INPUT" ]; then
+if [[ -z "$INPUT" ]]; then
     echo -e "${RED}Error: No input file specified${NC}"
     usage
 fi
 
-if [ ! -f "$INPUT" ]; then
+if [[ ! -f "$INPUT" ]]; then
     echo -e "${RED}Error: File not found: $INPUT${NC}"
     exit 1
 fi

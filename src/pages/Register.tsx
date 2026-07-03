@@ -193,7 +193,9 @@ export default function Register() {
     },
     onError: (err) => {
       trackPlatform("register_failed");
-      let errorMsg = err.message;
+      // The if/else-if/else below covers every case, so `err.message` is
+      // always overwritten — declared without an initialiser (SonarCloud S1854).
+      let errorMsg: string;
       const errorCode = (err.data as { code?: string })?.code;
       if (errorCode === "TOO_MANY_REQUESTS") {
         errorMsg = lang === "ar"

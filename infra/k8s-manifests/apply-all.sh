@@ -9,9 +9,9 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-log_info()  { echo -e "${GREEN}[INFO]${NC}  $1"; }
-log_warn()  { echo -e "${YELLOW}[WARN]${NC}  $1"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+log_info()  { local msg="$1"; echo -e "${GREEN}[INFO]${NC}  $msg"; }
+log_warn()  { local msg="$1"; echo -e "${YELLOW}[WARN]${NC}  $msg"; }
+log_error() { local msg="$1"; echo -e "${RED}[ERROR]${NC} $msg" >&2; }
 
 check_kubectl() {
     if ! command -v kubectl &>/dev/null; then
@@ -105,12 +105,12 @@ verify_pods_health() {
     kubectl get pods -n "${NAMESPACE}" -o json 2>/dev/null | \
     jq -r '.items[] | "\(.metadata.name) \(.status.phase)"' 2>/dev/null | \
     while read -r name phase; do
-        if [ "${phase}" != "Running" ] && [ "${phase}" != "Succeeded" ]; then
+        if [[ "${phase}" != "Running" ]] && [[ "${phase}" != "Succeeded" ]]; then
             log_warn "  Pod ${name}: ${phase}"
             unhealthy=1
         fi
     done || true
-    if [ "${unhealthy}" -eq 0 ]; then
+    if [[ "${unhealthy}" -eq 0 ]]; then
         log_info "  All pods healthy"
     fi
 }
@@ -153,7 +153,7 @@ main() {
     local failed=0
     for manifest in "${MANIFESTS[@]}"; do
         filepath="${SCRIPT_DIR}/${manifest}"
-        if [ ! -f "${filepath}" ]; then
+        if [[ ! -f "${filepath}" ]]; then
             log_warn "File not found, skipping: ${manifest}"
             continue
         fi
@@ -167,7 +167,7 @@ main() {
     log_info "Applying StorageClasses..."
     echo "============================================"
     for sc_file in "${SCRIPT_DIR}"/12-storageclasses.yaml; do
-        if [ -f "${sc_file}" ]; then
+        if [[ -f "${sc_file}" ]]; then
             apply_manifest "${sc_file}" || failed=$((failed + 1))
         fi
     done
@@ -176,7 +176,7 @@ main() {
     echo "============================================"
     log_info "Deployment Summary"
     echo "============================================"
-    if [ "${failed}" -gt 0 ]; then
+    if [[ "${failed}" -gt 0 ]]; then
         log_warn "${failed} manifest(s) failed to apply"
     else
         log_info "All manifests applied successfully"

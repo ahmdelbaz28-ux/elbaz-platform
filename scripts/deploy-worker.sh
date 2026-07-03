@@ -33,7 +33,7 @@ echo -e "${CYAN}═════════════════════�
 echo ""
 
 # ── Step 1: Verify environment ──────────────────────────────────────────────
-if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then
   echo -e "${RED}❌ CLOUDFLARE_API_TOKEN is not set${NC}"
   echo ""
   echo "Create one at: https://dash.cloudflare.com/profile/api-tokens"
@@ -50,7 +50,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
-if [ ! -f "$WORKER_FILE" ]; then
+if [[ ! -f "$WORKER_FILE" ]]; then
   echo -e "${RED}❌ Worker file not found: $WORKER_FILE${NC}"
   exit 1
 fi

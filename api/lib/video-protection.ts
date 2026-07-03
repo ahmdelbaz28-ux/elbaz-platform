@@ -93,7 +93,7 @@ export async function getSecureVideoUrl(options: VideoAccessOptions): Promise<Vi
     try {
       const { getR2ObjectMetadata } = await import("./r2");
       const meta = await getR2ObjectMetadata(hlsObjectKey);
-      if (meta && meta.exists) {
+      if (meta?.exists) {
         hlsUrl = await generateR2PresignedUrl({
           objectKey: hlsObjectKey,
           expiresIn: VIDEO_URL_EXPIRY_SECONDS,

@@ -88,7 +88,7 @@ export const paymentRouter = createRouter({
             .where(eq(promoCodes.id, input.promoCodeId))
             .limit(1);
 
-          if (promo && promo.isActive) {
+          if (promo?.isActive) {
             const now = new Date();
             if (now >= promo.validFrom && (promo.validUntil === null || now <= promo.validUntil)) {
               if (promo.maxUses === null || promo.usedCount < promo.maxUses) {

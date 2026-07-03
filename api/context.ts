@@ -80,6 +80,11 @@ export async function createContext(
         // ✅ PERFORMANCE FIX: Check cache first to avoid DB query
         const cacheKey = `${payload.userId}:${payload.tokenVersion}`;
         const cached = userCache.get(cacheKey);
+        // Use `&&` instead of `?.` here because we need TypeScript to narrow
+        // `cached` to non-undefined inside the block (cached.expiry is then
+        // safely accessible). The `?.` form would leave `cached` as
+        // `T | undefined` and trip TS18048 on subsequent accesses.
+        // sonar:off[typescript:S6582] — see comment above.
         if (cached && cached.expiry > Date.now()) {
           ctx.user = cached.user;
           // ✅ SLIDING SESSION: Check if token needs refresh even for cached users

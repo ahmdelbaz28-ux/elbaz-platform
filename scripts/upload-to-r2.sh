@@ -38,12 +38,12 @@ usage() {
     exit 1
 }
 
-if [ -z "$LOCAL_DIR" ]; then
+if [[ -z "$LOCAL_DIR" ]]; then
     echo -e "${RED}Error: No local folder specified${NC}"
     usage
 fi
 
-if [ ! -d "$LOCAL_DIR" ]; then
+if [[ ! -d "$LOCAL_DIR" ]]; then
     echo -e "${RED}Error: Directory not found: $LOCAL_DIR${NC}"
     exit 1
 fi
@@ -56,17 +56,17 @@ if ! command -v aws &>/dev/null; then
 fi
 
 # Verify credentials are set
-if [ -z "${AWS_ACCESS_KEY_ID:-}" ]; then
+if [[ -z "${AWS_ACCESS_KEY_ID:-}" ]]; then
     echo -e "${YELLOW}Warning: AWS_ACCESS_KEY_ID not set. Using R2_ACCESS_KEY_ID...${NC}"
     export AWS_ACCESS_KEY_ID="${R2_ACCESS_KEY_ID:-}"
 fi
 
-if [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+if [[ -z "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
     echo -e "${YELLOW}Warning: AWS_SECRET_ACCESS_KEY not set. Using R2_SECRET_ACCESS_KEY...${NC}"
     export AWS_SECRET_ACCESS_KEY="${R2_SECRET_ACCESS_KEY:-}"
 fi
 
-if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+if [[ -z "$AWS_ACCESS_KEY_ID" ]] || [[ -z "$AWS_SECRET_ACCESS_KEY" ]]; then
     echo -e "${RED}Error: R2 credentials not configured${NC}"
     echo "Set R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY in your environment"
     exit 1

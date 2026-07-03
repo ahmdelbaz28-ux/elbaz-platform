@@ -112,6 +112,10 @@ export default function Dashboard() {
             <BookOpen className="h-5 w-5 text-[#06b6d4]" />
           </div>
 
+          {/* Use `&&` instead of `?.` for the length check so TypeScript
+              narrows `myEnrollments` to non-undefined inside the ternary
+              (the `.map` on the next line otherwise trips TS18048).
+              sonar:off[typescript:S6582]. */}
           {myEnrollments && myEnrollments.length > 0 ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {myEnrollments.map((enrollment, idx) => {
@@ -249,6 +253,7 @@ export default function Dashboard() {
                 <Award className="h-5 w-5" />
               </motion.div>
             </div>
+            {/* sonar:off[typescript:S6582] — see comment on myEnrollments above. */}
             {myCertificates && myCertificates.length > 0 ? (
               <div className="space-y-3">
                 {myCertificates.map((cert) => {
@@ -332,6 +337,7 @@ export default function Dashboard() {
                 <Zap className="h-5 w-5 text-[#06b6d4]" />
               </motion.div>
             </div>
+            {/* sonar:off[typescript:S6582] — see comment on myEnrollments above. */}
             {payments && payments.length > 0 ? (
               <div className="space-y-3">
                 {payments.slice(0, 5).map((p, idx) => (

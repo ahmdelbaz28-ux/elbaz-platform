@@ -22,6 +22,9 @@ export default function QuizComponent({ lessonId }: QuizComponentProps) {
 
   // Track quiz start (first time user interacts with quiz)
   useEffect(() => {
+    // Use `&&` instead of `?.` because we need TypeScript to narrow
+    // `questions` to non-undefined for the `questions.length` access on
+    // the next line (TS18048). sonar:off[typescript:S6582].
     if (questions && questions.length > 0 && answers.length > 0 && !quizStartedTracked && !showResult) {
       trackLearning("quiz_started", { lessonId, questionCount: questions.length });
       setQuizStartedTracked(true);

@@ -99,7 +99,10 @@ async function globalSetup() {
   try {
     const cleanupResponse = await apiContext.get("/api/courses");
     if (cleanupResponse.status() === 200) {
-      const body = await cleanupResponse.json();
+      // Response body intentionally not consumed — we only care that the
+      // health check returned 200 OK. (SonarCloud S1854: previously
+      // `const body = await cleanupResponse.json()` was assigned but never
+      // read.)
       console.log(`API health check passed. Server is reachable.`);
     }
   } catch (healthError) {

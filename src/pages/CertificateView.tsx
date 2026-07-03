@@ -173,7 +173,7 @@ export default function CertificateView() {
 
         {/* Verification Status - hidden during print */}
         <div className="no-print mb-6">
-          {cert && cert.verified ? (
+          {cert?.verified ? (
             <div className="flex items-center gap-3 rounded-xl border border-[rgba(16,185,129,0.2)] bg-[rgba(16,185,129,0.05)] px-4 py-3">
               <CheckCircle2 className="h-5 w-5 shrink-0 text-[#10b981]" />
               <div>

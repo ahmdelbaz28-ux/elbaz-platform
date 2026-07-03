@@ -57,7 +57,7 @@ export class SupportPage {
     for (const selector of selectors) {
       const element = this.page.locator(selector).first();
       const text = await element.textContent().catch(() => null);
-      if (text && text.trim()) {
+      if (text?.trim()) {
         return text.trim();
       }
     }

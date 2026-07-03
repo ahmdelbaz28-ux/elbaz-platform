@@ -63,7 +63,7 @@ export class RegisterPage {
       const count = await elements.count();
       for (let i = 0; i < count; i++) {
         const text = await elements.nth(i).textContent();
-        if (text && text.trim()) {
+        if (text?.trim()) {
           errors.push(text.trim());
         }
       }
