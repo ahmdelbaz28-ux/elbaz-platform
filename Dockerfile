@@ -19,9 +19,8 @@ RUN set -o pipefail && \
 # already excludes every known sensitive path (.env*, .git*, infra/, docs/,
 # Dockerfile itself, etc.). Enumerating dirs manually would be brittle: any
 # new source folder added later would silently be missing from the image.
-# sonar:off[docker:S6470]
+# NOSONAR — see justification above.
 COPY . .
-# sonar:on[docker:S6470]
 
 # Initialize git (needed for LFS checkout) and convert LFS pointers to real files
 # ✅ FIX: Use set -e to fail fast if LFS checkout fails (was silently ignored before)
