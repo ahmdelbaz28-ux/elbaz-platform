@@ -24,7 +24,7 @@ export default function CertificateVerify() {
   );
 
   const hasSearched = searchQuery.length > 0;
-  const isValid = hasSearched && cert && cert.verified;
+  const isValid = hasSearched && cert?.verified;
 
   const handleVerify = (e: React.FormEvent) => {
     e.preventDefault();

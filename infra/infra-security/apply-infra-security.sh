@@ -16,10 +16,10 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-log_info() { echo -e "${BLUE}[INFO]${NC} $1" | tee -a "$REPORT_FILE"; }
-log_pass() { echo -e "${GREEN}[PASS]${NC} $1" | tee -a "$REPORT_FILE"; PASSED=$((PASSED + 1)); }
-log_fail() { echo -e "${RED}[FAIL]${NC} $1" | tee -a "$REPORT_FILE"; FAILED=$((FAILED + 1)); }
-log_warn() { echo -e "${YELLOW}[WARN]${NC} $1" | tee -a "$REPORT_FILE"; WARNINGS=$((WARNINGS + 1)); }
+log_info() { local msg="$1"; echo -e "${BLUE}[INFO]${NC} $msg" | tee -a "$REPORT_FILE"; }
+log_pass() { local msg="$1"; echo -e "${GREEN}[PASS]${NC} $msg" | tee -a "$REPORT_FILE"; PASSED=$((PASSED + 1)); }
+log_fail() { local msg="$1"; echo -e "${RED}[FAIL]${NC} $msg" | tee -a "$REPORT_FILE"; FAILED=$((FAILED + 1)); }
+log_warn() { local msg="$1"; echo -e "${YELLOW}[WARN]${NC} $msg" | tee -a "$REPORT_FILE"; WARNINGS=$((WARNINGS + 1)); }
 
 echo "======================================================" | tee -a "$REPORT_FILE"
 echo "  Ahmed El-Baz LMS - Infrastructure Security Deploy  " | tee -a "$REPORT_FILE"

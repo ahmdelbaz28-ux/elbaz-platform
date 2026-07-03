@@ -805,7 +805,11 @@ async function tryModel(
 async function openRouterFallback(
   messages: { role: string; content: string }[],
   systemPrompt: string,
-  language?: string
+  // `language` was previously a typed parameter here but never consumed in
+  // this fallback path — the system prompt is built by the caller. Rename
+  // to `_language` to signal intent and remove the `void language;` hack
+  // (SonarCloud S3735).
+  _language?: string
 ): Promise<{ reply: string; model: string } | null> {
   if (!openrouterKeyValidated) {
     await validateOpenRouterKey();
@@ -869,8 +873,9 @@ async function openRouterFallback(
     if (result) return result;
   }
 
-  // no-op to satisfy unused 'language' if both providers configured
-  void language;
+  // Note: previously had `void language;` here to silence the unused-param
+  // warning; the parameter is now named `_language` so the no-op is no
+  // longer needed (SonarCloud S3735).
   return null;
 }
 
@@ -1270,7 +1275,7 @@ export async function getStreamResponse(request: {
               try {
                 const parsed = JSON.parse(rest.slice(6).trim());
                 const delta = parsed.choices?.[0]?.delta;
-                if (delta && delta.content) {
+                if (delta?.content) {
                   sawContent = true;
                   try { controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: delta.content }) + "\n\n")); } catch { /* already closed */ }
                 }
@@ -1352,7 +1357,9 @@ export async function getStreamResponse(request: {
 
         // Check for overload — try next model
         if (response.status === 429 || response.status === 503) {
-          const retryAfter = response.headers.get("retry-after") || "5";
+          // `retryAfter` header was previously read here but never used
+          // (the warning uses response.status, not retryAfter). Removed
+          // (SonarCloud S1854).
           console.warn(`[Chatbot/Stream/Groq] ${modelId} overloaded (${response.status}) — trying next model...`);
           break; // Try next model
         }
@@ -1385,7 +1392,7 @@ export async function getStreamResponse(request: {
                 try {
                   const parsed = JSON.parse(trimmed.slice(6));
                   const delta = parsed.choices?.[0]?.delta;
-                  if (delta && delta.content) {
+                  if (delta?.content) {
                     try { controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: delta.content }) + "\n\n")); } catch { /* closed */ }
                   }
                 } catch { /* skip */ }
@@ -1457,7 +1464,7 @@ export async function getStreamResponse(request: {
             try {
               const parsed = JSON.parse(trimmed.slice(6));
               const delta = parsed.choices?.[0]?.delta;
-              if (delta && delta.content) {
+              if (delta?.content) {
                 try {
                   controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: delta.content }) + "\n\n"));
                 } catch { /* stream closed */ }

@@ -171,7 +171,9 @@ chatbotRouter.post("/stream", async (c) => {
     (async () => {
       try {
         const reader = result.stream.getReader();
-        const decoder = new TextDecoder();
+        // `decoder` was previously constructed here but never used — the
+        // loop enqueues raw `Uint8Array` chunks directly without decoding.
+        // Removed (SonarCloud S1854).
 
         while (true) {
           // Check for timeout or stream closure

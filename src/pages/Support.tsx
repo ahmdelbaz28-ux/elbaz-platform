@@ -242,7 +242,7 @@ export default function Support() {
             <div className="py-12 text-center">
               <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[#1f2d44] border-t-[#06b6d4]" />
             </div>
-           ) : tickets && tickets.length > 0 ? (
+           ) : tickets?.length > 0 ? (
              <div className="space-y-3">
                {tickets.map((ticket: Ticket) => (
                 <div key={ticket.id} className="rounded-xl border border-[#1f2d44] bg-[#111827] p-5">

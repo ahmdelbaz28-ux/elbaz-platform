@@ -17,7 +17,8 @@
 
 import "dotenv/config";
 import bcryptjs from "bcryptjs";
-import { drizzle } from "drizzle-orm/mysql2";
+// `drizzle` import removed — seed.ts uses raw `mysql` connection only.
+// (SonarCloud S1128: unnecessary import.)
 import mysql from "mysql2/promise";
 import { sql } from "drizzle-orm";
 
@@ -50,7 +51,9 @@ async function main() {
   }
 
   const connection = await mysql.createConnection(connectionConfig);
-  const db = drizzle(connection);
+  // Note: a `db = drizzle(connection)` was previously created here but the
+  // seed script uses raw `connection.execute(...)` for all SQL — drizzle
+  // was never consumed. Removed (SonarCloud S1854).
 
   console.log("[Seed] Connected successfully.");
 

@@ -27,7 +27,7 @@ export class CourseDetailPage {
     for (const selector of selectors) {
       const element = this.page.locator(selector).first();
       const text = await element.textContent().catch(() => null);
-      if (text && text.trim()) {
+      if (text?.trim()) {
         return text.trim();
       }
     }
@@ -45,7 +45,7 @@ export class CourseDetailPage {
     for (const selector of selectors) {
       const element = this.page.locator(selector).first();
       const text = await element.textContent().catch(() => null);
-      if (text && text.trim() && text.trim().length > 10) {
+      if (text?.trim() && text.trim().length > 10) {
         return text.trim();
       }
     }

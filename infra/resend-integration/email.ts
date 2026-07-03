@@ -246,7 +246,9 @@ export async function initiateEmailVerification(userId: number): Promise<{
 
   // NOTE: emailVerifiedAt column removed from DB schema. Skip verification check.
   const verificationToken = crypto.randomBytes(EMAIL_VERIFICATION_TOKEN_LENGTH).toString("hex");
-  const verificationExpiry = new Date(Date.now() + EMAIL_VERIFICATION_EXPIRY_MINUTES * 60 * 1000);
+  // `verificationExpiry` was previously computed here but never stored —
+  // the emailVerificationExpiresAt column was removed from the schema, so
+  // the value would be dead. Removed (SonarCloud S1854).
 
   // NOTE: emailVerificationToken/emailVerificationExpiresAt columns removed from DB.
   // Email verification flow is disabled. We still send the email for UX but cannot store the token.

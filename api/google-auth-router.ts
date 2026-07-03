@@ -134,7 +134,9 @@ googleAuthRouter.options("/", (c) => c.body(null, 204));
  */
 googleAuthRouter.get("/redirect", (c) => {
   const clientId = env.GOOGLE_CLIENT_ID;
-  const clientSecret = env.GOOGLE_CLIENT_SECRET;
+  // Note: `clientSecret` was previously read here but never used in this
+  // handler — the /redirect route only builds the Google OAuth URL, the
+  // secret is used in /callback. Removed (SonarCloud S1854).
   if (!clientId) {
     logger.error("Google OAuth: GOOGLE_CLIENT_ID not set");
     return c.redirect("/?google_error=not_configured");
@@ -296,9 +298,10 @@ googleAuthRouter.get("/callback", async (c) => {
     let userId: number;
     let username: string;
     let userRole: string;
-    let userName: string;
-    let userEmail: string | null;
-    let userAvatar: string | null;
+    // Note: `userName`, `userEmail`, `userAvatar` were previously declared
+    // and assigned in each branch below but never read after the if/else —
+    // SonarCloud S1854 (dead stores). Removed; only `userId`, `username`,
+    // `userRole` are actually consumed by createToken() below.
 
     if (existingByGoogle.length > 0) {
       const user = existingByGoogle[0];
@@ -306,9 +309,6 @@ googleAuthRouter.get("/callback", async (c) => {
       userId = user.id;
       username = user.username;
       userRole = user.role;
-      userName = user.name;
-      userEmail = user.email;
-      userAvatar = googlePicture || user.avatar;
     } else {
       // Check by email
       const existingByEmail = googleEmail ? await db.select().from(users).where(eq(users.email, googleEmail)).limit(1) : [];
@@ -319,9 +319,6 @@ googleAuthRouter.get("/callback", async (c) => {
         userId = user.id;
         username = user.username;
         userRole = user.role;
-        userName = user.name;
-        userEmail = user.email;
-        userAvatar = user.avatar;
       } else {
         // Create new user
         let baseUsername = googleEmail.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_").toLowerCase();
@@ -349,9 +346,6 @@ googleAuthRouter.get("/callback", async (c) => {
         userId = Number(resultArr[0]?.insertId);
         username = newUsername;
         userRole = "user";
-        userName = googleName || newUsername;
-        userEmail = googleEmail;
-        userAvatar = googlePicture || null;
       }
     }
 

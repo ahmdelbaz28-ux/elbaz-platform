@@ -19,7 +19,7 @@ echo "========================================="
 kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 || kubectl create namespace "$NAMESPACE"
 kubectl apply -f infra/sre-observability/cert-manager/00-cluster-issuer.yaml 2>/dev/null || echo "[SKIP] cert-manager issuer (requires cert-manager installed)"
 for MANIFEST in "${ORDER[@]}"; do
-  if [ -f "$MANIFEST" ]; then
+  if [[ -f "$MANIFEST" ]]; then
     echo "[APPLY] $MANIFEST"
     kubectl apply -f "$MANIFEST" --namespace="$NAMESPACE"
   else

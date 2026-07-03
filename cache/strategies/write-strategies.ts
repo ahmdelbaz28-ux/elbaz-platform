@@ -81,7 +81,7 @@ class WriteBackStrategy<K extends string, V> {
 
     // Clear any existing pending write for this key
     const existing = this.pendingWrites.get(cacheKey);
-    if (existing && existing.timeoutId) {
+    if (existing?.timeoutId) {
       clearTimeout(existing.timeoutId);
     }
 
@@ -91,7 +91,7 @@ class WriteBackStrategy<K extends string, V> {
       try {
         await this.persistFn(key, value);
         const current = this.pendingWrites.get(cacheKey);
-        if (current && current.timestamp === scheduledAt) {
+        if (current?.timestamp === scheduledAt) {
           this.dirtyKeys.delete(cacheKey);
           this.pendingWrites.delete(cacheKey);
         }
@@ -106,7 +106,7 @@ class WriteBackStrategy<K extends string, V> {
   async delete(key: K): Promise<void> {
     const cacheKey = this.buildKey(key);
     const pending = this.pendingWrites.get(cacheKey);
-    if (pending && pending.timeoutId) {
+    if (pending?.timeoutId) {
       clearTimeout(pending.timeoutId);
     }
     this.dirtyKeys.delete(cacheKey);
