@@ -2,9 +2,9 @@ import { visualRandom } from "@/lib/random";
 import { useState, useEffect, useRef } from "react";
 
 interface ArcFlashButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  children: React.ReactNode;
-  variant?: "primary" | "outline";
-  arcColor?: string;
+  readonly children: React.ReactNode;
+  readonly variant?: "primary" | "outline";
+  readonly arcColor?: string;
 }
 
 function generateArcPath(cx: number, cy: number, length: number): string {

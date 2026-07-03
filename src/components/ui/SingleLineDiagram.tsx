@@ -2,8 +2,8 @@ import { visualRandom } from "@/lib/random";
 import { useEffect, useRef, useState, useCallback } from "react";
 
 interface SLDProps {
-  color?: string;
-  enabled?: boolean;
+  readonly color?: string;
+  readonly enabled?: boolean;
 }
 
 // Electrical network path segments (busbar + transformer + breaker layout)

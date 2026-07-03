@@ -4,9 +4,9 @@ import { useEffect, useRef, useState, useCallback } from "react";
 // imported here but never used. Removed to satisfy TS6192 / SonarCloud S1128.
 
 interface ElectricParticlesProps {
-  color?: string;
-  intensity?: "low" | "medium" | "high";
-  className?: string;
+  readonly color?: string;
+  readonly intensity?: "low" | "medium" | "high";
+  readonly className?: string;
 }
 
 interface Particle {

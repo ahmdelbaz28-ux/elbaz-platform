@@ -2,8 +2,8 @@ import { Navigate, useLocation } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 
 interface ProtectedRouteProps {
-  children: React.ReactNode;
-  requireAdmin?: boolean;
+  readonly children: React.ReactNode;
+  readonly requireAdmin?: boolean;
 }
 
 /**

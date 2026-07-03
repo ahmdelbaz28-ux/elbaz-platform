@@ -41,14 +41,14 @@ const QuizComponent = lazy(() => import("@/components/QuizComponent"));
 // ─── Video Player Component ──────────────────────────────────────────────────
 
 interface ProtectedVideoPlayerProps {
-  videoUrl: string;
-  hlsUrl?: string | null;
-  username: string;
-  lessonTitle: string;
-  lessonId?: number;
-  courseId?: number;
-  isTrackingEnabled?: boolean;
-  lang: "en" | "ar";
+  readonly videoUrl: string;
+  readonly hlsUrl?: string | null;
+  readonly username: string;
+  readonly lessonTitle: string;
+  readonly lessonId?: number;
+  readonly courseId?: number;
+  readonly isTrackingEnabled?: boolean;
+  readonly lang: "en" | "ar";
 }
 
 interface ProtectedVideoPlayerHandle {

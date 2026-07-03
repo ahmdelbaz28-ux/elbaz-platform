@@ -34,7 +34,7 @@ declare module 'recharts' {
 
 declare module 'cmdk' {
   import * as React from 'react';
-  interface CommandProps { children?: React.ReactNode; [key: string]: any; }
+  interface CommandProps { readonly children?: React.ReactNode; [key: string]: any; }
   interface CommandItemProps { children?: React.ReactNode; onSelect?: () => void; [key: string]: any; }
   const Command: React.FC<CommandProps> & {
     Input: React.FC<any>;
@@ -50,7 +50,7 @@ declare module 'cmdk' {
 declare module 'vaul' {
   import * as React from 'react';
   interface DrawerProps { open: boolean; onOpenChange: (open: boolean) => void; children: React.ReactNode; [key: string]: any; }
-  interface DrawerContentProps { children: React.ReactNode; [key: string]: any; }
+  interface DrawerContentProps { readonly children: React.ReactNode; [key: string]: any; }
   const Drawer: React.FC<DrawerProps> & {
     Content: React.FC<DrawerContentProps>;
     Trigger: React.FC<{ children: React.ReactNode; asChild?: boolean }>;

@@ -3,12 +3,12 @@ import { useRef, type ReactNode } from "react";
 import { cn } from "@/components/ui/motion";
 
 interface BentoCardProps {
-  children: ReactNode;
-  className?: string;
-  span?: 1 | 2 | 3;
-  rowSpan?: 1 | 2;
-  delay?: number;
-  glowColor?: string;
+  readonly children: ReactNode;
+  readonly className?: string;
+  readonly span?: 1 | 2 | 3;
+  readonly rowSpan?: 1 | 2;
+  readonly delay?: number;
+  readonly glowColor?: string;
   onClick?: () => void;
 }
 

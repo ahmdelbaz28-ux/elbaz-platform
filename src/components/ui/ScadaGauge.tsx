@@ -1,11 +1,11 @@
 import { useEffect, useRef } from "react";
 
 interface ScadaGaugeProps {
-  value: number;
-  label: string;
-  suffix?: string;
-  color?: string;
-  enabled?: boolean;
+  readonly value: number;
+  readonly label: string;
+  readonly suffix?: string;
+  readonly color?: string;
+  readonly enabled?: boolean;
 }
 
 export default function ScadaGauge({

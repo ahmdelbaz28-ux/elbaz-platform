@@ -147,7 +147,7 @@ export async function initiatePasswordReset(email: string): Promise<{
   const resetUrl = `${env.frontendUrl}/reset-password?token=${resetToken}&uid=${user.id}`;
 
   // Send the reset email
-  const name = (user.name || user.username).replaceAll(/&/g, "&amp;").replaceAll(/</g, "&lt;").replaceAll(/>/g, "&gt;").replaceAll(/"/g, "&quot;");
+  const name = (user.name || user.username).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\"", "&quot;");
   await sendEmail({
     to: user.email,
     subject: "Password Reset — Ahmed Elbaz Electrical Engineering Platform",
@@ -255,7 +255,7 @@ export async function initiateEmailVerification(userId: number): Promise<{
 
   const verificationUrl = `${env.frontendUrl}/verify-email?token=${verificationToken}&uid=${userId}`;
 
-  const name = (user.name || user.username).replaceAll(/&/g, "&amp;").replaceAll(/</g, "&lt;").replaceAll(/>/g, "&gt;").replaceAll(/"/g, "&quot;");
+  const name = (user.name || user.username).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\"", "&quot;");
 
   await sendEmail({
     to: user.email,

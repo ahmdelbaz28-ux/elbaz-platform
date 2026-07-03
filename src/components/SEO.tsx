@@ -1,12 +1,12 @@
 import { useEffect } from 'react';
 
 interface SEOProps {
-  title: string;
-  description: string;
-  image?: string;
-  url?: string;
-  type?: 'website' | 'article' | 'course';
-  jsonLd?: Record<string, any>;
+  readonly title: string;
+  readonly description: string;
+  readonly image?: string;
+  readonly url?: string;
+  readonly type?: 'website' | 'article' | 'course';
+  readonly jsonLd?: Record<string, any>;
 }
 
 export default function SEO({ title, description, image, url, type = 'website', jsonLd }: SEOProps) {
