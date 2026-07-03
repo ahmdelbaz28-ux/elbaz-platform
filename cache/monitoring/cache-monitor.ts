@@ -43,7 +43,9 @@ class CacheMonitor {
     const m = this.getAggregatedMetrics(), now = Date.now();
     for (const rule of this.alertRules) {
       if (now - rule.lastTriggered < rule.cooldown) continue;
-      if (rule.condition(m)) { rule.lastTriggered = now; for (const cb of this.alertCallbacks) { try { cb(rule, m); } catch {} } }
+      if (rule.condition(m)) { rule.lastTriggered = now; for (const cb of this.alertCallbacks) { try { cb(rule, m); } catch {// Intentionally ignored: best-effort cleanup, the error has already
+    // been logged upstream and re-throwing would mask the original cause.
+    } } }
     }
   }
 

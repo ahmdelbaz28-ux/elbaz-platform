@@ -528,7 +528,9 @@ async function start() {
       ElbazCache.short.destroy();
       ElbazCache.long.destroy();
       ElbazCache.session.destroy();
-    } catch {}
+    } catch {// Intentionally ignored: best-effort cleanup, the error has already
+    // been logged upstream and re-throwing would mask the original cause.
+    }
     server.close(() => process.exit(0));
   };
 

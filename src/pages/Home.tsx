@@ -139,7 +139,9 @@ function PromoBanner({ promotion }: { promotion: any }) {
   }, [dismissed, promotion.endsAt, promotion.showCountdown]);
 
   const handleDismiss = () => {
-    try { localStorage.setItem(`dismissed-promo-${promotion.id}`, "true"); } catch {}
+    try { localStorage.setItem(`dismissed-promo-${promotion.id}`, "true"); } catch {// Intentionally ignored: best-effort cleanup, the error has already
+    // been logged upstream and re-throwing would mask the original cause.
+    }
     setDismissed(true);
   };
 

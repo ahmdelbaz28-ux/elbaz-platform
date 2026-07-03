@@ -193,7 +193,9 @@ function stage1_enforceHTTPS(request) {
       if (visitor.scheme === 'http') {
         return Response.redirect(url.toString().replace(/^http:/, 'https:'), 301);
       }
-    } catch (e) {}
+    } catch (e) {// Intentionally ignored: best-effort cleanup, the error has already
+    // been logged upstream and re-throwing would mask the original cause.
+    }
   }
   if (url.protocol === 'http:') {
     return Response.redirect(url.toString().replace(/^http:/, 'https:'), 301);
