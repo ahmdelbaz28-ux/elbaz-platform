@@ -5,7 +5,7 @@ import { env } from "../lib/env.js";
 
 function sanitizeDbUri(raw: string): string {
   // mysql2 does not recognize ssl-mode — strip it from the URI
-  return raw.replace(/[?&]ssl-mode=[^&]*/g, "").replace(/\?$/, "");
+  return raw.replaceAll(/[?&]ssl-mode=[^&]*/g, "").replace(/\?$/, "");
 }
 
 function createPoolConfig(): mysql.PoolOptions {

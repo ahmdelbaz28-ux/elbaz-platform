@@ -74,32 +74,32 @@ function loadMessagesFromStorage(_lang: string): Message[] | null {
 function renderMarkdown(text: string): string {
   // Escape HTML entities first (preserve markdown markers)
   let html = text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#x27;");
+    .replaceAll(/&/g, "&amp;")
+    .replaceAll(/</g, "&lt;")
+    .replaceAll(/>/g, "&gt;")
+    .replaceAll(/"/g, "&quot;")
+    .replaceAll(/'/g, "&#x27;");
 
   // Code blocks (``` ... ```). The `([\s\S]*?)` lazy quantifier is
   // bounded by the closing ``` so it cannot backtrack super-linearly.
   // We add the `s` (dotAll) flag and replace `[\s\S]*?` with `.*?` to
   // make the intent explicit and satisfy SonarCloud S8786.
-  html = html.replace(/```(\w*)\n?(.*?)```/gs, function(_match, _lang, code) {
+  html = html.replaceAll(/```(\w*)\n?(.*?)```/gs, function(_match, _lang, code) {
     return '<pre class="bg-black/40 border border-[#1e2d3d] rounded-lg p-2.5 my-1.5 overflow-x-auto text-[12px] leading-5 text-[#b4c6e0]"><code>' + code.trim() + '</code></pre>';
   });
 
   // Inline code (` ... `)
-  html = html.replace(/`([^`]+)`/g, '<code class="bg-black/30 border border-[#1e2d3d] px-1.5 py-0.5 rounded text-[12px] text-cyan-300">$1</code>');
+  html = html.replaceAll(/`([^`]+)`/g, '<code class="bg-black/30 border border-[#1e2d3d] px-1.5 py-0.5 rounded text-[12px] text-cyan-300">$1</code>');
 
   // Bold (** ... **)
-  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-semibold text-white">$1</strong>');
+  html = html.replaceAll(/\*\*([^*]+)\*\*/g, '<strong class="font-semibold text-white">$1</strong>');
 
   // Italic (* ... *)
-  html = html.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, "<em>$1</em>");
+  html = html.replaceAll(/(?<!\*)\*([^*]+)\*(?!\*)/g, "<em>$1</em>");
 
   // Line breaks: double newline → paragraph break, single newline → <br>
-  html = html.replace(/\n\n/g, "<br><br>");
-  html = html.replace(/\n/g, "<br>");
+  html = html.replaceAll(/\n\n/g, "<br><br>");
+  html = html.replaceAll(/\n/g, "<br>");
 
   return html;
 }

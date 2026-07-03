@@ -667,7 +667,7 @@ export default function CourseDetail() {
 
   const handlePayment = (method: "visa" | "wallet" | "paypal" | "kiosk" | "cash_collection") => {
     // ✅ Validate phone number (required by Paymob for all payment methods)
-    const cleanPhone = phoneNumber.replace(/[\s\-()]/g, "");
+    const cleanPhone = phoneNumber.replaceAll(/[\s\-()]/g, "");
     if (cleanPhone.length < 11) {
       setPaymentError(lang === "ar" ? "رقم الموبايل مطلوب (11 رقم على الأقل)" : "Phone number is required (at least 11 digits)");
       return;
@@ -1208,7 +1208,7 @@ export default function CourseDetail() {
                 value={phoneNumber}
                 onChange={(e) => {
                   // Only allow digits
-                  const val = e.target.value.replace(/\D/g, "");
+                  const val = e.target.value.replaceAll(/\D/g, "");
                   setPhoneNumber(val);
                   setPaymentError(null);
                 }}

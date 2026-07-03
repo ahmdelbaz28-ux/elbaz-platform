@@ -1,4 +1,4 @@
-import { request, expect } from "@playwright/test";
+import { request } from "@playwright/test";
 
 const BASE_URL = process.env.TEST_BASE_URL || "https://ahmedelbaz.qzz.io";
 const TEST_USER_EMAIL = `global_test_${Date.now()}@example.com`;

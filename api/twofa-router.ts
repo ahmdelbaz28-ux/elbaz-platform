@@ -27,7 +27,7 @@ function generateBackupCodes(count: number = 8): string[] {
 }
 
 function base32Decode(base32: string): Buffer {
-  const cleaned = base32.toUpperCase().replace(/=/g, "").replace(/[^A-Z2-7]/g, "");
+  const cleaned = base32.toUpperCase().replaceAll(/=/g, "").replaceAll(/[^A-Z2-7]/g, "");
   let bits = "";
   for (const char of cleaned) {
     const val = BASE32_CHARS.indexOf(char);
@@ -57,7 +57,7 @@ function generateTotpCode(secret: string, timeStep: number): string {
 
 function verifyTotp(secret: string, token: string, window: number = 1): boolean {
   const timeStep = Math.floor(Date.now() / 30000);
-  const cleanToken = token.replace(/\s/g, "");
+  const cleanToken = token.replaceAll(/\s/g, "");
   for (let i = -window; i <= window; i++) {
     if (generateTotpCode(secret, timeStep + i) === cleanToken) return true;
   }

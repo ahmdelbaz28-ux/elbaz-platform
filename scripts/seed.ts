@@ -20,10 +20,9 @@ import bcryptjs from "bcryptjs";
 // `drizzle` import removed — seed.ts uses raw `mysql` connection only.
 // (SonarCloud S1128: unnecessary import.)
 import mysql from "mysql2/promise";
-import { sql } from "drizzle-orm";
 
 function sanitizeDbUri(raw: string): string {
-  return raw.replace(/[?&]ssl-mode=[^&]*/g, "").replace(/\?$/, "");
+  return raw.replaceAll(/[?&]ssl-mode=[^&]*/g, "").replace(/\?$/, "");
 }
 
 const DATABASE_URL = process.env.DATABASE_URL;

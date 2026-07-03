@@ -465,7 +465,7 @@ export default function Admin() {
                       <div className="grid gap-4 sm:grid-cols-2">
                         {(["youtubeUrl", "linkedinUrl", "facebookUrl", "instagramUrl", "tiktokUrl", "twitterUrl"] as const).map((key) => (
                           <div key={key} className="grid gap-1.5">
-                            <Label className="text-sm text-[#94a3b8]">{key.replace("Url", "").charAt(0).toUpperCase() + key.replace("Url", "").slice(1)}</Label>
+                            <Label className="text-sm text-[#94a3b8]">{key.replaceAll("Url", "").charAt(0).toUpperCase() + key.replaceAll("Url", "").slice(1)}</Label>
                             <Input value={contactValues[key] || ""} onChange={(e) => setContactValues((p) => ({ ...p, [key]: e.target.value }))} placeholder="https://..." className="border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" dir="ltr" />
                           </div>
                         ))}
@@ -504,7 +504,7 @@ export default function Admin() {
                     <div className="rounded-xl border border-[#1f2d44] bg-[#111827] p-6 space-y-4">
                       {CMS_SECTIONS[cmsSection]?.keys.map((key) => {
                         const type = inferSettingType(key);
-                        const label = key.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase());
+                        const label = key.replaceAll(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase());
                         return (
                           <div key={key} className="grid gap-1.5">
                             <div className="flex items-center gap-2">
@@ -667,7 +667,7 @@ export default function Admin() {
             </div>
             {(["primaryColor", "secondaryColor", "accentColor", "bgColor", "textColor", "cardBgColor", "borderColor"] as const).map((field) => (
               <div key={field} className="grid gap-1.5">
-                <Label className="text-[#94a3b8]">{field.replace(/([A-Z])/g, " $1")}</Label>
+                <Label className="text-[#94a3b8]">{field.replaceAll(/([A-Z])/g, " $1")}</Label>
                 <div className="flex items-center gap-3">
                   <input type="color" value={editingTheme?.[field] || "#000000"} onChange={(e) => setEditingTheme((prev) => (prev ? { ...prev, [field]: e.target.value } : prev))} className="h-10 w-14 cursor-pointer rounded border border-[#1f2d44] bg-[#0a0e17]" />
                   <Input value={editingTheme?.[field] || ""} onChange={(e) => setEditingTheme((prev) => (prev ? { ...prev, [field]: e.target.value } : prev))} className="flex-1 border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" dir="ltr" />
