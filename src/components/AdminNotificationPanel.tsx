@@ -41,6 +41,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { bilingual } from "@/lib/i18n";
 import {
   Card,
   CardContent,
@@ -421,13 +422,7 @@ function HistoryRow({
     ? isRTL
       ? "فشل"
       : "Failed"
-    : isScheduled
-      ? isRTL
-        ? "مجدول"
-        : "Scheduled"
-      : isRTL
-        ? "تم الإرسال"
-        : "Sent";
+    : isScheduled ? bilingual("مجدول", "Scheduled", isRTL) : bilingual("تم الإرسال", "Sent", isRTL);
 
   return (
     <div className="group flex items-start gap-3 rounded-lg border border-[#1e2d3d] bg-[#0d1420] px-4 py-3 transition-colors hover:border-[#2d3f52]">
@@ -1331,13 +1326,7 @@ export default function AdminNotificationPanel({
                         : "Sending..."
                       : isOnCooldown
                         ? `${cooldownRemaining}s`
-                        : isScheduled
-                          ? isRTL
-                            ? "جدولة الإرسال"
-                            : "Schedule Send"
-                          : isRTL
-                            ? "إرسال الإشعار"
-                            : "Send Notification"}
+                        : isScheduled ? bilingual("جدولة الإرسال", "Schedule Send", isRTL) : bilingual("إرسال الإشعار", "Send Notification", isRTL)}
                   </Button>
                 </div>
               </div>
@@ -1415,13 +1404,7 @@ export default function AdminNotificationPanel({
                         }`}
                       >
                         <Clock className="h-3 w-3" />
-                        {isScheduled
-                          ? isRTL
-                            ? "مجدول"
-                            : "Scheduled"
-                          : isRTL
-                            ? "فوري"
-                            : "Immediate"}
+                        {isScheduled ? bilingual("مجدول", "Scheduled", isRTL) : bilingual("فوري", "Immediate", isRTL)}
                       </span>
                     </div>
 

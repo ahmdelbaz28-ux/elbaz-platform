@@ -3,13 +3,13 @@ import { CacheEngine, defaultCacheEngine } from '../core/cache-engine';
 type QueryFn<T> = (...args: unknown[]) => Promise<T | null>;
 
 class CacheAsideStrategy<T> {
-  private cache: CacheEngine;
-  private queryFn: QueryFn<T>;
-  private keyBuilder: (...args: unknown[]) => string;
-  private ttl: number;
-  private tags: string[];
-  private staleWhileRevalidate: boolean;
-  private maxRetries: number;
+  private readonly cache: CacheEngine;
+  private readonly queryFn: QueryFn<T>;
+  private readonly keyBuilder: (...args: unknown[]) => string;
+  private readonly ttl: number;
+  private readonly tags: string[];
+  private readonly staleWhileRevalidate: boolean;
+  private readonly maxRetries: number;
 
   constructor(options: {
     cache?: CacheEngine;
@@ -89,8 +89,8 @@ class CacheAsideStrategy<T> {
 }
 
 class DatabaseCacheManager {
-  private cache: CacheEngine;
-  private queryCache: Map<string, CacheAsideStrategy<unknown>>;
+  private readonly cache: CacheEngine;
+  private readonly queryCache: Map<string, CacheAsideStrategy<unknown>>;
 
   constructor(cache?: CacheEngine) {
     this.cache = cache ?? defaultCacheEngine;

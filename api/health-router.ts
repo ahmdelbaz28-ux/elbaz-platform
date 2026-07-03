@@ -93,16 +93,22 @@ healthRouter.get("/health", async (c) => {
       // - 403: Forbidden (auth required) — endpoint IS reachable
       // All three mean the endpoint is healthy. Only 5xx or network errors mean unhealthy.
       const isReachable = r2Response.ok || r2Response.status === 400 || r2Response.status === 403;
+      // Compute the detail string with an explicit if/else chain to avoid
+      // the 3-level nested ternary that SonarCloud S3358 flags.
+      let r2Detail: string;
+      if (r2Response.ok) {
+        r2Detail = "R2 endpoint reachable";
+      } else if (r2Response.status === 403) {
+        r2Detail = "R2 endpoint reachable (auth required for listing)";
+      } else if (r2Response.status === 400) {
+        r2Detail = "R2 endpoint reachable (S3 API responding)";
+      } else {
+        r2Detail = `R2 responded with ${r2Response.status}`;
+      }
       checks.storage = {
         status: isReachable ? "healthy" : "degraded",
         latency_ms: Date.now() - r2Start,
-        detail: r2Response.ok
-          ? "R2 endpoint reachable"
-          : r2Response.status === 403
-            ? "R2 endpoint reachable (auth required for listing)"
-            : r2Response.status === 400
-              ? "R2 endpoint reachable (S3 API responding)"
-              : `R2 responded with ${r2Response.status}`,
+        detail: r2Detail,
       };
     } else {
       checks.storage = {

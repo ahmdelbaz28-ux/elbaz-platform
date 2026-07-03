@@ -14,11 +14,11 @@ interface SessionData {
 }
 
 class SessionCache {
-  private cache = shortTTLCache;
-  private inactivityTimeout: number;
-  private sessionMaxLifetime: number;
-  private refreshThreshold: number;
-  private heartbeatInterval: ReturnType<typeof setInterval> | null;
+  private readonly cache = shortTTLCache;
+  private readonly inactivityTimeout: number;
+  private readonly sessionMaxLifetime: number;
+  private readonly refreshThreshold: number;
+  private readonly heartbeatInterval: ReturnType<typeof setInterval> | null;
 
   constructor(options: { inactivityTimeoutMs?: number; sessionMaxLifetimeMs?: number; refreshThresholdMs?: number } = {}) {
     this.inactivityTimeout = options.inactivityTimeoutMs ?? 1800000;

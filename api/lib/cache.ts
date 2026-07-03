@@ -28,8 +28,8 @@ type CacheResult<T> = T | null;
 // ─── In-Memory LRU Cache (fallback when no Redis) ────────────────────────────
 
 class MemoryLRUCache {
-  private store = new Map<string, CacheEntry<unknown>>();
-  private maxSize: number;
+  private readonly store = new Map<string, CacheEntry<unknown>>();
+  private readonly maxSize: number;
 
   constructor(maxSize = 500) {
     this.maxSize = maxSize;

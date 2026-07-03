@@ -50,7 +50,10 @@ export default function BentoCard({
     y.set(0);
   };
 
-  const spanClass = span === 2 ? "bento-span-2" : span === 3 ? "bento-span-3" : "";
+  // Map span/rowSpan → CSS class with explicit lookups (avoids nested
+  // ternary, SonarCloud S3358).
+  const spanClassMap: Record<number, string> = { 2: "bento-span-2", 3: "bento-span-3" };
+  const spanClass = spanClassMap[span] ?? "";
   const rowSpanClass = rowSpan === 2 ? "bento-row-2" : "";
 
   return (

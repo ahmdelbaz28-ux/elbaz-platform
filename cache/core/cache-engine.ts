@@ -26,8 +26,8 @@ interface CacheMetrics {
 type CacheKey = string;
 
 class CacheEngine {
-  private store: LRUCache<CacheKey, CacheEntry>;
-  private tagIndex: Map<string, Set<CacheKey>>;
+  private readonly store: LRUCache<CacheKey, CacheEntry>;
+  private readonly tagIndex: Map<string, Set<CacheKey>>;
   private metrics: {
     hits: number;
     misses: number;
@@ -36,17 +36,17 @@ class CacheEngine {
     evictions: number;
     errors: number;
   };
-  private defaultTTL: number;
-  private cleanupInterval: ReturnType<typeof setInterval> | null;
+  private readonly defaultTTL: number;
+  private readonly cleanupInterval: ReturnType<typeof setInterval> | null;
   private writeBackQueue: Array<{
     key: CacheKey;
     value: unknown;
     persistFn: (key: CacheKey, value: unknown) => Promise<void>;
     timeoutId: ReturnType<typeof setTimeout>;
   }>;
-  private writeBackFlushInterval: ReturnType<typeof setInterval> | null;
-  private writeBackDelay: number;
-  private eventListeners: Map<string, Set<(data: unknown) => void>>;
+  private readonly writeBackFlushInterval: ReturnType<typeof setInterval> | null;
+  private readonly writeBackDelay: number;
+  private readonly eventListeners: Map<string, Set<(data: unknown) => void>>;
 
   constructor(options: {
     maxSize?: number;
