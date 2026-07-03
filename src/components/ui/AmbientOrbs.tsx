@@ -43,7 +43,7 @@ export default function AmbientOrbs() {
 
   useEffect(() => {
     const prefersReduced =
-      typeof window !== "undefined" &&
+      typeof globalThis !== "undefined" &&
       globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     
     if (prefersReduced) {

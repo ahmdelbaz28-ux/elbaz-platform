@@ -118,7 +118,7 @@ function verifyPaymobAmount(
   expectedCurrency: string
 ): boolean {
   const amount = typeof webhookAmount === "string" ? Number.parseFloat(webhookAmount) : webhookAmount;
-  if (isNaN(amount)) return false;
+  if (Number.isNaN(amount)) return false;
   const amountCents = Math.round(amount * 100);
   const expectedCents = Math.round(expectedAmount * 100);
   return amountCents === expectedCents && expectedCurrency === "EGP";
@@ -213,7 +213,7 @@ async function initiatePaymobPayment(
   }
 
   const amountNum = typeof amount === "string" ? Number.parseFloat(amount) : amount;
-  if (isNaN(amountNum) || amountNum <= 0) {
+  if (Number.isNaN(amountNum) || amountNum <= 0) {
     throw new Error("Invalid payment amount");
   }
 

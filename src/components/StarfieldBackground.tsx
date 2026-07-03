@@ -65,14 +65,14 @@ export default function StarfieldBackground() {
     if (!ctx) return;
 
     const prefersReduced =
-      typeof window !== 'undefined' &&
+      typeof globalThis !== 'undefined' &&
       globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
     // ✅ FIX: Detect mobile devices to reduce particle count and disable
     // connection lines (the O(n²) loop is the most CPU-intensive part).
     // Desktop keeps full 80 particles + connections for a rich look.
     // Mobile gets 25 particles + NO connection lines = much smoother.
-    const isMobile = typeof window !== 'undefined' &&
+    const isMobile = typeof globalThis !== 'undefined' &&
       (globalThis.matchMedia?.('(max-width: 768px)').matches ||
        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
 

@@ -20,7 +20,7 @@
 // fallback. This also keeps the module bundler-friendly (no `require`).
 const _crypto: Crypto =
   (typeof globalThis !== "undefined" && (globalThis as { crypto?: Crypto }).crypto) ||
-  (typeof self !== "undefined" && (self as { crypto?: Crypto }).crypto) as Crypto;
+  (typeof globalThis !== "undefined" && (globalThis as { crypto?: Crypto }).crypto) as Crypto;
 
 /** Cryptographically secure float in [0, 1). Drop-in replacement for Math.random(). */
 export function secureRandom(): number {

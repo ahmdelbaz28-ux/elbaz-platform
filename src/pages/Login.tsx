@@ -52,7 +52,7 @@ export default function Login() {
   // button to never render.
   useEffect(() => {
     // 1. Synchronous: read from injected window.__ENV__
-    const injected = (window as any).__ENV__ as Record<string, string> | undefined;
+    const injected = (globalThis as any).__ENV__ as Record<string, string> | undefined;
     if (injected?.GOOGLE_CLIENT_ID) {
       setGoogleClientId(injected.GOOGLE_CLIENT_ID);
       return; // ✅ Got it — no need to fetch
@@ -179,8 +179,8 @@ export default function Login() {
       } else if (!document.querySelector('script[src*="accounts.google.com/gsi/client"]')) {
         // Load GIS script on demand if not already loaded
         // Use the __loadGsi helper from index.html if available
-        if (typeof (window as any).__loadGsi === 'function') {
-          (window as any).__loadGsi();
+        if (typeof (globalThis as any).__loadGsi === 'function') {
+          (globalThis as any).__loadGsi();
         } else {
           const s = document.createElement('script');
           s.src = 'https://accounts.google.com/gsi/client';

@@ -7,7 +7,7 @@
 const TOKEN_KEY = 'elbaz_auth_token';
 
 export function isNativePlatform(): boolean {
-  return !!(window as any).Capacitor?.isNativePlatform?.();
+  return !!(globalThis as any).Capacitor?.isNativePlatform?.();
 }
 
 export function getStoredToken(): string | null {

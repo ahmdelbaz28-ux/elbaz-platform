@@ -220,7 +220,7 @@ export function useWatchTracker({
             watchedSeconds: Math.min(watchedSeconds, 120),
             lastPosition: currentPosition,
           })], { type: "application/json" });
-          const baseUrl = (window as any).Capacitor?.isNativePlatform?.() ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io") : "";
+          const baseUrl = (globalThis as any).Capacitor?.isNativePlatform?.() ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io") : "";
           navigator.sendBeacon?.(`${baseUrl}/api/trpc/course.heartbeat`, blob);
         }
       }
