@@ -163,7 +163,9 @@ chatbotRouter.post("/stream", async (c) => {
         // Handle client disconnect
         isStreamClosed = true;
         clearTimeout(timeoutId);
-        try { timeoutController.abort(); } catch {}
+        try { timeoutController.abort(); } catch {// Intentionally ignored: best-effort cleanup, the error has already
+    // been logged upstream and re-throwing would mask the original cause.
+    }
       },
     });
 
@@ -203,7 +205,9 @@ chatbotRouter.post("/stream", async (c) => {
         if (!isStreamClosed) {
           try {
             controllerRef?.close();
-          } catch {}
+          } catch {// Intentionally ignored: best-effort cleanup, the error has already
+    // been logged upstream and re-throwing would mask the original cause.
+    }
           isStreamClosed = true;
         }
       } catch (pipeErr: any) {
@@ -212,7 +216,9 @@ chatbotRouter.post("/stream", async (c) => {
         if (!isStreamClosed) {
           try {
             controllerRef?.close();
-          } catch {}
+          } catch {// Intentionally ignored: best-effort cleanup, the error has already
+    // been logged upstream and re-throwing would mask the original cause.
+    }
           isStreamClosed = true;
         }
       }

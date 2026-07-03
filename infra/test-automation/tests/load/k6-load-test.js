@@ -72,7 +72,9 @@ function registerUser() {
     try {
       const body = res.json();
       return body.token || body.accessToken || body.data?.token || "";
-    } catch (e) {}
+    } catch (e) {// Intentionally ignored: best-effort cleanup, the error has already
+    // been logged upstream and re-throwing would mask the original cause.
+    }
   }
   return "";
 }
@@ -113,7 +115,9 @@ function loginUser(email, password) {
     try {
       const body = res.json();
       return body.token || body.accessToken || body.data?.token || "";
-    } catch (e) {}
+    } catch (e) {// Intentionally ignored: best-effort cleanup, the error has already
+    // been logged upstream and re-throwing would mask the original cause.
+    }
   }
   return "";
 }
