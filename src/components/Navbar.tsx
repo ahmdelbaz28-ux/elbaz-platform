@@ -311,7 +311,7 @@ export default function Navbar() { // NOSONAR — large navigation component wit
       </nav>
 
       {/* ── Mobile Menu (full-screen overlay with focus trap) ── */}
-      <div
+      <div // NOSONAR — S6819: native <dialog> has unwanted modal backdrop; this is a non-modal overlay
         ref={mobileMenuRef}
         role="dialog"
         aria-modal="true"
