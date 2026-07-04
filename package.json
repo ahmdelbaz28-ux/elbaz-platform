@@ -129,7 +129,8 @@
   "overrides": {
     "@esbuild-kit/core-utils": {
       "esbuild": ">=0.25.0"
-    }
+    },
+    "esbuild": "^0.28.1"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.2",
