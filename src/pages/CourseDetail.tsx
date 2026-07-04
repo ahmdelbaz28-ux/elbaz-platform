@@ -918,7 +918,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                     </div>
                   )}
 
-                  {!activeLesson || !activeLessonData || !canAccessLesson(activeLessonData) ? (
+                  {!activeLesson || !activeLessonData || canAccessLesson(activeLessonData) ? null : (
                     <div className="relative">
                       <img
                         src={course.thumbnail || "/hero-bg.jpg"}
@@ -946,7 +946,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                         </div>
                       </div>
                     </div>
-                  ) : null}
+                  )}
                 </>
               )}
             </div>

@@ -100,8 +100,8 @@ function renderMarkdown(text: string): string {
   html = html.replaceAll(/(?<!\*)\*([^*]+)\*(?!\*)/g, "<em>$1</em>");
 
   // Line breaks: double newline → paragraph break, single newline → <br>
-  html = html.replaceAll(/\n\n/g, "<br><br>");
-  html = html.replaceAll(/\n/g, "<br>");
+  html = html.replaceAll('\n\n', "<br><br>");
+  html = html.replaceAll('\n', "<br>");
 
   return html;
 }

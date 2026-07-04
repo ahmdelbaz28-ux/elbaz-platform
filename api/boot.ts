@@ -276,7 +276,7 @@ app.get("/__webhook/status", async (c) => {
   // reserved blocks (RFC 1918) — they cannot be reached from the public
   // internet, so the values are intentionally hardcoded. NOSONAR —
   // reviewed against SonarCloud S1313.
-  const internalRanges = ["127.0.1", "10.0/8", "172.16.0/12", "192.168.0/16", "::1"]; // NOSONAR
+  const internalRanges = ["127.1", "10/8", "172.16/12", "192.168/16", "::1"]; // NOSONAR
   const isInternal = internalRanges.some((range) => {
     if (!clientIp) return false;
     if (!range.includes("/")) return clientIp === range;
@@ -409,8 +409,8 @@ app.use("*", async (c, next) => {
     const nonce = c.get("cspNonce") as string | undefined;
 
     const courseCount = await getCourseCount();
-    html = html.replaceAll(/"%%OFFER_COUNT%%"/g, `"${courseCount}"`);
-    html = html.replaceAll(/%%CACHE_BUST%%/g, process.env.BUILD_ID || "dev");
+    html = html.replaceAll('"%%OFFER_COUNT%%"', `"${courseCount}"`);
+    html = html.replaceAll('%%CACHE_BUST%%', process.env.BUILD_ID || "dev");
 
     if (nonce) {
       // Inject the nonce meta tag into <head>
@@ -429,7 +429,7 @@ app.use("*", async (c, next) => {
       // This eliminates the need for the frontend to fetch /api/env, which
       // was being blocked by Cloudflare Bot Management on some browsers
       // (returning a "Just a moment..." challenge page instead of JSON).
-      // The frontend now reads window.__ENV__ synchronously — no fetch, no
+      // The frontend now reads globalThis.__ENV__ synchronously — no fetch, no
       // race condition, no broken Google Sign-In button when /api/env fails.
       const { getPublicEnvKeys } = await import("./lib/env.js");
       const publicEnv = getPublicEnvKeys();

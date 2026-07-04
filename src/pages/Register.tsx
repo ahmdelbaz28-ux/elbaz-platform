@@ -102,12 +102,12 @@ export default function Register() {
   const [googleClientId, setGoogleClientId] = useState("");
 
   // Fetch Google Client ID from public env vars.
-  // 🔧 ROOT CAUSE FIX: Read from window.__ENV__ (injected by server into HTML)
+  // 🔧 ROOT CAUSE FIX: Read from globalThis.__ENV__ (injected by server into HTML)
   // FIRST, before falling back to /api/health fetch. The fetch was being blocked
   // by Cloudflare Bot Management on some browsers, causing the Google Sign-Up
   // button to never render (same fix as Login.tsx).
   useEffect(() => {
-    // 1. Synchronous: read from injected window.__ENV__
+    // 1. Synchronous: read from injected globalThis.__ENV__
     const injected = (globalThis as any).__ENV__ as Record<string, string> | undefined;
     if (injected?.GOOGLE_CLIENT_ID) {
       setGoogleClientId(injected.GOOGLE_CLIENT_ID);
