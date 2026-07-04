@@ -56,15 +56,17 @@ jobs:
           path: coverage/
           retention-days: 7
 
-      - name: SonarCloud Scan (with coverage)
-        uses: SonarSource/sonarcloud-github-action@v3
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        with:
-          args: >
-            -Dsonar.coverage.exclusions=**/*.test.ts,**/*.spec.ts,**/node_modules/**,**/dist/**,**/*.config.ts,**/infra/**,**/scripts/**,**/db/**
-            -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info
+      # NOTE: SonarCloud analysis runs via the SonarCloud GitHub App
+      # (installed at org level), not via a workflow step. The App
+      # automatically analyzes on every push. Coverage is NOT sent to
+      # SonarCloud because that requires a SONAR_TOKEN secret + the
+      # sonarcloud-github-action step — but that would conflict with
+      # the App's automatic analysis. To enable coverage reporting on
+      # SonarCloud dashboard, the repo owner must either:
+      #   1. Disable the App and use the action with SONAR_TOKEN, OR
+      #   2. Keep the App and accept 0% coverage display (current state)
+      # The LCOV report is still generated and uploaded as an artifact
+      # for local inspection via `npm run test:coverage`.
 
   # ══════════════════════════════════════════════════════════
   # DEPLOY: Only runs if tests pass (needs: test = hard gate)
