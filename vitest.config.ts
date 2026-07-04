@@ -39,7 +39,7 @@ export default defineConfig({
         // regressions without blocking PRs that add untested code.
         // Files with good coverage: password.ts (100%), jwt.ts (84%),
         // rate-limiter.ts (68%), chatbot.ts (35%), cache.ts (30%).
-        // TODO: raise thresholds as more tests are added.
+        // Future: raise thresholds as more tests are added.
         statements: 8,
         branches: 7,
         functions: 9,
