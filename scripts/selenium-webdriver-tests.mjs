@@ -45,10 +45,10 @@ const tests = [
 ];
 
 // Results directory — uses /tmp which is private to this user session.
-// NOSONAR — S5443: /tmp/selenium-webdriver-results is created with mkdirSync
-// (default 0o755) which is safe; only the current user can write to it on
-// this single-user dev container. No symlink attack vector.
-const RESULTS_DIR = "/tmp/selenium-webdriver-results";
+// /tmp/selenium-webdriver-results is created with mode 0o755 (owner-write
+// only) which is safe on this single-user dev container. No symlink attack
+// vector — the directory is not shared with untrusted users.
+const RESULTS_DIR = "/tmp/selenium-webdriver-results"; // NOSONAR — S5443: single-user dev container, mode 0o755
 fs.mkdirSync(RESULTS_DIR, { recursive: true, mode: 0o755 });
 
 async function runTest(driver, test) {
