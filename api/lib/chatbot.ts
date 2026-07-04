@@ -1714,30 +1714,53 @@ async function streamGroqFallback(
 /**
  * If a Modal stream fails, fall back to a NON-streaming OpenRouter response,
  * then emit it as a single SSE text chunk so the client sees one clean reply.
+ * As a last resort (OpenRouter also failed), try Modal (GLM-5.1) non-streaming
+ * — this ensures instant mode users still get an answer if Groq + OpenRouter
+ * are both down.
  */
 async function streamOpenRouterFallback(
   request: { messages: { role: string; content: string }[]; language?: string },
   systemPrompt: string
 ): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
   const orResult = await openRouterFallback(request.messages, systemPrompt, request.language);
-  if (!orResult) {
-    return {
-      error: request.language === "ar"
-        ? "جميع نماذج الذكاء الاصطناعي مشغولة حالياً. يرجى المحاولة بعد قليل."
-        : "All AI models are temporarily busy. Please try again in a few seconds.",
-    };
+  if (orResult) {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        try {
+          controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: orResult.reply }) + "\n\n"));
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        } catch { /* controller already closed */ }
+      },
+    });
+    return { stream, model: orResult.model };
   }
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      try {
-        controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: orResult.reply }) + "\n\n"));
-        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-        controller.close();
-      } catch { /* controller already closed */ }
-    },
-  });
-  return { stream, model: orResult.model };
+
+  // OpenRouter failed — last resort: try Modal (GLM-5.1) non-streaming.
+  // This ensures instant mode users get an answer even if Groq + OpenRouter
+  // are both down (mirrors the non-streaming getChatResponse cascade).
+  console.error("[Chatbot/Stream] OpenRouter fallback failed — last resort: Modal non-streaming.");
+  const modalResult = await tryModalTier(request.messages, systemPrompt);
+  if (modalResult?.success && modalResult.reply) {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        try {
+          controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: modalResult.reply }) + "\n\n"));
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        } catch { /* controller already closed */ }
+      },
+    });
+    return { stream, model: modalResult.model || MODAL_MODEL };
+  }
+
+  return {
+    error: request.language === "ar"
+      ? "جميع نماذج الذكاء الاصطناعي مشغولة حالياً. يرجى المحاولة بعد قليل."
+      : "All AI models are temporarily busy. Please try again in a few seconds.",
+  };
 }
 
 /**
