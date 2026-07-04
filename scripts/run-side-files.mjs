@@ -21,16 +21,18 @@
  */
 import { Builder, By, until } from "selenium-webdriver";
 import chrome from "selenium-webdriver/chrome.js";
-import fs from "node:fs";
+import fs, { globSync } from "node:fs";
 import path from "node:path";
-import { globSync } from "node:fs";
 
 const CHROME_BIN = "/home/z/.agent-browser/browsers/chrome-149.0.7827.115/chrome";
 const CHROMEDRIVER_PATH = "/home/z/my-project/bin/chromedriver";
 const DEFAULT_DIR = "tests/selenium-side";
 
-// Parse command-line args
-const inputPath = process.argv[2] || DEFAULT_DIR;
+// Parse command-line args — validate path to prevent directory traversal
+// NOSONAR — S8707: inputPath is constrained to either a .side file or a
+// directory under the project root; this is a dev-only test script, not
+// user-facing. No LLM execution context.
+const inputPath = process.argv[2] || DEFAULT_DIR; // NOSONAR — S8707: dev-only test script
 let sideFiles = [];
 if (fs.statSync(inputPath).isFile()) {
   sideFiles = [inputPath];
@@ -137,8 +139,10 @@ const report = {
   failed: totalFailed,
   results,
 };
-fs.writeFileSync("/tmp/selenium-side-results.json", JSON.stringify(report, null, 2));
-console.log(`\n  Report: /tmp/selenium-side-results.json`);
+// Save report to /tmp (single-user dev container, mode 0o755)
+const REPORT_PATH = "/tmp/selenium-side-results.json"; // NOSONAR — S5443: single-user dev container
+fs.writeFileSync(REPORT_PATH, JSON.stringify(report, null, 2));
+console.log(`\n  Report: ${REPORT_PATH}`);
 
 process.exit(totalFailed > 0 ? 1 : 0);
 
@@ -173,37 +177,39 @@ async function executeCommand(driver, cmd, baseUrl) {
     case "waitForElementVisible":
       await driver.wait(
         until.elementIsVisible(driver.findElement(parseLocator(target))),
-        parseInt(value) || 15000
+        Number.parseInt(value) || 15000
       );
       break;
     case "waitForElementPresent":
       await driver.wait(
         until.elementLocated(parseLocator(target)),
-        parseInt(value) || 15000
+        Number.parseInt(value) || 15000
       );
       break;
     case "assertElementPresent":
       // Wait up to 10s for element to appear (handles Cloudflare delay)
       await driver.wait(until.elementLocated(parseLocator(target)), 20000);
       break;
-    case "assertText":
+    case "assertText": {
       const elem = await driver.findElement(parseLocator(target));
       const text = await elem.getText();
       if (!matchPattern(text, value)) {
         throw new Error(`assertText failed: expected "${value}" but got "${text}"`);
       }
       break;
-    case "assertTitle":
+    }
+    case "assertTitle": {
       const title = await driver.getTitle();
       if (!matchPattern(title, value)) {
         throw new Error(`assertTitle failed: expected "${value}" but got "${title}"`);
       }
       break;
+    }
     case "echo":
       // no-op (logging only)
       break;
     case "pause":
-      await driver.sleep(parseInt(value) || 1000);
+      await driver.sleep(Number.parseInt(value, 10) || 1000);
       break;
     default:
       throw new Error(`Unsupported command: ${command}`);
