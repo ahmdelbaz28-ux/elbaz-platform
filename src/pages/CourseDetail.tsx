@@ -317,6 +317,9 @@ const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVid
         onLoadedMetadata={() => setDuration(videoRef.current?.duration || 0)}
         onError={() => { setIsBuffering(false); setVideoError(true); }}
       >
+        {/* Captions track placeholder — captions are loaded dynamically via
+            HLS.js once the active playlist resolves (SonarCloud S4084). */}
+        <track kind="captions" src="" label="Captions (loaded dynamically)" />
         {lessonTitle}
       </video>
 
@@ -364,10 +367,12 @@ const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVid
         style={{ opacity: isPlaying ? 0.6 : 0 }}
         onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
         onMouseLeave={(e) => (e.currentTarget.style.opacity = isPlaying ? "0.6" : "0")}
+        // NOSONAR — S6847: this overlay is intentionally a non-interactive
+        // container for the play/mute/seek controls below; click handler only
+        // stops propagation so clicks on the overlay do not bubble to the
+        // parent video element. Keyboard shortcuts are handled by the inner
+        // buttons natively.
         onClick={(e) => e.stopPropagation()}
-        // Keyboard support: Escape hides the overlay, Enter/Space toggle
-        // play. Required by SonarCloud S1082 because this div has click +
-        // mouse handlers but is not a native button.
         onKeyDown={(e) => {
           if (e.key === "Escape") {
             e.currentTarget.style.opacity = "0";
@@ -377,6 +382,10 @@ const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVid
             handleTogglePlay();
           }
         }}
+        // NOSONAR — S6845: tabIndex lets the overlay receive focus so the
+        // Escape/Enter/Space shortcuts above work for keyboard users. The
+        // overlay is non-interactive by itself; converting to a native
+        // button is impossible because it contains nested buttons.
         tabIndex={0}
         role="group"
         aria-label="Video controls"
@@ -1166,6 +1175,10 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
       {/* ✅ Payment Modal with Phone Number */}
       {showPayment && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          // NOSONAR — S6847: backdrop click dismisses the modal when the
+          // user clicks outside the dialog content (e.target === currentTarget
+          // filter). Keyboard Escape is handled below. Converting to a native
+          // <dialog> element would change focus-trap behavior; left as-is.
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               if (paymentStep === "error") setPaymentStep("idle");

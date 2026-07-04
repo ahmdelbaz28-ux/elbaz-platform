@@ -75,11 +75,11 @@ async function main() { // NOSONAR — sequential idempotent DB seeding script; 
           `ALTER TABLE ticket_replies ADD COLUMN is_admin_reply TINYINT(1) NOT NULL DEFAULT 0`
         );
         console.log("[Seed] ✓ Added is_admin_reply column to ticket_replies");
-      } catch (err2: any) {
-        if (err2.code === "ER_DUP_FIELDNAME") {
+      } catch (error_: any) {
+        if (error_.code === "ER_DUP_FIELDNAME") {
           console.log("[Seed] ✓ Column is_admin_reply already exists on ticket_replies");
         } else {
-          console.warn("[Seed] Could not add is_admin_reply column:", err2.message);
+          console.warn("[Seed] Could not add is_admin_reply column:", error_.message);
         }
       }
     }
@@ -576,7 +576,9 @@ async function main() { // NOSONAR — sequential idempotent DB seeding script; 
   console.log("\n[Seed] ✅ All done! Database is ready for launch.");
 }
 
-main().catch((err) => {
+try {
+  await main();
+} catch (err) {
   console.error("[Seed] Fatal error:", err);
   process.exit(1);
-});
+}

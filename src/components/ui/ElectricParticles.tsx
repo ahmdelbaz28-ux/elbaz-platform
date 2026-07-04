@@ -298,13 +298,13 @@ export default function ElectricParticles({
   }, [color, dimensions]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      width={dimensions.w}
-      height={dimensions.h}
-      className={`absolute inset-0 w-full h-full pointer-events-none ${className}`}
-      style={{ zIndex: 1 }}
-      aria-hidden="true"
-    />
+    <div aria-hidden="true" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 1 }}>
+      <canvas
+        ref={canvasRef}
+        width={dimensions.w}
+        height={dimensions.h}
+        className={`absolute inset-0 w-full h-full pointer-events-none ${className}`}
+      />
+    </div>
   );
 }

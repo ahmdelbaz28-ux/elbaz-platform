@@ -118,7 +118,7 @@ CREATE TABLE IF NOT EXISTS enrollments (
   id CHAR(36) NOT NULL,
   userId CHAR(36) NOT NULL,
   courseId CHAR(36) NOT NULL,
-  status ENUM('active', 'completed', 'cancelled', 'refunded', 'expired') NOT NULL DEFAULT 'active',
+  status ENUM('active', 'completed', 'cancelled', 'refunded', 'expired') NOT NULL DEFAULT 'active', -- NOSONAR — plsql:S1192: ENUM literals must be repeated in the type definition and the DEFAULT clause; SQL has no constant mechanism here
   progressPercent DECIMAL(5,2) NOT NULL DEFAULT 0.00,
   enrolledAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   completedAt DATETIME DEFAULT NULL,
@@ -144,7 +144,7 @@ CREATE TABLE IF NOT EXISTS quizQuestions (
   options JSON DEFAULT NULL,
   correctAnswer TEXT NOT NULL,
   explanation TEXT DEFAULT NULL,
-  difficulty ENUM('easy', 'medium', 'hard') NOT NULL DEFAULT 'medium',
+  difficulty ENUM('easy', 'medium', 'hard') NOT NULL DEFAULT 'medium', -- NOSONAR — plsql:S1192: ENUM literals must be repeated in the type definition and the DEFAULT clause; SQL has no constant mechanism here
   sortOrder INT NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
   KEY idx_quizQuestions_courseId (courseId),

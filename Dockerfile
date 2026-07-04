@@ -38,12 +38,13 @@ RUN set -e && \
 ENV NODE_ENV=production
 ENV NODE_OPTIONS="--max-old-space-size=1024"
 
-# Build the frontend — fail fast if build fails
-RUN set -e && npm run build && echo "=== Build complete ==="
-
+# Build the frontend — fail fast if build fails.
 # Create non-root user for security (merged into one RUN to reduce layers,
 # per SonarCloud docker:S7031).
-RUN addgroup -g 1001 -S appgroup && \
+RUN set -e && \
+    npm run build && \
+    echo "=== Build complete ===" && \
+    addgroup -g 1001 -S appgroup && \
     adduser -S appuser -u 1001 -G appgroup && \
     chown -R appuser:appgroup /app
 USER appuser

@@ -158,8 +158,8 @@ async function checkRateLimit(ip: string, action: RateLimitAction): Promise<void
     try {
       const authLimiter = await getAuthActionLimiter(action);
       await authLimiter.consume(`${ip}`);
-    } catch (rlRes: unknown) {
-      const msBeforeNext = (rlRes as { msBeforeNext?: number })?.msBeforeNext;
+    } catch (error_: unknown) {
+      const msBeforeNext = (error_ as { msBeforeNext?: number })?.msBeforeNext;
       if (typeof msBeforeNext === "number" && msBeforeNext > 0) {
         throw new TRPCError({
           code: "TOO_MANY_REQUESTS",
@@ -167,15 +167,15 @@ async function checkRateLimit(ip: string, action: RateLimitAction): Promise<void
           cause: { retryAfterMs: msBeforeNext, action },
         });
       }
-      console.warn(`[RateLimiter] Non-rate-limit error for ${action}:`, (rlRes as Error)?.message || rlRes);
+      console.warn(`[RateLimiter] Non-rate-limit error for ${action}:`, (error_ as Error)?.message || error_);
     }
   }
 
   // Always also consume from the global API limiter ("api" action).
   try {
     await rateLimit(`${ip}:${action}`);
-  } catch (rlRes: unknown) {
-    const msBeforeNext = (rlRes as { msBeforeNext?: number })?.msBeforeNext;
+  } catch (error_: unknown) {
+    const msBeforeNext = (error_ as { msBeforeNext?: number })?.msBeforeNext;
     if (typeof msBeforeNext === "number" && msBeforeNext > 0) {
       throw new TRPCError({
         code: "TOO_MANY_REQUESTS",
@@ -183,7 +183,7 @@ async function checkRateLimit(ip: string, action: RateLimitAction): Promise<void
         cause: { retryAfterMs: msBeforeNext },
       });
     }
-    console.warn(`[RateLimiter] Non-rate-limit error for ${action}:`, (rlRes as Error)?.message || rlRes);
+    console.warn(`[RateLimiter] Non-rate-limit error for ${action}:`, (error_ as Error)?.message || error_);
   }
 }
 

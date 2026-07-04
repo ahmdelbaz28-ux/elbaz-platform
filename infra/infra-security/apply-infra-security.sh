@@ -10,6 +10,9 @@ PASSED=0
 FAILED=0
 WARNINGS=0
 
+# Shared separator literal (SonarCloud shelldre:S1192)
+SEP='======================================================'
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -21,10 +24,10 @@ log_pass() { local msg="$1"; echo -e "${GREEN}[PASS]${NC} $msg" | tee -a "$REPOR
 log_fail() { local msg="$1"; echo -e "${RED}[FAIL]${NC} $msg" | tee -a "$REPORT_FILE"; FAILED=$((FAILED + 1)); }
 log_warn() { local msg="$1"; echo -e "${YELLOW}[WARN]${NC} $msg" | tee -a "$REPORT_FILE"; WARNINGS=$((WARNINGS + 1)); }
 
-echo "======================================================" | tee -a "$REPORT_FILE"
+echo "$SEP" | tee -a "$REPORT_FILE"
 echo "  Ahmed El-Baz LMS - Infrastructure Security Deploy  " | tee -a "$REPORT_FILE"
 echo "  $(date -u +%Y-%m-%dT%H:%M:%SZ)                      " | tee -a "$REPORT_FILE"
-echo "======================================================" | tee -a "$REPORT_FILE"
+echo "$SEP" | tee -a "$REPORT_FILE"
 echo "" | tee -a "$REPORT_FILE"
 
 log_info "Verifying Cloudflare API token..."
@@ -61,9 +64,9 @@ if [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]]; then
 fi
 
 echo "" | tee -a "$REPORT_FILE"
-echo "======================================================" | tee -a "$REPORT_FILE"
+echo "$SEP" | tee -a "$REPORT_FILE"
 echo "  Security Verification Tests                        " | tee -a "$REPORT_FILE"
-echo "======================================================" | tee -a "$REPORT_FILE"
+echo "$SEP" | tee -a "$REPORT_FILE"
 echo "" | tee -a "$REPORT_FILE"
 
 log_info "Running verification tests..."
@@ -251,9 +254,9 @@ else
 fi
 
 echo "" | tee -a "$REPORT_FILE"
-echo "======================================================" | tee -a "$REPORT_FILE"
+echo "$SEP" | tee -a "$REPORT_FILE"
 echo "  Deployment Summary                               " | tee -a "$REPORT_FILE"
-echo "======================================================" | tee -a "$REPORT_FILE"
+echo "$SEP" | tee -a "$REPORT_FILE"
 echo "" | tee -a "$REPORT_FILE"
 TOTAL=$((PASSED + FAILED + WARNINGS))
 echo "Total Tests:  $TOTAL" | tee -a "$REPORT_FILE"

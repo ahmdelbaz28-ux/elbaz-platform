@@ -19,13 +19,14 @@ import App from './App.tsx'
  * when it triggers a reload. We check it here to avoid racing with cache-nuke.
  */
 if ('serviceWorker' in navigator && !(globalThis as any).Capacitor?.isNativePlatform?.()) {
-  import('virtual:pwa-register').then(({ registerSW }: { registerSW: (opts: {
-    immediate?: boolean;
-    onNeedRefresh?: () => void;
-    onOfflineReady?: () => void;
-    onRegisteredSW?: (swUrl: string, registration: ServiceWorkerRegistration | undefined) => void;
-    onRegisterError?: (error: unknown) => void;
-  }) => void }) => {
+  try {
+    const { registerSW }: { registerSW: (opts: {
+      immediate?: boolean;
+      onNeedRefresh?: () => void;
+      onOfflineReady?: () => void;
+      onRegisteredSW?: (swUrl: string, registration: ServiceWorkerRegistration | undefined) => void;
+      onRegisterError?: (error: unknown) => void;
+    }) => void } = await import('virtual:pwa-register');
     registerSW({
       immediate: true,
       onNeedRefresh() {
@@ -87,9 +88,9 @@ if ('serviceWorker' in navigator && !(globalThis as any).Capacitor?.isNativePlat
         console.warn('[PWA] Service worker registration failed — site works without it', error);
       },
     });
-  }).catch(() => {
+  } catch {
     // PWA not available — non-critical
-  });
+  }
 }
 
 createRoot(document.getElementById('root')!).render(

@@ -35,18 +35,18 @@ usage() {
 }
 
 if [[ -z "$INPUT" ]]; then
-    echo -e "${RED}Error: No input file specified${NC}"
+    echo -e "${RED}Error: No input file specified${NC}" >&2
     usage
 fi
 
 if [[ ! -f "$INPUT" ]]; then
-    echo -e "${RED}Error: File not found: $INPUT${NC}"
+    echo -e "${RED}Error: File not found: $INPUT${NC}" >&2
     exit 1
 fi
 
 if ! command -v ffmpeg &>/dev/null; then
-    echo -e "${RED}Error: ffmpeg is not installed${NC}"
-    echo "Install with: sudo apt install ffmpeg"
+    echo -e "${RED}Error: ffmpeg is not installed${NC}" >&2
+    echo "Install with: sudo apt install ffmpeg" >&2
     exit 1
 fi
 
@@ -120,7 +120,7 @@ case "$QUALITY" in
             -y 2>&1 | tail -5
         ;;
     *)
-        echo -e "${RED}Unknown quality: $QUALITY${NC}"
+        echo -e "${RED}Unknown quality: $QUALITY${NC}" >&2
         usage
         ;;
 esac

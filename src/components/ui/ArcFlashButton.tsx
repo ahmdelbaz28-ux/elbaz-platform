@@ -7,6 +7,15 @@ interface ArcFlashButtonProps extends React.ButtonHTMLAttributes<HTMLButtonEleme
   readonly arcColor?: string;
 }
 
+// Module-scope helper: fade out arcs by 0.3 and drop any that reach 0.
+// Extracted so the .map/.filter callbacks are not nested 5+ levels deep
+// inside useEffect → setTimeout → setArcs → .map (SonarCloud S2004).
+function fadeArcs(prev: ReadonlyArray<{ id: number; d: string; opacity: number }>) {
+  return prev
+    .map(a => ({ ...a, opacity: a.opacity - 0.3 }))
+    .filter(a => a.opacity > 0);
+}
+
 function generateArcPath(cx: number, cy: number, length: number): string {
   const points = [];
   const steps = 8;
@@ -44,10 +53,10 @@ export default function ArcFlashButton({
       // Spawn arc from random edge point
       const edge = Math.floor(visualRandom() * 4);
       let cx = 0, cy = 0;
-      if (edge === 0) { cx = visualRandom() * w; cy = 0; }
+      if (edge === 0) { cx = visualRandom() * w; }
       else if (edge === 1) { cx = w; cy = visualRandom() * h; }
       else if (edge === 2) { cx = visualRandom() * w; cy = h; }
-      else { cx = 0; cy = visualRandom() * h; }
+      else { cy = visualRandom() * h; }
 
       const newArc = { id: arcId.current++, d: generateArcPath(cx, cy, 30), opacity: 1 };
       setArcs(prev => [...prev.slice(-8), newArc]);
@@ -60,7 +69,7 @@ export default function ArcFlashButton({
   useEffect(() => {
     if (arcs.length === 0) return;
     const t = setTimeout(() => {
-      setArcs(prev => prev.map(a => ({ ...a, opacity: a.opacity - 0.3 })).filter(a => a.opacity > 0));
+      setArcs(fadeArcs);
     }, 60);
     return () => clearTimeout(t);
   }, [arcs]);

@@ -96,19 +96,28 @@ async function testConnection(retries = 3, delay = 1000): Promise<void> {
 
 // Fire-and-forget: test connection in background. boot.ts calls
 // ensureDatabase before any queries. We use `void` rather than `await` so
-// module load is not blocked (SonarCloud S7785 prefers top-level await
-// only when the result is actually consumed).
+// module load is not blocked.
+// NOSONAR — top-level await would block module load on DB connection, which
+// we explicitly want to avoid for sandbox-mode fallback.
 void testConnection();
 
 // Helper: build the in-memory mock query result used in Sandbox Mode.
 // Extracted from the Proxy handler so we do not nest function declarations
-// more than four levels deep (SonarCloud S2004).
+// more than four levels deep (SonarCloud S2004). The chained builder
+// helpers (`limitFn`, `whereFn`, `fromFn`) are module-scope constants so
+// the arrow functions inside `buildMockQueryResult` stay flat (≤4 levels).
+const emptyList: unknown[] = [];
+const emptyObject: Record<string, unknown> = {};
+const limitFn = (): unknown[] => emptyList;
+const whereFn = () => ({ limit: limitFn });
+const fromFn = () => ({ where: whereFn });
+
 function buildMockQueryResult(): unknown {
   return {
-    where: () => ({ limit: () => [] }),
-    select: () => ({ from: () => ({ where: () => ({ limit: () => [] }) }) }),
+    where: whereFn,
+    select: () => ({ from: fromFn }),
     insert: () => ({ values: () => [{ insertId: randomInt(1, 10000) }] }),
-    update: () => ({ set: () => ({ where: () => ({}) }) }),
+    update: () => ({ set: () => ({ where: () => emptyObject }) }),
   };
 }
 

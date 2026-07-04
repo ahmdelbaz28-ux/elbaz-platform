@@ -179,8 +179,17 @@ function reserveFormatAreas(reserved: boolean[][], matrix: boolean[][], size: nu
 
 function placeDataBits(matrix: boolean[][], reserved: boolean[][], size: number, dataBits: number[]): void {
   let bitIndex = 0;
-  for (let col = size - 1; col >= 0; col -= 2) {
-    if (col === 6) col = 5; // Skip vertical timing pattern column
+  // Walk columns in pairs (col, col-1) from right to left. When we reach
+  // col 6 (vertical timing pattern) we substitute col 5 and continue from
+  // col 3 — implemented as a `while` loop so the iterator variable is not
+  // a for-loop counter (SonarCloud S2310 forbids assigning the for-loop
+  // counter inside the body).
+  let col = size - 1;
+  while (col >= 0) {
+    if (col === 6) {
+      col = 5; // Skip vertical timing pattern column
+      continue;
+    }
     for (let row = 0; row < size; row++) {
       for (let c = 0; c < 2; c++) {
         const mc = col - c;
@@ -192,6 +201,7 @@ function placeDataBits(matrix: boolean[][], reserved: boolean[][], size: number,
         bitIndex++;
       }
     }
+    col -= 2;
   }
 }
 

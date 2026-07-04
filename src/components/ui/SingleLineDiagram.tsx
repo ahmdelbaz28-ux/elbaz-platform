@@ -48,6 +48,24 @@ const LOADS = [
   { x: 600, y: 420 },
 ];
 
+// Module-scope helpers: extracted so the array-method callbacks are not
+// nested 5+ levels deep inside useEffect → setInterval/setTimeout →
+// setParticles → .map/.filter (SonarCloud S2004).
+type Particle = { id: number; progress: number; pathIndex: number };
+
+function spawnParticle(prev: ReadonlyArray<Particle>, id: number, pathIdx: number): Particle[] {
+  return [
+    ...prev.filter(p => p.progress < 1),
+    { id, progress: 0, pathIndex: pathIdx },
+  ].slice(-24); // max 24 particles
+}
+
+function tickParticles(prev: ReadonlyArray<Particle>): Particle[] {
+  return prev
+    .map(p => ({ ...p, progress: p.progress + 0.014 }))
+    .filter(p => p.progress <= 1);
+}
+
 export default function SingleLineDiagram({ color = "#06b6d4", enabled = true }: SLDProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [particles, setParticles] = useState<{ id: number; progress: number; pathIndex: number }[]>([]);
@@ -63,10 +81,7 @@ export default function SingleLineDiagram({ color = "#06b6d4", enabled = true }:
     if (!enabled) return;
     const spawn = setInterval(() => {
       const pathIdx = Math.floor(visualRandom() * PATHS.length);
-      setParticles(prev => [
-        ...prev.filter(p => p.progress < 1),
-        { id: particleId.current++, progress: 0, pathIndex: pathIdx },
-      ].slice(-24)); // max 24 particles
+      setParticles(prev => spawnParticle(prev, particleId.current++, pathIdx));
     }, 220);
 
     return () => clearInterval(spawn);
@@ -75,11 +90,7 @@ export default function SingleLineDiagram({ color = "#06b6d4", enabled = true }:
   useEffect(() => {
     if (!enabled) return;
     const tick = () => {
-      setParticles(prev =>
-        prev
-          .map(p => ({ ...p, progress: p.progress + 0.014 }))
-          .filter(p => p.progress <= 1)
-      );
+      setParticles(tickParticles);
       animFrameRef.current = requestAnimationFrame(tick);
     };
     animFrameRef.current = requestAnimationFrame(tick);

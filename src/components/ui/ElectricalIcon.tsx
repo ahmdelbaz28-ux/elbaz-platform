@@ -9,6 +9,24 @@ interface ElectricalIconProps extends React.HTMLAttributes<HTMLDivElement> {
   readonly size?: "sm" | "md" | "lg";
 }
 
+// Module-scope helpers: extracted so the array-method callbacks are not
+// nested 5+ levels deep inside useCallback → setTimeout → setRipples/setArcs
+// → .map/.filter (SonarCloud S2004).
+type Ripple = { id: number; size: number; opacity: number };
+type Arc = { id: number; x: number; y: number; opacity: number };
+
+function growRipple(prev: ReadonlyArray<Ripple>, id: number): Ripple[] {
+  return prev
+    .map(r => r.id === id ? { ...r, size: r.size + 60, opacity: r.opacity - 0.15 } : r)
+    .filter(r => r.opacity > 0);
+}
+
+function fadeArc(prev: ReadonlyArray<Arc>, id: number): Arc[] {
+  return prev
+    .map(a => a.id === id ? { ...a, opacity: a.opacity - 0.15 } : a)
+    .filter(a => a.opacity > 0);
+}
+
 export function ElectricalIcon({
   children,
   variant = "glow",
@@ -40,7 +58,7 @@ export function ElectricalIcon({
       const newRipple = { id: idRef.current++, size: 0, opacity: 0.6 };
       setRipples(prev => [...prev, newRipple]);
       setTimeout(() => {
-        setRipples(prev => prev.map(r => r.id === newRipple.id ? { ...r, size: r.size + 60, opacity: r.opacity - 0.15 } : r).filter(r => r.opacity > 0));
+        setRipples(prev => growRipple(prev, newRipple.id));
       }, 10);
     }
     if (variant === "shock") {
@@ -55,7 +73,7 @@ export function ElectricalIcon({
       setArcs(prev => [...prev.slice(-12), newArc]);
       setGlowIntensity(1);
       setTimeout(() => {
-        setArcs(prev => prev.map(a => a.id === newArc.id ? { ...a, opacity: a.opacity - 0.15 } : a).filter(a => a.opacity > 0));
+        setArcs(prev => fadeArc(prev, newArc.id));
         setGlowIntensity(0);
       }, 300);
     }

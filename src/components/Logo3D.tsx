@@ -189,7 +189,6 @@ export default function Logo3D({
 
         {/* ── Logo image — NEVER modified, only its container ──────────── */}
         <picture
-          aria-hidden="true"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -205,7 +204,8 @@ export default function Logo3D({
           <img
             src="/logo.png"
             srcSet="/logo.png 1x, /logo@2x.webp 2x"
-            alt="Elbaz Platform Logo"
+            alt=""
+            aria-hidden="true"
             draggable={false}
             loading="eager"
             decoding="async"

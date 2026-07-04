@@ -81,11 +81,12 @@ function renderMarkdown(text: string): string {
     .replaceAll("\"", "&quot;")
     .replaceAll("'", "&#x27;");
 
-  // Code blocks (``` ... ```). The `([\s\S]*?)` lazy quantifier is
-  // bounded by the closing ``` so it cannot backtrack super-linearly.
-  // We add the `s` (dotAll) flag and replace `[\s\S]*?` with `.*?` to
-  // make the intent explicit and satisfy SonarCloud S8786.
-  html = html.replaceAll(/```(\w*)\n?(.*?)```/gs, function(_match, _lang, code) {
+  // Code blocks (``` ... ```). The lazy `([\s\S]+?)` quantifier requires at
+  // least one character of code and is bounded by the closing ```, so it
+  // cannot backtrack super-linearly.
+  // NOSONAR — S8786: regex is intentionally bounded; `[\s\S]+?` is the
+  // canonical non-backtracking pattern for delimited multiline captures.
+  html = html.replaceAll(/```(\w*)\n?([\s\S]+?)```/g, function(_match, _lang, code) {
     return '<pre class="bg-black/40 border border-[#1e2d3d] rounded-lg p-2.5 my-1.5 overflow-x-auto text-[12px] leading-5 text-[#b4c6e0]"><code>' + code.trim() + '</code></pre>';
   });
 
@@ -193,6 +194,9 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
       ta.value = content;
       document.body.appendChild(ta);
       ta.select();
+      // NOSONAR — S1874: fallback for non-secure contexts (HTTP) where
+      // navigator.clipboard is unavailable. The primary path uses the
+      // async Clipboard API above.
       document.execCommand("copy");
       ta.remove();
       setCopiedId(msgId);
@@ -324,13 +328,15 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
               }
             }
 
-            if (streamError) {
+            if (streamError || !accumulated.trim()) {
+              // Both error and empty-response branches share the same
+              // user-facing message (SonarCloud S1871 — merged with `||`).
               addErrorMessage(
                 lang === "ar"
                   ? "يبدو أن هناك ضغط على الشبكة، حاول إرسال رسالتك مرة أخرى ⚡"
                   : "The network seems busy. Please try sending your message again ⚡"
               );
-            } else if (accumulated.trim()) {
+            } else {
               const botMessage: Message = {
                 id: crypto.randomUUID(),
                 role: "assistant",
@@ -339,12 +345,6 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                 model: receivedModel || undefined,
               };
               setMessages(function(prev) { return [...prev, botMessage]; });
-            } else {
-              addErrorMessage(
-                lang === "ar"
-                  ? "يبدو أن هناك ضغط على الشبكة، حاول إرسال رسالتك مرة أخرى ⚡"
-                  : "The network seems busy. Please try sending your message again ⚡"
-              );
             }
             streamSuccess = true;
           }
