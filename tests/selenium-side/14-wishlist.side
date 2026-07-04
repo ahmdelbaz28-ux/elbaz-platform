@@ -1,0 +1,45 @@
+{
+  "id": "c2029c3f-9543-4246-9305-28b532ca6bfd",
+  "version": "3.0",
+  "name": "Wishlist Page",
+  "url": "https://ahmedelbaz.qzz.io",
+  "tests": [
+    {
+      "id": "fd1af93f-8c26-43c6-97da-b914dd063493",
+      "name": "Wishlist Loads",
+      "commands": [
+        {
+          "command": "open",
+          "target": "/wishlist",
+          "value": ""
+        },
+        {
+          "command": "waitForElementVisible",
+          "target": "css=body",
+          "value": "15000"
+        },
+        {
+          "command": "assertElementPresent",
+          "target": "css=body",
+          "value": ""
+        }
+      ]
+    }
+  ],
+  "suites": [
+    {
+      "id": "416941c9-923b-4564-9bda-02be916bc581",
+      "name": "Wishlist Page Suite",
+      "persistSession": false,
+      "parallel": false,
+      "timeout": 60,
+      "tests": [
+        "fd1af93f-8c26-43c6-97da-b914dd063493"
+      ]
+    }
+  ],
+  "urls": [
+    "https://ahmedelbaz.qzz.io"
+  ],
+  "plugins": []
+}

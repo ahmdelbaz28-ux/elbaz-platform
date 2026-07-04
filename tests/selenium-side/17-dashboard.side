@@ -1,0 +1,45 @@
+{
+  "id": "822c5256-6e94-424c-a90f-53b6121484d6",
+  "version": "3.0",
+  "name": "Dashboard (auth gate)",
+  "url": "https://ahmedelbaz.qzz.io",
+  "tests": [
+    {
+      "id": "cedf55d3-8a68-490a-8593-855727eb779f",
+      "name": "Dashboard Loads",
+      "commands": [
+        {
+          "command": "open",
+          "target": "/dashboard",
+          "value": ""
+        },
+        {
+          "command": "waitForElementVisible",
+          "target": "css=body",
+          "value": "15000"
+        },
+        {
+          "command": "assertElementPresent",
+          "target": "css=body",
+          "value": ""
+        }
+      ]
+    }
+  ],
+  "suites": [
+    {
+      "id": "981d23ca-398b-4233-9e5e-03286dd1c69c",
+      "name": "Dashboard (auth gate) Suite",
+      "persistSession": false,
+      "parallel": false,
+      "timeout": 60,
+      "tests": [
+        "cedf55d3-8a68-490a-8593-855727eb779f"
+      ]
+    }
+  ],
+  "urls": [
+    "https://ahmedelbaz.qzz.io"
+  ],
+  "plugins": []
+}

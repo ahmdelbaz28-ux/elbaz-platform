@@ -1,0 +1,45 @@
+{
+  "id": "10f69ce6-744e-44d4-bfa7-cc9dd1362cfd",
+  "version": "3.0",
+  "name": "Certificate Verify",
+  "url": "https://ahmedelbaz.qzz.io",
+  "tests": [
+    {
+      "id": "4dc3757a-34c2-4881-ba7b-2e6a7327f38f",
+      "name": "Certificate Verify Loads",
+      "commands": [
+        {
+          "command": "open",
+          "target": "/certificate",
+          "value": ""
+        },
+        {
+          "command": "waitForElementVisible",
+          "target": "css=body",
+          "value": "15000"
+        },
+        {
+          "command": "assertElementPresent",
+          "target": "css=body",
+          "value": ""
+        }
+      ]
+    }
+  ],
+  "suites": [
+    {
+      "id": "1471e363-b9bf-43a6-9ce9-b9ed58205456",
+      "name": "Certificate Verify Suite",
+      "persistSession": false,
+      "parallel": false,
+      "timeout": 60,
+      "tests": [
+        "4dc3757a-34c2-4881-ba7b-2e6a7327f38f"
+      ]
+    }
+  ],
+  "urls": [
+    "https://ahmedelbaz.qzz.io"
+  ],
+  "plugins": []
+}

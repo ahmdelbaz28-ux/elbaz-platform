@@ -1,0 +1,45 @@
+{
+  "id": "0ba90578-f531-4983-97ca-0d6cc2ce675b",
+  "version": "3.0",
+  "name": "Learning Journey",
+  "url": "https://ahmedelbaz.qzz.io",
+  "tests": [
+    {
+      "id": "f515e9f8-a4af-49d0-b3f4-d2d91efadc4b",
+      "name": "Journey Loads",
+      "commands": [
+        {
+          "command": "open",
+          "target": "/journey",
+          "value": ""
+        },
+        {
+          "command": "waitForElementVisible",
+          "target": "css=body",
+          "value": "15000"
+        },
+        {
+          "command": "assertElementPresent",
+          "target": "css=body",
+          "value": ""
+        }
+      ]
+    }
+  ],
+  "suites": [
+    {
+      "id": "5ff5ef2d-acd0-42cf-8daa-e26621bda0d1",
+      "name": "Learning Journey Suite",
+      "persistSession": false,
+      "parallel": false,
+      "timeout": 60,
+      "tests": [
+        "f515e9f8-a4af-49d0-b3f4-d2d91efadc4b"
+      ]
+    }
+  ],
+  "urls": [
+    "https://ahmedelbaz.qzz.io"
+  ],
+  "plugins": []
+}

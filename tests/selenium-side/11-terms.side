@@ -1,0 +1,45 @@
+{
+  "id": "437615b0-1582-40b9-a082-64c535b088be",
+  "version": "3.0",
+  "name": "Terms of Service",
+  "url": "https://ahmedelbaz.qzz.io",
+  "tests": [
+    {
+      "id": "5ed7509b-46b9-4e79-87a6-3be37b742384",
+      "name": "Terms Loads",
+      "commands": [
+        {
+          "command": "open",
+          "target": "/terms",
+          "value": ""
+        },
+        {
+          "command": "waitForElementVisible",
+          "target": "css=body",
+          "value": "15000"
+        },
+        {
+          "command": "assertElementPresent",
+          "target": "css=body",
+          "value": ""
+        }
+      ]
+    }
+  ],
+  "suites": [
+    {
+      "id": "01b573f6-0e3b-4c72-9f24-9b8bdd676027",
+      "name": "Terms of Service Suite",
+      "persistSession": false,
+      "parallel": false,
+      "timeout": 60,
+      "tests": [
+        "5ed7509b-46b9-4e79-87a6-3be37b742384"
+      ]
+    }
+  ],
+  "urls": [
+    "https://ahmedelbaz.qzz.io"
+  ],
+  "plugins": []
+}

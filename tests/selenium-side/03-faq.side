@@ -1,0 +1,45 @@
+{
+  "id": "e0355443-35e1-41f5-a244-24259133fd7a",
+  "version": "3.0",
+  "name": "FAQ Page",
+  "url": "https://ahmedelbaz.qzz.io",
+  "tests": [
+    {
+      "id": "adecf9fe-6a69-4706-b05b-1847989c606b",
+      "name": "FAQ Loads",
+      "commands": [
+        {
+          "command": "open",
+          "target": "/faq",
+          "value": ""
+        },
+        {
+          "command": "waitForElementVisible",
+          "target": "css=body",
+          "value": "15000"
+        },
+        {
+          "command": "assertElementPresent",
+          "target": "css=body",
+          "value": ""
+        }
+      ]
+    }
+  ],
+  "suites": [
+    {
+      "id": "55183927-1c77-4f04-8d45-afbc64fc5f9f",
+      "name": "FAQ Page Suite",
+      "persistSession": false,
+      "parallel": false,
+      "timeout": 60,
+      "tests": [
+        "adecf9fe-6a69-4706-b05b-1847989c606b"
+      ]
+    }
+  ],
+  "urls": [
+    "https://ahmedelbaz.qzz.io"
+  ],
+  "plugins": []
+}

@@ -1,0 +1,45 @@
+{
+  "id": "59c1ec68-6489-4095-aaf3-9773ff308c69",
+  "version": "3.0",
+  "name": "Register Page",
+  "url": "https://ahmedelbaz.qzz.io",
+  "tests": [
+    {
+      "id": "f9e745e8-c443-4bc5-84ca-5f2ac41da03f",
+      "name": "Register Form Present",
+      "commands": [
+        {
+          "command": "open",
+          "target": "/register",
+          "value": ""
+        },
+        {
+          "command": "waitForElementVisible",
+          "target": "css=body",
+          "value": "15000"
+        },
+        {
+          "command": "assertElementPresent",
+          "target": "css=input[type='password']",
+          "value": ""
+        }
+      ]
+    }
+  ],
+  "suites": [
+    {
+      "id": "dcf8d3c5-43fe-4904-b738-beb5730bf7b8",
+      "name": "Register Page Suite",
+      "persistSession": false,
+      "parallel": false,
+      "timeout": 60,
+      "tests": [
+        "f9e745e8-c443-4bc5-84ca-5f2ac41da03f"
+      ]
+    }
+  ],
+  "urls": [
+    "https://ahmedelbaz.qzz.io"
+  ],
+  "plugins": []
+}
