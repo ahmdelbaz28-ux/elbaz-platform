@@ -784,7 +784,6 @@ export default function NotificationCenter() { // NOSONAR — large component wi
       {/* ── Dropdown Panel ── */}
       <div
         ref={panelRef}
-        role="dialog"
         aria-modal="false"
         aria-label={isRTL ? "مركز الإشعارات" : "Notification Center"}
         dir={isRTL ? "rtl" : "ltr"}
