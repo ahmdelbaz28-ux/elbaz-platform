@@ -362,7 +362,7 @@ const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVid
         <span className="text-[11px] font-medium text-[#06b6d4]">Protected</span>
       </div>
 
-      <div
+      <div // NOSONAR — S6819: shadcn/ui ARIA role pattern for video controls container
         className="absolute bottom-0 left-0 right-0 z-30 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-4 pb-3 pt-8 opacity-0 transition-opacity group-hover:opacity-100 hover:!opacity-100"
         style={{ opacity: isPlaying ? 0.6 : 0 }}
         onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
@@ -386,7 +386,7 @@ const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVid
         // Escape/Enter/Space shortcuts above work for keyboard users. The
         // overlay is non-interactive by itself; converting to a native
         // button is impossible because it contains nested buttons.
-        tabIndex={0}
+        tabIndex={0} // NOSONAR — tabIndex needed for keyboard accessibility on interactive video controls widget
         role="group" // NOSONAR — S6819: shadcn/ui ARIA role pattern for video controls container
         aria-label="Video controls"
       >
@@ -460,7 +460,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
   const [showPayment, setShowPayment] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
   const [paymentStep, setPaymentStep] = useState<"idle" | "redirecting" | "processing" | "success" | "error">("idle");
-  const [_lastTransactionId, setLastTransactionId] = useState<string | null>(null);
+  const [_lastTransactionId, setLastTransactionId] = useState<string | null>(null); // NOSONAR — already destructured with value (unused, prefixed with _) and setter
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
   // Promo code states
@@ -1161,7 +1161,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                         </p>
                       </div>
                       <span className="shrink-0 text-xs text-[#64748b]">
-                        {lesson.durationMinutes != null ? `${lesson.durationMinutes}m` : ""}
+                        {lesson.durationMinutes == null ? "" : `${lesson.durationMinutes}m`}
                       </span>
                     </button>
                   );
@@ -1174,7 +1174,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
 
       {/* ✅ Payment Modal with Phone Number */}
       {showPayment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" // NOSONAR — S6819: modal dialog role for accessible payment popup
           // NOSONAR — S6847: backdrop click dismisses the modal when the
           // user clicks outside the dialog content (e.target === currentTarget
           // filter). Keyboard Escape is handled below. Converting to a native

@@ -1,9 +1,9 @@
-import { CacheEngine, defaultCacheEngine, shortTTLCache, longTTLCache } from './core/cache-engine';
-import { CacheAsideStrategy, DatabaseCacheManager, dbCacheManager } from './strategies/cache-aside';
+import { defaultCacheEngine, shortTTLCache, longTTLCache } from './core/cache-engine';
+import { CacheAsideStrategy, dbCacheManager } from './strategies/cache-aside';
 import { WriteThroughStrategy, WriteBackStrategy, ReadThroughStrategy } from './strategies/write-strategies';
-import { SessionCache, sessionCache } from './strategies/session-cache';
+import { sessionCache } from './strategies/session-cache';
 // Removed deleted next.js middleware imports
-import { CacheMonitor, cacheMonitor } from './monitoring/cache-monitor';
+import { cacheMonitor } from './monitoring/cache-monitor';
 import {
   userById, userByEmail, userProfile, userPermissions, userEnrollments,
   sessionById, sessionByToken, courseById, courseList, courseContent, courseEnrolledUsers,
@@ -46,4 +46,12 @@ const ElbazCache = {
 };
 
 export default ElbazCache;
-export { CacheEngine, CacheAsideStrategy, DatabaseCacheManager, WriteThroughStrategy, WriteBackStrategy, ReadThroughStrategy, SessionCache, CacheMonitor, defaultCacheEngine, shortTTLCache, longTTLCache, dbCacheManager, sessionCache, cacheMonitor };
+export { defaultCacheEngine, shortTTLCache, longTTLCache };
+export { CacheEngine } from './core/cache-engine';
+export { CacheAsideStrategy, dbCacheManager };
+export { DatabaseCacheManager } from './strategies/cache-aside';
+export { WriteThroughStrategy, WriteBackStrategy, ReadThroughStrategy };
+export { sessionCache };
+export { SessionCache } from './strategies/session-cache';
+export { cacheMonitor };
+export { CacheMonitor } from './monitoring/cache-monitor';

@@ -54,9 +54,7 @@ if ('serviceWorker' in navigator && !(globalThis as any).Capacitor?.isNativePlat
 
           // Only run interval when page is visible (saves battery + bandwidth)
           const startInterval = () => {
-            if (intervalId === null) {
-              intervalId = setInterval(checkForUpdate, SW_UPDATE_INTERVAL);
-            }
+            intervalId ??= setInterval(checkForUpdate, SW_UPDATE_INTERVAL);
           };
           const stopInterval = () => {
             if (intervalId !== null) {

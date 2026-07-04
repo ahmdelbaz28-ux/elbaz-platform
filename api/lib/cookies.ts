@@ -54,7 +54,7 @@ export function serializeAuthCookie(headers: Headers, token: string, remember: b
     path: opts.path,
     sameSite: opts.sameSite?.toLowerCase() as "lax" | "none",
     secure: opts.secure,
-    ...(opts.maxAge !== undefined ? { maxAge: opts.maxAge } : {}),
+    ...(opts.maxAge === undefined ? {} : { maxAge: opts.maxAge }),
   });
 }
 
@@ -66,7 +66,7 @@ export function serializeAuthFlagCookie(headers: Headers, remember: boolean = tr
     path: opts.path,
     sameSite: opts.sameSite?.toLowerCase() as "lax" | "none",
     secure: opts.secure,
-    ...(opts.maxAge !== undefined ? { maxAge: opts.maxAge } : {}),
+    ...(opts.maxAge === undefined ? {} : { maxAge: opts.maxAge }),
   });
 }
 

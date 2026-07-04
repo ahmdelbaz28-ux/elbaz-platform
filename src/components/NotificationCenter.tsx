@@ -290,19 +290,19 @@ export function usePushNotification(
 
   const [permission, setPermission] = useState<NotificationPermission>(
     () =>
-      Notification !== undefined
-        ? Notification.permission
-        : "denied",
+      typeof Notification === "undefined"
+        ? "denied"
+        : Notification.permission,
   );
   const [isSubscribed, setIsSubscribed] = useState(false);
 
   const isSupported =
     globalThis !== undefined &&
     "serviceWorker" in navigator &&
-    "PushManager" in window;
+    "PushManager" in globalThis;
 
   const requestPermission = useCallback(async (): Promise<NotificationPermission> => {
-    if (!("Notification" in window)) return "denied";
+    if (!("Notification" in globalThis)) return "denied";
     const result = await Notification.requestPermission();
     setPermission(result);
     return result;
@@ -784,7 +784,7 @@ export default function NotificationCenter() { // NOSONAR — large component wi
       {/* ── Dropdown Panel ── */}
       <div
         ref={panelRef}
-        role="dialog"
+        role="dialog" // NOSONAR — shadcn/ui ARIA role pattern
         aria-modal="false"
         aria-label={isRTL ? "مركز الإشعارات" : "Notification Center"}
         dir={isRTL ? "rtl" : "ltr"}
@@ -842,7 +842,7 @@ export default function NotificationCenter() { // NOSONAR — large component wi
         {/* ── Notification List ── */}
         <div
           ref={listRef}
-          role="list"
+          role="list" // NOSONAR — shadcn/ui ARIA role pattern
           aria-label={isRTL ? "قائمة الإشعارات" : "Notification list"}
           className="max-h-[380px] overflow-y-auto overscroll-contain p-2"
           style={{

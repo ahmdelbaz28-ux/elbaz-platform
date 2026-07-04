@@ -123,7 +123,7 @@ export const paymentRouter = createRouter({
           .where(eq(courses.id, input.courseId))
           .limit(1);
 
-        if (!course || !course.isPublished) {
+        if (!course?.isPublished) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Course not found" });
         }
 

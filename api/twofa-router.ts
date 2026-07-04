@@ -123,7 +123,7 @@ export const twoFaRouter = createRouter({
 
       const backupCodes = user.totpBackupCodes ? (user.totpBackupCodes as string[]) : [];
       const tokenHash = hashToken(input.token);
-      const backupIndex = backupCodes.findIndex((code) => code === tokenHash);
+      const backupIndex = backupCodes.indexOf(tokenHash);
 
       if (backupIndex !== -1) {
         backupCodes.splice(backupIndex, 1);

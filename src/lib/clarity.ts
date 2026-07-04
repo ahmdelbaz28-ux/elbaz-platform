@@ -33,7 +33,7 @@ function getClarity(): ((...args: any[]) => void) | null {
   // Skip analytics in development to avoid polluting production data
   if (import.meta.env.DEV) return null;
   try {
-    const w = window as unknown as { clarity?: (...args: unknown[]) => void };
+    const w = globalThis as unknown as { clarity?: (...args: unknown[]) => void };
     if (typeof w.clarity === "function") return w.clarity;
   } catch { /* silent */ }
   return null;

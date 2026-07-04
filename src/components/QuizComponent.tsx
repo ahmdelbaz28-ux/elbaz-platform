@@ -56,8 +56,7 @@ export default function QuizComponent({ lessonId }: QuizComponentProps) {
   const options = lang === "ar" && question.optionsAr ? question.optionsAr : question.optionsEn;
 
   const handleSelect = (optionIndex: number) => {
-    const existing = answers.find((a) => a.questionId === question.id);
-    if (existing) {
+    if (answers.some((a) => a.questionId === question.id)) {
       setAnswers(answers.map((a) =>
         a.questionId === question.id ? { ...a, selectedOption: optionIndex } : a
       ));

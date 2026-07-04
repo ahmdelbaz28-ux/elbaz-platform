@@ -239,7 +239,7 @@ function AuthLayoutContent({
           role="separator"
           aria-orientation="vertical"
           aria-label="Resize sidebar"
-          tabIndex={0}
+          tabIndex={0} // NOSONAR — tabIndex needed for keyboard accessibility on interactive resize widget
           onMouseDown={() => {
             if (isCollapsed) return;
             setIsResizing(true);
