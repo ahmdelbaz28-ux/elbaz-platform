@@ -190,10 +190,10 @@ export function decodeWatermarkToken(
     // If no WATERMARK_SECRET, accept the token without verification
     if (!WATERMARK_SECRET) {
       return {
-        userId: Number.parseInt(userIdStr),
+        userId: Number.parseInt(userIdStr, 10),
         username,
-        lessonId: Number.parseInt(lessonIdStr),
-        timestamp: Number.parseInt(timestampStr),
+        lessonId: Number.parseInt(lessonIdStr, 10),
+        timestamp: Number.parseInt(timestampStr, 10),
       };
     }
 
@@ -208,10 +208,10 @@ export function decodeWatermarkToken(
     }
 
     return {
-      userId: Number.parseInt(userIdStr),
+      userId: Number.parseInt(userIdStr, 10),
       username,
-      lessonId: Number.parseInt(lessonIdStr),
-      timestamp: Number.parseInt(timestampStr),
+      lessonId: Number.parseInt(lessonIdStr, 10),
+      timestamp: Number.parseInt(timestampStr, 10),
     };
   } catch {
     return null;

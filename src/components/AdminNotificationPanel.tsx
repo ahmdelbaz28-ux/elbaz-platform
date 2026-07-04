@@ -304,7 +304,7 @@ function CooldownIndicator({
   return (
     <div className="flex items-center gap-3 rounded-xl border border-[#1e2d3d] bg-[#0d1420] px-4 py-3">
       <div className="relative h-10 w-10 shrink-0">
-        <svg className="h-10 w-10 -rotate-90" viewBox="0 0 36 36">
+        <svg className="h-10 w-10 -rotate-90" viewBox="0 0 36 36" role="img" aria-hidden="true">
           <circle
             cx="18"
             cy="18"

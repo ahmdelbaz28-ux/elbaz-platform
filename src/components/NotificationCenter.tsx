@@ -114,7 +114,6 @@ function toDisplayType(source: SourceToastType): NotificationDisplayType {
       return "update";
     case "success":
       return "update";
-    case "info":
     default:
       return "system";
   }
@@ -784,6 +783,7 @@ export default function NotificationCenter() { // NOSONAR — large component wi
       {/* ── Dropdown Panel ── */}
       <div
         ref={panelRef}
+        role="dialog"
         aria-modal="false"
         aria-label={isRTL ? "مركز الإشعارات" : "Notification Center"}
         dir={isRTL ? "rtl" : "ltr"}
@@ -839,9 +839,10 @@ export default function NotificationCenter() { // NOSONAR — large component wi
         </div>
 
         {/* ── Notification List ── */}
+        {/* biome-ignore lint/a11y/useSemanticElements: <ul> adds unwanted list styling; role=list on div is WAI-ARIA compliant for custom scrollable list */}
         <div
           ref={listRef}
-
+          role="list"
           aria-label={isRTL ? "قائمة الإشعارات" : "Notification list"}
           className="max-h-[380px] overflow-y-auto overscroll-contain p-2"
           style={{

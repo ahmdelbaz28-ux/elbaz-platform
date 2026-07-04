@@ -72,7 +72,9 @@ class MemoryLRUCache {
     for (const key of this.store.keys()) {
       if (key.startsWith(pattern)) keysToDelete.push(key);
     }
-    keysToDelete.forEach((k) => this.store.delete(k));
+    for (const k of keysToDelete) {
+      this.store.delete(k);
+    }
   }
 
   private cleanup(): void {

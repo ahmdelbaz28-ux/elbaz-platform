@@ -390,7 +390,7 @@ export default function Home() { // NOSONAR — landing page with hero + feature
         <motion.div animate={{ y: [0, 8, 0], opacity: [0.4, 1, 0.4] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} className="absolute bottom-8 left-1/2 z-20 -translate-x-1/2 flex flex-col items-center gap-2">
           <span className="text-[10px] uppercase tracking-widest text-[#64748b]">{lang === "ar" ? "مرر للأسفل" : "Scroll Down"}</span>
           <div className="flex h-6 w-4 items-start justify-center">
-            <svg width="16" height="24" viewBox="0 0 16 24" fill="none">
+            <svg width="16" height="24" viewBox="0 0 16 24" fill="none" role="img" aria-hidden="true">
               <path d="M8 0 L8 18 M3 13 L8 18 L13 13" stroke="#06b6d4" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>

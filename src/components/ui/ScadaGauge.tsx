@@ -29,7 +29,7 @@ export default function ScadaGauge({
       const elapsed = now - startTime;
       const progress = Math.min(elapsed / duration, 1);
       // Ease out cubic
-      const eased = 1 - Math.pow(1 - progress, 3);
+      const eased = 1 - (1 - progress) ** 3;
       const current = Math.floor(eased * value);
       if (displayRef.current) {
         displayRef.current.textContent = current.toLocaleString();

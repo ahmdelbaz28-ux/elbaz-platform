@@ -15,7 +15,7 @@ export const faqRouter = createRouter({
     }).optional())
     .query(async ({ input }) => {
       const db = getDb();
-      let query = db
+      const query = db
         .select()
         .from(faqEntries)
         .where(eq(faqEntries.isPublished, true))

@@ -23,8 +23,8 @@ function initSentry(): void {
     ],
     beforeSend(event) {
       if (event.request?.headers) {
-        delete event.request.headers["authorization"];
-        delete event.request.headers["cookie"];
+        delete event.request.headers.authorization;
+        delete event.request.headers.cookie;
         delete event.request.headers["x-api-key"];
       }
       if (event.user) {

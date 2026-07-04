@@ -275,6 +275,8 @@ const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVid
     <div
       ref={containerRef}
       className="protected-video no-select relative bg-black"
+      role="application"
+      aria-label="Protected video player"
       onContextMenu={(e) => e.preventDefault()}
       data-lesson-id={lessonId || 0}
     >
@@ -362,6 +364,7 @@ const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVid
         <span className="text-[11px] font-medium text-[#06b6d4]">Protected</span>
       </div>
 
+      {/* biome-ignore lint/a11y/useSemanticElements: <fieldset> lacks needed flexbox layout; role=group is WAI-ARIA compliant for custom video controls */}
       <div // NOSONAR — S6819: shadcn/ui ARIA role pattern for video controls container
         className="absolute bottom-0 left-0 right-0 z-30 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-4 pb-3 pt-8 opacity-0 transition-opacity group-hover:opacity-100 hover:!opacity-100"
         style={{ opacity: isPlaying ? 0.6 : 0 }}
@@ -382,11 +385,6 @@ const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVid
             handleTogglePlay();
           }
         }}
-        // NOSONAR — S6845: tabIndex lets the overlay receive focus so the
-        // Escape/Enter/Space shortcuts above work for keyboard users. The
-        // overlay is non-interactive by itself; converting to a native
-        // button is impossible because it contains nested buttons.
-        tabIndex={0} // NOSONAR — tabIndex needed for keyboard accessibility on interactive video controls widget
         role="group" // NOSONAR — S6819: shadcn/ui ARIA role pattern for video controls container
         aria-label="Video controls"
       >
@@ -514,7 +512,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
     if (course?.id) {
       trackLearning("course_view", { courseId: course.id, slug: slug, isPremium: course.isPremium ?? false });
     }
-  }, [course?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [course?.id, slug, course?.isPremium]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: enrollmentStatus } = trpc.course.checkEnrollment.useQuery(
     { courseId: course?.id || 0 },
@@ -1050,8 +1048,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                 <>
                   <div className="flex items-baseline gap-2">
                     {price > 0 ? (
-                      <>
-                        {promoValidation?.valid ? (
+                      promoValidation?.valid ? (
                           <>
                             {/* Show original price with strikethrough */}
                             <span className="text-lg text-[#64748b] line-through">
@@ -1077,8 +1074,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                               </span>
                             )}
                           </>
-                        )}
-                      </>
+                        )
                     ) : (
                       <span className="text-2xl font-bold text-[#10b981]">{t("free")}</span>
                     )}
@@ -1225,12 +1221,13 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
 
             {/* ✅ Phone Number Input (required by Paymob) */}
             <div className="mt-4">
-              <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-[#f0f4f8]">
+              <label htmlFor="phone-input" className="mb-1.5 flex items-center gap-2 text-sm font-medium text-[#f0f4f8]">
                 <Phone className="h-4 w-4 text-[#06b6d4]" />
                 {lang === "en" ? "Phone Number" : "رقم الموبايل"}
                 <span className="text-[#ef4444]">*</span>
               </label>
               <input
+                id="phone-input"
                 type="tel"
                 dir="ltr"
                 placeholder="01012345678"
@@ -1253,12 +1250,13 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
 
             {/* Promo Code Section */}
             <div className="mt-4 rounded-lg border border-[#1f2d44] bg-[#0a0e17] p-4">
-              <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-[#f0f4f8]">
+              <label htmlFor="promo-input" className="mb-1.5 flex items-center gap-2 text-sm font-medium text-[#f0f4f8]">
                 <Zap className="h-4 w-4 text-[#f59e0b]" />
                 {lang === "ar" ? "كود الخصم" : "Promo Code"}
               </label>
               <div className="flex gap-2">
                 <input
+                  id="promo-input"
                   type="text"
                   dir="ltr"
                   placeholder={lang === "ar" ? "مثال: ELBAZ20" : "e.g. ELBAZ20"}

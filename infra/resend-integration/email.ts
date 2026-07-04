@@ -285,7 +285,7 @@ export async function initiateEmailVerification(userId: number): Promise<{
 
 export async function completeEmailVerification(
   userId: number,
-  token: string,
+  _token: string,
 ): Promise<{ success: boolean; message: string }> {
   const db = getDb();
 

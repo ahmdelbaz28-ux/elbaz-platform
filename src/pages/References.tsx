@@ -51,7 +51,7 @@ function formatFileSize(bytes: number): string {
   const k = 1024;
   const sizes = ["B", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+  return `${(bytes / k ** i).toFixed(1)} ${sizes[i]}`;
 }
 
 function getFileIcon(fileType: string): ReactNode {
@@ -611,7 +611,7 @@ function UploadModal({ lang, onClose, onUploaded, getUploadUrl, createReference 
         <div className="space-y-4">
           {/* File selector */}
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-300">
+            <label htmlFor="ref-file-input" className="mb-1.5 block text-sm font-medium text-slate-300">
               {lang === "ar" ? "الملف" : "File"} <span className="text-red-400">*</span>
             </label>
             <UploadDropzone
@@ -622,6 +622,7 @@ function UploadModal({ lang, onClose, onUploaded, getUploadUrl, createReference 
               formatFileSize={formatFileSize}
             />
             <input
+              id="ref-file-input"
               ref={fileInputRef}
               type="file"
               onChange={handleFileSelect}
@@ -633,10 +634,11 @@ function UploadModal({ lang, onClose, onUploaded, getUploadUrl, createReference 
 
           {/* Title */}
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-300">
+            <label htmlFor="ref-title-input" className="mb-1.5 block text-sm font-medium text-slate-300">
               {lang === "ar" ? "العنوان" : "Title"} <span className="text-red-400">*</span>
             </label>
             <Input
+              id="ref-title-input"
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -648,10 +650,11 @@ function UploadModal({ lang, onClose, onUploaded, getUploadUrl, createReference 
 
           {/* Description */}
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-300">
+            <label htmlFor="ref-desc-input" className="mb-1.5 block text-sm font-medium text-slate-300">
               {lang === "ar" ? "الوصف" : "Description"}
             </label>
             <textarea
+              id="ref-desc-input"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               disabled={uploading}
@@ -663,10 +666,11 @@ function UploadModal({ lang, onClose, onUploaded, getUploadUrl, createReference 
 
           {/* Category */}
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-300">
+            <label htmlFor="ref-cat-input" className="mb-1.5 block text-sm font-medium text-slate-300">
               {lang === "ar" ? "الفئة" : "Category"}
             </label>
             <Input
+              id="ref-cat-input"
               type="text"
               value={category}
               onChange={(e) => setCategory(e.target.value)}

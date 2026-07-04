@@ -1,4 +1,3 @@
-// @ts-ignore - lru-cache missing types
 import { LRUCache } from 'lru-cache';
 
 interface CacheEntry<T = unknown> {

@@ -6,7 +6,7 @@ import { useNavigate } from "react-router";
 import {
   Headphones,
   Plus,
-  Ticket,
+  Ticket as TicketIcon,
   Send,
   ChevronDown,
   ChevronUp,
@@ -190,7 +190,7 @@ export default function Support() {
     </div>
   ) : (
     <div className="rounded-xl border border-dashed border-[#1f2d44] bg-[#111827] py-16 text-center">
-      <Ticket className="mx-auto h-12 w-12 text-[#1f2d44]" />
+      <TicketIcon className="mx-auto h-12 w-12 text-[#1f2d44]" />
       <p className="mt-4 text-lg text-[#94a3b8]">{t("noTickets")}</p>
       <p className="mt-1 text-sm text-[#64748b]">{t("createFirstTicket")}</p>
     </div>
@@ -221,8 +221,9 @@ export default function Support() {
             <h2 className="mb-4 text-lg font-semibold text-[#f0f4f8]">{t("createTicket")}</h2>
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
-                <label className="text-sm text-[#94a3b8]">{t("subject")}</label>
+                <label htmlFor="support-subject" className="text-sm text-[#94a3b8]">{t("subject")}</label>
                 <Input
+                  id="support-subject"
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
                   placeholder={lang === "en" ? "What's your issue about?" : "ما هي مشكلتك؟"}
@@ -230,7 +231,7 @@ export default function Support() {
                 />
               </div>
               <div>
-                <label className="text-sm text-[#94a3b8]">{lang === "en" ? "Category" : "الفئة"}</label>
+                <span className="text-sm text-[#94a3b8]">{lang === "en" ? "Category" : "الفئة"}</span>
                 <div className="mt-1 flex gap-2">
                   {(["technical", "billing", "content", "general"] as const).map((c) => (
                     <button
@@ -249,8 +250,9 @@ export default function Support() {
                 </div>
               </div>
               <div>
-                <label className="text-sm text-[#94a3b8]">{t("message")}</label>
+                <label htmlFor="support-message" className="text-sm text-[#94a3b8]">{t("message")}</label>
                 <Textarea
+                  id="support-message"
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   placeholder={lang === "en" ? "Describe your issue in detail..." : "صف مشكلتك بالتفصيل..."}

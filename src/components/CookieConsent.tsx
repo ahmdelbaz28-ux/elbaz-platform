@@ -54,6 +54,7 @@ export default function CookieConsent() {
     } else if (stored) {
       revokeConsent();
     }
+    return undefined;
   }, []);
 
   const handleAcceptAll = () => {
@@ -282,7 +283,7 @@ function CookiePrefToggle({ active, lang, kind, onToggle }: CookiePrefToggleProp
         }`}
       >
         {active && (
-          <svg className="h-3 w-3 text-[#0a0e17]" viewBox="0 0 12 12" fill="none">
+          <svg className="h-3 w-3 text-[#0a0e17]" viewBox="0 0 12 12" fill="none" role="img" aria-hidden="true">
             <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         )}

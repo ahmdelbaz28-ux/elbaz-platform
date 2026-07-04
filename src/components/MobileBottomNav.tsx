@@ -78,7 +78,6 @@ export default function MobileBottomNav() {
 
   return (
     <nav
-      role="navigation"
       aria-label={lang === "ar" ? "التنقل السفلي" : "Bottom navigation"}
       className="mobile-bottom-nav fixed bottom-0 left-0 right-0 z-50 md:hidden transform-gpu will-change-transform"
     >

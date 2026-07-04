@@ -142,4 +142,5 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
   c.header("X-Request-ID", c.get("requestId") ?? crypto.randomUUID());
 
   await next();
+  return;
 });

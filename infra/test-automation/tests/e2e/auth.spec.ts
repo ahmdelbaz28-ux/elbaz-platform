@@ -1,7 +1,5 @@
 import { test, expect } from "@playwright/test";
 import { LoginPage } from "../../page-objects/LoginPage";
-import { RegisterPage } from "../../page-objects/RegisterPage";
-import { DashboardPage } from "../../page-objects/DashboardPage";
 
 const TEST_USER = {
   email: `testuser_${Date.now()}@example.com`,

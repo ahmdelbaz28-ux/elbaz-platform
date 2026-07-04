@@ -201,9 +201,10 @@ chatbotRouter.post("/stream", async (c) => {
     });
 
     // Race between stream response and timeout
-    let result;
+    type StreamResult = { stream: ReadableStream<Uint8Array>; model: string } | { error: string };
+    let result: StreamResult;
     try {
-      result = await Promise.race([
+      result = await Promise.race<StreamResult>([
         streamPromise,
         new Promise<never>((_, reject) => {
           timeoutController.signal.addEventListener("abort", () => {
@@ -224,7 +225,7 @@ chatbotRouter.post("/stream", async (c) => {
 
     // Send model name as first SSE event, then pipe the actual stream
     const encoder = new TextEncoder();
-    const modelEvent = encoder.encode("data: " + JSON.stringify({ model: result.model }) + "\n\n");
+    const modelEvent = encoder.encode(`data: ${JSON.stringify({ model: result.model })}\n\n`);
 
     // Create a combined stream: model event FIRST, then actual content stream
     const state: StreamPipeState = {

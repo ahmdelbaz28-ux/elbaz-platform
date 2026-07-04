@@ -84,28 +84,28 @@ export default function CertificateCard({ data }: CertificateCardProps) {
 
       {/* Corner Accents */}
       <div className="cert-corner cert-corner-tl">
-        <svg viewBox="0 0 50 50" fill="none">
+        <svg viewBox="0 0 50 50" fill="none" role="img" aria-hidden="true">
           <path d="M0 0 L20 0 L20 1 L1 1 L1 20 L0 20 Z" fill="#06b6d4" opacity="0.5" />
           <path d="M0 8 L8 8 L8 0" stroke="#06b6d4" strokeWidth="1" fill="none" opacity="0.8" />
           <circle cx="3" cy="3" r="1.5" fill="#06b6d4" opacity="0.6" />
         </svg>
       </div>
       <div className="cert-corner cert-corner-tr">
-        <svg viewBox="0 0 50 50" fill="none">
+        <svg viewBox="0 0 50 50" fill="none" role="img" aria-hidden="true">
           <path d="M0 0 L20 0 L20 1 L1 1 L1 20 L0 20 Z" fill="#06b6d4" opacity="0.5" />
           <path d="M0 8 L8 8 L8 0" stroke="#06b6d4" strokeWidth="1" fill="none" opacity="0.8" />
           <circle cx="3" cy="3" r="1.5" fill="#06b6d4" opacity="0.6" />
         </svg>
       </div>
       <div className="cert-corner cert-corner-bl">
-        <svg viewBox="0 0 50 50" fill="none">
+        <svg viewBox="0 0 50 50" fill="none" role="img" aria-hidden="true">
           <path d="M0 0 L20 0 L20 1 L1 1 L1 20 L0 20 Z" fill="#06b6d4" opacity="0.5" />
           <path d="M0 8 L8 8 L8 0" stroke="#06b6d4" strokeWidth="1" fill="none" opacity="0.8" />
           <circle cx="3" cy="3" r="1.5" fill="#06b6d4" opacity="0.6" />
         </svg>
       </div>
       <div className="cert-corner cert-corner-br">
-        <svg viewBox="0 0 50 50" fill="none">
+        <svg viewBox="0 0 50 50" fill="none" role="img" aria-hidden="true">
           <path d="M0 0 L20 0 L20 1 L1 1 L1 20 L0 20 Z" fill="#06b6d4" opacity="0.5" />
           <path d="M0 8 L8 8 L8 0" stroke="#06b6d4" strokeWidth="1" fill="none" opacity="0.8" />
           <circle cx="3" cy="3" r="1.5" fill="#06b6d4" opacity="0.6" />
@@ -114,7 +114,7 @@ export default function CertificateCard({ data }: CertificateCardProps) {
 
       {/* Official Seal */}
       <div className="cert-seal">
-        <svg viewBox="0 0 110 110" fill="none">
+        <svg viewBox="0 0 110 110" fill="none" role="img" aria-hidden="true">
           <circle cx="55" cy="55" r="52" stroke="#06b6d4" strokeWidth="1.5" fill="none" opacity="0.3" />
           <circle cx="55" cy="55" r="46" stroke="#06b6d4" strokeWidth="0.8" fill="none" opacity="0.2" />
           <circle cx="55" cy="55" r="40" stroke="#06b6d4" strokeWidth="0.5" fill="none" opacity="0.15" />
@@ -183,7 +183,9 @@ export default function CertificateCard({ data }: CertificateCardProps) {
 
         {/* Grade Badge */}
         <div className={`cert-grade-badge ${gradeClass}`}>
+          {/* biome-ignore lint/security/noDangerouslySetInnerHtml: gradeLabel is built from static internal strings (getGradeLabel), never user input */}
           <span dangerouslySetInnerHTML={{ __html: gradeLabel }} />
+          {/* Note: biome-ignore for JSX needs to be on its own line above the element */}
         </div>
 
         {/* Bottom Section */}
@@ -201,7 +203,7 @@ export default function CertificateCard({ data }: CertificateCardProps) {
           {/* Signature */}
           <div className="cert-signature">
             <div className="cert-sig-art">
-              <svg viewBox="0 0 200 60" fill="none" stroke="#e8f0fe" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <svg viewBox="0 0 200 60" fill="none" stroke="#e8f0fe" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" role="img" aria-hidden="true">
                 <path d="M20 45 C25 35, 30 25, 38 22 C42 20, 46 22, 44 28 C42 34, 35 40, 30 42" opacity="0.9" />
                 <path d="M44 28 C50 18, 58 15, 65 18 C70 20, 72 25, 68 30 C64 35, 55 40, 50 42" opacity="0.9" />
                 <path d="M68 30 C75 20, 85 14, 95 16 C102 18, 105 24, 100 30 C95 36, 82 42, 75 44" opacity="0.9" />
@@ -220,9 +222,10 @@ export default function CertificateCard({ data }: CertificateCardProps) {
             <span className="cert-info-label">Scan to Verify</span>
             <div className="cert-qr-box">
               {qrSvg ? (
+                // biome-ignore lint/security/noDangerouslySetInnerHtml: qrSvg is generated locally by generateQRCodeSVG from a trusted URL, no user input
                 <div dangerouslySetInnerHTML={{ __html: qrSvg }} />
               ) : (
-                <svg viewBox="0 0 90 90" fill="#06b6d4" xmlns="http://www.w3.org/2000/svg">
+                <svg viewBox="0 0 90 90" fill="#06b6d4" xmlns="http://www.w3.org/2000/svg" role="img" aria-hidden="true">
                   <rect x="5" y="5" width="25" height="25" rx="2" opacity="0.3" />
                   <rect x="60" y="5" width="25" height="25" rx="2" opacity="0.3" />
                   <rect x="5" y="60" width="25" height="25" rx="2" opacity="0.3" />

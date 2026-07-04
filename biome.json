@@ -1,0 +1,53 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.5.2/schema.json",
+	"vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+	"files": {
+		"ignoreUnknown": true,
+		"includes": [
+			"**/*.ts",
+			"**/*.tsx",
+			"**/*.js",
+			"**/*.jsx",
+			"**/*.json",
+			"!**/node_modules/**",
+			"!**/dist/**",
+			"!**/.git/**",
+			"!**/android/**",
+			"!**/electron/**",
+			"!**/infra/**",
+			"!**/scripts/**",
+			"!**/cache/**",
+			"!**/public/cache-nuke.js",
+			"!**/public/rtl-detect.js",
+			"!**/*.test.ts",
+			"!**/*.spec.ts",
+			"!**/package-lock.json"
+		]
+	},
+	"formatter": {
+		"enabled": false
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"preset": "recommended",
+			"style": {
+				"noNonNullAssertion": "off",
+				"useImportType": "off",
+				"useNamingConvention": "off"
+			},
+			"suspicious": {
+				"noExplicitAny": "off",
+				"noArrayIndexKey": "off",
+				"useBiomeIgnoreFolder": "off"
+			},
+			"correctness": {
+				"noUnusedVariables": "off",
+				"noUnusedImports": "warn"
+			},
+			"a11y": {
+				"useButtonType": "off"
+			}
+		}
+	}
+}

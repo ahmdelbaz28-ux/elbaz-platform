@@ -119,6 +119,8 @@ export default function Logo3D({
   return (
     <div
       className={`logo-3d-container select-none ${className}`}
+      role="img"
+      aria-label="Elbaz platform logo"
       style={{
         width: outerSize,
         height: outerSize,

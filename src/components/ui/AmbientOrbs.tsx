@@ -145,7 +145,7 @@ export default function AmbientOrbs() {
             top: orb.y,
             background: `radial-gradient(circle, rgba(${orb.hue}, 0.5) 0%, rgba(${orb.hue}, 0.2) 50%, transparent 70%)`,
             animationDelay: `${orb.delay}s`,
-            ["--duration-" + (index + 1)]: `${orb.duration}s`,
+            [`--duration-${index + 1}`]: `${orb.duration}s`,
           } as React.CSSProperties}
         />
       ))}

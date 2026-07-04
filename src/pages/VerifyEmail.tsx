@@ -82,7 +82,8 @@ export default function VerifyEmail() { // NOSONAR — small page component with
       token,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [// Auto-trigger verification on mount
+    verifyMutation.mutate, uid, token]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#0a0e17] px-4">
