@@ -506,7 +506,7 @@ async function start() {
     console.warn("[Server] Redis unavailable, rate limiting disabled:", (err as Error).message);
   }
 
-  const useBun = Bun?.serve;
+  const useBun = typeof Bun !== "undefined" && Bun?.serve;
   let server;
 
   if (useBun) {
