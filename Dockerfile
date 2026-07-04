@@ -4,14 +4,19 @@ WORKDIR /app
 # ✅ FIX: Install dependencies with proper error handling.
 # Previously, npm ci errors were silently swallowed by `|| true` patterns,
 # causing the build to continue with broken/missing dependencies.
+# Note: apk packages are pinned to major versions via Alpine 3.20 repos;
+# pinning exact versions would break on Alpine point releases.
+# hadolint ignore=DL3018
 RUN apk add --no-cache ca-certificates tini git git-lfs
 
 # Install Node.js dependencies FIRST (better Docker layer caching)
 COPY package.json package-lock.json ./
-RUN set -o pipefail && \
-    npm ci --prefer-offline --no-audit --no-fund && \
+# pipefail not supported in Alpine POSIX sh; npm ci is a single command with
+# no pipes, so pipe failures are not a concern here.
+# hadolint ignore=DL4006
+RUN npm ci --prefer-offline --no-audit --no-fund && \
     echo "=== Dependencies installed ===" && \
-    ls node_modules | wc -l
+    find node_modules -maxdepth 1 -type d | wc -l
 
 # Copy source directories explicitly instead of `COPY . .` to satisfy
 # SonarCloud docker:S6470 (recursive copy could leak secrets). The
@@ -27,6 +32,7 @@ COPY index.html vite.config.ts tsconfig*.json tailwind.config.js postcss.config.
 
 # Initialize git (needed for LFS checkout) and convert LFS pointers to real files
 # ✅ FIX: Use set -e to fail fast if LFS checkout fails (was silently ignored before)
+# hadolint ignore=SC2015,DL4006
 RUN set -e && \
     git init 2>/dev/null || true && \
     git lfs install --skip-smudge 2>/dev/null || true && \

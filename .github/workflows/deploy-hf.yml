@@ -33,13 +33,21 @@ jobs:
             npm install --package-lock-only --no-audit --no-fund
           fi
 
-      - name: Run unit tests
+      - name: Run unit tests with coverage
         env:
           NODE_ENV: test
           APP_SECRET: test-secret-not-for-production-minimum-32-chars
           OPENROUTER_API_KEY: sk-or-v1-test-key-for-ci-only
           DATABASE_URL: mysql2://test:test@localhost:3306/test
-        run: npx vitest run --reporter=verbose
+        run: npx vitest run --coverage --reporter=verbose
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
 
   # ══════════════════════════════════════════════════════════
   # DEPLOY: Only runs if tests pass (needs: test = hard gate)
