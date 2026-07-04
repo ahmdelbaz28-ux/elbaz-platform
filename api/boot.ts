@@ -506,7 +506,11 @@ async function start() {
     console.warn("[Server] Redis unavailable, rate limiting disabled:", (err as Error).message);
   }
 
-  const useBun = typeof Bun !== "undefined" && Bun?.serve;
+  // NOSONAR — S6582/S7741: typeof guard is REQUIRED here, not optional chaining.
+  // `Bun` is not a declared global on Node.js, so `Bun?.serve` throws
+  // ReferenceError. `typeof Bun !== "undefined"` safely returns "undefined"
+  // for undeclared identifiers without throwing.
+  const useBun = typeof Bun !== "undefined" && Bun?.serve; // NOSONAR
   let server;
 
   if (useBun) {
