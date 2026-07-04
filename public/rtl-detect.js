@@ -8,8 +8,8 @@
  * This file MUST be loaded synchronously in <head> before React mounts.
  * It's excluded from Workbox precache in vite.config.ts.
  */
-(() => {
-  
+(function () {
+  "use strict";
 
   try {
     var lang = localStorage.getItem("elbaz-lang") || "ar";

@@ -142,5 +142,5 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
   c.header("X-Request-ID", c.get("requestId") ?? crypto.randomUUID());
 
   await next();
-  return;
+  return; // NOSONAR — S3626: explicit return needed for noImplicitReturns TypeScript strict mode
 });

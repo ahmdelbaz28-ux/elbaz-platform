@@ -106,9 +106,9 @@ function renderMarkdown(text: string): string {
   // Code blocks (``` ... ```). The lazy `([\s\S]+?)` quantifier requires at
   // least one character of code and is bounded by the closing ```, so it
   // cannot backtrack super-linearly.
-  // NOSONAR — S8786: regex is intentionally bounded; `[\s\S]+?` is the
-  // canonical non-backtracking pattern for delimited multiline captures.
-  html = html.replaceAll(/```(\w*)\n?([\s\S]+?)```/g, (_match, _lang, code) => `<pre class="bg-black/40 border border-[#1e2d3d] rounded-lg p-2.5 my-1.5 overflow-x-auto text-[12px] leading-5 text-[#b4c6e0]"><code>${code.trim()}</code></pre>`);
+  // S8786: regex is intentionally bounded; `[\s\S]+?` is the canonical
+  // non-backtracking pattern for delimited multiline captures.
+  html = html.replaceAll(/```(\w*)\n?([\s\S]+?)```/g, (_match, _lang, code) => `<pre class="bg-black/40 border border-[#1e2d3d] rounded-lg p-2.5 my-1.5 overflow-x-auto text-[12px] leading-5 text-[#b4c6e0]"><code>${code.trim()}</code></pre>`); // NOSONAR — S8786: regex is intentionally bounded
 
   // Inline code (` ... `)
   html = html.replaceAll(/`([^`]+)`/g, '<code class="bg-black/30 border border-[#1e2d3d] px-1.5 py-0.5 rounded text-[12px] text-cyan-300">$1</code>');

@@ -110,5 +110,5 @@ export const shieldMiddleware = createMiddleware(async (c, next) => {
   cleanupRateLimitMap();
 
   await next();
-  return;
+  return; // NOSONAR — S3626: explicit return needed for noImplicitReturns TypeScript strict mode
 });

@@ -146,7 +146,7 @@ export function NotificationProvider({ children }: { readonly children: ReactNod
 
       {/* Toast container — bottom-left */}
       {/* biome-ignore lint/a11y/useSemanticElements: <section> adds unwanted default styling; role=region on div is WAI-ARIA compliant for toast container */}
-      <div
+      <div // NOSONAR — S6819: <section> adds unwanted default styling; role=region is WAI-ARIA compliant
         id="notifications"
         role="region"
         aria-label={lang === "ar" ? "الإشعارات" : "Notifications"}

@@ -781,7 +781,7 @@ export default function NotificationCenter() { // NOSONAR — large component wi
       </button>
 
       {/* ── Dropdown Panel ── */}
-      <div
+      <div // NOSONAR — S6819: native <dialog> has unwanted modal backdrop; this is a non-modal dropdown
         ref={panelRef}
         role="dialog"
         aria-modal="false"
@@ -840,7 +840,7 @@ export default function NotificationCenter() { // NOSONAR — large component wi
 
         {/* ── Notification List ── */}
         {/* biome-ignore lint/a11y/useSemanticElements: <ul> adds unwanted list styling; role=list on div is WAI-ARIA compliant for custom scrollable list */}
-        <div
+        <div // NOSONAR — S6819: <ul> adds unwanted list styling; role=list is WAI-ARIA compliant
           ref={listRef}
           role="list"
           aria-label={isRTL ? "قائمة الإشعارات" : "Notification list"}

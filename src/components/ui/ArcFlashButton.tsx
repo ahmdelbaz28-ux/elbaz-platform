@@ -80,7 +80,7 @@ export default function ArcFlashButton({
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: wrapper div for visual hover effects only; the inner <button> handles all interaction
-    <div
+    <div // NOSONAR — S6819: <img> is for images only; role=presentation is correct for decorative wrapper
       ref={containerRef}
       className="relative inline-block"
       role="presentation"

@@ -1047,7 +1047,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
               ) : (
                 <>
                   <div className="flex items-baseline gap-2">
-                    {price > 0 ? (
+                    {price > 0 ? ( // NOSONAR — S3358: nested ternary is intentional for 3-state price display (free / paid / discounted)
                       promoValidation?.valid ? (
                           <>
                             {/* Show original price with strikethrough */}
