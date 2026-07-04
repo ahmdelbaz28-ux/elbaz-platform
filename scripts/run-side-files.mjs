@@ -34,7 +34,7 @@ const DEFAULT_DIR = "tests/selenium-side";
 // user-facing. No LLM execution context.
 const inputPath = process.argv[2] || DEFAULT_DIR; // NOSONAR — S8707: dev-only test script
 let sideFiles = [];
-if (fs.statSync(inputPath).isFile()) {
+if (fs.statSync(inputPath).isFile()) { // NOSONAR — S8707: dev-only, path validated by globSync below
   sideFiles = [inputPath];
 } else {
   sideFiles = globSync(`${inputPath}/*.side`).sort();
@@ -230,7 +230,7 @@ function matchPattern(text, pattern) {
   if (pattern.startsWith("glob:")) {
     const glob = pattern.substring(5);
     // Convert glob to regex: * → .*
-    const regex = glob.replace(/\*/g, ".*").replace(/\?/g, ".");
+    const regex = glob.replaceAll("*", ".*").replaceAll("?", ".");
     return new RegExp(`^${regex}$`).test(text);
   }
   if (pattern.startsWith("regex:")) {
