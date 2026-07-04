@@ -7,6 +7,80 @@ import { Heart, Trash2, BookOpen, Loader2 } from "lucide-react";
 import { Link } from "react-router";
 import { toast } from "sonner";
 
+interface WishlistItem {
+  courseId: number;
+  slug: string;
+  titleAr?: string;
+  titleEn?: string;
+  thumbnail?: string;
+  level?: string;
+  isPremium?: boolean;
+  price?: number | string;
+  wishlist: { id: number };
+}
+
+// ─── Wishlist grid — extracted to keep parent below cognitive-complexity cap (S3776) ───
+function WishlistContent({ items, lang, onRemove }: {
+  readonly items: WishlistItem[];
+  readonly lang: "ar" | "en";
+  readonly onRemove: (courseId: number) => void;
+}) {
+  if (items.length === 0) {
+    return (
+      <div className="text-center py-20">
+        <Heart className="h-12 w-12 text-slate-600 mx-auto mb-4" />
+        <p className="text-slate-400 mb-4">{lang === "ar" ? "قائمة المفضلة فارغة" : "Your wishlist is empty"}</p>
+        <Link to="/courses" className="inline-flex items-center gap-2 text-cyan-400 hover:underline">
+          <BookOpen className="h-4 w-4" />
+          {lang === "ar" ? "تصفح الكورسات" : "Browse Courses"}
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {items.map((item) => (
+        <div key={item.wishlist.id} className="group rounded-xl border border-[#1e2d3d] bg-[#0d1521] overflow-hidden hover:border-cyan-500/30 transition-colors">
+          {item.thumbnail && (
+            <div className="aspect-video overflow-hidden bg-[#0a0e17]">
+              <img src={item.thumbnail} alt="" className="h-full w-full object-cover" />
+            </div>
+          )}
+          <div className="p-4">
+            <h3 className="mb-1 line-clamp-2 text-sm font-semibold text-[#e8f0fe]">
+              {lang === "ar" ? item.titleAr : item.titleEn}
+            </h3>
+            <div className="mb-3 flex items-center gap-2 text-xs text-slate-500">
+              <span className="rounded bg-[#1a2434] px-1.5 py-0.5">{item.level}</span>
+              {item.isPremium ? (
+                <span className="text-cyan-400">{item.price} EGP</span>
+              ) : (
+                <span className="text-green-400">{lang === "ar" ? "مجاني" : "Free"}</span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Link to={`/courses/${item.slug}`} className="flex-1">
+                <Button size="sm" className="w-full bg-gradient-to-r from-cyan-500 to-blue-600">
+                  {lang === "ar" ? "عرض" : "View"}
+                </Button>
+              </Link>
+              <Button
+                onClick={() => onRemove(item.courseId)}
+                size="sm"
+                variant="outline"
+                className="border-rose-500/30 text-rose-400 hover:bg-rose-500/10"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function Wishlist() {
   const { lang } = useTranslation();
   const { isAuthenticated } = useAuth();
@@ -35,6 +109,8 @@ export default function Wishlist() {
     );
   }
 
+  const items = (data?.items || []) as unknown as WishlistItem[];
+
   return (
     <>
       <Seo title={lang === "ar" ? "المفضلة | منصة الباز" : "Wishlist | Elbaz Platform"} description={lang === "ar" ? "الكورسات المحفوظة في قائمتك" : "Your saved courses"} />
@@ -50,7 +126,7 @@ export default function Wishlist() {
                   {lang === "ar" ? "قائمة المفضلة" : "My Wishlist"}
                 </h1>
                 <p className="text-xs text-slate-400">
-                  {data?.items?.length || 0} {lang === "ar" ? "كورس محفوظ" : "saved courses"}
+                  {items.length} {lang === "ar" ? "كورس محفوظ" : "saved courses"}
                 </p>
               </div>
             </div>
@@ -62,55 +138,8 @@ export default function Wishlist() {
             <div className="flex justify-center py-20">
               <Loader2 className="h-8 w-8 animate-spin text-cyan-400" />
             </div>
-          ) : !data?.items || data.items.length === 0 ? (
-            <div className="text-center py-20">
-              <Heart className="h-12 w-12 text-slate-600 mx-auto mb-4" />
-              <p className="text-slate-400 mb-4">{lang === "ar" ? "قائمة المفضلة فارغة" : "Your wishlist is empty"}</p>
-              <Link to="/courses" className="inline-flex items-center gap-2 text-cyan-400 hover:underline">
-                <BookOpen className="h-4 w-4" />
-                {lang === "ar" ? "تصفح الكورسات" : "Browse Courses"}
-              </Link>
-            </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {data.items.map((item: any) => (
-                <div key={item.wishlist.id} className="group rounded-xl border border-[#1e2d3d] bg-[#0d1521] overflow-hidden hover:border-cyan-500/30 transition-colors">
-                  {item.thumbnail && (
-                    <div className="aspect-video overflow-hidden bg-[#0a0e17]">
-                      <img src={item.thumbnail} alt="" className="h-full w-full object-cover" />
-                    </div>
-                  )}
-                  <div className="p-4">
-                    <h3 className="mb-1 line-clamp-2 text-sm font-semibold text-[#e8f0fe]">
-                      {lang === "ar" ? item.titleAr : item.titleEn}
-                    </h3>
-                    <div className="mb-3 flex items-center gap-2 text-xs text-slate-500">
-                      <span className="rounded bg-[#1a2434] px-1.5 py-0.5">{item.level}</span>
-                      {item.isPremium ? (
-                        <span className="text-cyan-400">{item.price} EGP</span>
-                      ) : (
-                        <span className="text-green-400">{lang === "ar" ? "مجاني" : "Free"}</span>
-                      )}
-                    </div>
-                    <div className="flex gap-2">
-                      <Link to={`/courses/${item.slug}`} className="flex-1">
-                        <Button size="sm" className="w-full bg-gradient-to-r from-cyan-500 to-blue-600">
-                          {lang === "ar" ? "عرض" : "View"}
-                        </Button>
-                      </Link>
-                      <Button
-                        onClick={() => handleRemove(item.courseId)}
-                        size="sm"
-                        variant="outline"
-                        className="border-rose-500/30 text-rose-400 hover:bg-rose-500/10"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <WishlistContent items={items} lang={lang} onRemove={handleRemove} />
           )}
         </div>
       </div>

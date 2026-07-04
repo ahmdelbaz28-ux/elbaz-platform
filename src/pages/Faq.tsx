@@ -29,6 +29,98 @@ const CATEGORY_LABELS: Record<string, { en: string; ar: string }> = {
   account: { en: "Account", ar: "الحساب" },
 };
 
+// ─── Category pill — extracted to keep Faq below cognitive-complexity cap (S3776) ───
+function CategoryPill({ label, isActive, onClick }: {
+  readonly label: string;
+  readonly isActive: boolean;
+  readonly onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+        isActive
+          ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30"
+          : "bg-[#0d1521] text-slate-400 border border-[#1e2d3d] hover:text-slate-200"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+// ─── Result list — uses explicit if/return branches instead of nested ternary (S3358) ───
+function FaqResultList({ isLoading, filtered, openId, lang, toggleOpen }: {
+  readonly isLoading: boolean;
+  readonly filtered: FaqItem[];
+  readonly openId: number | null;
+  readonly lang: "ar" | "en";
+  readonly toggleOpen: (id: number) => void;
+}) {
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-16 rounded-xl bg-[#0d1521] border border-[#1e2d3d] animate-pulse" />
+        ))}
+      </div>
+    );
+  }
+
+  if (filtered.length === 0) {
+    return (
+      <div className="text-center py-16">
+        <HelpCircle className="h-12 w-12 text-slate-600 mx-auto mb-3" />
+        <p className="text-slate-400 mb-4">
+          {lang === "ar" ? "لا توجد نتائج لبحثك" : "No results found"}
+        </p>
+        <Link
+          to="/support"
+          className="inline-flex items-center gap-2 rounded-lg bg-cyan-500/10 px-4 py-2 text-sm text-cyan-400 border border-cyan-500/20 hover:bg-cyan-500/20"
+        >
+          <MessageCircle className="h-4 w-4" />
+          {lang === "ar" ? "تواصل مع الدعم" : "Contact Support"}
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {filtered.map((item) => (
+        <div
+          key={item.id}
+          className="rounded-xl border border-[#1e2d3d] bg-[#0d1521] overflow-hidden"
+        >
+          <button
+            onClick={() => toggleOpen(item.id)}
+            className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left hover:bg-[#111827] transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <span className="rounded-md bg-cyan-500/10 px-2 py-1 text-[10px] font-medium text-cyan-400">
+                {CATEGORY_LABELS[item.category]?.[lang] || item.category}
+              </span>
+              <span className="text-sm font-medium text-[#e8f0fe]">
+                {lang === "ar" ? item.questionAr : item.questionEn}
+              </span>
+            </div>
+            <ChevronDown
+              className={`h-4 w-4 flex-shrink-0 text-slate-500 transition-transform ${
+                openId === item.id ? "rotate-180" : ""
+              }`}
+            />
+          </button>
+          {openId === item.id && (
+            <div className="px-5 pb-4 text-sm text-slate-400 leading-relaxed border-t border-[#1e2d3d]/50 pt-3">
+              {lang === "ar" ? item.answerAr : item.answerEn}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function Faq() {
   const { lang } = useTranslation();
   const [search, setSearch] = useState("");
@@ -103,86 +195,29 @@ export default function Faq() {
               />
             </div>
             <div className="flex flex-wrap gap-2">
-              <button
+              <CategoryPill
+                label={lang === "ar" ? "الكل" : "All"}
+                isActive={selectedCategory === "all"}
                 onClick={() => setSelectedCategory("all")}
-                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                  selectedCategory === "all"
-                    ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30"
-                    : "bg-[#0d1521] text-slate-400 border border-[#1e2d3d] hover:text-slate-200"
-                }`}
-              >
-                {lang === "ar" ? "الكل" : "All"}
-              </button>
+              />
               {(categories || []).map((cat: string) => (
-                <button
+                <CategoryPill
                   key={cat}
+                  label={CATEGORY_LABELS[cat]?.[lang] || cat}
+                  isActive={selectedCategory === cat}
                   onClick={() => setSelectedCategory(cat)}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                    selectedCategory === cat
-                      ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30"
-                      : "bg-[#0d1521] text-slate-400 border border-[#1e2d3d] hover:text-slate-200"
-                  }`}
-                >
-                  {CATEGORY_LABELS[cat]?.[lang] || cat}
-                </button>
+                />
               ))}
             </div>
           </div>
 
-          {isLoading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="h-16 rounded-xl bg-[#0d1521] border border-[#1e2d3d] animate-pulse" />
-              ))}
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="text-center py-16">
-              <HelpCircle className="h-12 w-12 text-slate-600 mx-auto mb-3" />
-              <p className="text-slate-400 mb-4">
-                {lang === "ar" ? "لا توجد نتائج لبحثك" : "No results found"}
-              </p>
-              <Link
-                to="/support"
-                className="inline-flex items-center gap-2 rounded-lg bg-cyan-500/10 px-4 py-2 text-sm text-cyan-400 border border-cyan-500/20 hover:bg-cyan-500/20"
-              >
-                <MessageCircle className="h-4 w-4" />
-                {lang === "ar" ? "تواصل مع الدعم" : "Contact Support"}
-              </Link>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {filtered.map((item) => (
-                <div
-                  key={item.id}
-                  className="rounded-xl border border-[#1e2d3d] bg-[#0d1521] overflow-hidden"
-                >
-                  <button
-                    onClick={() => toggleOpen(item.id)}
-                    className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left hover:bg-[#111827] transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="rounded-md bg-cyan-500/10 px-2 py-1 text-[10px] font-medium text-cyan-400">
-                        {CATEGORY_LABELS[item.category]?.[lang] || item.category}
-                      </span>
-                      <span className="text-sm font-medium text-[#e8f0fe]">
-                        {lang === "ar" ? item.questionAr : item.questionEn}
-                      </span>
-                    </div>
-                    <ChevronDown
-                      className={`h-4 w-4 flex-shrink-0 text-slate-500 transition-transform ${
-                        openId === item.id ? "rotate-180" : ""
-                      }`}
-                    />
-                  </button>
-                  {openId === item.id && (
-                    <div className="px-5 pb-4 text-sm text-slate-400 leading-relaxed border-t border-[#1e2d3d]/50 pt-3">
-                      {lang === "ar" ? item.answerAr : item.answerEn}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+          <FaqResultList
+            isLoading={isLoading}
+            filtered={filtered}
+            openId={openId}
+            lang={lang}
+            toggleOpen={toggleOpen}
+          />
 
           <div className="mt-8 text-center">
             <p className="text-sm text-slate-500 mb-3">

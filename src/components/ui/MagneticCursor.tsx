@@ -56,8 +56,9 @@ export default function MagneticCursor({
         background: `radial-gradient(circle, ${color} 0%, transparent 70%)`,
         transform: "translate(-50%, -50%)",
         opacity: isVisible ? 1 : 0,
-        transition: { opacity: 0.3 },
       }}
+      transition={{ duration: 0.3 }}
+      animate={{ opacity: isVisible ? 1 : 0 }}
     />
   );
 }

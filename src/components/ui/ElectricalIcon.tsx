@@ -1,8 +1,13 @@
 import { visualRandom } from "@/lib/random";
 import React, { useState, useRef, useCallback } from "react";
-import { motion } from "framer-motion";
+import { motion, type HTMLMotionProps } from "framer-motion";
 
-interface ElectricalIconProps extends React.HTMLAttributes<HTMLDivElement> {
+// Omit React's conflicting drag/animation handlers so they don't clash with
+// framer-motion's typed versions when spread into motion.div.
+type ElectricalIconProps = Omit<
+  HTMLMotionProps<"div">,
+  "children" | "variant" | "color" | "size"
+> & {
   readonly children: React.ReactNode;
   readonly variant?: "arc" | "shock" | "ripple" | "glow";
   readonly color?: string;
