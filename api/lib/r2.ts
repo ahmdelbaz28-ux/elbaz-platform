@@ -10,13 +10,15 @@
  * - No egress fees (unlike AWS S3)
  */
 
-import { S3Client, GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, GetObjectCommand, HeadObjectCommand, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "./env";
 
 // ─── File Size Validation Constants ──────────────────────────────────────────
 
 const MAX_FILE_SIZE_BYTES = 1024 * 1024 * 1024; // 1 GB (Practical for high-quality engineering videos)
+
+// Allowed content types for video/streaming uploads (lessons etc.)
 const ALLOWED_CONTENT_TYPES = new Set([
   "video/mp4",
   "video/webm",
@@ -40,6 +42,54 @@ const ALLOWED_CONTENT_TYPES = new Set([
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   "application/octet-stream", // Fallback for binary data
 ]);
+
+// Allowed content types for reference file uploads (documents, spreadsheets, images, archives)
+// Broader than video uploads — references can be ANY document type the admin wants to share.
+export const REFERENCE_ALLOWED_CONTENT_TYPES = new Set([
+  // Documents
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation", // .pptx
+  "text/plain",
+  "text/csv",
+  "text/markdown",
+  "application/rtf",
+  // Spreadsheets
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
+  "application/vnd.oasis.opendocument.spreadsheet", // .ods
+  // Images
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/svg+xml",
+  "image/bmp",
+  "image/tiff",
+  // Archives
+  "application/zip",
+  "application/x-rar-compressed",
+  "application/x-7z-compressed",
+  "application/x-tar",
+  "application/gzip",
+  // Engineering / technical
+  "application/dwg",
+  "application/dxf",
+  "application/acad",
+  "application/x-autocad",
+  // CAD / 3D
+  "model/stl",
+  "application/sla",
+  // Other
+  "application/json",
+  "application/xml",
+  "application/octet-stream", // Fallback for unknown binary types
+]);
+
+// Max file size for reference uploads (50 MB — documents are smaller than videos)
+export const REFERENCE_MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
 
 
 /**
@@ -177,5 +227,80 @@ export async function getR2ObjectMetadata(objectKey: string): Promise<{
     }
     // R2 not configured — return null silently
     return null;
+  }
+}
+
+// ─── Presigned Upload URL ────────────────────────────────────────────────────
+
+/**
+ * Generate a presigned URL for uploading a file directly to R2 from the browser.
+ * The browser PUTs the file to this URL — the file never touches our server.
+ *
+ * @param objectKey The S3 object key (e.g., "references/file-123.pdf")
+ * @param contentType The MIME type of the file being uploaded
+ * @param expiresIn URL expiry in seconds (default: 300 = 5 minutes)
+ */
+export async function generateR2UploadUrl(
+  objectKey: string,
+  contentType: string,
+  expiresIn: number = 300,
+): Promise<string> {
+  const client = getR2Client();
+  const bucketName = env.R2_BUCKET_NAME;
+  if (!bucketName) throw new Error("R2 bucket is not configured");
+
+  const command = new PutObjectCommand({
+    Bucket: bucketName,
+    Key: objectKey,
+    ContentType: contentType,
+  });
+
+  return getSignedUrl(client, command, { expiresIn });
+}
+
+// ─── Presigned Download URL ──────────────────────────────────────────────────
+
+/**
+ * Generate a presigned URL for downloading a file from R2.
+ * Forces download (attachment disposition) with the original filename.
+ */
+export async function generateR2DownloadUrl(
+  objectKey: string,
+  fileName: string,
+  contentType?: string,
+  expiresIn: number = 3600,
+): Promise<string> {
+  const client = getR2Client();
+  const bucketName = env.R2_BUCKET_NAME;
+  if (!bucketName) throw new Error("R2 bucket is not configured");
+
+  const command = new GetObjectCommand({
+    Bucket: bucketName,
+    Key: objectKey,
+    ResponseContentType: contentType,
+    ResponseContentDisposition: `attachment; filename="${fileName.replace(/[^\w\u0600-\u06FF.-]/g, "_")}"`,
+  });
+
+  return getSignedUrl(client, command, { expiresIn });
+}
+
+// ─── Delete Object ───────────────────────────────────────────────────────────
+
+/**
+ * Delete an object from R2.
+ */
+export async function deleteR2Object(objectKey: string): Promise<void> {
+  try {
+    const client = getR2Client();
+    const bucketName = env.R2_BUCKET_NAME;
+    if (!bucketName) throw new Error("R2 bucket is not configured");
+    const command = new DeleteObjectCommand({
+      Bucket: bucketName,
+      Key: objectKey,
+    });
+    await client.send(command);
+  } catch (error) {
+    console.warn("[R2] Failed to delete object:", objectKey, error);
+    throw error;
   }
 }

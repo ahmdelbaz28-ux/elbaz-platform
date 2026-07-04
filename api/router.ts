@@ -16,6 +16,7 @@ import { notesRouter } from "./notes-router";
 import { sessionsRouter } from "./sessions-router";
 import { licenseRouter } from "./license-router";
 import { exportRouter } from "./export-router";
+import { referencesRouter } from "./references-router";
 import { createRouter, publicQuery } from "./middleware";
 
 export const appRouter = createRouter({
@@ -38,6 +39,7 @@ export const appRouter = createRouter({
   sessions: sessionsRouter,
   license: licenseRouter,
   export: exportRouter,
+  references: referencesRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -566,6 +566,33 @@ CREATE TABLE IF NOT EXISTS `licenses` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
+-- 27. referenceFiles  (uploaded reference files: PDF/DOCX/XLSX/JPG/PNG/etc)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS `referenceFiles` (
+  `id`            BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `title`         VARCHAR(500)     NOT NULL,
+  `description`   TEXT             NULL,
+  `fileName`      VARCHAR(500)     NOT NULL,
+  `fileKey`       VARCHAR(1000)    NOT NULL,
+  `fileUrl`       VARCHAR(1000)    NOT NULL,
+  `fileType`      VARCHAR(100)     NOT NULL,
+  `fileSize`      BIGINT UNSIGNED  NOT NULL,
+  `category`      VARCHAR(100)     NULL DEFAULT 'general',
+  `uploadedById`  BIGINT UNSIGNED  NULL,
+  `isPublic`      BOOLEAN          NOT NULL DEFAULT TRUE,
+  `isPublished`   BOOLEAN          NOT NULL DEFAULT TRUE,
+  `downloadCount` INT              NOT NULL DEFAULT 0,
+  `sortOrder`     INT              NOT NULL DEFAULT 0,
+  `createdAt`     TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updatedAt`     TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `reference_files_category_idx` (`category`),
+  INDEX `reference_files_published_idx` (`isPublished`),
+  INDEX `reference_files_sort_idx` (`sortOrder`),
+  CONSTRAINT `fk_reference_files_uploader` FOREIGN KEY (`uploadedById`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
 -- Re-enable FK checks
 -- ============================================================================
 SET FOREIGN_KEY_CHECKS = 1;

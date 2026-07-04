@@ -1,7 +1,7 @@
 import { Link, useLocation } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "@/hooks/useTranslation";
-import { Home, BookOpen, LayoutDashboard, User, LogIn } from "lucide-react";
+import { Home, BookOpen, LayoutDashboard, User, LogIn, FileBox } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 interface NavTab {
@@ -15,6 +15,7 @@ function buildTabs(isAuthenticated: boolean, lang: "ar" | "en"): readonly NavTab
     return [
       { path: "/", icon: Home, label: lang === "ar" ? "الرئيسية" : "Home" },
       { path: "/courses", icon: BookOpen, label: lang === "ar" ? "الكورسات" : "Courses" },
+      { path: "/references", icon: FileBox, label: lang === "ar" ? "المراجع" : "Refs" },
       { path: "/dashboard", icon: LayoutDashboard, label: lang === "ar" ? "لوحتي" : "Dashboard" },
       { path: "/profile", icon: User, label: lang === "ar" ? "حسابي" : "Profile" },
     ];
@@ -22,6 +23,7 @@ function buildTabs(isAuthenticated: boolean, lang: "ar" | "en"): readonly NavTab
   return [
     { path: "/", icon: Home, label: lang === "ar" ? "الرئيسية" : "Home" },
     { path: "/courses", icon: BookOpen, label: lang === "ar" ? "الكورسات" : "Courses" },
+    { path: "/references", icon: FileBox, label: lang === "ar" ? "المراجع" : "Refs" },
     { path: "/login", icon: LogIn, label: lang === "ar" ? "دخول" : "Login" },
   ];
 }
