@@ -33,9 +33,15 @@ on:
       - '.github/workflows/deploy-cf-worker.yml'
   workflow_dispatch:
 
+# Least-privilege: only needs to read repo contents. Worker deploy uses
+# CLOUDFLARE_API_TOKEN (a repo secret), not GITHUB_TOKEN.
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
