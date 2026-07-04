@@ -559,11 +559,13 @@ async function start() {
     console.warn("[Server] Redis unavailable, rate limiting disabled:", (err as Error).message);
   }
 
-  // NOSONAR — S6582/S7741: typeof guard is REQUIRED here, not optional chaining.
-  // `Bun` is not a declared global on Node.js, so `Bun?.serve` throws
-  // ReferenceError. `typeof Bun !== "undefined"` safely returns "undefined"
-  // for undeclared identifiers without throwing.
-  const useBun = Bun?.serve; // NOSONAR
+  // Detect Bun runtime. CRITICAL: must use `typeof Bun !== "undefined"`,
+  // NOT `Bun?.serve` — `Bun` is not a declared global on Node.js, so any
+  // direct reference (even with optional chaining) throws ReferenceError
+  // and crashes the server at startup. The previous Biome auto-fix
+  // (`useOptionalChain`) broke this and shipped to production — reverted.
+  const isBunRuntime = typeof Bun !== "undefined";
+  const useBun = isBunRuntime && typeof Bun.serve === "function";
   let server: { close: (cb?: () => void) => void } | undefined;
 
   if (useBun) {

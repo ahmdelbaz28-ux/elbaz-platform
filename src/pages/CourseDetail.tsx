@@ -387,6 +387,7 @@ const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVid
         }}
         role="group" // NOSONAR — S6819: shadcn/ui ARIA role pattern for video controls container
         aria-label="Video controls"
+        tabIndex={0} // NOSONAR — S6845: tabIndex lets the overlay receive focus so the Escape/Enter/Space shortcuts above work for keyboard users.
       >
         <div className="group/progress relative mb-2 h-1.5 cursor-pointer rounded-full bg-white/20 transition-all group-hover/progress:h-2.5"
           onClick={handleSeek}
