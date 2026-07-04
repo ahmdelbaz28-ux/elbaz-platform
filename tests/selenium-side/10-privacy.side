@@ -1,0 +1,45 @@
+{
+  "id": "52b44c2a-6db2-45a3-9a00-f76041f2be55",
+  "version": "3.0",
+  "name": "Privacy Policy",
+  "url": "https://ahmedelbaz.qzz.io",
+  "tests": [
+    {
+      "id": "36237571-740a-40e0-bec0-27586550c77a",
+      "name": "Privacy Loads",
+      "commands": [
+        {
+          "command": "open",
+          "target": "/privacy",
+          "value": ""
+        },
+        {
+          "command": "waitForElementVisible",
+          "target": "css=body",
+          "value": "15000"
+        },
+        {
+          "command": "assertElementPresent",
+          "target": "css=body",
+          "value": ""
+        }
+      ]
+    }
+  ],
+  "suites": [
+    {
+      "id": "4258ae76-7b1a-4a7b-ad34-140a40995c57",
+      "name": "Privacy Policy Suite",
+      "persistSession": false,
+      "parallel": false,
+      "timeout": 60,
+      "tests": [
+        "36237571-740a-40e0-bec0-27586550c77a"
+      ]
+    }
+  ],
+  "urls": [
+    "https://ahmedelbaz.qzz.io"
+  ],
+  "plugins": []
+}

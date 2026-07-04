@@ -1,0 +1,45 @@
+{
+  "id": "c66f0d58-8fd7-4095-808c-1f9e6ad58701",
+  "version": "3.0",
+  "name": "Home Page",
+  "url": "https://ahmedelbaz.qzz.io",
+  "tests": [
+    {
+      "id": "75401149-26e8-4a5b-8b90-5e22d87cb944",
+      "name": "Home Loads",
+      "commands": [
+        {
+          "command": "open",
+          "target": "/",
+          "value": ""
+        },
+        {
+          "command": "waitForElementVisible",
+          "target": "css=body",
+          "value": "15000"
+        },
+        {
+          "command": "assertElementPresent",
+          "target": "css=body",
+          "value": ""
+        }
+      ]
+    }
+  ],
+  "suites": [
+    {
+      "id": "1765c925-1ac3-43c4-ba01-5620f3c5a2e9",
+      "name": "Home Page Suite",
+      "persistSession": false,
+      "parallel": false,
+      "timeout": 60,
+      "tests": [
+        "75401149-26e8-4a5b-8b90-5e22d87cb944"
+      ]
+    }
+  ],
+  "urls": [
+    "https://ahmedelbaz.qzz.io"
+  ],
+  "plugins": []
+}

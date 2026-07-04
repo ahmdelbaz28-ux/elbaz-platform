@@ -1,0 +1,45 @@
+{
+  "id": "2a852c3f-d004-44d3-a72b-e7cff0f3c9ad",
+  "version": "3.0",
+  "name": "Refund Policy",
+  "url": "https://ahmedelbaz.qzz.io",
+  "tests": [
+    {
+      "id": "bc9d98ab-64e9-43c9-a201-e235f68eda0e",
+      "name": "Refund Loads",
+      "commands": [
+        {
+          "command": "open",
+          "target": "/refund",
+          "value": ""
+        },
+        {
+          "command": "waitForElementVisible",
+          "target": "css=body",
+          "value": "15000"
+        },
+        {
+          "command": "assertElementPresent",
+          "target": "css=body",
+          "value": ""
+        }
+      ]
+    }
+  ],
+  "suites": [
+    {
+      "id": "b599f246-cb2c-4c9f-b855-82f60e0e9e28",
+      "name": "Refund Policy Suite",
+      "persistSession": false,
+      "parallel": false,
+      "timeout": 60,
+      "tests": [
+        "bc9d98ab-64e9-43c9-a201-e235f68eda0e"
+      ]
+    }
+  ],
+  "urls": [
+    "https://ahmedelbaz.qzz.io"
+  ],
+  "plugins": []
+}

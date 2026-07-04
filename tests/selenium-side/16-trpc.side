@@ -1,0 +1,45 @@
+{
+  "id": "cf3d48b8-bd24-48d9-95bd-e22d6cd74683",
+  "version": "3.0",
+  "name": "tRPC Ping",
+  "url": "https://ahmedelbaz.qzz.io",
+  "tests": [
+    {
+      "id": "260798c9-27b8-4a8a-91fc-7b7496ff634c",
+      "name": "tRPC ping Returns OK",
+      "commands": [
+        {
+          "command": "open",
+          "target": "/api/trpc/ping",
+          "value": ""
+        },
+        {
+          "command": "waitForElementVisible",
+          "target": "css=body",
+          "value": "15000"
+        },
+        {
+          "command": "assertElementPresent",
+          "target": "css=body",
+          "value": ""
+        }
+      ]
+    }
+  ],
+  "suites": [
+    {
+      "id": "3191e6bf-7bf6-4725-b27f-86ab976fa473",
+      "name": "tRPC Ping Suite",
+      "persistSession": false,
+      "parallel": false,
+      "timeout": 60,
+      "tests": [
+        "260798c9-27b8-4a8a-91fc-7b7496ff634c"
+      ]
+    }
+  ],
+  "urls": [
+    "https://ahmedelbaz.qzz.io"
+  ],
+  "plugins": []
+}

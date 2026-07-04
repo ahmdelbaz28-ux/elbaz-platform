@@ -1,0 +1,45 @@
+{
+  "id": "3db27453-c244-452c-ab48-9a6208d8aaff",
+  "version": "3.0",
+  "name": "404 Page",
+  "url": "https://ahmedelbaz.qzz.io",
+  "tests": [
+    {
+      "id": "7bdda3ca-7e03-49d2-9c00-8e12f3b21a72",
+      "name": "404 Returns Content",
+      "commands": [
+        {
+          "command": "open",
+          "target": "/nonexistent-page-xyz-123",
+          "value": ""
+        },
+        {
+          "command": "waitForElementVisible",
+          "target": "css=body",
+          "value": "15000"
+        },
+        {
+          "command": "assertElementPresent",
+          "target": "css=body",
+          "value": ""
+        }
+      ]
+    }
+  ],
+  "suites": [
+    {
+      "id": "f6191d5a-c22a-400f-9437-c1ca70baee4f",
+      "name": "404 Page Suite",
+      "persistSession": false,
+      "parallel": false,
+      "timeout": 60,
+      "tests": [
+        "7bdda3ca-7e03-49d2-9c00-8e12f3b21a72"
+      ]
+    }
+  ],
+  "urls": [
+    "https://ahmedelbaz.qzz.io"
+  ],
+  "plugins": []
+}
