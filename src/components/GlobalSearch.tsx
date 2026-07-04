@@ -168,8 +168,7 @@ export default function GlobalSearch() {
     );
   }
 
-  const hasResults = data && totalResults > 0;
-  const showDropdown = query.length >= 2 && data;
+  const showDropdown = query.length >= 2 && Boolean(data);
 
   return (
     <div ref={containerRef} className="relative">
@@ -192,15 +191,15 @@ export default function GlobalSearch() {
       {/* Results dropdown */}
       {showDropdown && (
         <div className="absolute top-full mt-2 w-full min-w-[400px] rounded-xl border border-[#1e2d3d] bg-[#0d1521] shadow-2xl shadow-black/50 max-h-[70vh] overflow-y-auto z-[100]">
-          {!hasResults ? (
+          {totalResults === 0 ? (
             <div className="p-6 text-center text-sm text-slate-500">
               {lang === "ar" ? "لا توجد نتائج" : "No results found"}
             </div>
           ) : (
             <div className="p-2">
-              <CourseResults courses={data.courses as CourseHit[]} lang={lang} onPick={(link) => handleResultClick("course", link)} />
-              <ReferenceResults references={data.references as ReferenceHit[]} lang={lang} onPick={(link) => handleResultClick("reference", link)} />
-              <FaqResults faqs={data.faqs as FaqHit[]} lang={lang} onPick={(link) => handleResultClick("faq", link)} />
+              <CourseResults courses={data!.courses as CourseHit[]} lang={lang} onPick={(link) => handleResultClick("course", link)} />
+              <ReferenceResults references={data!.references as ReferenceHit[]} lang={lang} onPick={(link) => handleResultClick("reference", link)} />
+              <FaqResults faqs={data!.faqs as FaqHit[]} lang={lang} onPick={(link) => handleResultClick("faq", link)} />
 
               <div className="border-t border-[#1e2d3d] pt-2 px-3 py-1.5 text-[10px] text-slate-600">
                 {totalResults} {lang === "ar" ? "نتيجة" : "results"}

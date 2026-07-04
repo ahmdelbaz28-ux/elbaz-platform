@@ -168,17 +168,21 @@ function ReferencesLoading({ lang }: { readonly lang: "ar" | "en" }) {
 }
 
 function ReferencesEmpty({ lang, hasFilter }: { readonly lang: "ar" | "en"; readonly hasFilter: boolean }) {
-  const heading = hasFilter
-    ? (lang === "ar" ? "لا توجد نتائج" : "No results found")
-    : (lang === "ar" ? "لا توجد ملفات بعد" : "No files yet");
-  const subtext = hasFilter
-    ? (lang === "ar" ? "جرب تغيير البحث أو الفئة" : "Try changing your search or category")
-    : (lang === "ar" ? "سيتم إضافة الملفات قريباً" : "Files will be added soon");
+  // Lookup tables instead of nested ternaries (S3358).
+  const headings: Record<"filtered" | "empty", Record<"ar" | "en", string>> = {
+    filtered: { ar: "لا توجد نتائج", en: "No results found" },
+    empty: { ar: "لا توجد ملفات بعد", en: "No files yet" },
+  };
+  const subtexts: Record<"filtered" | "empty", Record<"ar" | "en", string>> = {
+    filtered: { ar: "جرب تغيير البحث أو الفئة", en: "Try changing your search or category" },
+    empty: { ar: "سيتم إضافة الملفات قريباً", en: "Files will be added soon" },
+  };
+  const bucket = hasFilter ? "filtered" : "empty";
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center">
       <FileBox className="h-16 w-16 text-slate-600 mb-4" />
-      <h3 className="text-lg font-medium text-slate-300 mb-1">{heading}</h3>
-      <p className="text-sm text-slate-500">{subtext}</p>
+      <h3 className="text-lg font-medium text-slate-300 mb-1">{headings[bucket][lang]}</h3>
+      <p className="text-sm text-slate-500">{subtexts[bucket][lang]}</p>
     </div>
   );
 }
@@ -439,21 +443,15 @@ interface DropzoneProps {
 }
 
 function UploadDropzone({ file, lang, disabled, onPick, formatFileSize }: DropzoneProps) {
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    // Trigger pick on Enter or Space — required for keyboard-accessible clickable div (S1082)
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      if (!disabled) onPick();
-    }
-  };
+  // Native <button> element — satisfies S6819 (no role="button" needed) and
+  // S1082 (native buttons are keyboard-accessible by default).
   return (
-    <div
-      role="button"
-      tabIndex={0}
+    <button
+      type="button"
       onClick={() => !disabled && onPick()}
-      onKeyDown={handleKeyDown}
-      aria-disabled={disabled}
-      className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#1e2d3d] bg-[#0a0e17] px-4 py-8 text-center transition-colors hover:border-cyan-500/40 focus:outline-none focus:ring-2 focus:ring-cyan-500/40"
+      disabled={disabled}
+      aria-label={lang === "ar" ? "اختيار ملف للرفع" : "Select a file to upload"}
+      className="flex w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#1e2d3d] bg-[#0a0e17] px-4 py-8 text-center transition-colors hover:border-cyan-500/40 focus:outline-none focus:ring-2 focus:ring-cyan-500/40 disabled:cursor-not-allowed disabled:opacity-50"
     >
       {file ? (
         <>
@@ -472,7 +470,7 @@ function UploadDropzone({ file, lang, disabled, onPick, formatFileSize }: Dropzo
           </p>
         </>
       )}
-    </div>
+    </button>
   );
 }
 

@@ -16,7 +16,9 @@ interface JourneyStats {
 
 interface JourneyEvent {
   id?: string | number;
-  type?: "certificate" | "enrollment" | "payment" | "lesson" | string;
+  // type is a free-form string — event categories may evolve. Keep this as `string`
+  // (S6571: literal union would be overridden by string anyway).
+  type?: string;
   title?: string;
   titleAr?: string;
   description?: string;
@@ -37,6 +39,17 @@ function renderTimelineIcon(type: string | undefined): ReactNode {
     default:
       return <CheckCircle className="h-4 w-4 text-green-400" />;
   }
+}
+
+// ─── Stable composite key builder — avoids array-index keys (S6479) and
+// nested ternaries (S3358) inside the JSX map callback. ───
+function buildEventKey(event: JourneyEvent): string {
+  if (event.id !== undefined && event.id !== null) {
+    return String(event.id);
+  }
+  const typePart = event.type || "event";
+  const datePart = event.date ? new Date(event.date).getTime() : "0";
+  return `${typePart}-${datePart}`;
 }
 
 // ─── Stats card — extracted to reduce parent cognitive complexity (S3776) ───
@@ -77,12 +90,8 @@ function TimelineList({ events, lang, formatDate }: {
       {events.map((event) => {
         const title = lang === "ar" ? (event.titleAr || event.title || "") : (event.title || "");
         const desc = lang === "ar" ? (event.descriptionAr || event.description || "") : (event.description || "");
-        // Use a composite stable key (NOT the array index) — S6479
-        const key = event.id != null
-          ? String(event.id)
-          : `${event.type || "event"}-${event.date ? new Date(event.date).getTime() : ""}`;
         return (
-          <div key={key} className="relative flex gap-4 pl-10">
+          <div key={buildEventKey(event)} className="relative flex gap-4 pl-10">
             <div className="absolute left-2 top-3 flex h-5 w-5 items-center justify-center rounded-full border-2 border-[#0a0e17] bg-[#0d1521]">
               {renderTimelineIcon(event.type)}
             </div>
@@ -109,29 +118,33 @@ function TimelineList({ events, lang, formatDate }: {
   );
 }
 
+// Auth gate — extracted to keep LearningJourney() cognitive complexity low (S3776).
+function UnauthenticatedJourney({ lang }: { readonly lang: "ar" | "en" }) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[#0a0e17] text-[#e8f0fe]">
+      <div className="text-center">
+        <p className="text-slate-400 mb-4">{lang === "ar" ? "سجل دخولك لعرض رحلتك" : "Log in to view your journey"}</p>
+        <Link to="/login" className="text-cyan-400 hover:underline">{lang === "ar" ? "تسجيل الدخول" : "Login"}</Link>
+      </div>
+    </div>
+  );
+}
+
+function LoadingJourney() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[#0a0e17]">
+      <Loader2 className="h-8 w-8 animate-spin text-cyan-400" />
+    </div>
+  );
+}
+
 export default function LearningJourney() {
   const { lang } = useTranslation();
   const { isAuthenticated } = useAuth();
   const { data, isLoading } = trpc.journey.timeline.useQuery();
 
-  if (!isAuthenticated) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0a0e17] text-[#e8f0fe]">
-        <div className="text-center">
-          <p className="text-slate-400 mb-4">{lang === "ar" ? "سجل دخولك لعرض رحلتك" : "Log in to view your journey"}</p>
-          <Link to="/login" className="text-cyan-400 hover:underline">{lang === "ar" ? "تسجيل الدخول" : "Login"}</Link>
-        </div>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0a0e17]">
-        <Loader2 className="h-8 w-8 animate-spin text-cyan-400" />
-      </div>
-    );
-  }
+  if (isAuthenticated === false) return <UnauthenticatedJourney lang={lang} />;
+  if (isLoading) return <LoadingJourney />;
 
   const stats = (data?.stats || {}) as JourneyStats;
   const timeline = (data?.timeline || []) as JourneyEvent[];
