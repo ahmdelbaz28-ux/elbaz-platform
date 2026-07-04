@@ -564,8 +564,10 @@ async function start() {
   // direct reference (even with optional chaining) throws ReferenceError
   // and crashes the server at startup. The previous Biome auto-fix
   // (`useOptionalChain`) broke this and shipped to production — reverted.
-  const isBunRuntime = typeof Bun !== "undefined";
-  const useBun = isBunRuntime && typeof Bun.serve === "function";
+  // NOSONAR — S7741: typeof guard is REQUIRED for undeclared globals;
+  // comparing Bun === undefined directly throws ReferenceError.
+  const isBunRuntime = typeof Bun !== "undefined"; // NOSONAR
+  const useBun = isBunRuntime && typeof Bun.serve === "function"; // NOSONAR
   let server: { close: (cb?: () => void) => void } | undefined;
 
   if (useBun) {
