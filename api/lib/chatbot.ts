@@ -1020,20 +1020,31 @@ async function tryGroqTier(messages: { role: string; content: string }[], system
 export async function getChatResponse(request: {
   messages: { role: string; content: string }[];
   language?: string;
+  mode?: "thinking" | "instant";
 }): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
   const systemPrompt = getSystemPrompt(request.language);
+  const mode = request.mode || "thinking";
 
-  // ─── TIER 1: Modal (GLM-5.1-FP8) with smart retry ───
-  const modalResult = await tryModalTier(request.messages, systemPrompt);
-  if (modalResult) return modalResult;
+  // ─── THINKING MODE: GLM-5.1 first (reasoning model, best quality) ───
+  if (mode === "thinking") {
+    const modalResult = await tryModalTier(request.messages, systemPrompt);
+    if (modalResult) return modalResult;
+  }
 
-  // ─── TIER 2: OpenCode cascade (DeepSeek V4 → MiMo → Big Pickle → North Mini Code) ───
+  // ─── INSTANT MODE: Groq first (ultra-fast models) ───
+  // ─── THINKING fallback: Groq cascade ───
   const groqResult = await tryGroqTier(request.messages, systemPrompt);
   if (groqResult) return groqResult;
 
   // ─── TIER 3: OpenRouter cascade ───
   const orResult = await openRouterFallback(request.messages, systemPrompt, request.language);
   if (orResult) return buildSuccessResult(orResult);
+
+  // ─── THINKING MODE last resort: Modal (if instant mode skipped it) ───
+  if (mode === "instant") {
+    const modalResult = await tryModalTier(request.messages, systemPrompt);
+    if (modalResult) return modalResult;
+  }
 
   // ─── ALL TIERS FAILED ───
   return buildAllTiersFailedResponse(request.language);
@@ -1103,7 +1114,8 @@ async function tryPickOpenRouterProvider(systemPrompt: string): Promise<{ provid
 
 export async function pickWorkingModel(
   _messages: { role: string; content: string }[],
-  language?: string
+  language?: string,
+  mode: "thinking" | "instant" = "thinking"
 ): Promise<
   | { provider: "modal"; modelId: string; systemPrompt: string }
   | { provider: "groq"; modelId: string; systemPrompt: string }
@@ -1112,14 +1124,28 @@ export async function pickWorkingModel(
 > {
   const systemPrompt = getSystemPrompt(language);
 
-  const modalPick = await tryPickModalProvider(systemPrompt);
-  if (modalPick) return modalPick;
+  // ─── THINKING MODE: Modal (GLM-5.1) first — best quality reasoning ───
+  if (mode === "thinking") {
+    const modalPick = await tryPickModalProvider(systemPrompt);
+    if (modalPick) return modalPick;
+  }
 
+  // ─── INSTANT MODE: Groq first — ultra-fast models ───
+  // ─── THINKING fallback: Groq cascade ───
   const groqPick = await tryPickGroqProvider(systemPrompt);
   if (groqPick) return groqPick;
 
   console.warn("[Chatbot] Modal + OpenCode unavailable — using TIER 3: OpenRouter");
-  return await tryPickOpenRouterProvider(systemPrompt);
+  const openRouterPick = await tryPickOpenRouterProvider(systemPrompt);
+  if (openRouterPick) return openRouterPick;
+
+  // ─── INSTANT MODE last resort: Modal (if instant mode skipped it) ───
+  if (mode === "instant") {
+    const modalPick = await tryPickModalProvider(systemPrompt);
+    if (modalPick) return modalPick;
+  }
+
+  return null;
 }
 
 /**
@@ -1588,8 +1614,10 @@ async function streamOpenRouterProvider(
 export async function getStreamResponse(request: {
   messages: { role: string; content: string }[];
   language?: string;
+  mode?: "thinking" | "instant";
 }): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
-  const picked = await pickWorkingModel(request.messages, request.language);
+  const mode = request.mode || "thinking";
+  const picked = await pickWorkingModel(request.messages, request.language, mode);
 
   if (!picked) {
     return buildStreamErrorResponse("noProvider", request.language);

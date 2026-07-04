@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAuth } from "@/hooks/useAuth";
 import { useChatFabAnimation } from "@/hooks/useChatFabAnimation";
 import {
   X,
@@ -12,6 +14,8 @@ import {
   Trash2,
   Copy,
   RotateCcw,
+  Brain,
+  Rocket,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -28,7 +32,28 @@ interface Message {
 // ─── localStorage persistence ───────────────────────────────────────────────
 
 const STORAGE_KEY = "elbaz_chat_history";
+const MODE_STORAGE_KEY = "elbaz_chat_mode";
 const MAX_STORAGE_MESSAGES = 50;
+
+type ChatMode = "thinking" | "instant";
+
+function loadChatMode(): ChatMode {
+  try {
+    const stored = localStorage.getItem(MODE_STORAGE_KEY);
+    if (stored === "instant" || stored === "thinking") return stored;
+  } catch {
+    // Intentionally ignored: localStorage unavailable — default to thinking. — SonarCloud S2486
+  }
+  return "thinking";
+}
+
+function saveChatMode(mode: ChatMode): void {
+  try {
+    localStorage.setItem(MODE_STORAGE_KEY, mode);
+  } catch {
+    // Intentionally ignored: localStorage unavailable — mode won't persist. — SonarCloud S2486
+  }
+}
 
 function saveMessagesToStorage(msgs: Message[]): void {
   try {
@@ -133,6 +158,8 @@ const MAX_HISTORY = typeof import.meta.env.VITE_CHATBOT_MAX_HISTORY === "string"
 
 export default function ChatBot() { // NOSONAR — chatbot component with SSE streaming, abort, copy, minimize, scroll-sync, localStorage; extraction would require prop-drilling many refs/state
   const { lang } = useTranslation();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>(function() {
     return loadMessagesFromStorage(lang) || [WELCOME_MESSAGES[lang]];
@@ -143,6 +170,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   const [activeModel, setActiveModel] = useState<string>("");
   const [streamingContent, setStreamingContent] = useState<string>("");
   const [copiedId, setCopiedId] = useState<string>("");
+  const [chatMode, setChatMode] = useState<ChatMode>(loadChatMode);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -238,6 +266,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
       messages: apiMessages,
       language: lang,
       chatId: chatIdRef.current,
+      mode: chatMode,
     };
 
     // Create abort controller
@@ -431,7 +460,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
       setStreamingContent("");
       abortControllerRef.current = null;
     }
-  }, [input, isLoading, messages, lang]);
+  }, [input, isLoading, messages, lang, chatMode]);
 
   // ─── Handle Enter key ───
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -464,6 +493,23 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     setActiveModel("");
     try { localStorage.removeItem(STORAGE_KEY); } catch { /* Intentionally ignored: clearChat must proceed even if localStorage is unavailable. — SonarCloud S2486 */ }
   };
+
+  // ─── Toggle chat mode (Thinking/Instant) ───
+  const toggleChatMode = useCallback((mode: ChatMode) => {
+    setChatMode(mode);
+    saveChatMode(mode);
+  }, []);
+
+  // ─── Handle FAB click: auth gate ───
+  const handleFabClick = useCallback(() => {
+    // Auth gate: redirect to login if not authenticated
+    if (!authLoading && !isAuthenticated) {
+      navigate("/login");
+      return;
+    }
+    setIsOpen(true);
+    setIsMinimized(false);
+  }, [authLoading, isAuthenticated, navigate]);
 
   // ─── Retry handler that actually re-sends ───
   const handleRetry = useCallback((failedMsgId: string) => {
@@ -518,10 +564,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
       {!isOpen && (
         <button
           ref={fabRef}
-          onClick={() => {
-            setIsOpen(true);
-            setIsMinimized(false);
-          }}
+          onClick={handleFabClick}
           className="fixed right-4 md:right-6 z-[100] w-14 h-14 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/25 flex items-center justify-center transition-all duration-300 hover:scale-110 hover:shadow-cyan-500/40 active:scale-95 chatbot-fab transform-gpu will-change-transform"
           style={{ bottom: 'max(env(safe-area-inset-bottom, 0px) + 5rem, 5rem)' }}
           aria-label={lang === "ar" ? "\u0641\u062a\u062d \u0627\u0644\u0645\u0633\u0627\u0639\u062f \u0627\u0644\u0630\u0643\u064a" : "Open AI Assistant"}
@@ -622,6 +665,57 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                       </button>
                     </div>
                   </div>
+                </div>
+
+                {/* ─── Mode Selector (Thinking / Instant) ─── */}
+                <div className="flex-shrink-0 px-3 py-2 bg-[#0d1620] border-b border-[#1e2d3d]">
+                  <div className="flex items-center gap-1.5 p-1 bg-[#0a1019] rounded-lg border border-[#1e2d3d]">
+                    {/* Thinking Mode Button */}
+                    <button
+                      onClick={() => toggleChatMode("thinking")}
+                      disabled={isLoading}
+                      className={
+                        "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-[11px] font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed " +
+                        (chatMode === "thinking"
+                          ? "bg-gradient-to-r from-violet-500/30 to-indigo-500/30 text-violet-300 border border-violet-500/40 shadow-sm"
+                          : "text-slate-500 hover:text-slate-300 border border-transparent")
+                      }
+                      title={lang === "ar"
+                        ? "\u0648\u0636\u0639 \u0627\u0644\u062a\u0641\u0643\u064a\u0631: \u0646\u0645\u0648\u0630\u062c GLM 5.1 (\u0623\u0641\u0636\u0644 \u062c\u0648\u062f\u0629\u060c \u0623\u0637\u0648\u0644 \u0648\u0642\u062a \u0627\u0633\u062a\u062c\u0627\u0628\u0629)"
+                        : "Thinking mode: GLM 5.1 model (best quality, longer response time)"}
+                    >
+                      <Brain className="w-3.5 h-3.5" />
+                      <span>{lang === "ar" ? "\u062a\u0641\u0643\u064a\u0631" : "Thinking"}</span>
+                    </button>
+
+                    {/* Instant Mode Button */}
+                    <button
+                      onClick={() => toggleChatMode("instant")}
+                      disabled={isLoading}
+                      className={
+                        "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-[11px] font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed " +
+                        (chatMode === "instant"
+                          ? "bg-gradient-to-r from-cyan-500/30 to-blue-500/30 text-cyan-300 border border-cyan-500/40 shadow-sm"
+                          : "text-slate-500 hover:text-slate-300 border border-transparent")
+                      }
+                      title={lang === "ar"
+                        ? "\u0648\u0636\u0639 \u0627\u0644\u0633\u0631\u0639\u0629: \u0646\u0645\u0627\u0630\u062c OpenRouter \u0648 Groq (\u0623\u0633\u0631\u0639 \u0627\u0633\u062a\u062c\u0627\u0628\u0629)"
+                        : "Instant mode: OpenRouter & Groq models (fastest response)"}
+                    >
+                      <Rocket className="w-3.5 h-3.5" />
+                      <span>{lang === "ar" ? "\u0633\u0631\u064a\u0639" : "Instant"}</span>
+                    </button>
+                  </div>
+                  {/* Mode description */}
+                  <p className="text-[10px] text-slate-600 mt-1.5 text-center">
+                    {chatMode === "thinking"
+                      ? (lang === "ar"
+                          ? "\u0646\u0645\u0648\u0630\u062c GLM 5.1 \u2014 \u062a\u062d\u0644\u064a\u0644 \u0639\u0645\u064a\u0642 \u0648\u0623\u0633\u0626\u0644\u0629 \u0645\u0639\u0642\u062f\u0629"
+                          : "GLM 5.1 model \u2014 deep reasoning for complex questions")
+                      : (lang === "ar"
+                          ? "\u0646\u0645\u0627\u0630\u062c Groq \u2014 \u0631\u062f\u0648\u062f \u0633\u0631\u064a\u0639\u0629 \u0644\u0644\u0623\u0633\u0626\u0644\u0629 \u0627\u0644\u0628\u0633\u064a\u0637\u0629"
+                          : "Groq models \u2014 fast responses for simple questions")}
+                  </p>
                 </div>
 
                 {/* ─── Messages Area ─── */}
