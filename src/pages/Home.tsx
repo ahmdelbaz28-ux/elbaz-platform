@@ -679,7 +679,7 @@ export default function Home() { // NOSONAR — landing page with hero + feature
   );
 }
 
-function FAQItem({ question, answer }: { question: string; answer: string }) {
+function FAQItem({ question, answer }: { readonly question: string; readonly answer: string }) {
   const [open, setOpen] = useState(false);
   return (
     <motion.div layout className="border-b border-[#1f2d44] overflow-hidden">

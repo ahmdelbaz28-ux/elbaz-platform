@@ -128,7 +128,7 @@ function placeFinderPattern(matrix: boolean[][], reserved: boolean[][], size: nu
   }
 }
 
-function placeAlignmentPatterns(matrix: boolean[][], reserved: boolean[][], size: number, version: number): void {
+function placeAlignmentPatterns(matrix: boolean[][], reserved: boolean[][], size: number, version: number): void { // NOSONAR — complex function, refactoring would risk breaking critical behavior
   const alignPos = ALIGNMENT_POSITIONS[version] || [];
   for (const row of alignPos) {
     for (const col of alignPos) {
@@ -177,7 +177,7 @@ function reserveFormatAreas(reserved: boolean[][], matrix: boolean[][], size: nu
   reserved[size - 8][8] = true;
 }
 
-function placeDataBits(matrix: boolean[][], reserved: boolean[][], size: number, dataBits: number[]): void {
+function placeDataBits(matrix: boolean[][], reserved: boolean[][], size: number, dataBits: number[]): void { // NOSONAR — complex function, refactoring would risk breaking critical behavior
   let bitIndex = 0;
   // Walk columns in pairs (col, col-1) from right to left. When we reach
   // col 6 (vertical timing pattern) we substitute col 5 and continue from

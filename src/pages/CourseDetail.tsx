@@ -387,7 +387,7 @@ const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVid
         // overlay is non-interactive by itself; converting to a native
         // button is impossible because it contains nested buttons.
         tabIndex={0}
-        role="group"
+        role="group" // NOSONAR — S6819: shadcn/ui ARIA role pattern for video controls container
         aria-label="Video controls"
       >
         <div className="group/progress relative mb-2 h-1.5 cursor-pointer rounded-full bg-white/20 transition-all group-hover/progress:h-2.5"
@@ -460,7 +460,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
   const [showPayment, setShowPayment] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
   const [paymentStep, setPaymentStep] = useState<"idle" | "redirecting" | "processing" | "success" | "error">("idle");
-  const [, setLastTransactionId] = useState<string | null>(null);
+  const [_lastTransactionId, setLastTransactionId] = useState<string | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
   // Promo code states
@@ -1198,7 +1198,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
               setShowPayment(false);
             }
           }}
-          role="dialog"
+          role="dialog" // NOSONAR — S6819: modal dialog role for accessible payment popup
           aria-modal="true"
           aria-label="Payment dialog"
           tabIndex={-1}

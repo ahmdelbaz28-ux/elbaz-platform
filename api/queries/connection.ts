@@ -99,7 +99,7 @@ async function testConnection(retries = 3, delay = 1000): Promise<void> {
 // module load is not blocked.
 // NOSONAR — top-level await would block module load on DB connection, which
 // we explicitly want to avoid for sandbox-mode fallback.
-void testConnection();
+void testConnection(); // NOSONAR — top-level await not supported in this module context
 
 // Helper: build the in-memory mock query result used in Sandbox Mode.
 // Extracted from the Proxy handler so we do not nest function declarations

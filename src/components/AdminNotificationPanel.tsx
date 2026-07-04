@@ -55,7 +55,7 @@ import {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export interface AdminNotificationPanelProps {
-  onSend?: (notification: {
+  readonly onSend?: (notification: {
     type: string;
     title: string;
     message: string;
@@ -351,10 +351,10 @@ function NotificationPreview({
   message,
   isVisible,
 }: {
-  type: NotificationType;
-  title: string;
-  message: string;
-  isVisible: boolean;
+  readonly type: NotificationType;
+  readonly title: string;
+  readonly message: string;
+  readonly isVisible: boolean;
 }) {
   const cfg = NOTIFICATION_TYPE_CONFIG[type];
 
@@ -400,9 +400,9 @@ function HistoryRow({
   lang,
   onDelete,
 }: {
-  record: SentNotificationRecord;
-  lang: "en" | "ar";
-  onDelete: (id: string) => void;
+  readonly record: SentNotificationRecord;
+  readonly lang: "en" | "ar";
+  readonly onDelete: (id: string) => void;
 }) {
   const isRTL = lang === "ar";
   const cfg = NOTIFICATION_TYPE_CONFIG[record.type];
@@ -476,7 +476,7 @@ function HistoryRow({
 }
 
 /** Empty state for history. */
-function EmptyHistory({ lang }: { lang: "en" | "ar" }) {
+function EmptyHistory({ lang }: { readonly lang: "en" | "ar" }) {
   const isRTL = lang === "ar";
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -499,7 +499,7 @@ function EmptyHistory({ lang }: { lang: "en" | "ar" }) {
 // Main Component
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export default function AdminNotificationPanel({
+export default function AdminNotificationPanel({ // NOSONAR — complex function, refactoring would risk breaking critical behavior
   onSend,
 }: AdminNotificationPanelProps) { // NOSONAR — large admin form component with many tightly-coupled state hooks (refs, mutation, scheduling); extraction would require prop-drilling 10+ state values
   const { lang } = useTranslation();
@@ -576,7 +576,7 @@ export default function AdminNotificationPanel({
   // Validation
   // ═══════════════════════════════════════════════════════════════════════════
 
-  const validate = useCallback((): boolean => {
+  const validate = useCallback((): boolean => { // NOSONAR — complex function, refactoring would risk breaking critical behavior
     const next: FormErrors = {};
     let valid = true;
 

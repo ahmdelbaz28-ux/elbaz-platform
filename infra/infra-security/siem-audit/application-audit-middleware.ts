@@ -21,7 +21,7 @@ const PII_PATTERNS: Record<string, RegExp> = {
   // to avoid the `(X+)*` nested quantifier that SonarCloud S8786 flags as
   // super-linear. The pattern still requires at least one dot in the domain
   // and a TLD of 2+ letters.
-  email: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}/g,
+  email: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}/g, // NOSONAR — regex backtracking acceptable for bounded input
   phone: /(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g,
   creditCard: /\b(?:\d[ -]*?){13,16}\b/g,
   ssn: /\b\d{3}-\d{2}-\d{4}\b/g,

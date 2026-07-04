@@ -260,16 +260,16 @@ interface CookiePrefToggleProps {
 }
 
 function CookiePrefToggle({ active, lang, kind, onToggle }: CookiePrefToggleProps) {
-  const title = kind === "analytics"
-    ? (lang === "en" ? "Analytics Cookies" : "ملفات التحليلات")
-    : (lang === "en" ? "Marketing Cookies" : "ملفات التسويق");
-  const desc = kind === "analytics"
-    ? (lang === "en"
-        ? "Help us understand how visitors interact with our website to improve performance and content."
-        : "تساعدنا في فهم كيفية تفاعل الزوار مع الموقع لتحسين الأداء والمحتوى.")
-    : (lang === "en"
-        ? "Used to deliver relevant advertisements and track campaign effectiveness."
-        : "تستخدم لعرض إعلانات ذات صلة وتتبع فعالية الحملات التسويقية.");
+  const analyticsTitle = lang === "en" ? "Analytics Cookies" : "ملفات التحليلات";
+  const marketingTitle = lang === "en" ? "Marketing Cookies" : "ملفات التسويق";
+  const title = kind === "analytics" ? analyticsTitle : marketingTitle;
+  const analyticsDesc = lang === "en"
+    ? "Help us understand how visitors interact with our website to improve performance and content."
+    : "تساعدنا في فهم كيفية تفاعل الزوار مع الموقع لتحسين الأداء والمحتوى.";
+  const marketingDesc = lang === "en"
+    ? "Used to deliver relevant advertisements and track campaign effectiveness."
+    : "تستخدم لعرض إعلانات ذات صلة وتتبع فعالية الحملات التسويقية.";
+  const desc = kind === "analytics" ? analyticsDesc : marketingDesc;
 
   return (
     <div className="flex items-start gap-3">
