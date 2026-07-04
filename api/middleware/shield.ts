@@ -110,4 +110,5 @@ export const shieldMiddleware = createMiddleware(async (c, next) => {
   cleanupRateLimitMap();
 
   await next();
+  return;
 });

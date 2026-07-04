@@ -2,7 +2,6 @@ import { test, expect } from "@playwright/test";
 import { CoursesPage } from "../../page-objects/CoursesPage";
 import { CourseDetailPage } from "../../page-objects/CourseDetailPage";
 import { LoginPage } from "../../page-objects/LoginPage";
-import { DashboardPage } from "../../page-objects/DashboardPage";
 
 test.describe("Courses", () => {
   let coursesPage: CoursesPage;

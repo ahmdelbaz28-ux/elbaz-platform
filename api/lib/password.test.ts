@@ -96,7 +96,7 @@ describe("Password Module", () => {
       for (const pw of passwords) {
         const hash = await hashPassword(pw);
         expect(await verifyPassword(pw, hash)).toBe(true);
-        expect(await verifyPassword(pw + "x", hash)).toBe(false);
+        expect(await verifyPassword(`${pw}x`, hash)).toBe(false);
       }
     });
   });

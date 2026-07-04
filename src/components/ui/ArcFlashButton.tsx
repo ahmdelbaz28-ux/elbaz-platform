@@ -79,9 +79,11 @@ export default function ArcFlashButton({
     : `border border-[#1f2d44] bg-transparent text-[#f0f4f8]`;
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: wrapper div for visual hover effects only; the inner <button> handles all interaction
     <div
       ref={containerRef}
       className="relative inline-block"
+      role="presentation"
       onMouseEnter={() => setHovering(true)}
       onMouseLeave={() => setHovering(false)}
     >

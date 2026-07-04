@@ -71,7 +71,7 @@ function ToastItem({
     const duration = toast.duration || 5000;
     const timer = setTimeout(() => handleDismiss(), duration);
     return () => clearTimeout(timer);
-  }, [toast.id, toast.duration, handleDismiss]);
+  }, [toast.duration, handleDismiss]);
 
   return (
     <div
@@ -145,8 +145,10 @@ export function NotificationProvider({ children }: { readonly children: ReactNod
       {children}
 
       {/* Toast container — bottom-left */}
+      {/* biome-ignore lint/a11y/useSemanticElements: <section> adds unwanted default styling; role=region on div is WAI-ARIA compliant for toast container */}
       <div
         id="notifications"
+        role="region"
         aria-label={lang === "ar" ? "الإشعارات" : "Notifications"}
         className="fixed bottom-20 left-4 z-[100] flex flex-col gap-3 md:bottom-6 md:left-6"
       >
@@ -187,7 +189,6 @@ export function useEnrollmentNotification() {
 
 export function usePromoNotification() {
   const { showNotification } = useNotification();
-  const { lang } = useTranslation();
 
   return useCallback(
     (title: string, message: string) => {
@@ -198,6 +199,6 @@ export function usePromoNotification() {
         duration: 6000,
       });
     },
-    [showNotification, lang]
+    [showNotification]
   );
 }

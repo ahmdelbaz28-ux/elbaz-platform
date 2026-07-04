@@ -158,7 +158,7 @@ export function traceDatabaseQuery(operation: string, query: string): Span {
     attributes: {
       'db.system': 'mysql',
       'db.operation': operation,
-      'db.statement': query.length > 500 ? query.substring(0, 500) + '...' : query,
+      'db.statement': query.length > 500 ? `${query.substring(0, 500)}...` : query,
       'db.namespace': process.env.DB_NAME || 'lms_platform',
     },
   });

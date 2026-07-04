@@ -59,7 +59,7 @@ function getApiBaseUrl(): string {
 const trpcClient = trpc.createClient({
   links: [
     httpLink({
-      url: getApiBaseUrl() + "/api/trpc",
+      url: `${getApiBaseUrl()}/api/trpc`,
       transformer: superjson,
       fetch(input, init) {
           const token = getStoredToken();
@@ -74,7 +74,7 @@ const trpcClient = trpc.createClient({
             ...(init?.headers as Record<string, string> | undefined),
             ...platformHeader,
           };
-          if (token) headers["Authorization"] = `Bearer ${token}`;
+          if (token) headers.Authorization = `Bearer ${token}`;
           return globalThis.fetch(input, {
             ...(init ?? {}), // NOSONAR — ?? {} provides runtime fallback for spread; type-only fix would change semantics
             credentials: isNative ? "omit" : "include",

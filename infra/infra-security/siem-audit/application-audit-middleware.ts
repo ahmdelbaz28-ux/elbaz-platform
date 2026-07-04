@@ -61,7 +61,7 @@ function classifySeverity(statusCode: number, responseTime: number): "info" | "w
   return "info";
 }
 
-function determineComplianceTags(path: string, method: string, statusCode: number, userId: string | null): string[] {
+function determineComplianceTags(path: string, method: string, statusCode: number, _userId: string | null): string[] {
   const tags: string[] = [];
 
   if (path.includes("/admin")) {

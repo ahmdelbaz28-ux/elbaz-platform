@@ -295,7 +295,7 @@ export default function ElectricParticles({
     return () => {
       cancelAnimationFrame(animRef.current);
     };
-  }, [color, dimensions]);
+  }, [color]);
 
   return (
     <div aria-hidden="true" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 1 }}>

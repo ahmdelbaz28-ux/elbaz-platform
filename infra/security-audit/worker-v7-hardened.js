@@ -207,7 +207,7 @@ function stage3_blockSensitivePaths(request) {
   const url = new URL(request.url);
   const path = decodeURIComponent(url.pathname).toLowerCase();
   for (const blockedPath of BLOCKED_PATHS) {
-    if (path === blockedPath || path.startsWith(blockedPath + '/') || path.includes(blockedPath)) {
+    if (path === blockedPath || path.startsWith(`${blockedPath}/`) || path.includes(blockedPath)) {
       return new Response('Not Found', { status: 404, headers: { 'Content-Type': 'text/plain' } });
     }
   }
@@ -394,7 +394,7 @@ function addRequestHeaders(request) {
 
 // ─── Main Handler ───────────────────────────────────────────────────────────
 
-async function handleRequest(request, env, ctx) {
+async function handleRequest(request, _env, ctx) {
   const requestUrl = new URL(request.url);
   const pathname = requestUrl.pathname;
   const ext = pathname.substring(pathname.lastIndexOf('.') + 1).toLowerCase();
@@ -418,7 +418,7 @@ async function handleRequest(request, env, ctx) {
     const cache = caches.default;
 
     // Check if we have a cached response
-    let cachedResponse = await cache.match(cacheKey);
+    const cachedResponse = await cache.match(cacheKey);
     if (cachedResponse) {
       // Serve from edge cache — instant!
       return cachedResponse;

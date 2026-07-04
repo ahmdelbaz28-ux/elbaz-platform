@@ -178,6 +178,7 @@ export function useWatchTracker({
         video.removeEventListener("loadedmetadata", onLoaded);
       };
     }
+    return undefined;
   }, [enabled, lessonId, videoRef, resumePosition]);
 
   // Save position when tab is hidden (user switches tabs)

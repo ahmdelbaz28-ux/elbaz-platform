@@ -361,7 +361,7 @@ async function validateModalKey(): Promise<boolean> {
   //
   // Modal research keys start with "modalresearch_" or "ak-".
   if (!MODAL_API_KEY.startsWith("modalresearch_") && !MODAL_API_KEY.startsWith("ak-")) {
-    console.warn("[Chatbot/Modal] API key has unexpected format (starts with:", MODAL_API_KEY.substring(0, 15) + "...). Proceeding anyway.");
+    console.warn("[Chatbot/Modal] API key has unexpected format (starts with:", `${MODAL_API_KEY.substring(0, 15)}...). Proceeding anyway.`);
   }
   modalKeyValid = true;
   console.log("[Chatbot/Modal] API key configured (will be validated on first request).");
@@ -397,12 +397,12 @@ async function tryModal(
   try {
     const controller = new AbortController();
     // GLM-5.1 reasons for several seconds; allow ample time.
-    timeoutId = setTimeout(function() { controller.abort(); }, timeoutMs);
+    timeoutId = setTimeout(() => { controller.abort(); }, timeoutMs);
 
     const response = await fetch(MODAL_ENDPOINT, {
       method: "POST",
       headers: {
-        "Authorization": "Bearer " + MODAL_API_KEY,
+        "Authorization": `Bearer ${MODAL_API_KEY}`,
         "Content-Type": "application/json",
       },
       signal: controller.signal,
@@ -410,7 +410,7 @@ async function tryModal(
         model: MODAL_MODEL,
         messages: [
           { role: "system", content: systemPrompt },
-          ...messages.map(function(m) { return { role: m.role, content: m.content }; }),
+          ...messages.map((m) => ({ role: m.role, content: m.content })),
         ],
         temperature: 0.7,
         max_tokens: 2048,
@@ -423,7 +423,7 @@ async function tryModal(
       modalKeyValid = false;
       modalConsecFails++;
       modalLastFailTime = Date.now();
-      console.error("[Chatbot/Modal] request rejected (" + response.status + ")");
+      console.error(`[Chatbot/Modal] request rejected (${response.status})`);
       return null;
     }
     if (!response.ok) {
@@ -509,12 +509,12 @@ async function tryGroq(
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   try {
     const controller = new AbortController();
-    timeoutId = setTimeout(function() { controller.abort(); }, timeoutMs);
+    timeoutId = setTimeout(() => { controller.abort(); }, timeoutMs);
 
     const response = await fetch(GROQ_ENDPOINT, {
       method: "POST",
       headers: {
-        "Authorization": "Bearer " + GROQ_API_KEY,
+        "Authorization": `Bearer ${GROQ_API_KEY}`,
         "Content-Type": "application/json",
       },
       signal: controller.signal,
@@ -522,7 +522,7 @@ async function tryGroq(
         model: modelId,
         messages: [
           { role: "system", content: systemPrompt },
-          ...messages.map(function(m) { return { role: m.role, content: m.content }; }),
+          ...messages.map((m) => ({ role: m.role, content: m.content })),
         ],
         temperature: 0.7,
         max_tokens: 2048,
@@ -535,7 +535,7 @@ async function tryGroq(
       groqKeyValid = false;
       groqConsecFails++;
       groqLastFailTime = Date.now();
-      console.error("[Chatbot/Groq] request rejected (" + response.status + ")");
+      console.error(`[Chatbot/Groq] request rejected (${response.status})`);
       return null;
     }
 
@@ -600,12 +600,12 @@ async function tryNvidia(
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   try {
     const controller = new AbortController();
-    timeoutId = setTimeout(function() { controller.abort(); }, timeoutMs);
+    timeoutId = setTimeout(() => { controller.abort(); }, timeoutMs);
 
     const response = await fetch(NVIDIA_ENDPOINT, {
       method: "POST",
       headers: {
-        "Authorization": "Bearer " + NVIDIA_API_KEY,
+        "Authorization": `Bearer ${NVIDIA_API_KEY}`,
         "Content-Type": "application/json",
       },
       signal: controller.signal,
@@ -613,7 +613,7 @@ async function tryNvidia(
         model: NVIDIA_MODEL,
         messages: [
           { role: "system", content: systemPrompt },
-          ...messages.map(function(m) { return { role: m.role, content: m.content }; }),
+          ...messages.map((m) => ({ role: m.role, content: m.content })),
         ],
         temperature: 0.7,
         max_tokens: 2048,
@@ -626,7 +626,7 @@ async function tryNvidia(
       nvidiaKeyValid = false;
       nvidiaConsecFails++;
       nvidiaLastFailTime = Date.now();
-      console.error("[Chatbot/NVIDIA] request rejected (" + response.status + ")");
+      console.error(`[Chatbot/NVIDIA] request rejected (${response.status})`);
       return null;
     }
 
@@ -694,18 +694,18 @@ async function validateOpenRouterKey(): Promise<boolean> {
   if (!OPENROUTER_API_KEY.startsWith("sk-or-")) {
     openrouterKeyValid = false;
     openrouterKeyValidated = true;
-    console.error("[Chatbot/OpenRouter] Invalid API key format — must start with 'sk-or-'. Current key starts with:", OPENROUTER_API_KEY.substring(0, 6) + "...");
+    console.error("[Chatbot/OpenRouter] Invalid API key format — must start with 'sk-or-'. Current key starts with:", `${OPENROUTER_API_KEY.substring(0, 6)}...`);
     return false;
   }
   try {
     const resp = await fetch("https://openrouter.ai/api/v1/auth/key", {
-      headers: { "Authorization": "Bearer " + OPENROUTER_API_KEY },
+      headers: { "Authorization": `Bearer ${OPENROUTER_API_KEY}` },
       signal: AbortSignal.timeout(5000),
     });
     openrouterKeyValid = resp.ok;
     openrouterKeyValidated = true;
     if (!resp.ok) { // NOSONAR — negated condition readability acceptable in error-first pattern
-      const errData = await resp.json().catch(function() { return {}; });
+      const errData = await resp.json().catch(() => ({}));
       console.error("[Chatbot/OpenRouter] API key validation failed:", JSON.stringify(errData));
       console.error("[Chatbot/OpenRouter] The OPENROUTER_API_KEY in HF Space Secrets is invalid or expired.");
       console.error("[Chatbot/OpenRouter] Get a new key at https://openrouter.ai/keys and update it in HF Space Settings → Repository secrets.");
@@ -736,12 +736,12 @@ async function tryModel(
 
   try {
     controller = new AbortController();
-    timeoutId = setTimeout(function() { controller!.abort(); }, timeoutMs);
+    timeoutId = setTimeout(() => { controller!.abort(); }, timeoutMs);
 
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": "Bearer " + OPENROUTER_API_KEY,
+        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",
         "HTTP-Referer": "https://ahmedelbaz.qzz.io",
         "X-Title": "Elbaz LMS Chatbot",
@@ -751,7 +751,7 @@ async function tryModel(
         model: modelId,
         messages: [
           { role: "system", content: systemPrompt },
-          ...messages.map(function(m) { return { role: m.role, content: m.content }; }),
+          ...messages.map((m) => ({ role: m.role, content: m.content })),
         ],
         temperature: 0.7,
         max_tokens: 2048,
@@ -838,9 +838,9 @@ async function tryModelsByTier(
       if (result) return result;
     }
 
-    console.log("[Chatbot/OpenRouter] Tier " + tier + ": tried " + tierTried + ", skipped " + tierSkipped);
+    console.log(`[Chatbot/OpenRouter] Tier ${tier}: tried ${tierTried}, skipped ${tierSkipped}`);
     if (Date.now() - globalStartTime > globalTimeoutMs) {
-      console.warn("[Chatbot/OpenRouter] Global timeout reached (" + Math.round((Date.now() - globalStartTime) / 1000) + "s)");
+      console.warn(`[Chatbot/OpenRouter] Global timeout reached (${Math.round((Date.now() - globalStartTime) / 1000)}s)`);
       break;
     }
   }
@@ -1081,7 +1081,7 @@ async function tryPickGroqProvider(systemPrompt: string): Promise<{ provider: "g
   }
   if (!groqIsAvailable()) return null;
   const modelId = GROQ_MODELS[groqCurrentModelIndex] || GROQ_MODELS[0];
-  console.info("[Chatbot] Using TIER 2: " + modelId + " (OpenCode)");
+  console.info(`[Chatbot] Using TIER 2: ${modelId} (OpenCode)`);
   return { provider: "groq", modelId, systemPrompt };
 }
 
@@ -1199,7 +1199,7 @@ function processSSEDeltaLine(
     if (delta.content) {
       state.sawContent = true;
       try {
-        controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: delta.content }) + "\n\n"));
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: delta.content })}\n\n`));
       } catch {
         state.streamClosed = true;
         return true;
@@ -1228,7 +1228,7 @@ function flushTrailingSSEBuffer(
     const delta = parsed.choices?.[0]?.delta;
     if (delta?.content) {
       state.sawContent = true;
-      try { controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: delta.content }) + "\n\n")); } catch { /* already closed */ }
+      try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: delta.content })}\n\n`)); } catch { /* already closed */ }
     }
   } catch {
     // Skip malformed trailing chunk
@@ -1247,12 +1247,12 @@ async function recoverEmptyModalStream(
   console.warn("[Chatbot/Stream] Modal returned no content (only reasoning) — trying OpenCode...");
   const fb2 = await groqFallback(request.messages, picked.systemPrompt);
   if (fb2) {
-    try { controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: fb2.reply }) + "\n\n")); } catch { /* controller already closed */ }
+    try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: fb2.reply })}\n\n`)); } catch { /* controller already closed */ }
     return;
   }
   const fb = await openRouterFallback(request.messages, picked.systemPrompt, request.language);
   if (fb) {
-    try { controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: fb.reply }) + "\n\n")); } catch { /* controller already closed */ }
+    try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: fb.reply })}\n\n`)); } catch { /* controller already closed */ }
   }
 }
 
@@ -1310,7 +1310,7 @@ function buildModalStreamBody(picked: { modelId: string; systemPrompt: string },
     model: picked.modelId,
     messages: [
       { role: "system", content: picked.systemPrompt },
-      ...request.messages.map(function(m) { return { role: m.role, content: m.content }; }),
+      ...request.messages.map((m) => ({ role: m.role, content: m.content })),
     ],
     temperature: 0.7,
     max_tokens: 2048,
@@ -1331,7 +1331,7 @@ async function tryModalStreamFetch(picked: { modelId: string; systemPrompt: stri
     response = await fetch(MODAL_ENDPOINT, {
       method: "POST",
       headers: {
-        "Authorization": "Bearer " + MODAL_API_KEY,
+        "Authorization": `Bearer ${MODAL_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: buildModalStreamBody(picked, request),
@@ -1353,7 +1353,7 @@ async function tryModalStreamFetch(picked: { modelId: string; systemPrompt: stri
     modalLastFailTime = Date.now();
     const retryAfter = response.headers.get("retry-after") || "5";
     console.warn(`[Chatbot/Stream] Modal overloaded (${response.status}) — waiting ${retryAfter}s before retry...`);
-    await sleep(Number.parseInt(retryAfter) * 1000);
+    await sleep(Number.parseInt(retryAfter, 10) * 1000);
     if (!isLastAttempt) {
       console.info("[Chatbot/Stream] Retrying Modal after queue clear...");
     }
@@ -1438,7 +1438,7 @@ function buildSSEContentTransformStream(encoder: TextEncoder): TransformStream<U
             const parsed = JSON.parse(trimmed.slice(6));
             const delta = parsed.choices?.[0]?.delta;
             if (delta?.content) {
-              try { controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: delta.content }) + "\n\n")); } catch { /* closed */ }
+              try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: delta.content })}\n\n`)); } catch { /* closed */ }
             }
           } catch { /* skip malformed JSON */ }
         }
@@ -1469,14 +1469,14 @@ async function tryGroqStreamFetch(
     return await fetch(GROQ_ENDPOINT, {
       method: "POST",
       headers: {
-        "Authorization": "Bearer " + GROQ_API_KEY,
+        "Authorization": `Bearer ${GROQ_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model: modelId,
         messages: [
           { role: "system", content: picked.systemPrompt },
-          ...request.messages.map(function(m) { return { role: m.role, content: m.content }; }),
+          ...request.messages.map((m) => ({ role: m.role, content: m.content })),
         ],
         temperature: 0.7,
         max_tokens: 2048,
@@ -1580,7 +1580,7 @@ async function streamOpenRouterProvider(
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": "Bearer " + OPENROUTER_API_KEY,
+        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",
         "HTTP-Referer": "https://ahmedelbaz.qzz.io",
         "X-Title": "Elbaz LMS Chatbot",
@@ -1589,7 +1589,7 @@ async function streamOpenRouterProvider(
         model: picked.modelId,
         messages: [
           { role: "system", content: picked.systemPrompt },
-          ...request.messages.map(function(m) { return { role: m.role, content: m.content }; }),
+          ...request.messages.map((m) => ({ role: m.role, content: m.content })),
         ],
         temperature: 0.7,
         max_tokens: 2048,
@@ -1664,7 +1664,7 @@ async function streamGroqFallback(
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         try {
-          controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: ocResult.reply }) + "\n\n"));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: ocResult.reply })}\n\n`));
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
           controller.close();
         } catch { /* controller already closed */ }
@@ -1680,7 +1680,7 @@ async function streamGroqFallback(
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         try {
-          controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: nvidiaResult.reply }) + "\n\n"));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: nvidiaResult.reply })}\n\n`));
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
           controller.close();
         } catch { /* controller already closed */ }
@@ -1702,7 +1702,7 @@ async function streamGroqFallback(
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       try {
-        controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: orResult.reply }) + "\n\n"));
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: orResult.reply })}\n\n`));
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
       } catch { /* controller already closed */ }
@@ -1728,7 +1728,7 @@ async function streamOpenRouterFallback(
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         try {
-          controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: orResult.reply }) + "\n\n"));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: orResult.reply })}\n\n`));
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
           controller.close();
         } catch { /* controller already closed */ }
@@ -1747,7 +1747,7 @@ async function streamOpenRouterFallback(
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         try {
-          controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: modalResult.reply }) + "\n\n"));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: modalResult.reply })}\n\n`));
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
           controller.close();
         } catch { /* controller already closed */ }
@@ -1774,7 +1774,7 @@ export function getChatbotStats() {
       configured: !!MODAL_API_KEY,
       keyValid: modalKeyValid,
       consecFails: modalConsecFails,
-      lastSuccessAgo: modalLastSuccess ? Math.round((Date.now() - modalLastSuccess) / 1000) + "s ago" : "never",
+      lastSuccessAgo: modalLastSuccess ? `${Math.round((Date.now() - modalLastSuccess) / 1000)}s ago` : "never",
       available: modalIsAvailable(),
     },
     tier2: {
@@ -1784,7 +1784,7 @@ export function getChatbotStats() {
       configured: !!GROQ_API_KEY,
       keyValid: groqKeyValid,
       consecFails: groqConsecFails,
-      lastSuccessAgo: groqLastSuccess ? Math.round((Date.now() - groqLastSuccess) / 1000) + "s ago" : "never",
+      lastSuccessAgo: groqLastSuccess ? `${Math.round((Date.now() - groqLastSuccess) / 1000)}s ago` : "never",
       available: groqIsAvailable(),
     },
     tier2_5: {
@@ -1793,7 +1793,7 @@ export function getChatbotStats() {
       configured: !!NVIDIA_API_KEY,
       keyValid: nvidiaKeyValid,
       consecFails: nvidiaConsecFails,
-      lastSuccessAgo: nvidiaLastSuccess ? Math.round((Date.now() - nvidiaLastSuccess) / 1000) + "s ago" : "never",
+      lastSuccessAgo: nvidiaLastSuccess ? `${Math.round((Date.now() - nvidiaLastSuccess) / 1000)}s ago` : "never",
       available: nvidiaIsAvailable(),
     },
     tier3: {
@@ -1802,7 +1802,7 @@ export function getChatbotStats() {
       keyValid: openrouterKeyValid,
       totalModels: AI_MODELS.length,
       lastWorkingModel: lastWorkingModel,
-      lastWorkingTimeAgo: lastWorkingTime ? Math.round((Date.now() - lastWorkingTime) / 1000) + "s ago" : "never",
+      lastWorkingTimeAgo: lastWorkingTime ? `${Math.round((Date.now() - lastWorkingTime) / 1000)}s ago` : "never",
       modelSuccessCounts: modelSuccessCount,
       modelFailCounts: modelFailCount,
     },

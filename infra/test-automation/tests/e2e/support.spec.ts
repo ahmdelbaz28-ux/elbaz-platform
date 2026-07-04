@@ -1,6 +1,5 @@
 import { test, expect } from "@playwright/test";
 import { SupportPage } from "../../page-objects/SupportPage";
-import { LoginPage } from "../../page-objects/LoginPage";
 import type { TicketData } from "../../page-objects/SupportPage";
 
 test.describe("Support", () => {

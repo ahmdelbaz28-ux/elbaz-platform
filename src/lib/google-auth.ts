@@ -16,6 +16,7 @@ function generateState(): string {
 
 // Store state in cookie (for server callback verification) and sessionStorage (backup)
 function storeOAuthState(state: string): void {
+  // biome-ignore lint/suspicious/noDocumentCookie: intentional — this is a short-lived (10 min) CSRF state cookie required for OAuth flow verification; Secure + SameSite=Lax flags are set
   document.cookie = `google_oauth_state=${state}; Path=/; Secure; SameSite=Lax; Max-Age=600`;
   sessionStorage.setItem("google_oauth_state", state);
 }

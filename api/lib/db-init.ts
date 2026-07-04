@@ -729,7 +729,7 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
     if (!env.isProduction) { // NOSONAR — error-first logging convention for dev/prod split
       console.log("\n[DB] 🔐 Admin account created:");
       console.log("    Username: admin");
-      console.log("    Password: " + adminPassword);
+      console.log(`    Password: ${adminPassword}`);
       console.log("    ⚠️  Save this — you won't see it again!\n");
     } else {
       console.log("[DB] Admin account created (password from ADMIN_PASSWORD env variable)");

@@ -234,11 +234,15 @@ function AuthLayoutContent({
             </DropdownMenu>
           </SidebarFooter>
         </Sidebar>
+        {/* biome-ignore lint/a11y/useSemanticElements: intentional — custom resize handle with mouse + keyboard handlers; <hr> cannot host these handlers */}
         <div // NOSONAR — S6819/S6845/S6847: interactive resize handle; using <div> with ARIA + keyboard handler instead of <button> to preserve pixel-perfect resize cursor and prevent default button styling
           className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/20 transition-colors ${isCollapsed ? "hidden" : ""}`}
           role="separator"
           aria-orientation="vertical"
           aria-label="Resize sidebar"
+          aria-valuenow={50}
+          aria-valuemin={0}
+          aria-valuemax={100}
           tabIndex={0} // NOSONAR — tabIndex needed for keyboard accessibility on interactive resize widget
           onMouseDown={() => {
             if (isCollapsed) return;

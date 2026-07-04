@@ -76,7 +76,7 @@ async function verifyGoogleToken(idToken: string): Promise<Record<string, unknow
   // Step 3: Find the matching signing key
   const key = (jwks as any).keys?.find((k: Record<string, unknown>) => k.kid === kid);
   if (!key) {
-    throw new Error("No matching Google key found for kid: " + kid);
+    throw new Error(`No matching Google key found for kid: ${kid}`);
   }
 
   // Step 4: Verify the token signature using Node.js crypto
@@ -89,7 +89,7 @@ async function verifyGoogleToken(idToken: string): Promise<Record<string, unknow
   });
 
   const verify = crypto.createVerify("RSA-SHA256");
-  verify.update(Buffer.from(parts[0] + "." + parts[1], "utf-8"));
+  verify.update(Buffer.from(`${parts[0]}.${parts[1]}`, "utf-8"));
   const signature = Buffer.from(parts[2].replaceAll("-", "+").replaceAll("_", "/"), "base64");
 
   if (!verify.verify(publicKey, signature)) {
@@ -101,7 +101,7 @@ async function verifyGoogleToken(idToken: string): Promise<Record<string, unknow
   const payload = JSON.parse(Buffer.from(payloadB64, "base64").toString("utf-8")) as Record<string, unknown>;
 
   if (payload.iss !== "accounts.google.com" && payload.iss !== "https://accounts.google.com") {
-    throw new Error("Invalid token issuer: " + payload.iss);
+    throw new Error(`Invalid token issuer: ${payload.iss}`);
   }
   if (payload.aud !== env.GOOGLE_CLIENT_ID) {
     throw new Error("Token audience mismatch");
@@ -278,7 +278,7 @@ async function ensureUniqueUsername(
   if (counter > 100) {
     // Append a 6-char random suffix from a CSPRNG so generated usernames
     // are not predictable. Avoids Math.random() (SonarCloud S2245).
-    username = baseUsername + "_" + randomUUID().split("-")[0];
+    username = `${baseUsername}_${randomUUID().split("-")[0]}`;
   }
   return username;
 }
@@ -379,7 +379,7 @@ googleAuthRouter.get("/callback", async (c) => { // NOSONAR — complex function
       } else {
         // Create new user
         let baseUsername = googleEmail.split("@")[0].replaceAll(/\W/g, "_").toLowerCase();
-        if (baseUsername.length < 3) baseUsername = "user_" + googleId.slice(0, 6);
+        if (baseUsername.length < 3) baseUsername = `user_${googleId.slice(0, 6)}`;
 
         const newUsername = await ensureUniqueUsername(db, baseUsername);
 
@@ -535,7 +535,7 @@ googleAuthRouter.post("/", async (c) => {
 
     // ── Step 3: Create a new user from Google ──
     let baseUsername = googleEmail.split("@")[0].replaceAll(/\W/g, "_").toLowerCase();
-    if (baseUsername.length < 3) baseUsername = "user_" + googleId.slice(0, 6);
+    if (baseUsername.length < 3) baseUsername = `user_${googleId.slice(0, 6)}`;
 
     const username = await ensureUniqueUsername(db, baseUsername);
 

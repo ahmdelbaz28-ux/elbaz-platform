@@ -13,7 +13,7 @@ const ROOT = resolve(__dirname, "..");
 process.chdir(ROOT);
 
 let errors = 0;
-let warnings = 0;
+const warnings = 0;
 
 // ── Guard 1: package-lock.json freshness ──
 console.log("[GUARD 1/3] Checking package-lock.json freshness...");
@@ -62,15 +62,15 @@ console.log("[GUARD 2/3] Scanning API imports for broken paths...");
     const stripped = resolvedBase.replace(/\.jsx?$/, "");
     const candidates = [
       resolvedBase,
-      stripped + ".ts",
-      stripped + ".tsx",
-      stripped + ".js",
-      stripped + ".jsx",
-      resolvedBase + ".ts",
-      resolvedBase + ".tsx",
-      resolvedBase + "/index.ts",
-      resolvedBase + "/index.tsx",
-      resolvedBase + "/index.js",
+      `${stripped}.ts`,
+      `${stripped}.tsx`,
+      `${stripped}.js`,
+      `${stripped}.jsx`,
+      `${resolvedBase}.ts`,
+      `${resolvedBase}.tsx`,
+      `${resolvedBase}/index.ts`,
+      `${resolvedBase}/index.tsx`,
+      `${resolvedBase}/index.js`,
     ];
     // Deduplicate candidates
     return [...new Set(candidates)];

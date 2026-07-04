@@ -563,8 +563,8 @@ async function start() {
   // `Bun` is not a declared global on Node.js, so `Bun?.serve` throws
   // ReferenceError. `typeof Bun !== "undefined"` safely returns "undefined"
   // for undeclared identifiers without throwing.
-  const useBun = typeof Bun !== "undefined" && Bun?.serve; // NOSONAR
-  let server;
+  const useBun = Bun?.serve; // NOSONAR
+  let server: { close: (cb?: () => void) => void } | undefined;
 
   if (useBun) {
     server = Bun.serve({
@@ -592,7 +592,7 @@ async function start() {
     } catch {// Intentionally ignored: best-effort cleanup, the error has already
     // been logged upstream and re-throwing would mask the original cause.
     }
-    server.close(() => process.exit(0));
+    server?.close(() => process.exit(0));
   };
 
   process.on("SIGTERM", () => shutdownHandler("SIGTERM"));

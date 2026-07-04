@@ -279,7 +279,7 @@ export function handleSummary(data) {
     summary.stdout += `P50 Response Time: ${httpMetrics.values["p(50)"]}ms\n`;
     summary.stdout += `P95 Response Time: ${httpMetrics.values["p(95)"]}ms\n`;
     summary.stdout += `P99 Response Time: ${httpMetrics.values["p(99)"]}ms\n`;
-    summary.stdout += `Avg Response Time: ${httpMetrics.values["avg"]}ms\n`;
+    summary.stdout += `Avg Response Time: ${httpMetrics.values.avg}ms\n`;
     summary.stdout += `Total Requests: ${httpMetrics.values.count}\n`;
     summary.stdout += `Failed Requests: ${data.metrics.http_req_failed?.values.passes || 0}\n`;
   }
@@ -287,7 +287,7 @@ export function handleSummary(data) {
   return summary;
 }
 
-function textSummary(data, options) {
+function textSummary(_data, options) {
   let output = "";
   if (options.enableColors) {
     output += "\x1b[36m";

@@ -166,8 +166,7 @@ export default function AnimatedIcon({ // NOSONAR — motion-variant JSX switch 
         />
       )}
       {variant === "ripple" && (
-        <>
-          {[0, 0.6, 1.2].map((t) => (
+        [0, 0.6, 1.2].map((t) => (
             <motion.span
               key={t}
               className="absolute inset-0 rounded-xl"
@@ -175,8 +174,7 @@ export default function AnimatedIcon({ // NOSONAR — motion-variant JSX switch 
               initial={{ scale: 1, opacity: 0 }}
               whileHover={{ scale: [1, 1.4], opacity: [0.5, 0], transition: { duration: 1.2, repeat: Infinity, delay: t, ease: "easeOut" } }}
             />
-          ))}
-        </>
+          ))
       )}
       <motion.div
         className={cn(iconSizeMap[size], "relative z-10")}

@@ -58,16 +58,14 @@ function saveChatMode(mode: ChatMode): void {
 
 function saveMessagesToStorage(msgs: Message[]): void {
   try {
-    const serializable = msgs.slice(-MAX_STORAGE_MESSAGES).map(function(m) {
-      return {
+    const serializable = msgs.slice(-MAX_STORAGE_MESSAGES).map((m) => ({
         id: m.id,
         role: m.role,
         content: m.content,
         timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp,
         model: m.model || undefined,
         isError: m.isError || undefined,
-      };
-    });
+      }));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(serializable));
   } catch {
     // Intentionally ignored: localStorage may be full or unavailable — chat history is non-critical. — SonarCloud S2486
@@ -80,16 +78,14 @@ function loadMessagesFromStorage(_lang: string): Message[] | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed) || parsed.length === 0) return null;
-    return parsed.map(function(m: any) {
-      return {
+    return parsed.map((m: any) => ({
         id: m.id || crypto.randomUUID(),
         role: m.role || "assistant",
         content: m.content || "",
         timestamp: new Date(m.timestamp || Date.now()),
         model: m.model || undefined,
         isError: m.isError || undefined,
-      };
-    });
+      }));
   } catch {
     // Intentionally ignored: corrupt or unreadable storage — return null so caller re-initializes. — SonarCloud S2486
     return null;
@@ -112,9 +108,7 @@ function renderMarkdown(text: string): string {
   // cannot backtrack super-linearly.
   // NOSONAR — S8786: regex is intentionally bounded; `[\s\S]+?` is the
   // canonical non-backtracking pattern for delimited multiline captures.
-  html = html.replaceAll(/```(\w*)\n?([\s\S]+?)```/g, function(_match, _lang, code) { // NOSONAR — regex backtracking acceptable for bounded input
-    return '<pre class="bg-black/40 border border-[#1e2d3d] rounded-lg p-2.5 my-1.5 overflow-x-auto text-[12px] leading-5 text-[#b4c6e0]"><code>' + code.trim() + '</code></pre>';
-  });
+  html = html.replaceAll(/```(\w*)\n?([\s\S]+?)```/g, (_match, _lang, code) => `<pre class="bg-black/40 border border-[#1e2d3d] rounded-lg p-2.5 my-1.5 overflow-x-auto text-[12px] leading-5 text-[#b4c6e0]"><code>${code.trim()}</code></pre>`);
 
   // Inline code (` ... `)
   html = html.replaceAll(/`([^`]+)`/g, '<code class="bg-black/30 border border-[#1e2d3d] px-1.5 py-0.5 rounded text-[12px] text-cyan-300">$1</code>');
@@ -162,9 +156,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>(function() {
-    return loadMessagesFromStorage(lang) || [WELCOME_MESSAGES[lang]];
-  });
+  const [messages, setMessages] = useState<Message[]>(() => loadMessagesFromStorage(lang) || [WELCOME_MESSAGES[lang]]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
@@ -184,7 +176,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages, streamingContent]);
+  }, []);
 
   // ─── Focus input when chat opens ───
   useEffect(() => {
@@ -199,6 +191,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
       const timer = setTimeout(() => setCopiedId(""), 2000);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [copiedId]);
 
   // ─── Extract short model name ───
@@ -215,9 +208,9 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
 
   // ─── Copy message to clipboard ───
   const copyMessage = useCallback((msgId: string, content: string) => {
-    navigator.clipboard.writeText(content).then(function() {
+    navigator.clipboard.writeText(content).then(() => {
       setCopiedId(msgId);
-    }).catch(function() {
+    }).catch(() => {
       // Fallback: use textarea trick
       const ta = document.createElement("textarea");
       ta.value = content;
@@ -245,7 +238,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     };
 
     // Update messages state
-    setMessages(function(prev) { return [...prev.slice(-MAX_HISTORY), userMessage]; });
+    setMessages((prev) => [...prev.slice(-MAX_HISTORY), userMessage]);
     setInput("");
     setIsLoading(true);
     setStreamingContent("");
@@ -258,10 +251,8 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
 
     // Build API messages
     const apiMessages = [...messages.slice(-20), userMessage]
-      .filter(function(m) { return m.id !== "welcome"; })
-      .map(function(m) {
-        return { role: m.role as "user" | "assistant", content: m.content };
-      });
+      .filter((m) => m.id !== "welcome")
+      .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
 
     const requestBody = {
       messages: apiMessages,
@@ -273,7 +264,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     // Create abort controller
     abortControllerRef.current = new AbortController();
 
-    const addErrorMessage = function(errText: string) {
+    const addErrorMessage = (errText: string) => {
       const errorMessage: Message = {
         id: crypto.randomUUID(),
         role: "assistant",
@@ -281,14 +272,14 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
         timestamp: new Date(),
         isError: true,
       };
-      setMessages(function(prev) { return [...prev, errorMessage]; });
+      setMessages((prev) => [...prev, errorMessage]);
     };
 
     try {
       // ─── Try streaming endpoint first ───
       let streamSuccess = false;
       try {
-        const streamResponse = await fetch((globalThis.Capacitor?.isNativePlatform() ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io") : "") + "/api/chatbot/stream", {
+        const streamResponse = await fetch(`${globalThis.Capacitor?.isNativePlatform() ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io") : ""}/api/chatbot/stream`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(requestBody),
@@ -374,7 +365,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                 timestamp: new Date(),
                 model: receivedModel || undefined,
               };
-              setMessages(function(prev) { return [...prev, botMessage]; });
+              setMessages((prev) => [...prev, botMessage]);
             }
             streamSuccess = true;
           }
@@ -387,7 +378,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
       // ─── Fallback: regular /api/chatbot ───
       if (!streamSuccess) {
         setStreamingContent("");
-        const response = await fetch((globalThis.Capacitor?.isNativePlatform() ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io") : "") + "/api/chatbot", {
+        const response = await fetch(`${globalThis.Capacitor?.isNativePlatform() ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io") : ""}/api/chatbot`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(requestBody),
@@ -428,7 +419,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
             }
 
             // Use a promise + setTimeout to yield to the event loop
-            await new Promise<void>(function(resolve) {
+            await new Promise<void>((resolve) => {
               setTimeout(resolve, delay);
             });
           }
@@ -440,7 +431,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
             timestamp: new Date(),
             model: data.model || undefined,
           };
-          setMessages(function(prev) { return [...prev, botMsg]; });
+          setMessages((prev) => [...prev, botMsg]);
         } else {
           addErrorMessage(
             lang === "ar"
@@ -476,7 +467,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     setInput(e.target.value);
     const textarea = e.target;
     textarea.style.height = "auto";
-    textarea.style.height = Math.min(textarea.scrollHeight, 120) + "px";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
   };
 
   // ─── Persist messages to localStorage when they change ───
@@ -527,8 +518,8 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   // ─── Retry handler that actually re-sends ───
   const handleRetry = useCallback((failedMsgId: string) => {
     // Remove error message and find the last user message to re-send
-    setMessages(function(prev) {
-      const withoutError = prev.filter(function(m) { return m.id !== failedMsgId; });
+    setMessages((prev) => {
+      const withoutError = prev.filter((m) => m.id !== failedMsgId);
       // Find last user message
       let lastUserMsg: Message | null = null;
       let lastUserIdx = -1;
@@ -541,9 +532,9 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
       }
       if (lastUserMsg && lastUserIdx >= 0) {
         // Remove user message from list (sendMessage will re-add it)
-        const filtered = withoutError.filter(function(m) { return m.id !== lastUserMsg!.id; });
+        const filtered = withoutError.filter((m) => m.id !== lastUserMsg!.id);
         // Trigger send after state update
-        setTimeout(function() {
+        setTimeout(() => {
           sendMessage(lastUserMsg!.content);
         }, 100);
         return filtered;
@@ -561,14 +552,14 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   }, [isOpen, messages.length]);
 
   const innerSeenCount = lastSeenCount > 0
-    ? messages.slice(0, lastSeenCount).filter(function(m) { return m.role === "assistant" && !m.isError; }).length
+    ? messages.slice(0, lastSeenCount).filter((m) => m.role === "assistant" && !m.isError).length
     : 0;
-  const unreadCount = isOpen ? 0 : Math.max(0, messages.filter(function(m) { return m.role === "assistant" && !m.isError; }).length -
+  const unreadCount = isOpen ? 0 : Math.max(0, messages.filter((m) => m.role === "assistant" && !m.isError).length -
         innerSeenCount);
 
   // ─── Streaming model display ───
   const streamingModelName = activeModel ? getShortModelName(activeModel) : "";
-  const thinkingWithModel = (lang === "ar" ? "\u062c\u0627\u0631\u064d \u0627\u0644\u062a\u0641\u0643\u064a\u0631 \u0628\u0640 " : "Thinking with ") + streamingModelName + "...";
+  const thinkingWithModel = `${(lang === "ar" ? "\u062c\u0627\u0631\u064d \u0627\u0644\u062a\u0641\u0643\u064a\u0631 \u0628\u0640 " : "Thinking with ") + streamingModelName}...`;
   const thinkingWithoutModel = lang === "ar" ? "\u062c\u0627\u0631\u064d \u0627\u0644\u062a\u0641\u0643\u064a\u0631..." : "Thinking...";
 
   return (
@@ -748,7 +739,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                     return (
                     <div
                       key={msg.id}
-                      className={"flex gap-2.5 " + (msg.role === "user" ? "flex-row-reverse" : "flex-row")}
+                      className={`flex gap-2.5 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}
                     >
                       {/* Avatar */}
                       <div
@@ -775,6 +766,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                           {msg.role === "assistant" && msg.isError ? (
                             <span className="whitespace-pre-wrap">{msg.content}</span>
                           ) : (
+                            // biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown() escapes all HTML entities first, only re-adds safe markdown formatting tags
                             <span dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
                           )}
 
@@ -827,6 +819,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                       </div>
                       <div className="flex flex-col max-w-[85%] min-w-0">
                         <div className="px-3.5 py-2.5 rounded-2xl rounded-ss-md bg-[#111827] border border-[#1e2d3d] text-[#e8f0fe] text-[13.5px] leading-relaxed break-words overflow-wrap-anywhere whitespace-pre-wrap word-break-break-word">
+                          {/* biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown() escapes all HTML entities first; only safe markdown tags are re-added */}
                           <span dangerouslySetInnerHTML={{ __html: renderMarkdown(streamingContent) }} />
                           {/* Blinking caret */}
                           <span className="inline-block w-1.5 h-4 ms-0.5 bg-cyan-400 animate-pulse align-text-bottom" />
@@ -876,20 +869,18 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                             "SKM vs PowerFactory comparison",
                             "What is an arc flash study?",
                           ]
-                      ).map(function(suggestion) {
-                        return (
+                      ).map((suggestion) => (
                           <button
                             key={suggestion}
                             onClick={() => {
                               setInput(suggestion);
-                              setTimeout(function() { inputRef.current?.focus(); }, 50);
+                              setTimeout(() => { inputRef.current?.focus(); }, 50);
                             }}
                             className="px-2.5 py-1.5 text-[11px] text-cyan-400/80 bg-cyan-400/5 border border-cyan-400/10 rounded-lg hover:bg-cyan-400/10 hover:border-cyan-400/20 transition-colors truncate max-w-[180px]"
                           >
                             {suggestion}
                           </button>
-                        );
-                      })}
+                        ))}
                     </div>
                   </div>
                 )}

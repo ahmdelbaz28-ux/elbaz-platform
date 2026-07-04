@@ -52,6 +52,7 @@ export default function AnimatedCounter({
       animationFrame = requestAnimationFrame(animate);
       return () => cancelAnimationFrame(animationFrame);
     }
+    return undefined;
   }, [isInView, value, duration, controls]);
 
   const formattedValue = decimals > 0 ? count.toFixed(decimals) : Math.floor(count).toLocaleString();
@@ -97,5 +98,5 @@ export default function AnimatedCounter({
 }
 
 function easeOutExpo(t: number): number {
-  return t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
+  return t === 1 ? 1 : 1 - 2 ** (-10 * t);
 }

@@ -7,8 +7,8 @@
  * This file MUST be served fresh (no-cache) so it always runs the latest version.
  * It's excluded from Workbox precache in vite.config.ts.
  */
-(function () {
-  "use strict";
+(() => {
+  
 
   var BUILD_ID_KEY = "elbaz_build_id";
   var RELOAD_FLAG = "elbaz_cache_nuked";
@@ -19,12 +19,12 @@
       // 1. Clear all caches (Cache API)
       if ("caches" in window) {
         var keys = await caches.keys();
-        await Promise.all(keys.map(function (k) { return caches.delete(k); }));
+        await Promise.all(keys.map((k) => caches.delete(k)));
       }
       // 2. Unregister all service workers
       if ("serviceWorker" in navigator) {
         var regs = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(regs.map(function (r) { return r.unregister(); }));
+        await Promise.all(regs.map((r) => r.unregister()));
       }
       // 3. Set flag so we don't loop
       sessionStorage.setItem(RELOAD_FLAG, "1");
@@ -45,7 +45,7 @@
       var newBuildId = null;
 
       // 1. Try window.__ENV__.buildId (injected by server, always available)
-      if (globalThis.__ENV__ && globalThis.__ENV__.buildId) {
+      if (globalThis.__ENV__?.buildId) {
         newBuildId = globalThis.__ENV__.buildId;
       }
 
@@ -75,7 +75,7 @@
       if (oldBuildId !== newBuildId) {
         // Version changed! Nuke everything and reload.
         localStorage.setItem(BUILD_ID_KEY, newBuildId);
-        await nukeAndReload("build changed: " + oldBuildId + " → " + newBuildId);
+        await nukeAndReload(`build changed: ${oldBuildId} → ${newBuildId}`);
       }
     } catch (err) {
       // Network error or server down — can't check, just continue

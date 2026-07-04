@@ -54,7 +54,7 @@ export function EngineeringModeToggle() {
       }`}
     >
       {/* Waveform icon */}
-      <svg width="16" height="10" viewBox="0 0 16 10" fill="none" className="shrink-0">
+      <svg width="16" height="10" viewBox="0 0 16 10" fill="none" className="shrink-0" role="img" aria-hidden="true">
         <path
           d="M0 5 L2 5 L3 1 L4 9 L5 2 L6 8 L7 5 L9 5 L10 3 L11 7 L12 4 L13 6 L14 5 L16 5"
           stroke="currentColor"

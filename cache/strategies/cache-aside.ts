@@ -105,7 +105,7 @@ class CacheAsideStrategy<T> {
         retries++;
         const fallback = this.handleRetryFailure(cacheKey, args, retries, error);
         if (fallback !== undefined) return fallback;
-        await new Promise((r) => setTimeout(r, Math.min(100 * Math.pow(2, retries), 1000)));
+        await new Promise((r) => setTimeout(r, Math.min(100 * 2 ** retries, 1000)));
       }
     }
     return null;

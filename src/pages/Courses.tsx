@@ -73,7 +73,7 @@ export default function Courses() { // NOSONAR — page-level filter+search comp
   const [searchQuery, setSearchQuery] = useState("");
 
   const selectedCategory = searchParams.get("category")
-    ? Number.parseInt(searchParams.get("category")!)
+    ? Number.parseInt(searchParams.get("category")!, 10)
     : undefined;
   const selectedType = searchParams.get("type") as "free" | "premium" | undefined;
   const isPremiumFilter = selectedType === "free" ? false : undefined;

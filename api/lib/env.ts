@@ -107,7 +107,7 @@ function validateEnv(): EnvWithMeta {
   if (raw.NODE_ENV === "production") {
     const result = envSchema.safeParse(raw);
     if (!result.success) {
-      console.error("\n" + "=".repeat(60));
+      console.error(`\n${"=".repeat(60)}`);
       console.error("❌ [FATAL] Environment validation failed in production");
       console.error("The following required variables are missing or invalid:");
       for (const issue of result.error.issues) {
@@ -119,7 +119,7 @@ function validateEnv(): EnvWithMeta {
       console.error("3. Add the missing keys above as 'Secrets'.");
       console.error("4. Re-run or Re-deploy the application.");
       console.error("Refer to README.md for the full list of required environment variables.");
-      console.error("=".repeat(60) + "\n");
+      console.error(`${"=".repeat(60)}\n`);
       process.exit(1);
     }
     return { ...result.data, isProduction: true } as EnvWithMeta;

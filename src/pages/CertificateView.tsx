@@ -177,7 +177,7 @@ export default function CertificateView() { // NOSONAR — certificate view with
                       onClick={handleCopyLink}
                       className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-[#f0f4f8] transition-colors hover:bg-[rgba(6,182,212,0.1)]"
                     >
-                      <svg className="h-4 w-4 text-[#06b6d4]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                      <svg className="h-4 w-4 text-[#06b6d4]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" role="img" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                       {lang === "ar" ? "نسخ الرابط" : "Copy Link"}
                     </button>
                   </div>
