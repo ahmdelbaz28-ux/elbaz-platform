@@ -34,10 +34,16 @@ export default defineConfig({
         "api/lib/ai-diagnostics.ts", // diagnostic logging, hard to test
       ],
       thresholds: {
-        statements: 5,
-        branches: 5,
-        functions: 5,
-        lines: 5,
+        // Current coverage: 8.63% statements, 7.91% branches, 9.49% functions,
+        // 8.74% lines. Thresholds set just below current levels to catch
+        // regressions without blocking PRs that add untested code.
+        // Files with good coverage: password.ts (100%), jwt.ts (84%),
+        // rate-limiter.ts (68%), chatbot.ts (35%), cache.ts (30%).
+        // TODO: raise thresholds as more tests are added.
+        statements: 8,
+        branches: 7,
+        functions: 9,
+        lines: 8,
       },
     },
   },
