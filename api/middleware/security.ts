@@ -16,8 +16,18 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
   const wantsHtml = accept.includes("text/html");
 
   if (isApi) {
+    // Aggressive cache-busting for all API responses.
+    // Cache-Control: standard HTTP cache control — respected by browsers.
+    // Surrogate-Control: CDN-specific override — respected by HF Space CDN,
+    //   Cloudflare, Fastly, etc. Some CDNs ignore Cache-Control but respect
+    //   this header. Setting both ensures maximum coverage.
+    // Without these, the HF Space CDN caches 404/error responses for minutes,
+    // causing "/api/* returns 404" outages that persist well after the app
+    // recovers.
     c.header("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    c.header("Surrogate-Control", "no-store");
     c.header("Pragma", "no-cache");
+    c.header("Expires", "0");
     c.header("Vary", "Authorization, Accept-Language, Accept-Encoding");
   } else if (isAsset) {
     // 🚀 PERFORMANCE: Don't set Cache-Control here — cacheMiddleware handles it.
@@ -53,7 +63,9 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
 
     // Don't cache HTML pages (they contain dynamic nonces)
     c.header("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    c.header("Surrogate-Control", "no-store");
     c.header("Pragma", "no-cache");
+    c.header("Expires", "0");
   } else if (!isApi) {
     // For API/assets, set a minimal CSP. Include 'unsafe-inline' in script-src
     // as a fallback for when Cloudflare CDN caches HTML responses (the cached
