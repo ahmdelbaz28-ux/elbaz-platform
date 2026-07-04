@@ -784,7 +784,7 @@ export default function NotificationCenter() { // NOSONAR — large component wi
       {/* ── Dropdown Panel ── */}
       <div
         ref={panelRef}
-        role="dialog" // NOSONAR — shadcn/ui ARIA role pattern
+        role="dialog"
         aria-modal="false"
         aria-label={isRTL ? "مركز الإشعارات" : "Notification Center"}
         dir={isRTL ? "rtl" : "ltr"}
@@ -842,7 +842,7 @@ export default function NotificationCenter() { // NOSONAR — large component wi
         {/* ── Notification List ── */}
         <div
           ref={listRef}
-          role="list" // NOSONAR — shadcn/ui ARIA role pattern
+
           aria-label={isRTL ? "قائمة الإشعارات" : "Notification list"}
           className="max-h-[380px] overflow-y-auto overscroll-contain p-2"
           style={{
