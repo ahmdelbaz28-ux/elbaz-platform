@@ -448,6 +448,11 @@ app.use("*", async (c, next) => {
     }
     return c.html(html);
   } catch {
+    // Aggressive cache-busting on this 404 — prevents CDN from caching it
+    c.header("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    c.header("Surrogate-Control", "no-store");
+    c.header("Pragma", "no-cache");
+    c.header("Expires", "0");
     return c.json({ error: "Not Found" }, 404);
   }
 });
@@ -462,6 +467,47 @@ app.use(
     rewriteRequestPath: (path) => path,
   })
 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ROOT CAUSE FIX: notFound handler with aggressive cache-busting headers
+// ─────────────────────────────────────────────────────────────────────────────
+// Without this, Hono's default 404 response has NO Cache-Control headers.
+// The HF Space CDN caches the bare 404 for several minutes, causing the
+// "/api/* returns 404" outage that lasts well after the app is healthy.
+//
+// This handler:
+//   1. Sets Cache-Control: no-store, no-cache, must-revalidate, proxy-revalidate
+//   2. Sets Surrogate-Control: no-store (CDN-specific override — some CDNs
+//      ignore Cache-Control but respect Surrogate-Control)
+//   3. Sets Expires: 0 (HTTP/1.0 fallback)
+//   4. Sets Pragma: no-cache
+//   5. Returns JSON for /api/* routes (so tRPC clients get a parseable error)
+//      and HTML for everything else (so SPA routes fall through to index.html)
+app.notFound((c) => {
+  const path = c.req.path;
+  const isApi = path.startsWith("/api/");
+
+  // Aggressive cache-busting headers on EVERY 404
+  c.header("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  c.header("Surrogate-Control", "no-store");
+  c.header("Pragma", "no-cache");
+  c.header("Expires", "0");
+
+  if (isApi) {
+    return c.json({ error: "Not Found", path }, 404);
+  }
+
+  // For non-API routes (SPA), return a minimal HTML that forces a reload.
+  // This prevents the CDN from caching a bare 404 page for SPA routes.
+  return c.html(
+    `<!DOCTYPE html><html><head><meta charset="utf-8">` +
+    `<meta name="viewport" content="width=device-width, initial-scale=1">` +
+    `<meta http-equiv="refresh" content="0; url=/">` +
+    `<title>Loading...</title></head>` +
+    `<body><script>location.replace('/');</script></body></html>`,
+    404,
+  );
+});
 
 app.onError(async (err, c) => {
   const requestId = c.get("requestId") ?? crypto.randomUUID();
@@ -478,6 +524,13 @@ app.onError(async (err, c) => {
     const { captureException } = await import("./lib/sentry.js");
     captureException(err, { tags: { requestId } });
   }
+
+  // Aggressive cache-busting on all error responses — prevents CDN from
+  // caching 500 errors and causing prolonged outages.
+  c.header("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  c.header("Surrogate-Control", "no-store");
+  c.header("Pragma", "no-cache");
+  c.header("Expires", "0");
 
   return c.json(
     {

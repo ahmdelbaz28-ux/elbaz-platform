@@ -162,16 +162,16 @@ export default defineConfig({
             urlPattern: /\/api\/google-auth\/.*/i,
             handler: 'NetworkOnly',
           },
-          // ── Other API routes: Network-first with 5-minute cache fallback ──
+          // ── All other API routes: Network-only, NEVER cache ──
+          // 🔧 ROOT CAUSE FIX: Previously used NetworkFirst with a 5-minute
+          // cache fallback. This caused stale 404/error responses to be
+          // served from the SW cache even after the server recovered.
+          // Combined with HF Space CDN caching, this created prolonged
+          // "/api/* returns 404" outages that persisted for 5+ minutes.
+          // NetworkOnly ensures the SW always fetches from the network.
           {
             urlPattern: /\/api\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-cache',
-              expiration: { maxEntries: 50, maxAgeSeconds: 60 * 5 },
-              networkTimeoutSeconds: 5,
-              cacheableResponse: { statuses: [0, 200] },
-            },
+            handler: 'NetworkOnly',
           },
         ],
       },
