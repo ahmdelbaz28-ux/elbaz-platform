@@ -118,6 +118,7 @@ type AppVariables = {
 };
 
 import { shieldMiddleware } from "./middleware/shield.js";
+import { getClientIpFromHono } from "./lib/client-ip";
 
 const app = new Hono<{ Variables: AppVariables }>({ strict: false });
 
@@ -271,7 +272,9 @@ app.get("/sitemap.xml", async (c) => {
 
 // ── Webhook status (internal) ──
 app.get("/__webhook/status", async (c) => {
-  const clientIp = c.req.header("cf-connecting-ip") || c.req.header("x-forwarded-for")?.split(",").pop()?.trim() || "";
+  // BUG FIX: was using .pop() which returns the LAST proxy IP, not the client.
+  // Now uses unified getClientIpFromHono which correctly takes the first IP.
+  const clientIp = getClientIpFromHono(c);
   // Private/internal CIDR ranges for the trust check. These are IANA
   // reserved blocks (RFC 1918) — they cannot be reached from the public
   // internet, so the values are intentionally hardcoded. NOSONAR —

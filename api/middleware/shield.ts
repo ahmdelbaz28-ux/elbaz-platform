@@ -1,4 +1,5 @@
 import { createMiddleware } from "hono/factory";
+import { getClientIpFromHono as getClientIp } from "../lib/client-ip.js";
 
 /**
  * 🛡️ Elite Shield Middleware v1
@@ -17,12 +18,6 @@ const RATE_LIMIT_WINDOW_MS = 10000; // 10 seconds
 const RATE_LIMIT_MAX_REQUESTS = 200;
 const MEMORY_PRESSURE_LIMIT_MB = 800;
 const RATE_LIMIT_MAP_MAX_SIZE = 5000;
-
-function getClientIp(c: any): string {
-  return c.req.header("cf-connecting-ip")
-    || c.req.header("x-forwarded-for")?.split(",")[0].trim()
-    || "127.0.1";
-}
 
 function checkRateLimit(c: any, ip: string, path: string): Response | null {
   const now = Date.now();

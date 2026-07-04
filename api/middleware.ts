@@ -3,6 +3,7 @@ import superjson from "superjson";
 import type { TrpcContext } from "./context";
 import { checkRateLimit } from "./lib/rate-limiter";
 import { env } from "./lib/env";
+import { getClientIpFromHeaders } from "./lib/client-ip";
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
@@ -29,12 +30,8 @@ export { checkRateLimit };
 export { clearRateLimit, type RateLimitAction } from "./lib/rate-limiter";
 
 const globalRateLimit = t.middleware(async (opts) => {
-  const forwarded = opts.ctx.req?.headers?.get("x-forwarded-for");
-  const cfIp = opts.ctx.req?.headers?.get("cf-connecting-ip");
-  const realIp = opts.ctx.req?.headers?.get("x-real-ip");
-  // Unified IP extraction: cf-connecting-ip (set by Cloudflare) > x-real-ip > first x-forwarded-for
-  // Using first IP from x-forwarded-for is correct when the first proxy is trusted (Cloudflare)
-  const ip = cfIp || realIp || (forwarded ? forwarded.split(",").shift()?.trim() || "unknown" : "unknown");
+  // Unified IP extraction (cf-connecting-ip > x-real-ip > first x-forwarded-for)
+  const ip = opts.ctx.req?.headers ? getClientIpFromHeaders(opts.ctx.req.headers) : "unknown";
   await checkRateLimit(ip, "api");
   return opts.next();
 });
