@@ -1,11 +1,11 @@
 {
-  "id": "828b3375-7eba-4610-9eb0-4470fd36ab4a",
+  "id": "68e5e487-5730-4355-9527-3f29eee5c70d",
   "version": "3.0",
   "name": "API Health",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "8cb5b289-5085-4da4-bd69-aaed7583436f",
+      "id": "e36c5e96-e323-40ed-be35-a0a1580278fb",
       "name": "API Health Returns 200",
       "commands": [
         {
@@ -28,13 +28,13 @@
   ],
   "suites": [
     {
-      "id": "46438fed-018b-44b9-a4f5-be0cf05cc4f2",
+      "id": "71dd0479-d636-4225-b4ea-6832863e230b",
       "name": "API Health Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "8cb5b289-5085-4da4-bd69-aaed7583436f"
+        "e36c5e96-e323-40ed-be35-a0a1580278fb"
       ]
     }
   ],

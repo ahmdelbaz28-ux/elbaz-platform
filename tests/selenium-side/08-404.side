@@ -1,11 +1,11 @@
 {
-  "id": "3db27453-c244-452c-ab48-9a6208d8aaff",
+  "id": "e81364b9-476f-4b44-ac41-b0919dca6787",
   "version": "3.0",
   "name": "404 Page",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "7bdda3ca-7e03-49d2-9c00-8e12f3b21a72",
+      "id": "5dd640a7-e463-4c56-8926-8d7c3e9e3d57",
       "name": "404 Returns Content",
       "commands": [
         {
@@ -28,13 +28,13 @@
   ],
   "suites": [
     {
-      "id": "f6191d5a-c22a-400f-9437-c1ca70baee4f",
+      "id": "6082e595-00ce-4971-8bca-547196d71adc",
       "name": "404 Page Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "7bdda3ca-7e03-49d2-9c00-8e12f3b21a72"
+        "5dd640a7-e463-4c56-8926-8d7c3e9e3d57"
       ]
     }
   ],

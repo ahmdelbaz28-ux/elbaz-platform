@@ -1,11 +1,11 @@
 {
-  "id": "c2029c3f-9543-4246-9305-28b532ca6bfd",
+  "id": "1a78e6ca-e471-4c83-a0e5-2a2ec5fa1908",
   "version": "3.0",
   "name": "Wishlist Page",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "fd1af93f-8c26-43c6-97da-b914dd063493",
+      "id": "010e46fe-5b90-4785-a1df-8cee2524e71e",
       "name": "Wishlist Loads",
       "commands": [
         {
@@ -28,13 +28,13 @@
   ],
   "suites": [
     {
-      "id": "416941c9-923b-4564-9bda-02be916bc581",
+      "id": "3b7d0f6e-a412-483e-a599-b8be1be6249f",
       "name": "Wishlist Page Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "fd1af93f-8c26-43c6-97da-b914dd063493"
+        "010e46fe-5b90-4785-a1df-8cee2524e71e"
       ]
     }
   ],

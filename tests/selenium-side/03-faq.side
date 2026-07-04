@@ -1,11 +1,11 @@
 {
-  "id": "e0355443-35e1-41f5-a244-24259133fd7a",
+  "id": "082e267e-a75e-40cc-8bbb-aa9317b500b9",
   "version": "3.0",
   "name": "FAQ Page",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "adecf9fe-6a69-4706-b05b-1847989c606b",
+      "id": "23a02a81-686f-46bc-b64c-957a55c84c25",
       "name": "FAQ Loads",
       "commands": [
         {
@@ -28,13 +28,13 @@
   ],
   "suites": [
     {
-      "id": "55183927-1c77-4f04-8d45-afbc64fc5f9f",
+      "id": "bbe7bdef-911e-496c-868b-07b8ad2d2252",
       "name": "FAQ Page Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "adecf9fe-6a69-4706-b05b-1847989c606b"
+        "23a02a81-686f-46bc-b64c-957a55c84c25"
       ]
     }
   ],

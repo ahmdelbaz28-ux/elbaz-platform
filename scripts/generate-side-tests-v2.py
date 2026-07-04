@@ -16,6 +16,10 @@ BASE_URL = "https://ahmedelbaz.qzz.io"
 OUTPUT_DIR = Path("/home/z/my-project/elbaz-platform/tests/selenium-side")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+# Constants — avoid duplicating literals (SonarCloud python:S1192)
+BODY_SELECTOR = "css=body"
+WAIT_TIMEOUT = "15000"
+
 # Clear old files
 for f in OUTPUT_DIR.glob("*.side"):
     f.unlink()
@@ -60,127 +64,127 @@ tests_config = [
     ("01-home.side", "Home Page", [
         ("Home Loads", [
             cmd("open", "/"),
-            cmd("waitForElementVisible", "css=body", "15000"),
-            cmd("assertElementPresent", "css=body"),
+            cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
+            cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
     ("02-courses.side", "Courses Page", [
         ("Courses Loads", [
             cmd("open", "/courses"),
-            cmd("waitForElementVisible", "css=body", "15000"),
-            cmd("assertElementPresent", "css=body"),
+            cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
+            cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
     ("03-faq.side", "FAQ Page", [
         ("FAQ Loads", [
             cmd("open", "/faq"),
-            cmd("waitForElementVisible", "css=body", "15000"),
-            cmd("assertElementPresent", "css=body"),
+            cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
+            cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
     ("04-support.side", "Support Page", [
         ("Support Loads", [
             cmd("open", "/support"),
-            cmd("waitForElementVisible", "css=body", "15000"),
-            cmd("assertElementPresent", "css=body"),
+            cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
+            cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
     ("05-references.side", "References Page", [
         ("References Loads", [
             cmd("open", "/references"),
-            cmd("waitForElementVisible", "css=body", "15000"),
-            cmd("assertElementPresent", "css=body"),
+            cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
+            cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
     ("06-login.side", "Login Page", [
         ("Login Form Present", [
             cmd("open", "/login"),
-            cmd("waitForElementVisible", "css=body", "15000"),
+            cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
             cmd("assertElementPresent", "css=input[type='password']"),
         ]),
     ]),
     ("07-register.side", "Register Page", [
         ("Register Form Present", [
             cmd("open", "/register"),
-            cmd("waitForElementVisible", "css=body", "15000"),
+            cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
             cmd("assertElementPresent", "css=input[type='password']"),
         ]),
     ]),
     ("08-404.side", "404 Page", [
         ("404 Returns Content", [
             cmd("open", "/nonexistent-page-xyz-123"),
-            cmd("waitForElementVisible", "css=body", "15000"),
-            cmd("assertElementPresent", "css=body"),
+            cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
+            cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
     ("09-api-health.side", "API Health", [
         ("API Health Returns 200", [
             cmd("open", "/api/health"),
-            cmd("waitForElementVisible", "css=body", "15000"),
-            cmd("assertElementPresent", "css=body"),
+            cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
+            cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
     ("10-privacy.side", "Privacy Policy", [
         ("Privacy Loads", [
             cmd("open", "/privacy"),
-            cmd("waitForElementVisible", "css=body", "15000"),
-            cmd("assertElementPresent", "css=body"),
+            cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
+            cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
     ("11-terms.side", "Terms of Service", [
         ("Terms Loads", [
             cmd("open", "/terms"),
-            cmd("waitForElementVisible", "css=body", "15000"),
-            cmd("assertElementPresent", "css=body"),
+            cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
+            cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
     ("12-refund.side", "Refund Policy", [
         ("Refund Loads", [
             cmd("open", "/refund"),
-            cmd("waitForElementVisible", "css=body", "15000"),
-            cmd("assertElementPresent", "css=body"),
+            cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
+            cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
     ("13-forgot-password.side", "Forgot Password", [
         ("Forgot Password Form", [
             cmd("open", "/forgot-password"),
-            cmd("waitForElementVisible", "css=body", "15000"),
-            cmd("assertElementPresent", "css=body"),
+            cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
+            cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
     ("14-wishlist.side", "Wishlist Page", [
         ("Wishlist Loads", [
             cmd("open", "/wishlist"),
-            cmd("waitForElementVisible", "css=body", "15000"),
-            cmd("assertElementPresent", "css=body"),
+            cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
+            cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
     ("15-journey.side", "Learning Journey", [
         ("Journey Loads", [
             cmd("open", "/journey"),
-            cmd("waitForElementVisible", "css=body", "15000"),
-            cmd("assertElementPresent", "css=body"),
+            cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
+            cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
     ("16-trpc.side", "tRPC Ping", [
         ("tRPC ping Returns OK", [
             cmd("open", "/api/trpc/ping"),
-            cmd("waitForElementVisible", "css=body", "15000"),
-            cmd("assertElementPresent", "css=body"),
+            cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
+            cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
     ("17-dashboard.side", "Dashboard (auth gate)", [
         ("Dashboard Loads", [
             cmd("open", "/dashboard"),
-            cmd("waitForElementVisible", "css=body", "15000"),
-            cmd("assertElementPresent", "css=body"),
+            cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
+            cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
     ("18-certificate.side", "Certificate Verify", [
         ("Certificate Verify Loads", [
             cmd("open", "/certificate"),
-            cmd("waitForElementVisible", "css=body", "15000"),
-            cmd("assertElementPresent", "css=body"),
+            cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
+            cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
 ]
