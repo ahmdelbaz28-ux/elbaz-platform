@@ -3,12 +3,13 @@ import { Link, useLocation } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "@/hooks/useTranslation";
 import Logo3D from "@/components/Logo3D";
+import GlobalSearch from "@/components/GlobalSearch";
 import { motion } from "framer-motion";
 import { Magnetic } from "@/components/ui/motion";
 import {
   Menu, X, LayoutDashboard, Headphones,
   Shield, LogOut, BookOpen, ChevronDown,
-  UserCog, FileBox,
+  UserCog, FileBox, HelpCircle, Heart, TrendingUp,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -132,6 +133,7 @@ export default function Navbar() { // NOSONAR — large navigation component wit
               { path: "/", label: lang === "ar" ? "الرئيسية" : "Home" },
               { path: "/courses", label: lang === "ar" ? "الكورسات" : "Courses", icon: <BookOpen className="h-3.5 w-3.5" /> },
               { path: "/references", label: lang === "ar" ? "المراجع" : "References", icon: <FileBox className="h-3.5 w-3.5" /> },
+              { path: "/faq", label: lang === "ar" ? "الأسئلة" : "FAQ", icon: <HelpCircle className="h-3.5 w-3.5" /> },
             ].map((link) => (
               <Magnetic key={link.path}>
                 <Link
@@ -174,6 +176,9 @@ export default function Navbar() { // NOSONAR — large navigation component wit
 
           {/* ── Right Controls ── */}
           <div className="hidden items-center gap-2 md:flex">
+            {/* Global Search */}
+            <GlobalSearch />
+
             {/* Theme toggle (dark/light) */}
             <ThemeToggle variant="compact" />
 
@@ -221,6 +226,22 @@ export default function Navbar() { // NOSONAR — large navigation component wit
                     >
                       <UserCog className="h-4 w-4" />
                       {lang === "ar" ? "الملف الشخصي" : "Profile"}
+                    </Link>
+                    <Link
+                      to="/wishlist"
+                      role="menuitem"
+                      className="flex items-center gap-2 px-4 py-3 text-[13px] text-[#94a3b8] transition-colors hover:bg-[rgba(6,182,212,0.08)] hover:text-[#06b6d4]"
+                    >
+                      <Heart className="h-4 w-4" />
+                      {lang === "ar" ? "المفضلة" : "Wishlist"}
+                    </Link>
+                    <Link
+                      to="/journey"
+                      role="menuitem"
+                      className="flex items-center gap-2 px-4 py-3 text-[13px] text-[#94a3b8] transition-colors hover:bg-[rgba(6,182,212,0.08)] hover:text-[#06b6d4]"
+                    >
+                      <TrendingUp className="h-4 w-4" />
+                      {lang === "ar" ? "رحلتي" : "My Journey"}
                     </Link>
                     {isAdmin && (
                       <Link
@@ -301,8 +322,11 @@ export default function Navbar() { // NOSONAR — large navigation component wit
             { path: "/", label: lang === "ar" ? "الرئيسية" : "Home" },
             { path: "/courses", label: lang === "ar" ? "الكورسات" : "Courses" },
             { path: "/references", label: lang === "ar" ? "المراجع" : "References" },
+            { path: "/faq", label: lang === "ar" ? "الأسئلة الشائعة" : "FAQ" },
             ...(isAuthenticated ? [
               { path: "/dashboard", label: lang === "ar" ? "لوحتي" : "Dashboard" },
+              { path: "/wishlist", label: lang === "ar" ? "المفضلة" : "Wishlist" },
+              { path: "/journey", label: lang === "ar" ? "رحلتي" : "My Journey" },
               { path: "/profile", label: lang === "ar" ? "الملف الشخصي" : "Profile" },
               { path: "/support", label: lang === "ar" ? "الدعم" : "Support" },
             ] : []),

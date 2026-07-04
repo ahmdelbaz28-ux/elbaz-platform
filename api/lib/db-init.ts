@@ -501,6 +501,106 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         console.warn("[DB] v5 referenceFiles migration warning:", (err as Error).message);
       }
 
+      // ── v6 features: FAQ, Wishlists, LessonComments, CommentLikes, NotificationPreferences ──
+      try {
+        console.log("[DB] Running v6 features migration (FAQ, wishlists, comments, notif prefs)...");
+        await conn.query(`CREATE TABLE IF NOT EXISTS \`faqEntries\` (
+          \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+          \`questionEn\` VARCHAR(500) NOT NULL,
+          \`questionAr\` VARCHAR(500) NOT NULL,
+          \`answerEn\` TEXT NOT NULL,
+          \`answerAr\` TEXT NOT NULL,
+          \`category\` VARCHAR(100) NOT NULL DEFAULT 'general',
+          \`sortOrder\` INT NOT NULL DEFAULT 0,
+          \`isPublished\` BOOLEAN NOT NULL DEFAULT TRUE,
+          \`viewCount\` INT NOT NULL DEFAULT 0,
+          \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          \`updatedAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (\`id\`),
+          INDEX \`faq_category_idx\` (\`category\`),
+          INDEX \`faq_published_idx\` (\`isPublished\`),
+          INDEX \`faq_sort_idx\` (\`sortOrder\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`);
+
+        await conn.query(`CREATE TABLE IF NOT EXISTS \`wishlists\` (
+          \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+          \`userId\` BIGINT UNSIGNED NOT NULL,
+          \`courseId\` BIGINT UNSIGNED NOT NULL,
+          \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (\`id\`),
+          UNIQUE INDEX \`wishlist_user_course_unique\` (\`userId\`, \`courseId\`),
+          INDEX \`wishlist_user_idx\` (\`userId\`),
+          CONSTRAINT \`fk_wishlist_user\` FOREIGN KEY (\`userId\`) REFERENCES \`users\` (\`id\`) ON DELETE CASCADE ON UPDATE CASCADE,
+          CONSTRAINT \`fk_wishlist_course\` FOREIGN KEY (\`courseId\`) REFERENCES \`courses\` (\`id\`) ON DELETE CASCADE ON UPDATE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`);
+
+        await conn.query(`CREATE TABLE IF NOT EXISTS \`lessonComments\` (
+          \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+          \`lessonId\` BIGINT UNSIGNED NOT NULL,
+          \`userId\` BIGINT UNSIGNED NOT NULL,
+          \`content\` TEXT NOT NULL,
+          \`parentCommentId\` BIGINT UNSIGNED NULL,
+          \`isPinned\` BOOLEAN NOT NULL DEFAULT FALSE,
+          \`isHidden\` BOOLEAN NOT NULL DEFAULT FALSE,
+          \`likeCount\` INT NOT NULL DEFAULT 0,
+          \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          \`updatedAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (\`id\`),
+          INDEX \`comments_lesson_idx\` (\`lessonId\`),
+          INDEX \`comments_user_idx\` (\`userId\`),
+          INDEX \`comments_parent_idx\` (\`parentCommentId\`),
+          CONSTRAINT \`fk_comments_lesson\` FOREIGN KEY (\`lessonId\`) REFERENCES \`lessons\` (\`id\`) ON DELETE CASCADE ON UPDATE CASCADE,
+          CONSTRAINT \`fk_comments_user\` FOREIGN KEY (\`userId\`) REFERENCES \`users\` (\`id\`) ON DELETE CASCADE ON UPDATE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`);
+
+        await conn.query(`CREATE TABLE IF NOT EXISTS \`commentLikes\` (
+          \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+          \`commentId\` BIGINT UNSIGNED NOT NULL,
+          \`userId\` BIGINT UNSIGNED NOT NULL,
+          \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (\`id\`),
+          UNIQUE INDEX \`comment_like_unique\` (\`commentId\`, \`userId\`),
+          INDEX \`comment_like_comment_idx\` (\`commentId\`),
+          CONSTRAINT \`fk_comment_like_comment\` FOREIGN KEY (\`commentId\`) REFERENCES \`lessonComments\` (\`id\`) ON DELETE CASCADE ON UPDATE CASCADE,
+          CONSTRAINT \`fk_comment_like_user\` FOREIGN KEY (\`userId\`) REFERENCES \`users\` (\`id\`) ON DELETE CASCADE ON UPDATE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`);
+
+        await conn.query(`CREATE TABLE IF NOT EXISTS \`notificationPreferences\` (
+          \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+          \`userId\` BIGINT UNSIGNED NOT NULL,
+          \`emailNewCourses\` BOOLEAN NOT NULL DEFAULT TRUE,
+          \`emailPromotions\` BOOLEAN NOT NULL DEFAULT TRUE,
+          \`emailLessonReplies\` BOOLEAN NOT NULL DEFAULT TRUE,
+          \`emailCertificates\` BOOLEAN NOT NULL DEFAULT TRUE,
+          \`pushNewCourses\` BOOLEAN NOT NULL DEFAULT TRUE,
+          \`pushPromotions\` BOOLEAN NOT NULL DEFAULT FALSE,
+          \`pushLessonReplies\` BOOLEAN NOT NULL DEFAULT TRUE,
+          \`pushCertificates\` BOOLEAN NOT NULL DEFAULT TRUE,
+          \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          \`updatedAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (\`id\`),
+          UNIQUE INDEX \`notif_prefs_user_unique\` (\`userId\`),
+          CONSTRAINT \`fk_notif_prefs_user\` FOREIGN KEY (\`userId\`) REFERENCES \`users\` (\`id\`) ON DELETE CASCADE ON UPDATE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`);
+
+        // Seed default FAQ entries if table is empty
+        const [faqCount] = await conn.execute("SELECT COUNT(*) AS cnt FROM faqEntries") as unknown as [{ cnt: number }[]];
+        if (faqCount[0]?.cnt === 0) {
+          await conn.execute(`INSERT INTO faqEntries (questionEn, questionAr, answerEn, answerAr, category, sortOrder) VALUES
+            ('How do I enroll in a course?', 'كيف أسجل في كورس؟', 'Browse the Courses page, click on any course, and click the Enroll button. Free courses are instantly available. Paid courses redirect to Paymob for secure payment.', 'تصفح صفحة الكورسات، اضغط على أي كورس، ثم اضغط زر التسجيل. الكورسات المجانية متاحة فوراً. الكورسات المدفوعة تحولك إلى Paymob للدفع الآمن.', 'courses', 1),
+            ('How do I get my certificate?', 'كيف أحصل على شهادتي؟', 'Certificates are automatically issued when you complete all lessons in a course. Visit your Dashboard to view and download certificates.', 'تصدر الشهادات تلقائياً عند إكمال جميع الدروس في الكورس. تفضل بزيارة لوحة التحكم لعرض وتحميل الشهادات.', 'certificates', 2),
+            ('What payment methods are accepted?', 'ما طرق الدفع المقبولة؟', 'We accept all major credit/debit cards, mobile wallets, and cash through Paymob (Egyptian payment gateway).', 'نقبل جميع البطاقات الائتمانية/الخصم الرئيسية، محافظ الهاتف المحمول، والدفع النقدي من خلال Paymob (بوابة الدفع المصرية).', 'payments', 3),
+            ('Can I access courses on mobile?', 'هل يمكنني الوصول للكورسات على الهاتف؟', 'Yes! The platform is fully responsive and also available as an Android app. Download from the Google Play Store or access via your mobile browser.', 'نعم! المنصة متجاوبة بالكامل ومتاحة أيضاً كتطبيق أندرويد. حملها من Google Play أو ادخل من متصفح هاتفك.', 'technical', 4),
+            ('How do I reset my password?', 'كيف أعيد تعيين كلمة المرور؟', 'Click "Forgot Password" on the login page. Enter your email, and we will send a reset link valid for 30 minutes.', 'اضغط "نسيت كلمة المرور" في صفحة تسجيل الدخول. أدخل بريدك الإلكتروني وسنرسل رابط إعادة التعيين صالح لمدة 30 دقيقة.', 'account', 5)
+          `);
+          console.log("[DB] ✅ Default FAQ entries seeded");
+        }
+
+        console.log("[DB] ✅ v6 tables verified (faqEntries, wishlists, lessonComments, commentLikes, notificationPreferences)");
+      } catch (err) {
+        console.warn("[DB] v6 migration warning:", (err as Error).message);
+      }
+
       migrationDone = true;
       return;
     }

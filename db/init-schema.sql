@@ -593,6 +593,88 @@ CREATE TABLE IF NOT EXISTS `referenceFiles` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
+-- 28-32. FAQ, Wishlists, Comments, CommentLikes, NotificationPreferences
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS `faqEntries` (
+  `id`            BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `questionEn`    VARCHAR(500)     NOT NULL,
+  `questionAr`    VARCHAR(500)     NOT NULL,
+  `answerEn`      TEXT             NOT NULL,
+  `answerAr`      TEXT             NOT NULL,
+  `category`      VARCHAR(100)     NOT NULL DEFAULT 'general',
+  `sortOrder`     INT              NOT NULL DEFAULT 0,
+  `isPublished`   BOOLEAN          NOT NULL DEFAULT TRUE,
+  `viewCount`     INT              NOT NULL DEFAULT 0,
+  `createdAt`     TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updatedAt`     TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `faq_category_idx` (`category`),
+  INDEX `faq_published_idx` (`isPublished`),
+  INDEX `faq_sort_idx` (`sortOrder`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `wishlists` (
+  `id`         BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `userId`     BIGINT UNSIGNED  NOT NULL,
+  `courseId`   BIGINT UNSIGNED  NOT NULL,
+  `createdAt`  TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `wishlist_user_course_unique` (`userId`, `courseId`),
+  INDEX `wishlist_user_idx` (`userId`),
+  CONSTRAINT `fk_wishlist_user` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_wishlist_course` FOREIGN KEY (`courseId`) REFERENCES `courses` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `lessonComments` (
+  `id`               BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `lessonId`         BIGINT UNSIGNED  NOT NULL,
+  `userId`           BIGINT UNSIGNED  NOT NULL,
+  `content`          TEXT             NOT NULL,
+  `parentCommentId`  BIGINT UNSIGNED  NULL,
+  `isPinned`         BOOLEAN          NOT NULL DEFAULT FALSE,
+  `isHidden`         BOOLEAN          NOT NULL DEFAULT FALSE,
+  `likeCount`        INT              NOT NULL DEFAULT 0,
+  `createdAt`        TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updatedAt`        TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `comments_lesson_idx` (`lessonId`),
+  INDEX `comments_user_idx` (`userId`),
+  INDEX `comments_parent_idx` (`parentCommentId`),
+  CONSTRAINT `fk_comments_lesson` FOREIGN KEY (`lessonId`) REFERENCES `lessons` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_comments_user` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `commentLikes` (
+  `id`          BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `commentId`   BIGINT UNSIGNED  NOT NULL,
+  `userId`      BIGINT UNSIGNED  NOT NULL,
+  `createdAt`   TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `comment_like_unique` (`commentId`, `userId`),
+  INDEX `comment_like_comment_idx` (`commentId`),
+  CONSTRAINT `fk_comment_like_comment` FOREIGN KEY (`commentId`) REFERENCES `lessonComments` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_comment_like_user` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `notificationPreferences` (
+  `id`                   BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `userId`               BIGINT UNSIGNED  NOT NULL,
+  `emailNewCourses`      BOOLEAN          NOT NULL DEFAULT TRUE,
+  `emailPromotions`      BOOLEAN          NOT NULL DEFAULT TRUE,
+  `emailLessonReplies`   BOOLEAN          NOT NULL DEFAULT TRUE,
+  `emailCertificates`    BOOLEAN          NOT NULL DEFAULT TRUE,
+  `pushNewCourses`       BOOLEAN          NOT NULL DEFAULT TRUE,
+  `pushPromotions`       BOOLEAN          NOT NULL DEFAULT FALSE,
+  `pushLessonReplies`    BOOLEAN          NOT NULL DEFAULT TRUE,
+  `pushCertificates`     BOOLEAN          NOT NULL DEFAULT TRUE,
+  `createdAt`            TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updatedAt`            TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `notif_prefs_user_unique` (`userId`),
+  CONSTRAINT `fk_notif_prefs_user` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
 -- Re-enable FK checks
 -- ============================================================================
 SET FOREIGN_KEY_CHECKS = 1;

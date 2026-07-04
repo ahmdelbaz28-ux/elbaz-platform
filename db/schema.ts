@@ -764,3 +764,151 @@ export const referenceFiles = mysqlTable(
 export type ReferenceFile = typeof referenceFiles.$inferSelect;
 export type InsertReferenceFile = typeof referenceFiles.$inferInsert;
 
+// ============================================================================
+// 26. faqEntries  (Frequently Asked Questions)
+// ============================================================================
+export const faqEntries = mysqlTable(
+  "faqEntries",
+  {
+    id: bigint("id", { mode: "number", unsigned: true }).primaryKey().autoincrement(),
+    questionEn: varchar("questionEn", { length: 500 }).notNull(),
+    questionAr: varchar("questionAr", { length: 500 }).notNull(),
+    answerEn: text("answerEn").notNull(),
+    answerAr: text("answerAr").notNull(),
+    category: varchar("category", { length: 100 }).notNull().default("general"),
+    sortOrder: int("sortOrder").notNull().default(0),
+    isPublished: boolean("isPublished").notNull().default(true),
+    viewCount: int("viewCount").notNull().default(0),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("faq_category_idx").on(table.category),
+    index("faq_published_idx").on(table.isPublished),
+    index("faq_sort_idx").on(table.sortOrder),
+  ]
+);
+
+// ============================================================================
+// 27. wishlists  (User bookmarked courses)
+// ============================================================================
+export const wishlists = mysqlTable(
+  "wishlists",
+  {
+    id: bigint("id", { mode: "number", unsigned: true }).primaryKey().autoincrement(),
+    userId: bigint("userId", { mode: "number", unsigned: true }).notNull(),
+    courseId: bigint("courseId", { mode: "number", unsigned: true }).notNull(),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("wishlist_user_course_unique").on(table.userId, table.courseId),
+    index("wishlist_user_idx").on(table.userId),
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [users.id],
+      name: "fk_wishlist_user",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [table.courseId],
+      foreignColumns: [courses.id],
+      name: "fk_wishlist_course",
+    }).onDelete("cascade").onUpdate("cascade"),
+  ]
+);
+
+// ============================================================================
+// 28. lessonComments  (Discussion on lessons)
+// ============================================================================
+export const lessonComments = mysqlTable(
+  "lessonComments",
+  {
+    id: bigint("id", { mode: "number", unsigned: true }).primaryKey().autoincrement(),
+    lessonId: bigint("lessonId", { mode: "number", unsigned: true }).notNull(),
+    userId: bigint("userId", { mode: "number", unsigned: true }).notNull(),
+    content: text("content").notNull(),
+    parentCommentId: bigint("parentCommentId", { mode: "number", unsigned: true }),
+    isPinned: boolean("isPinned").notNull().default(false),
+    isHidden: boolean("isHidden").notNull().default(false),
+    likeCount: int("likeCount").notNull().default(0),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("comments_lesson_idx").on(table.lessonId),
+    index("comments_user_idx").on(table.userId),
+    index("comments_parent_idx").on(table.parentCommentId),
+    foreignKey({
+      columns: [table.lessonId],
+      foreignColumns: [lessons.id],
+      name: "fk_comments_lesson",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [users.id],
+      name: "fk_comments_user",
+    }).onDelete("cascade").onUpdate("cascade"),
+  ]
+);
+
+// ============================================================================
+// 29. commentLikes  (Likes on lesson comments)
+// ============================================================================
+export const commentLikes = mysqlTable(
+  "commentLikes",
+  {
+    id: bigint("id", { mode: "number", unsigned: true }).primaryKey().autoincrement(),
+    commentId: bigint("commentId", { mode: "number", unsigned: true }).notNull(),
+    userId: bigint("userId", { mode: "number", unsigned: true }).notNull(),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("comment_like_unique").on(table.commentId, table.userId),
+    index("comment_like_comment_idx").on(table.commentId),
+    foreignKey({
+      columns: [table.commentId],
+      foreignColumns: [lessonComments.id],
+      name: "fk_comment_like_comment",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [users.id],
+      name: "fk_comment_like_user",
+    }).onDelete("cascade").onUpdate("cascade"),
+  ]
+);
+
+// ============================================================================
+// 30. notificationPreferences  (User notification settings)
+// ============================================================================
+export const notificationPreferences = mysqlTable(
+  "notificationPreferences",
+  {
+    id: bigint("id", { mode: "number", unsigned: true }).primaryKey().autoincrement(),
+    userId: bigint("userId", { mode: "number", unsigned: true }).notNull(),
+    emailNewCourses: boolean("emailNewCourses").notNull().default(true),
+    emailPromotions: boolean("emailPromotions").notNull().default(true),
+    emailLessonReplies: boolean("emailLessonReplies").notNull().default(true),
+    emailCertificates: boolean("emailCertificates").notNull().default(true),
+    pushNewCourses: boolean("pushNewCourses").notNull().default(true),
+    pushPromotions: boolean("pushPromotions").notNull().default(false),
+    pushLessonReplies: boolean("pushLessonReplies").notNull().default(true),
+    pushCertificates: boolean("pushCertificates").notNull().default(true),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("notif_prefs_user_unique").on(table.userId),
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [users.id],
+      name: "fk_notif_prefs_user",
+    }).onDelete("cascade").onUpdate("cascade"),
+  ]
+);
+
+export type FaqEntry = typeof faqEntries.$inferSelect;
+export type Wishlist = typeof wishlists.$inferSelect;
+export type LessonComment = typeof lessonComments.$inferSelect;
+export type CommentLike = typeof commentLikes.$inferSelect;
+export type NotificationPreference = typeof notificationPreferences.$inferSelect;
+

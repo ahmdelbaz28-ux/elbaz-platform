@@ -17,6 +17,12 @@ import { sessionsRouter } from "./sessions-router";
 import { licenseRouter } from "./license-router";
 import { exportRouter } from "./export-router";
 import { referencesRouter } from "./references-router";
+import { faqRouter } from "./faq-router";
+import { wishlistRouter } from "./wishlist-router";
+import { commentsRouter } from "./comments-router";
+import { searchRouter } from "./search-router";
+import { notificationPrefsRouter } from "./notification-prefs-router";
+import { journeyRouter } from "./journey-router";
 import { createRouter, publicQuery } from "./middleware";
 
 export const appRouter = createRouter({
@@ -40,6 +46,12 @@ export const appRouter = createRouter({
   license: licenseRouter,
   export: exportRouter,
   references: referencesRouter,
+  faq: faqRouter,
+  wishlist: wishlistRouter,
+  comments: commentsRouter,
+  search: searchRouter,
+  notificationPrefs: notificationPrefsRouter,
+  journey: journeyRouter,
 });
 
 export type AppRouter = typeof appRouter;
