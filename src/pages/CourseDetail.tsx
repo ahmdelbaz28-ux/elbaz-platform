@@ -1047,35 +1047,41 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
               ) : (
                 <>
                   <div className="flex items-baseline gap-2">
-                    {price === 0 ? (
-                      <span className="text-2xl font-bold text-[#10b981]">{t("free")}</span>
-                    ) : promoValidation?.valid ? (
-                      <>
-                        {/* Show original price with strikethrough */}
-                        <span className="text-lg text-[#64748b] line-through">
-                          {price.toLocaleString()} {lang === "ar" ? "ج.م" : "EGP"}
-                        </span>
-                        {/* Show discount amount */}
-                        <span className="rounded bg-[rgba(16,185,129,0.15)] px-1.5 py-0.5 text-xs font-semibold text-[#10b981]">
-                          -{promoValidation.discountAmount} {lang === "ar" ? "ج.م" : "EGP"}
-                        </span>
-                        {/* Show final discounted price */}
-                        <span className="text-3xl font-bold text-[#10b981]">
-                          {promoValidation.finalAmount} {lang === "ar" ? "ج.م" : "EGP"}
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="text-3xl font-bold text-[#f0f4f8]">
-                          {price.toLocaleString()} {lang === "ar" ? "ج.م" : "EGP"}
-                        </span>
-                        {course.originalPrice && Number.parseFloat(course.originalPrice) > 0 && (
-                          <span className="text-lg text-[#64748b] line-through">
-                            {Number.parseFloat(course.originalPrice).toLocaleString()} {lang === "ar" ? "ج.م" : "EGP"}
+                    {(() => {
+                      if (price === 0) {
+                        return <span className="text-2xl font-bold text-[#10b981]">{t("free")}</span>;
+                      }
+                      if (promoValidation?.valid) {
+                        return (
+                          <>
+                            {/* Show original price with strikethrough */}
+                            <span className="text-lg text-[#64748b] line-through">
+                              {price.toLocaleString()} {lang === "ar" ? "ج.م" : "EGP"}
+                            </span>
+                            {/* Show discount amount */}
+                            <span className="rounded bg-[rgba(16,185,129,0.15)] px-1.5 py-0.5 text-xs font-semibold text-[#10b981]">
+                              -{promoValidation.discountAmount} {lang === "ar" ? "ج.م" : "EGP"}
+                            </span>
+                            {/* Show final discounted price */}
+                            <span className="text-3xl font-bold text-[#10b981]">
+                              {promoValidation.finalAmount} {lang === "ar" ? "ج.م" : "EGP"}
+                            </span>
+                          </>
+                        );
+                      }
+                      return (
+                        <>
+                          <span className="text-3xl font-bold text-[#f0f4f8]">
+                            {price.toLocaleString()} {lang === "ar" ? "ج.م" : "EGP"}
                           </span>
-                        )}
-                      </>
-                    )}
+                          {course.originalPrice && Number.parseFloat(course.originalPrice) > 0 && (
+                            <span className="text-lg text-[#64748b] line-through">
+                              {Number.parseFloat(course.originalPrice).toLocaleString()} {lang === "ar" ? "ج.م" : "EGP"}
+                            </span>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                   <Button
                     className="glow-btn mt-4 w-full bg-gradient-to-r from-[#06b6d4] to-[#0891b2] font-semibold text-[#0a0e17]"
