@@ -23,11 +23,9 @@ interface CacheMetrics {
   maxSize: number;
 }
 
-type CacheKey = string;
-
 class CacheEngine {
-  private readonly store: LRUCache<CacheKey, CacheEntry>;
-  private readonly tagIndex: Map<string, Set<CacheKey>>;
+  private readonly store: LRUCache<string, CacheEntry>;
+  private readonly tagIndex: Map<string, Set<string>>;
   private metrics: {
     hits: number;
     misses: number;
@@ -39,9 +37,9 @@ class CacheEngine {
   private readonly defaultTTL: number;
   private readonly cleanupInterval: ReturnType<typeof setInterval> | null;
   private writeBackQueue: Array<{
-    key: CacheKey;
+    key: string;
     value: unknown;
-    persistFn: (key: CacheKey, value: unknown) => Promise<void>;
+    persistFn: (key: string, value: unknown) => Promise<void>;
     timeoutId: ReturnType<typeof setTimeout>;
   }>;
   private readonly writeBackFlushInterval: ReturnType<typeof setInterval> | null;
@@ -54,11 +52,11 @@ class CacheEngine {
     cleanupIntervalMs?: number;
     writeBackDelay?: number;
   } = {}) {
-    this.store = new LRUCache<CacheKey, CacheEntry>({
+    this.store = new LRUCache<string, CacheEntry>({
       max: options.maxSize ?? 5000,
       updateAgeOnGet: true,
       updateAgeOnHas: false,
-      dispose: (entry: CacheEntry, key: CacheKey) => {
+      dispose: (entry: CacheEntry, key: string) => {
         this.metrics.evictions++;
         this.removeFromTagIndex(key, entry.tags);
       },
@@ -87,7 +85,7 @@ class CacheEngine {
     this.writeBackFlushInterval = setInterval(() => this.flushWriteBackQueue(), this.writeBackDelay);
   }
 
-  get<T = unknown>(key: CacheKey): T | undefined {
+  get<T = unknown>(key: string): T | undefined {
     const entry = this.store.get(key);
     if (!entry) {
       this.metrics.misses++;
@@ -109,7 +107,7 @@ class CacheEngine {
   }
 
   async getOrSet<T = unknown>(
-    key: CacheKey,
+    key: string,
     fetchFn: () => T | Promise<T>,
     options: { ttl?: number; tags?: string[] } = {}
   ): Promise<T> {
@@ -124,7 +122,7 @@ class CacheEngine {
   }
 
   set<T = unknown>(
-    key: CacheKey,
+    key: string,
     value: T,
     options: { ttl?: number; tags?: string[] } = {}
   ): void {
@@ -151,7 +149,7 @@ class CacheEngine {
     this.emit('set', { key, ttl, tags });
   }
 
-  has(key: CacheKey): boolean {
+  has(key: string): boolean {
     const entry = this.store.get(key);
     if (!entry) return false;
 
@@ -164,7 +162,7 @@ class CacheEngine {
     return true;
   }
 
-  delete(key: CacheKey): boolean {
+  delete(key: string): boolean {
     const entry = this.store.get(key);
     if (!entry) return false;
 
@@ -219,9 +217,9 @@ class CacheEngine {
   }
 
   async writeBack<T = unknown>(
-    key: CacheKey,
+    key: string,
     value: T,
-    persistFn: (key: CacheKey, value: T) => Promise<void>,
+    persistFn: (key: string, value: T) => Promise<void>,
     options: { ttl?: number; tags?: string[] } = {}
   ): Promise<void> {
     this.set(key, value, options);
@@ -236,7 +234,7 @@ class CacheEngine {
       }
     }, this.writeBackDelay);
 
-    this.writeBackQueue.push({ key: key as CacheKey, value: value as unknown, persistFn: persistFn as (key: CacheKey, value: unknown) => Promise<void>, timeoutId });
+    this.writeBackQueue.push({ key: key as string, value: value as unknown, persistFn: persistFn as (key: string, value: unknown) => Promise<void>, timeoutId });
   }
 
   async flushWriteBackQueue(): Promise<void> {
@@ -254,9 +252,9 @@ class CacheEngine {
   }
 
   async writeThrough<T = unknown>(
-    key: CacheKey,
+    key: string,
     value: T,
-    persistFn: (key: CacheKey, value: T) => Promise<void>,
+    persistFn: (key: string, value: T) => Promise<void>,
     options: { ttl?: number; tags?: string[] } = {}
   ): Promise<void> {
     try {
@@ -286,7 +284,7 @@ class CacheEngine {
   evictExpired(): number {
     let count = 0;
     const now = Date.now();
-    const keysToDelete: CacheKey[] = [];
+    const keysToDelete: string[] = [];
     for (const [key, entry] of this.store) {
       if (now - entry.createdAt > entry.ttl) {
         keysToDelete.push(key);
@@ -337,7 +335,7 @@ class CacheEngine {
     this.metrics.errors++;
   }
 
-  keys(): CacheKey[] {
+  keys(): string[] {
     return Array.from(this.store.keys());
   }
 
@@ -370,7 +368,7 @@ class CacheEngine {
     }
   }
 
-  private addToTagIndex(key: CacheKey, tags: string[]): void {
+  private addToTagIndex(key: string, tags: string[]): void {
     for (const tag of tags) {
       if (!this.tagIndex.has(tag)) {
         this.tagIndex.set(tag, new Set());
@@ -379,7 +377,7 @@ class CacheEngine {
     }
   }
 
-  private removeFromTagIndex(key: CacheKey, tags: string[]): void {
+  private removeFromTagIndex(key: string, tags: string[]): void {
     for (const tag of tags) {
       const keys = this.tagIndex.get(tag);
       if (keys) {
@@ -429,4 +427,4 @@ const longTTLCache = new CacheEngine({
 });
 
 export { CacheEngine, defaultCacheEngine, shortTTLCache, longTTLCache };
-export type { CacheEntry, CacheMetrics, CacheKey };
+export type { CacheEntry, CacheMetrics };

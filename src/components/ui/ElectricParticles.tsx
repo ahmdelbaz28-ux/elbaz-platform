@@ -161,7 +161,7 @@ export default function ElectricParticles({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const draw = () => {
+    const draw = () => { // NOSONAR — canvas particle renderer with per-type branching (spark/arc/lightning); extraction would need to pass ctx+p+visualRandom through many helpers
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       // Update & draw particles

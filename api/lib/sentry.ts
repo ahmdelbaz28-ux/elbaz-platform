@@ -17,9 +17,9 @@ function initSentry(): void {
     attachStacktrace: true,
     sendDefaultPii: false,
     denyUrls: [
-      /\/api\/health/,
-      /\/api\/ready/,
-      /\/api\/live/,
+      //api/health/,
+      //api/ready/,
+      //api/live/,
     ],
     beforeSend(event) {
       if (event.request?.headers) {
@@ -93,7 +93,9 @@ function captureSecurityEvent(event: {
   Sentry.withScope((scope) => {
     scope.setTag("security_event", event.type);
     scope.setTag("severity", event.severity);
-    scope.setLevel(event.severity === "critical" ? "fatal" : event.severity === "high" ? "error" : "warning");
+    const innerLevel = event.severity === "high" ? "error" : "warning";
+    const securityLevel = event.severity === "critical" ? "fatal" : innerLevel;
+    scope.setLevel(securityLevel);
     scope.setExtra("security_details", event.details);
     if (event.ip) scope.setExtra("source_ip", event.ip);
     if (event.userId) scope.setUser({ id: event.userId.toString() });

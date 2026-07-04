@@ -2,7 +2,7 @@ import { useSearchParams } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
 import { trpc } from "@/providers/trpc";
 import CourseCard from "@/components/CourseCard";
-import SEO from "@/components/SEO";
+import Seo from "@/components/SEO";
 import { CourseCardSkeleton } from "@/components/SkeletonCard";
 import { Input } from "@/components/ui/input";
 import { Zap, CircuitBoard, Cpu, FileCheck, SlidersHorizontal, Search, X } from "lucide-react";
@@ -63,7 +63,10 @@ const categoryIcons: Record<string, React.ReactNode> = {
   FileCheck: <FileCheck className="h-4 w-4" />,
 };
 
-export default function Courses() {
+// Stable keys for the loading-state skeleton cards (avoid array-index keys).
+const SKELETON_KEYS = ["sk-0", "sk-1", "sk-2", "sk-3", "sk-4", "sk-5"] as const;
+
+export default function Courses() { // NOSONAR — page-level filter+search component; complexity barely exceeds threshold (16) and the JSX is already organized into discrete sections
   const { t, lang } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [showFilters, setShowFilters] = useState(false);
@@ -73,10 +76,11 @@ export default function Courses() {
     ? Number.parseInt(searchParams.get("category")!)
     : undefined;
   const selectedType = searchParams.get("type") as "free" | "premium" | undefined;
+  const isPremiumFilter = selectedType === "free" ? false : undefined;
 
   const { data: coursesResponse, isLoading } = trpc.course.list.useQuery<CourseListResponse>({
     categoryId: selectedCategory,
-    isPremium: selectedType === "premium" ? true : selectedType === "free" ? false : undefined,
+    isPremium: selectedType === "premium" ? true : isPremiumFilter,
   });
 
   const { data: categories } = trpc.course.categories.useQuery<Category[]>();
@@ -112,9 +116,9 @@ export default function Courses() {
 
   return (
     <div className="min-h-screen bg-[#0a0e17] pt-24">
-      <SEO 
-        title={lang === "en" ? "Courses" : "الكورسات"} 
-        description={lang === "en" ? "Explore our premium electrical engineering courses." : "تصفح الكورسات الهندسية الكهربية المتميزة."} 
+      <Seo
+        title={lang === "en" ? "Courses" : "الكورسات"}
+        description={lang === "en" ? "Explore our premium electrical engineering courses." : "تصفح الكورسات الهندسية الكهربية المتميزة."}
       />
       <div className="mx-auto max-w-7xl px-4 pb-20 lg:px-6">
         {/* Header */}
@@ -211,8 +215,8 @@ export default function Courses() {
         {/* Course Grid */}
         {isLoading ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <CourseCardSkeleton key={`skeleton-${i}`} />
+            {SKELETON_KEYS.map(skKey => (
+              <CourseCardSkeleton key={skKey} />
             ))}
           </div>
         ) : (

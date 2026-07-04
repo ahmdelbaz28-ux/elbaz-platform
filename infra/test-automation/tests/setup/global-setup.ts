@@ -105,8 +105,8 @@ async function globalSetup() {
       // read.)
       console.log(`API health check passed. Server is reachable.`);
     }
-  } catch (healthError) {
-    console.warn("WARNING: Could not reach API server for health check.");
+  } catch (error) {
+    console.warn("WARNING: Could not reach API server for health check:", error);
   }
 
   await apiContext.dispose();

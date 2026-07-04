@@ -72,8 +72,8 @@ function registerUser() {
     try {
       const body = res.json();
       return body.token || body.accessToken || body.data?.token || "";
-    } catch (e) {// Intentionally ignored: best-effort cleanup, the error has already
-    // been logged upstream and re-throwing would mask the original cause.
+    } catch {
+      // Intentionally ignored: response body parse failed — return empty token below. — SonarCloud S2486
     }
   }
   return "";
@@ -103,7 +103,8 @@ function loginUser(email, password) {
       try {
         const body = r.json();
         return !!(body.token || body.accessToken || body.data?.token);
-      } catch (e) {
+      } catch {
+        // Intentionally ignored: invalid JSON — check() should report failure. — SonarCloud S2486
         return false;
       }
     },
@@ -115,8 +116,8 @@ function loginUser(email, password) {
     try {
       const body = res.json();
       return body.token || body.accessToken || body.data?.token || "";
-    } catch (e) {// Intentionally ignored: best-effort cleanup, the error has already
-    // been logged upstream and re-throwing would mask the original cause.
+    } catch {
+      // Intentionally ignored: response body parse failed — return empty token below. — SonarCloud S2486
     }
   }
   return "";
@@ -144,7 +145,8 @@ function browseCourses(token) {
         const body = r.json();
         const courses = body.data || body.courses || body.results || body;
         return Array.isArray(courses);
-      } catch (e) {
+      } catch {
+        // Intentionally ignored: invalid JSON — check() should report failure. — SonarCloud S2486
         return false;
       }
     },
@@ -175,7 +177,8 @@ function viewCourseDetail(token) {
       try {
         const body = r.json();
         return typeof body === "object";
-      } catch (e) {
+      } catch {
+        // Intentionally ignored: invalid JSON — check() should report failure. — SonarCloud S2486
         return false;
       }
     },
@@ -212,7 +215,8 @@ function searchCourses(token) {
         const body = r.json();
         const courses = body.data || body.courses || body.results || body;
         return Array.isArray(courses);
-      } catch (e) {
+      } catch {
+        // Intentionally ignored: invalid JSON — check() should report failure. — SonarCloud S2486
         return false;
       }
     },

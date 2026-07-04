@@ -35,6 +35,59 @@ declare global {
   }
 }
 
+interface BadRequestRule {
+  readonly matchers: readonly (string | RegExp)[];
+  readonly ar: string;
+  readonly en: string;
+}
+
+// Rule list for BAD_REQUEST error messages: each entry is checked in order;
+// first match wins. Keep in sync with the backend Zod schema in api/local-auth-router.ts.
+const BAD_REQUEST_RULES: readonly BadRequestRule[] = [
+  { matchers: ["Username must be at least 3 characters", /too_small.*username|username.*too_small/], ar: "اسم المستخدم يجب أن يكون 3 أحرف على الأقل", en: "Username must be at least 3 characters" },
+  { matchers: ["Username too long", /too_big.*username|username.*too_big/], ar: "اسم المستخدم طويل جداً (الحد الأقصى 30 حرف)", en: "Username is too long (maximum 30 characters)" },
+  { matchers: ["Username can only contain", /invalid_format.*username|username.*invalid_format/], ar: "اسم المستخدم يحتوي على حروف غير مسموحة. استخدم حروف (إنجليزية/عربية) وأرقام وشرطة سفلية (_) فقط", en: "Username contains invalid characters. Use English/Arabic letters, numbers, and underscores (_) only" },
+  { matchers: ["Password must be at least 8 characters", /too_small.*password|password.*too_small/], ar: "كلمة المرور يجب أن تكون 8 أحرف على الأقل", en: "Password must be at least 8 characters" },
+  { matchers: ["Password must contain", /invalid_format.*password|password.*invalid_format/], ar: "كلمة المرور يجب أن تحتوي على حرف كبير وحرف صغير ورقم على الأقل", en: "Password must contain at least one uppercase letter, one lowercase letter, and one number" },
+  { matchers: ["Invalid email", "email"], ar: "بريد إلكتروني غير صالح", en: "Invalid email address" },
+];
+
+function msgMatchesAny(msg: string, matchers: readonly (string | RegExp)[]): boolean {
+  return matchers.some((m) => (typeof m === "string" ? msg.includes(m) : m.test(msg)));
+}
+
+function describeBadRequestMessage(msg: string, lang: "ar" | "en"): string {
+  for (const rule of BAD_REQUEST_RULES) {
+    if (msgMatchesAny(msg, rule.matchers)) {
+      return lang === "ar" ? rule.ar : rule.en;
+    }
+  }
+  return lang === "ar"
+    ? "بيانات غير صالحة. تحقق من الحقول وحاول مرة أخرى."
+    : "Invalid data. Please check the fields and try again.";
+}
+
+function describeRegistrationError(err: any, lang: "ar" | "en"): string {
+  const errorCode = (err.data as { code?: string })?.code;
+  if (errorCode === "TOO_MANY_REQUESTS") {
+    return lang === "ar"
+      ? "محاولات كثيرة. انتظر قليلاً ثم حاول مرة أخرى."
+      : "Too many attempts. Please wait a moment and try again.";
+  }
+  if (errorCode === "CONFLICT") {
+    return lang === "ar"
+      ? "اسم المستخدم أو البريد الإلكتروني مسجل مسبقاً"
+      : "Username or email already exists";
+  }
+  if (errorCode === "BAD_REQUEST") {
+    return describeBadRequestMessage(err.message || "", lang);
+  }
+  // Fallback for any other error (INTERNAL_SERVER_ERROR, etc.)
+  return lang === "ar"
+    ? "حدث خطأ في النظام. يرجى المحاولة مرة أخرى لاحقاً."
+    : "A system error occurred. Please try again later.";
+}
+
 export default function Register() {
   const { t, lang } = useTranslation();
   const navigate = useNavigate();
@@ -192,121 +245,59 @@ export default function Register() {
     },
     onError: (err) => {
       trackPlatform("register_failed");
-      // The if/else-if/else below covers every case, so `err.message` is
-      // always overwritten — declared without an initialiser (SonarCloud S1854).
-      let errorMsg: string;
-      const errorCode = (err.data as { code?: string })?.code;
-      if (errorCode === "TOO_MANY_REQUESTS") {
-        errorMsg = lang === "ar"
-          ? "محاولات كثيرة. انتظر قليلاً ثم حاول مرة أخرى."
-          : "Too many attempts. Please wait a moment and try again.";
-      } else if (errorCode === "CONFLICT") {
-        errorMsg = lang === "ar"
-          ? "اسم المستخدم أو البريد الإلكتروني مسجل مسبقاً"
-          : "Username or email already exists";
-      } else if (errorCode === "BAD_REQUEST") {
-        // Parse the raw Zod message to show specific, user-friendly errors
-        const msg = err.message || "";
-        if (msg.includes("Username must be at least 3 characters") || msg.includes("too_small") && msg.includes("username")) {
-          errorMsg = lang === "ar"
-            ? "اسم المستخدم يجب أن يكون 3 أحرف على الأقل"
-            : "Username must be at least 3 characters";
-        } else if (msg.includes("Username too long") || msg.includes("too_big") && msg.includes("username")) {
-          errorMsg = lang === "ar"
-            ? "اسم المستخدم طويل جداً (الحد الأقصى 30 حرف)"
-            : "Username is too long (maximum 30 characters)";
-        } else if (msg.includes("Username can only contain") || msg.includes("invalid_format") && msg.includes("username")) {
-          errorMsg = lang === "ar"
-            ? "اسم المستخدم يحتوي على حروف غير مسموحة. استخدم حروف (إنجليزية/عربية) وأرقام وشرطة سفلية (_) فقط"
-            : "Username contains invalid characters. Use English/Arabic letters, numbers, and underscores (_) only";
-        } else if (msg.includes("Password must be at least 8 characters") || msg.includes("too_small") && msg.includes("password")) {
-          errorMsg = lang === "ar"
-            ? "كلمة المرور يجب أن تكون 8 أحرف على الأقل"
-            : "Password must be at least 8 characters";
-        } else if (msg.includes("Password must contain") || msg.includes("invalid_format") && msg.includes("password")) {
-          errorMsg = lang === "ar"
-            ? "كلمة المرور يجب أن تحتوي على حرف كبير وحرف صغير ورقم على الأقل"
-            : "Password must contain at least one uppercase letter, one lowercase letter, and one number";
-        } else if (msg.includes("Invalid email") || msg.includes("email")) {
-          errorMsg = lang === "ar"
-            ? "بريد إلكتروني غير صالح"
-            : "Invalid email address";
-        } else {
-          errorMsg = lang === "ar"
-            ? "بيانات غير صالحة. تحقق من الحقول وحاول مرة أخرى."
-            : "Invalid data. Please check the fields and try again.";
-        }
-      } else {
-        // Fallback for any other error (INTERNAL_SERVER_ERROR, etc.)
-        errorMsg = lang === "ar"
-          ? "حدث خطأ في النظام. يرجى المحاولة مرة أخرى لاحقاً."
-          : "A system error occurred. Please try again later.";
-      }
+      const errorMsg = describeRegistrationError(err, lang);
       setError(errorMsg);
       toast.error(errorMsg);
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
+  const failValidation = (msg: string): boolean => {
+    setError(msg);
+    toast.error(msg);
+    return false;
+  };
+
+  const validateRegistrationForm = (): boolean => {
     if (!username.trim() || !password.trim()) {
-      const msg = lang === "en" ? "Username and password are required" : "اسم المستخدم وكلمة المرور مطلوبان";
-      setError(msg);
-      toast.error(msg);
-      return;
+      return failValidation(lang === "en" ? "Username and password are required" : "اسم المستخدم وكلمة المرور مطلوبان");
     }
     if (password !== confirmPassword) {
-      const msg = lang === "en" ? "Passwords do not match" : "كلمات المرور غير متطابقة";
-      setError(msg);
-      toast.error(msg);
-      return;
+      return failValidation(lang === "en" ? "Passwords do not match" : "كلمات المرور غير متطابقة");
     }
     // === Username validation (must match backend Zod schema) ===
     if (username.trim().length < 3) {
-      const msg = lang === "en" ? "Username must be at least 3 characters" : "اسم المستخدم يجب أن يكون 3 أحرف على الأقل";
-      setError(msg);
-      toast.error(msg);
-      return;
+      return failValidation(lang === "en" ? "Username must be at least 3 characters" : "اسم المستخدم يجب أن يكون 3 أحرف على الأقل");
     }
     if (username.trim().length > 30) {
-      const msg = lang === "en" ? "Username is too long (max 30 characters)" : "اسم المستخدم طويل جداً (الحد الأقصى 30 حرف)";
-      setError(msg);
-      toast.error(msg);
-      return;
+      return failValidation(lang === "en" ? "Username is too long (max 30 characters)" : "اسم المستخدم طويل جداً (الحد الأقصى 30 حرف)");
     }
     if (!/^[a-zA-Z0-9_\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]+$/.test(username.trim())) {
-      const msg = lang === "en"
+      return failValidation(lang === "en"
         ? "Username can only contain letters (English/Arabic), numbers, and underscores (_)"
-        : "اسم المستخدم يمكن أن يحتوي فقط على حروف (إنجليزية/عربية)، أرقام، وشرطة سفلية (_)";
-      setError(msg);
-      toast.error(msg);
-      return;
+        : "اسم المستخدم يمكن أن يحتوي فقط على حروف (إنجليزية/عربية)، أرقام، وشرطة سفلية (_)");
     }
     // === Email validation (if provided) ===
     // Uses the shared isValidEmail helper to avoid the super-linear
     // backtracking regex flagged by SonarCloud S8786.
     if (email.trim() && !isValidEmail(email.trim())) {
-      const msg = lang === "en" ? "Invalid email format" : "صيغة البريد الإلكتروني غير صحيحة";
-      setError(msg);
-      toast.error(msg);
-      return;
+      return failValidation(lang === "en" ? "Invalid email format" : "صيغة البريد الإلكتروني غير صحيحة");
     }
     // === Password validation (must match backend: min 8, max 100, uppercase, lowercase, digit) ===
     if (password.length < 8) {
-      const msg = lang === "en" ? "Password must be at least 8 characters" : "كلمة المرور يجب أن تكون 8 أحرف على الأقل";
-      setError(msg);
-      toast.error(msg);
-      return;
+      return failValidation(lang === "en" ? "Password must be at least 8 characters" : "كلمة المرور يجب أن تكون 8 أحرف على الأقل");
     }
     if (!hasPasswordStrengthChars(password)) {
-      const msg = lang === "en"
+      return failValidation(lang === "en"
         ? "Password must contain at least one uppercase letter, one lowercase letter, and one number"
-        : "كلمة المرور يجب أن تحتوي على حرف كبير وحرف صغير ورقم على الأقل";
-      setError(msg);
-      toast.error(msg);
-      return;
+        : "كلمة المرور يجب أن تحتوي على حرف كبير وحرف صغير ورقم على الأقل");
     }
+    return true;
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    if (!validateRegistrationForm()) return;
     registerMutation.mutate({
       username: username.trim(),
       password,

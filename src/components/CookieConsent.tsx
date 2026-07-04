@@ -93,6 +93,10 @@ export default function CookieConsent() {
 
   if (!visible) return null;
 
+  const hideDetailsLabel = lang === "en" ? "Less details" : "أقل تفاصيلاً";
+  const showDetailsLabel = lang === "en" ? "Customize preferences" : "تخصيص التفضيلات";
+  const detailsToggleLabel = showDetails ? hideDetailsLabel : showDetailsLabel;
+
   return (
     <div
       className={`fixed inset-0 z-[100] flex items-end sm:items-center justify-center transition-all duration-400 ${
@@ -144,85 +148,7 @@ export default function CookieConsent() {
 
           {/* Expandable Details */}
           {showDetails && (
-            <div className="mt-4 space-y-3 border-t border-[#1e2d3d] pt-4">
-              {/* Necessary — always on */}
-              <div className="flex items-start gap-3">
-                <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded bg-[rgba(6,182,212,0.15)]">
-                  <Shield className="h-3 w-3 text-[#06b6d4]" />
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-[#f0f4f8]">
-                      {lang === "en" ? "Essential Cookies" : "ملفات تعريف الارتباط الأساسية"}
-                    </span>
-                    <span className="rounded bg-[rgba(6,182,212,0.15)] px-2 py-0.5 text-[10px] font-medium text-[#06b6d4]">
-                      {lang === "en" ? "Always active" : "نشطة دائماً"}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-[#64748b]">
-                    {lang === "en"
-                      ? "Required for the website to function properly. Includes authentication, security, and page navigation."
-                      : "مطلوبة لعمل الموقع بشكل صحيح. تشمل المصادقة والأمان والتنقل بين الصفحات."}
-                  </p>
-                </div>
-              </div>
-
-              {/* Analytics toggle */}
-              <div className="flex items-start gap-3">
-                <button
-                  onClick={() => togglePref("analytics")}
-                  className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-all ${
-                    prefs.analytics
-                      ? "border-[#06b6d4] bg-[#06b6d4]"
-                      : "border-[#1e2d3d] bg-transparent"
-                  }`}
-                >
-                  {prefs.analytics && (
-                    <svg className="h-3 w-3 text-[#0a0e17]" viewBox="0 0 12 12" fill="none">
-                      <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  )}
-                </button>
-                <div className="flex-1">
-                  <span className="text-sm font-medium text-[#f0f4f8]">
-                    {lang === "en" ? "Analytics Cookies" : "ملفات التحليلات"}
-                  </span>
-                  <p className="mt-1 text-xs text-[#64748b]">
-                    {lang === "en"
-                      ? "Help us understand how visitors interact with our website to improve performance and content."
-                      : "تساعدنا في فهم كيفية تفاعل الزوار مع الموقع لتحسين الأداء والمحتوى."}
-                  </p>
-                </div>
-              </div>
-
-              {/* Marketing toggle */}
-              <div className="flex items-start gap-3">
-                <button
-                  onClick={() => togglePref("marketing")}
-                  className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-all ${
-                    prefs.marketing
-                      ? "border-[#06b6d4] bg-[#06b6d4]"
-                      : "border-[#1e2d3d] bg-transparent"
-                  }`}
-                >
-                  {prefs.marketing && (
-                    <svg className="h-3 w-3 text-[#0a0e17]" viewBox="0 0 12 12" fill="none">
-                      <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  )}
-                </button>
-                <div className="flex-1">
-                  <span className="text-sm font-medium text-[#f0f4f8]">
-                    {lang === "en" ? "Marketing Cookies" : "ملفات التسويق"}
-                  </span>
-                  <p className="mt-1 text-xs text-[#64748b]">
-                    {lang === "en"
-                      ? "Used to deliver relevant advertisements and track campaign effectiveness."
-                      : "تستخدم لعرض إعلانات ذات صلة وتتبع فعالية الحملات التسويقية."}
-                  </p>
-                </div>
-              </div>
-            </div>
+            <CookieDetailsSection prefs={prefs} lang={lang} onTogglePref={togglePref} />
           )}
 
           {/* Actions */}
@@ -236,9 +162,7 @@ export default function CookieConsent() {
               ) : (
                 <ChevronDown className="h-3.5 w-3.5" />
               )}
-              {showDetails
-                ? (lang === "en" ? "Less details" : "أقل تفاصيلاً")
-                : (lang === "en" ? "Customize preferences" : "تخصيص التفضيلات")}
+              {detailsToggleLabel}
             </button>
 
             <div className="flex gap-2">
@@ -274,6 +198,99 @@ export default function CookieConsent() {
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+interface CookieDetailsSectionProps {
+  readonly prefs: CookiePreferences;
+  readonly lang: "ar" | "en";
+  readonly onTogglePref: (key: "analytics" | "marketing") => void;
+}
+
+function CookieDetailsSection({ prefs, lang, onTogglePref }: CookieDetailsSectionProps) {
+  return (
+    <div className="mt-4 space-y-3 border-t border-[#1e2d3d] pt-4">
+      {/* Necessary — always on */}
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded bg-[rgba(6,182,212,0.15)]">
+          <Shield className="h-3 w-3 text-[#06b6d4]" />
+        </div>
+        <div className="flex-1">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-[#f0f4f8]">
+              {lang === "en" ? "Essential Cookies" : "ملفات تعريف الارتباط الأساسية"}
+            </span>
+            <span className="rounded bg-[rgba(6,182,212,0.15)] px-2 py-0.5 text-[10px] font-medium text-[#06b6d4]">
+              {lang === "en" ? "Always active" : "نشطة دائماً"}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-[#64748b]">
+            {lang === "en"
+              ? "Required for the website to function properly. Includes authentication, security, and page navigation."
+              : "مطلوبة لعمل الموقع بشكل صحيح. تشمل المصادقة والأمان والتنقل بين الصفحات."}
+          </p>
+        </div>
+      </div>
+
+      {/* Analytics toggle */}
+      <CookiePrefToggle
+        active={prefs.analytics}
+        lang={lang}
+        kind="analytics"
+        onToggle={onTogglePref}
+      />
+
+      {/* Marketing toggle */}
+      <CookiePrefToggle
+        active={prefs.marketing}
+        lang={lang}
+        kind="marketing"
+        onToggle={onTogglePref}
+      />
+    </div>
+  );
+}
+
+interface CookiePrefToggleProps {
+  readonly active: boolean;
+  readonly lang: "ar" | "en";
+  readonly kind: "analytics" | "marketing";
+  readonly onToggle: (key: "analytics" | "marketing") => void;
+}
+
+function CookiePrefToggle({ active, lang, kind, onToggle }: CookiePrefToggleProps) {
+  const title = kind === "analytics"
+    ? (lang === "en" ? "Analytics Cookies" : "ملفات التحليلات")
+    : (lang === "en" ? "Marketing Cookies" : "ملفات التسويق");
+  const desc = kind === "analytics"
+    ? (lang === "en"
+        ? "Help us understand how visitors interact with our website to improve performance and content."
+        : "تساعدنا في فهم كيفية تفاعل الزوار مع الموقع لتحسين الأداء والمحتوى.")
+    : (lang === "en"
+        ? "Used to deliver relevant advertisements and track campaign effectiveness."
+        : "تستخدم لعرض إعلانات ذات صلة وتتبع فعالية الحملات التسويقية.");
+
+  return (
+    <div className="flex items-start gap-3">
+      <button
+        onClick={() => onToggle(kind)}
+        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-all ${
+          active
+            ? "border-[#06b6d4] bg-[#06b6d4]"
+            : "border-[#1e2d3d] bg-transparent"
+        }`}
+      >
+        {active && (
+          <svg className="h-3 w-3 text-[#0a0e17]" viewBox="0 0 12 12" fill="none">
+            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </button>
+      <div className="flex-1">
+        <span className="text-sm font-medium text-[#f0f4f8]">{title}</span>
+        <p className="mt-1 text-xs text-[#64748b]">{desc}</p>
       </div>
     </div>
   );

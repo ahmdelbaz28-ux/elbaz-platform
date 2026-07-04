@@ -84,7 +84,7 @@ export const courseRouter = createRouter({
       // ✅ CACHE: Course list with filter params — cache for 5 minutes
       // Don't cache search queries (unique per search term)
       const isSearch = input?.search && input.search.trim().length > 0;
-      const cacheKey = !isSearch ? cacheKeys.courseList(JSON.stringify(input || {})) : "";
+      const cacheKey = isSearch ? "" : cacheKeys.courseList(JSON.stringify(input || {}));
 
       if (!isSearch) {
         const cache = getCache();

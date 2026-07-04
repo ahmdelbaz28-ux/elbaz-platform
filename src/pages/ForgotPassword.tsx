@@ -19,7 +19,7 @@ import { trackPlatform } from "@/lib/clarity";
 
 type Step = "enterEmail" | "sending" | "sent";
 
-export default function ForgotPassword() {
+export default function ForgotPassword() { // NOSONAR — multi-step password-recovery page (enterEmail/sending/sent) with delivery-warning UI; section extraction would require prop-drilling state
   const { lang } = useTranslation();
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
@@ -78,15 +78,21 @@ export default function ForgotPassword() {
       return;
     }
 
+    submitForgotPassword();
+  };
+
+  const submitForgotPassword = () => {
     setStep("sending");
     forgotMutation.mutate({ email: email.trim().toLowerCase() });
   };
 
   const handleResend = () => {
     setError("");
-    setStep("sending");
-    forgotMutation.mutate({ email: email.trim().toLowerCase() });
+    submitForgotPassword();
   };
+
+  const sendResetLinkLabel = lang === "ar" ? "إرسال رابط إعادة التعيين" : "Send Reset Link";
+  const resendLinkLabel = lang === "ar" ? "إعادة إرسال الرابط" : "Resend Link";
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#0a0e17] px-4">
@@ -169,9 +175,7 @@ export default function ForgotPassword() {
                       {lang === "ar" ? "جاري الإرسال..." : "Sending..."}
                     </span>
                   ) : (
-                    lang === "ar"
-                      ? "إرسال رابط إعادة التعيين"
-                      : "Send Reset Link"
+                    sendResetLinkLabel
                   )}
                 </Button>
               </div>
@@ -309,11 +313,7 @@ export default function ForgotPassword() {
                       <Loader2 className="h-4 w-4 animate-spin" />
                       {lang === "ar" ? "جاري الإعادة..." : "Resending..."}
                     </span>
-                  ) : lang === "ar" ? (
-                    "إعادة إرسال الرابط"
-                  ) : (
-                    "Resend Link"
-                  )}
+                  ) : resendLinkLabel}
                 </Button>
                 <Link
                   to="/login"

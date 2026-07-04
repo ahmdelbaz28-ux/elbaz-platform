@@ -59,7 +59,7 @@ export default function SEO({ title, description, image, url, type = 'website', 
     // Cleanup function when component unmounts
     return () => {
       if (script && document.head.contains(script)) {
-        document.head.removeChild(script);
+        script.remove();
       }
     };
   }, [title, description, image, url, type, jsonLd]);

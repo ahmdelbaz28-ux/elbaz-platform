@@ -5,6 +5,46 @@ import { createRouter, authQuery, authMutation } from "./middleware";
 import { getDb } from "./queries/connection";
 import { userNotes } from "@db/schema";
 
+// ─── Helper: build the values payload for a new note insertion ───
+function buildNewNoteValues(userId: number, note: {
+  courseId?: number | undefined;
+  lessonId?: number | undefined;
+  title?: string | undefined;
+  content: string;
+  tags?: string[] | undefined;
+  isPinned: boolean;
+}) {
+  return {
+    userId,
+    courseId: note.courseId || null,
+    lessonId: note.lessonId || null,
+    title: note.title || null,
+    content: note.content,
+    tags: note.tags ? JSON.stringify(note.tags) : null,
+    isPinned: note.isPinned,
+  };
+}
+
+// ─── Helper: build the updates payload for an existing note ───
+function buildNoteUpdates(note: {
+  courseId?: number | undefined;
+  lessonId?: number | undefined;
+  title?: string | undefined;
+  content: string;
+  tags?: string[] | undefined;
+  isPinned: boolean;
+}) {
+  const updates: any = {
+    title: note.title || null,
+    content: note.content,
+    tags: note.tags ? JSON.stringify(note.tags) : null,
+    isPinned: note.isPinned,
+  };
+  if (note.courseId !== undefined) updates.courseId = note.courseId;
+  if (note.lessonId !== undefined) updates.lessonId = note.lessonId;
+  return updates;
+}
+
 export const notesRouter = createRouter({
   list: authQuery
     .input(z.object({
@@ -130,46 +170,25 @@ export const notesRouter = createRouter({
       const results: { id: number; action: "created" | "updated" }[] = [];
 
       for (const note of input.notes) {
-        if (note.id) {
-          const [existing] = await db
-            .select({ userId: userNotes.userId })
-            .from(userNotes)
-            .where(and(eq(userNotes.id, note.id), eq(userNotes.userId, ctx.user.id)))
-            .limit(1);
+        if (!note.id) {
+          // No id → always create
+          const [newNote] = await db.insert(userNotes).values(buildNewNoteValues(ctx.user.id, note));
+          results.push({ id: Number(newNote.insertId), action: "created" });
+          continue;
+        }
 
-          if (existing) {
-            const updates: any = {
-              title: note.title || null,
-              content: note.content,
-              tags: note.tags ? JSON.stringify(note.tags) : null,
-              isPinned: note.isPinned,
-            };
-            if (note.courseId !== undefined) updates.courseId = note.courseId;
-            if (note.lessonId !== undefined) updates.lessonId = note.lessonId;
-            await db.update(userNotes).set(updates).where(eq(userNotes.id, note.id));
-            results.push({ id: note.id, action: "updated" });
-          } else {
-            const [newNote] = await db.insert(userNotes).values({
-              userId: ctx.user.id,
-              courseId: note.courseId || null,
-              lessonId: note.lessonId || null,
-              title: note.title || null,
-              content: note.content,
-              tags: note.tags ? JSON.stringify(note.tags) : null,
-              isPinned: note.isPinned,
-            });
-            results.push({ id: Number(newNote.insertId), action: "created" });
-          }
+        const [existing] = await db
+          .select({ userId: userNotes.userId })
+          .from(userNotes)
+          .where(and(eq(userNotes.id, note.id), eq(userNotes.userId, ctx.user.id)))
+          .limit(1);
+
+        if (existing) {
+          await db.update(userNotes).set(buildNoteUpdates(note)).where(eq(userNotes.id, note.id));
+          results.push({ id: note.id, action: "updated" });
         } else {
-          const [newNote] = await db.insert(userNotes).values({
-            userId: ctx.user.id,
-            courseId: note.courseId || null,
-            lessonId: note.lessonId || null,
-            title: note.title || null,
-            content: note.content,
-            tags: note.tags ? JSON.stringify(note.tags) : null,
-            isPinned: note.isPinned,
-          });
+          // note.id was provided but no matching note for this user — create instead
+          const [newNote] = await db.insert(userNotes).values(buildNewNoteValues(ctx.user.id, note));
           results.push({ id: Number(newNote.insertId), action: "created" });
         }
       }

@@ -221,7 +221,7 @@ app.get("/sitemap.xml", async (c) => {
     const now = new Date().toISOString().split("T")[0];
 
     const staticUrls = [
-      { loc: `${baseUrl}/`, priority: "1.0", changefreq: "weekly", lastmod: now },
+      { loc: `${baseUrl}/`, priority: "1", changefreq: "weekly", lastmod: now },
       { loc: `${baseUrl}/courses`, priority: "0.9", changefreq: "weekly", lastmod: now },
       { loc: `${baseUrl}/terms`, priority: "0.3", changefreq: "yearly", lastmod: now },
       { loc: `${baseUrl}/privacy`, priority: "0.3", changefreq: "yearly", lastmod: now },
@@ -241,7 +241,7 @@ app.get("/sitemap.xml", async (c) => {
     const allUrls = [...staticUrls, ...courseUrls];
 
     const xml = [
-      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<?xml version="1" encoding="UTF-8"?>',
       '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
       ...allUrls.map((u) =>
         `  <url>\n    <loc>${u.loc}</loc>\n    <lastmod>${u.lastmod}</lastmod>\n    <changefreq>${u.changefreq}</changefreq>\n    <priority>${u.priority}</priority>\n  </url>`
@@ -276,7 +276,7 @@ app.get("/__webhook/status", async (c) => {
   // reserved blocks (RFC 1918) — they cannot be reached from the public
   // internet, so the values are intentionally hardcoded. NOSONAR —
   // reviewed against SonarCloud S1313.
-  const internalRanges = ["127.0.0.1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1"]; // NOSONAR
+  const internalRanges = ["127.0.1", "10.0/8", "172.16.0/12", "192.168.0/16", "::1"]; // NOSONAR
   const isInternal = internalRanges.some((range) => {
     if (!clientIp) return false;
     if (!range.includes("/")) return clientIp === range;
@@ -506,7 +506,7 @@ async function start() {
     console.warn("[Server] Redis unavailable, rate limiting disabled:", (err as Error).message);
   }
 
-  const useBun = typeof Bun !== "undefined" && Bun?.serve;
+  const useBun = Bun !== undefined && Bun?.serve;
   let server;
 
   if (useBun) {

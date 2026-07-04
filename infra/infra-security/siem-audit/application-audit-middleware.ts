@@ -71,8 +71,7 @@ function determineComplianceTags(path: string, method: string, statusCode: numbe
     tags.push("authentication");
   }
   if (path.includes("/payment") || path.includes("/billing") || path.includes("/subscription")) {
-    tags.push("financial-data");
-    tags.push("pci-scope");
+    tags.push("financial-data", "pci-scope");
   }
   if (path.includes("/user") || path.includes("/profile")) {
     tags.push("gdpr-relevant");
@@ -81,8 +80,7 @@ function determineComplianceTags(path: string, method: string, statusCode: numbe
     tags.push("data-deletion");
   }
   if (method === "POST" && path.includes("/user") && statusCode >= 200 && statusCode < 300) {
-    tags.push("gdpr-relevant");
-    tags.push("data-collection");
+    tags.push("gdpr-relevant", "data-collection");
   }
 
   return tags;

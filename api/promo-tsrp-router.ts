@@ -31,6 +31,7 @@ export const promoRouter = createRouter({
         status = "used_up";
       }
 
+      const validUntilStr = r.validUntil ? String(r.validUntil) : "";
       return {
         id: String(r.id),
         code: r.code,
@@ -40,7 +41,7 @@ export const promoRouter = createRouter({
         usedCount: r.usedCount ?? 0,
         status,
         validFrom: r.validFrom instanceof Date ? r.validFrom.toISOString() : String(r.validFrom ?? ""),
-        validUntil: r.validUntil instanceof Date ? r.validUntil.toISOString() : (r.validUntil ? String(r.validUntil) : ""),
+        validUntil: r.validUntil instanceof Date ? r.validUntil.toISOString() : validUntilStr,
         createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
       };
     });

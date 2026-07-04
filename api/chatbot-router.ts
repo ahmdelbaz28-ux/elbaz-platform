@@ -88,6 +88,85 @@ chatbotRouter.post("/", async (c) => {
 });
 
 // ── Streaming chat endpoint (SSE) ──
+interface StreamPipeState {
+  controllerRef: ReadableStreamDefaultController | null;
+  isStreamClosed: boolean;
+  timeoutController: AbortController;
+  timeoutId: ReturnType<typeof setTimeout>;
+}
+
+function closeControllerIfOpen(state: StreamPipeState): void {
+  if (state.isStreamClosed) return;
+  try {
+    state.controllerRef?.close();
+  } catch {// Intentionally ignored: best-effort cleanup, the error has already
+    // been logged upstream and re-throwing would mask the original cause.
+  }
+  state.isStreamClosed = true;
+}
+
+async function pipeStreamToController(
+  stream: ReadableStream<Uint8Array>,
+  state: StreamPipeState,
+): Promise<void> {
+  try {
+    const reader = stream.getReader();
+    while (true) {
+      if (state.timeoutController.signal.aborted || state.isStreamClosed) break;
+      try {
+        const { done, value } = await reader.read();
+        if (done || state.isStreamClosed) break;
+        if (value && !state.isStreamClosed) {
+          try {
+            state.controllerRef?.enqueue(value);
+          } catch {
+            state.isStreamClosed = true;
+            break;
+          }
+        }
+      } catch (readErr: any) {
+        if (readErr.name === "AbortError") break;
+        console.warn("[Chatbot] Stream read error:", readErr.message);
+        break;
+      }
+    }
+    clearTimeout(state.timeoutId);
+    closeControllerIfOpen(state);
+  } catch (pipeErr: any) {
+    console.warn("[Chatbot] Stream pipe error:", pipeErr.message);
+    clearTimeout(state.timeoutId);
+    closeControllerIfOpen(state);
+  }
+}
+
+/**
+ * Build the combined SSE ReadableStream: emits the model-name event first,
+ * then is pumped by pipeStreamToController in the background. Extracted from
+ * the /stream handler to keep cognitive complexity manageable.
+ */
+function createCombinedStream(modelEvent: Uint8Array, state: StreamPipeState): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      state.controllerRef = controller;
+      // Send model name first so client can show "Thinking with [model]..."
+      try {
+        controller.enqueue(modelEvent);
+      } catch {
+        state.isStreamClosed = true;
+      }
+    },
+    cancel() {
+      // Handle client disconnect
+      state.isStreamClosed = true;
+      clearTimeout(state.timeoutId);
+      try { state.timeoutController.abort(); } catch {
+        // Intentionally ignored: best-effort cleanup, the error has already
+        // been logged upstream and re-throwing would mask the original cause.
+      }
+    },
+  });
+}
+
 chatbotRouter.post("/stream", async (c) => {
   // GLM-5.1-FP8 is a REASONING model - needs 60-120s to think before generating
   // 180s timeout: 2 minutes for reasoning models (Modal GLM)
@@ -146,83 +225,17 @@ chatbotRouter.post("/stream", async (c) => {
     const modelEvent = encoder.encode("data: " + JSON.stringify({ model: result.model }) + "\n\n");
 
     // Create a combined stream: model event FIRST, then actual content stream
-    let controllerRef: ReadableStreamDefaultController | null = null;
-    let isStreamClosed = false;
+    const state: StreamPipeState = {
+      controllerRef: null,
+      isStreamClosed: false,
+      timeoutController,
+      timeoutId,
+    };
 
-    const combinedStream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controllerRef = controller;
-        // Send model name first so client can show "Thinking with [model]..."
-        try {
-          controller.enqueue(modelEvent);
-        } catch {
-          isStreamClosed = true;
-        }
-      },
-      cancel() {
-        // Handle client disconnect
-        isStreamClosed = true;
-        clearTimeout(timeoutId);
-        try { timeoutController.abort(); } catch {// Intentionally ignored: best-effort cleanup, the error has already
-    // been logged upstream and re-throwing would mask the original cause.
-    }
-      },
-    });
+    const combinedStream = createCombinedStream(modelEvent, state);
 
     // Pipe the actual content stream in background (non-blocking)
-    (async () => {
-      try {
-        const reader = result.stream.getReader();
-        // `decoder` was previously constructed here but never used — the
-        // loop enqueues raw `Uint8Array` chunks directly without decoding.
-        // Removed (SonarCloud S1854).
-
-        while (true) {
-          // Check for timeout or stream closure
-          if (timeoutController.signal.aborted || isStreamClosed) break;
-
-          try {
-            const { done, value } = await reader.read();
-            if (done || isStreamClosed) break;
-
-            if (value && !isStreamClosed) {
-              try {
-                controllerRef?.enqueue(value);
-              } catch {
-                isStreamClosed = true;
-                break;
-              }
-            }
-          } catch (readErr: any) {
-            if (readErr.name === "AbortError") break;
-            console.warn("[Chatbot] Stream read error:", readErr.message);
-            break;
-          }
-        }
-
-        // Clean close
-        clearTimeout(timeoutId);
-        if (!isStreamClosed) {
-          try {
-            controllerRef?.close();
-          } catch {// Intentionally ignored: best-effort cleanup, the error has already
-    // been logged upstream and re-throwing would mask the original cause.
-    }
-          isStreamClosed = true;
-        }
-      } catch (pipeErr: any) {
-        console.warn("[Chatbot] Stream pipe error:", pipeErr.message);
-        clearTimeout(timeoutId);
-        if (!isStreamClosed) {
-          try {
-            controllerRef?.close();
-          } catch {// Intentionally ignored: best-effort cleanup, the error has already
-    // been logged upstream and re-throwing would mask the original cause.
-    }
-          isStreamClosed = true;
-        }
-      }
-    })();
+    pipeStreamToController(result.stream, state);
 
     return new Response(combinedStream, {
       status: 200,

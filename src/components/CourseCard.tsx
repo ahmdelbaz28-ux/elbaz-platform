@@ -4,24 +4,24 @@ import { Clock, Star, Users, Zap, ChevronRight } from "lucide-react";
 import { TiltCard } from "@/components/ui/motion";
 
 interface CourseCardProps {
-  course: {
-    id: number;
-    slug: string;
-    titleEn: string;
-    titleAr: string;
-    shortDescEn: string | null;
-    shortDescAr: string | null;
-    thumbnail: string | null;
-    level: string;
-    isPremium: boolean;
-    price: string;
-    originalPrice: string | null;
-    durationHours: number;
-    rating: string;
-    reviewCount: number;
-    studentCount: number;
-    categoryName?: string | null;
-    categoryNameAr?: string | null;
+  readonly course: {
+    readonly id: number;
+    readonly slug: string;
+    readonly titleEn: string;
+    readonly titleAr: string;
+    readonly shortDescEn: string | null;
+    readonly shortDescAr: string | null;
+    readonly thumbnail: string | null;
+    readonly level: string;
+    readonly isPremium: boolean;
+    readonly price: string;
+    readonly originalPrice: string | null;
+    readonly durationHours: number;
+    readonly rating: string;
+    readonly reviewCount: number;
+    readonly studentCount: number;
+    readonly categoryName?: string | null;
+    readonly categoryNameAr?: string | null;
   };
 }
 
@@ -30,6 +30,50 @@ const levelColors: Record<string, { bg: string; text: string; label: string; lab
   intermediate: { bg: "rgba(245,158,11,0.12)",  text: "#f59e0b", label: "Intermediate", labelAr: "متوسط" },
   advanced:     { bg: "rgba(239,68,68,0.12)",   text: "#ef4444", label: "Advanced",     labelAr: "متقدم" },
 };
+
+function CourseCardBadges({ course, lang, discount }: { readonly course: { readonly isPremium: boolean }; readonly lang: "ar" | "en"; readonly discount: number }) {
+  return (
+    <div className="absolute start-3 top-3 flex items-center gap-2">
+      {course.isPremium ? (
+        <span className="flex items-center gap-1 rounded-lg bg-[rgba(6,182,212,0.9)] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-[#001a24] backdrop-blur-sm">
+          <Zap className="h-3 w-3" />
+          Premium
+        </span>
+      ) : (
+        <span className="flex items-center gap-1 rounded-lg border border-[#f59e0b] bg-[rgba(245,158,11,0.15)] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-[#f59e0b] backdrop-blur-sm">
+          {lang === "ar" ? "مجاني" : "Free"}
+        </span>
+      )}
+      {discount > 0 && (
+        <span className="rounded-lg bg-[rgba(239,68,68,0.85)] px-2.5 py-1 text-[11px] font-bold text-white backdrop-blur-sm">
+          -{discount}%
+        </span>
+      )}
+    </div>
+  );
+}
+
+function CourseCardPrice({ coursePrice, originalPrice, lang }: { readonly coursePrice: number; readonly originalPrice: number; readonly lang: "ar" | "en" }) {
+  if (coursePrice === 0) {
+    return (
+      <span className="text-base font-bold text-[#10b981]">
+        {lang === "ar" ? "مجاناً" : "Free"}
+      </span>
+    );
+  }
+  return (
+    <div className="flex items-baseline gap-2">
+      <span className="text-xl font-extrabold text-[#e8f0fe]">
+        {coursePrice.toLocaleString()} {lang === "ar" ? "ج.م" : "EGP"}
+      </span>
+      {originalPrice > coursePrice && (
+        <span className="text-sm text-[#475569] line-through">
+          {originalPrice.toLocaleString()}
+        </span>
+      )}
+    </div>
+  );
+}
 
 export default function CourseCard({ course }: CourseCardProps) {
   const { lang } = useTranslation();
@@ -68,23 +112,7 @@ export default function CourseCard({ course }: CourseCardProps) {
             <div className="absolute inset-0 bg-gradient-to-t from-[#0d1420] via-transparent to-transparent" />
 
             {/* Top badges row */}
-            <div className="absolute start-3 top-3 flex items-center gap-2">
-              {course.isPremium ? (
-                <span className="flex items-center gap-1 rounded-lg bg-[rgba(6,182,212,0.9)] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-[#001a24] backdrop-blur-sm">
-                  <Zap className="h-3 w-3" />
-                  Premium
-                </span>
-              ) : (
-                <span className="flex items-center gap-1 rounded-lg border border-[#f59e0b] bg-[rgba(245,158,11,0.15)] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-[#f59e0b] backdrop-blur-sm">
-                  {lang === "ar" ? "مجاني" : "Free"}
-                </span>
-              )}
-              {discount > 0 && (
-                <span className="rounded-lg bg-[rgba(239,68,68,0.85)] px-2.5 py-1 text-[11px] font-bold text-white backdrop-blur-sm">
-                  -{discount}%
-                </span>
-              )}
-            </div>
+            <CourseCardBadges course={course} lang={lang} discount={discount} />
 
             {/* Duration — bottom right */}
             <div className="absolute bottom-3 end-3 flex items-center gap-1 rounded-lg bg-[rgba(10,14,23,0.75)] px-2 py-1 backdrop-blur-md">
@@ -159,22 +187,7 @@ export default function CourseCard({ course }: CourseCardProps) {
             {/* ── Price + CTA ── */}
             <div className="flex items-center justify-between mt-auto">
               <div>
-                {coursePrice === 0 ? (
-                  <span className="text-base font-bold text-[#10b981]">
-                    {lang === "ar" ? "مجاناً" : "Free"}
-                  </span>
-                ) : (
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-xl font-extrabold text-[#e8f0fe]">
-                      {coursePrice.toLocaleString()} {lang === "ar" ? "ج.م" : "EGP"}
-                    </span>
-                    {originalPrice > coursePrice && (
-                      <span className="text-sm text-[#475569] line-through">
-                        {originalPrice.toLocaleString()}
-                      </span>
-                    )}
-                  </div>
-                )}
+                <CourseCardPrice coursePrice={coursePrice} originalPrice={originalPrice} lang={lang} />
               </div>
 
               {/* Animated CTA arrow */}

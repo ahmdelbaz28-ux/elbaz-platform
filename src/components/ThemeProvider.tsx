@@ -24,7 +24,7 @@ const DEFAULT_DARK = {
   border: "#1f2d44",
 };
 
-export default function ThemeProvider({ children }: { children: React.ReactNode }) {
+export default function ThemeProvider({ children }: { readonly children: React.ReactNode }) {
   const { data: activeTheme } = trpc.settings.getActiveTheme.useQuery(undefined, {
     staleTime: 1000 * 60 * 5, // 5 minutes
   });

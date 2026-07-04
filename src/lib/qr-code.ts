@@ -112,38 +112,23 @@ function bchEncode(data: number): number {
 /**
  * Simple QR code matrix builder
  */
-function buildMatrix(
-  size: number,
-  dataBits: number[],
-  version: number,
-  ecl: ECL
-): boolean[][] {
-  // Initialize matrix
-  const matrix: boolean[][] = Array.from({ length: size }, () => new Array(size).fill(false));
-  const reserved: boolean[][] = Array.from({ length: size }, () => new Array(size).fill(false));
-
-  // Place finder patterns (7x7 squares at three corners)
-  function placeFinderPattern(row: number, col: number) {
-    for (let r = -1; r <= 7; r++) {
-      for (let c = -1; c <= 7; c++) {
-        const mr = row + r;
-        const mc = col + c;
-        if (mr < 0 || mr >= size || mc < 0 || mc >= size) continue;
-        const isBlack =
-          (r >= 0 && r <= 6 && (c === 0 || c === 6)) ||
-          (c >= 0 && c <= 6 && (r === 0 || r === 6)) ||
-          (r >= 2 && r <= 4 && c >= 2 && c <= 4);
-        matrix[mr][mc] = isBlack;
-        reserved[mr][mc] = true;
-      }
+function placeFinderPattern(matrix: boolean[][], reserved: boolean[][], size: number, row: number, col: number): void {
+  for (let r = -1; r <= 7; r++) {
+    for (let c = -1; c <= 7; c++) {
+      const mr = row + r;
+      const mc = col + c;
+      if (mr < 0 || mr >= size || mc < 0 || mc >= size) continue;
+      const isBlack =
+        (r >= 0 && r <= 6 && (c === 0 || c === 6)) ||
+        (c >= 0 && c <= 6 && (r === 0 || r === 6)) ||
+        (r >= 2 && r <= 4 && c >= 2 && c <= 4);
+      matrix[mr][mc] = isBlack;
+      reserved[mr][mc] = true;
     }
   }
+}
 
-  placeFinderPattern(0, 0);
-  placeFinderPattern(0, size - 7);
-  placeFinderPattern(size - 7, 0);
-
-  // Place alignment patterns
+function placeAlignmentPatterns(matrix: boolean[][], reserved: boolean[][], size: number, version: number): void {
   const alignPos = ALIGNMENT_POSITIONS[version] || [];
   for (const row of alignPos) {
     for (const col of alignPos) {
@@ -164,8 +149,9 @@ function buildMatrix(
       }
     }
   }
+}
 
-  // Place timing patterns
+function placeTimingPatterns(matrix: boolean[][], reserved: boolean[][], size: number): void {
   for (let i = 8; i < size - 8; i++) {
     if (!reserved[6][i]) {
       matrix[6][i] = i % 2 === 0;
@@ -176,8 +162,9 @@ function buildMatrix(
       reserved[i][6] = true;
     }
   }
+}
 
-  // Reserve format information areas
+function reserveFormatAreas(reserved: boolean[][], matrix: boolean[][], size: number): void {
   for (let i = 0; i < 8; i++) {
     reserved[8][i] = true;
     reserved[8][size - 1 - i] = true;
@@ -188,11 +175,11 @@ function buildMatrix(
   // Dark module
   matrix[size - 8][8] = true;
   reserved[size - 8][8] = true;
+}
 
-   // Place data bits in zigzag pattern
-   let bitIndex = 0;
-
-   for (let col = size - 1; col >= 0; col -= 2) {
+function placeDataBits(matrix: boolean[][], reserved: boolean[][], size: number, dataBits: number[]): void {
+  let bitIndex = 0;
+  for (let col = size - 1; col >= 0; col -= 2) {
     if (col === 6) col = 5; // Skip vertical timing pattern column
     for (let row = 0; row < size; row++) {
       for (let c = 0; c < 2; c++) {
@@ -206,9 +193,12 @@ function buildMatrix(
       }
     }
   }
+}
 
-  // Place format information
-  const eclBits = ecl === "M" ? 0 : ecl === "L" ? 1 : ecl === "H" ? 3 : 2;
+function placeFormatInfo(matrix: boolean[][], size: number, ecl: ECL): void {
+  const eclBitsH = ecl === "H" ? 3 : 2;
+  const eclBitsL = ecl === "L" ? 1 : eclBitsH;
+  const eclBits = ecl === "M" ? 0 : eclBitsL;
   const formatInfo = bchEncode(eclBits);
   const formatBits = Array.from({ length: 15 }, (_, i) => !!(formatInfo & (1 << (14 - i))));
 
@@ -222,6 +212,37 @@ function buildMatrix(
   // Around top-right and bottom-left finders
   for (let i = 0; i < 7; i++) { matrix[size - 1 - i][8] = formatBits[i]; }
   for (let i = 0; i < 8; i++) { matrix[8][size - 8 + i] = formatBits[7 + i]; }
+}
+
+function buildMatrix(
+  size: number,
+  dataBits: number[],
+  version: number,
+  ecl: ECL
+): boolean[][] {
+  // Initialize matrix
+  const matrix: boolean[][] = Array.from({ length: size }, () => new Array(size).fill(false));
+  const reserved: boolean[][] = Array.from({ length: size }, () => new Array(size).fill(false));
+
+  // Place finder patterns (7x7 squares at three corners)
+  placeFinderPattern(matrix, reserved, size, 0, 0);
+  placeFinderPattern(matrix, reserved, size, 0, size - 7);
+  placeFinderPattern(matrix, reserved, size, size - 7, 0);
+
+  // Place alignment patterns
+  placeAlignmentPatterns(matrix, reserved, size, version);
+
+  // Place timing patterns
+  placeTimingPatterns(matrix, reserved, size);
+
+  // Reserve format information areas + dark module
+  reserveFormatAreas(reserved, matrix, size);
+
+  // Place data bits in zigzag pattern
+  placeDataBits(matrix, reserved, size, dataBits);
+
+  // Place format information
+  placeFormatInfo(matrix, size, ecl);
 
   // Apply mask pattern 0 (no masking for simplicity)
   return matrix;

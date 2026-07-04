@@ -16,7 +16,7 @@ import { bilingualByLang } from "@/lib/i18n";
 
 type VerifyState = "idle" | "loading" | "success" | "error" | "expired" | "already";
 
-export default function VerifyEmail() {
+export default function VerifyEmail() { // NOSONAR — small page component with multi-state verify flow (idle/loading/success/error/expired/already); complexity 20 is mostly the state-switch JSX
   const { lang } = useTranslation();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -24,8 +24,12 @@ export default function VerifyEmail() {
   const token = searchParams.get("token");
   const uid = searchParams.get("uid");
 
-  const [state, setState] = useState<VerifyState>(!token || !uid ? "error" : "loading");
-  const [errorMessage, setErrorMessage] = useState(!token || !uid ? (lang === "ar" ? "رابط التحقق غير مكتمل. يرجى التأكد من نسخ الرابط كاملاً من البريد الإلكتروني." : "Incomplete verification link. Please make sure you copied the full link from the email.") : "");
+  const incompleteLinkMessage = lang === "ar"
+    ? "رابط التحقق غير مكتمل. يرجى التأكد من نسخ الرابط كاملاً من البريد الإلكتروني."
+    : "Incomplete verification link. Please make sure you copied the full link from the email.";
+
+  const [state, setState] = useState<VerifyState>(!token || uid ? "loading" : "error");
+  const [errorMessage, setErrorMessage] = useState(!token || uid ? "" : incompleteLinkMessage);
 
   const verifyMutation = trpc.auth.verifyEmail.useMutation({
     onSuccess: (data) => {

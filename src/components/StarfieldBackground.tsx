@@ -65,14 +65,14 @@ export default function StarfieldBackground() {
     if (!ctx) return;
 
     const prefersReduced =
-      typeof globalThis !== 'undefined' &&
+      globalThis !== undefined &&
       globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
     // ✅ FIX: Detect mobile devices to reduce particle count and disable
     // connection lines (the O(n²) loop is the most CPU-intensive part).
     // Desktop keeps full 80 particles + connections for a rich look.
     // Mobile gets 25 particles + NO connection lines = much smoother.
-    const isMobile = typeof globalThis !== 'undefined' &&
+    const isMobile = globalThis !== undefined &&
       (globalThis.matchMedia?.('(max-width: 768px)').matches ||
        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
 
@@ -250,6 +250,27 @@ export default function StarfieldBackground() {
       }
     };
 
+    // Update a single particle's position + twinkle alpha in place.
+    // Extracted from drawParticles to keep cognitive complexity manageable.
+    function updateParticlePosition(p: typeof particles[number], dtSec: number): void {
+      // Slow drift movement - use dtSec for time-based animation
+      p.x += p.vx * dtSec;
+      p.y += p.vy * dtSec;
+
+      // Wrap around screen edges
+      if (p.x < -20) p.x = width + 20;
+      if (p.x > width + 20) p.x = -20;
+      if (p.y < -20) p.y = height + 20;
+      if (p.y > height + 20) p.y = -20;
+
+      // Twinkle effect
+      if (p.twinkleSpeed > 0) {
+        p.twinklePhase += p.twinkleSpeed * dtSec;
+        const modulation = (Math.sin(p.twinklePhase) + 1) / 2;
+        p.alpha = (0.4 + visualRandom() * 0.4) * (0.7 + modulation * 0.5);
+      }
+    }
+
     // Update and draw particles with connections
     const drawParticles = (dtSec: number) => {
       if (prefersReduced) {
@@ -265,67 +286,62 @@ export default function StarfieldBackground() {
 
       // Update positions
       for (const p of particles) {
-        // Slow drift movement - use dtSec for time-based animation
-        p.x += p.vx * dtSec;
-        p.y += p.vy * dtSec;
-        
-        // Wrap around screen edges
-        if (p.x < -20) p.x = width + 20;
-        if (p.x > width + 20) p.x = -20;
-        if (p.y < -20) p.y = height + 20;
-        if (p.y > height + 20) p.y = -20;
-        
-        // Twinkle effect
-        if (p.twinkleSpeed > 0) {
-          p.twinklePhase += p.twinkleSpeed * dtSec;
-          const modulation = (Math.sin(p.twinklePhase) + 1) / 2;
-          p.alpha = (0.4 + visualRandom() * 0.4) * (0.7 + modulation * 0.5);
-        }
+        updateParticlePosition(p, dtSec);
       }
 
       // Draw connection lines between nearby particles
       // ✅ FIX: Skip connection lines on mobile (O(n²) loop is too expensive)
       if (enableConnections) {
-        for (let i = 0; i < particles.length; i++) {
-          const p1 = particles[i];
-          for (let j = i + 1; j < particles.length; j++) {
-            const p2 = particles[j];
-            const dx = p2.x - p1.x;
-            const dy = p2.y - p1.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            
-            // Only connect if within range
-            if (dist < MAX_CONNECTION_DIST && dist > MIN_CONNECTION_DIST) {
-              // Calculate alpha based on distance (closer = more visible)
-              const connectionAlpha = CONNECTION_ALPHA * (1 - dist / MAX_CONNECTION_DIST);
-              
-              // Create gradient for the connection line
-              const grad = ctx.createLinearGradient(p1.x, p1.y, p2.x, p2.y);
-              grad.addColorStop(0, `rgba(${themeColors.connectionColor},${connectionAlpha.toFixed(3)})`);
-              grad.addColorStop(1, `rgba(${themeColors.connectionColor},${(connectionAlpha * 0.5).toFixed(3)})`);
-              
-              ctx.strokeStyle = grad;
-              ctx.lineWidth = 1; // Increased from 0.5
-              ctx.beginPath();
-            ctx.moveTo(p1.x, p1.y);
-            ctx.lineTo(p2.x, p2.y);
-            ctx.stroke();
-            }
-          }
-        }
+        drawParticleConnections(ctx, particles, themeColors.connectionColor);
       }
 
       // Draw particles with glow effect
+      drawParticleBodies(ctx, particles, themeColors.particleGlow);
+    };
+
+    // Draw connection lines between nearby particles (extracted from drawParticles).
+    function drawParticleConnections(ctx: CanvasRenderingContext2D, particlesList: typeof particles, connectionColor: string): void {
+      for (let i = 0; i < particlesList.length; i++) {
+        const p1 = particlesList[i];
+        for (let j = i + 1; j < particlesList.length; j++) {
+          const p2 = particlesList[j];
+          const dx = p2.x - p1.x;
+          const dy = p2.y - p1.y;
+          const dist = Math.hypot(dx, dy);
+
+          // Only connect if within range
+          if (dist < MAX_CONNECTION_DIST && dist > MIN_CONNECTION_DIST) {
+            // Calculate alpha based on distance (closer = more visible)
+            const connectionAlpha = CONNECTION_ALPHA * (1 - dist / MAX_CONNECTION_DIST);
+
+            // Create gradient for the connection line
+            const grad = ctx.createLinearGradient(p1.x, p1.y, p2.x, p2.y);
+            grad.addColorStop(0, `rgba(${connectionColor},${connectionAlpha.toFixed(3)})`);
+            grad.addColorStop(1, `rgba(${connectionColor},${(connectionAlpha * 0.5).toFixed(3)})`);
+
+            ctx.strokeStyle = grad;
+            ctx.lineWidth = 1; // Increased from 0.5
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.stroke();
+          }
+        }
+      }
+    }
+
+    // Draw particle bodies with optional glow (extracted from drawParticles).
+    function drawParticleBodies(ctx: CanvasRenderingContext2D, particlesList: typeof particles, particleGlow: string): void {
       const isLight = document.documentElement.dataset.theme === 'light';
-      for (const p of particles) {
+      for (const p of particlesList) {
         // Glow effect for brighter particles
-        if (p.color === themeColors.particleGlow) {
+        if (p.color === particleGlow) {
           ctx.beginPath();
           ctx.arc(p.x, p.y, p.r * (isLight ? 1.5 : 2), 0, Math.PI * 2);
           ctx.fillStyle = `rgba(${p.color},${p.alpha * (isLight ? 0.15 : 0.2)})`;
           ctx.fill();
         }
-        
+
         // Main particle with subtle outer glow in light mode
         if (isLight) {
           // Soft glow behind particle
@@ -334,14 +350,14 @@ export default function StarfieldBackground() {
           ctx.fillStyle = `rgba(${p.color},${p.alpha * 0.1})`;
           ctx.fill();
         }
-        
+
         // Main particle
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(${p.color},${p.alpha})`;
         ctx.fill();
       }
-    };
+    }
 
     // Draw shooting stars
     const drawShootings = (dtSec: number) => {
@@ -471,7 +487,7 @@ export default function StarfieldBackground() {
         // ✅ Dynamic background based on current theme
         // The CSS override [data-theme="light"] canvas also handles this,
         // but we set it inline for immediate effect before CSS loads.
-        background: typeof document !== 'undefined' && document.documentElement.dataset.theme === 'light'
+        background: document !== undefined && document.documentElement.dataset.theme === 'light'
           ? '#f8fafc'
           : '#070b12',
       }}

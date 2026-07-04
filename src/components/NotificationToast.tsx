@@ -1,5 +1,5 @@
 import { visualRandom } from "@/lib/random";
-import { useEffect, useState, useCallback, createContext, useContext, type ReactNode } from "react";
+import { useEffect, useState, useCallback, useMemo, createContext, useContext, type ReactNode } from "react";
 import { X, Bell, Sparkles, Gift, BookOpen } from "lucide-react";
 import { useTranslation } from "@/hooks/useTranslation";
 
@@ -32,7 +32,7 @@ export function useNotification() {
 
 // ─── Icons for each type ─────────────────────────────────────────────────────
 
-function ToastIcon({ type }: { type: ToastType }) {
+function ToastIcon({ type }: { readonly type: ToastType }) {
   const icons: Record<ToastType, ReactNode> = {
     enrollment: <BookOpen className="h-4 w-4 text-[#06b6d4]" />,
     promo: <Gift className="h-4 w-4 text-[#f59e0b]" />,
@@ -50,9 +50,9 @@ function ToastItem({
   onDismiss,
   lang,
 }: {
-  toast: Toast;
-  onDismiss: (id: string) => void;
-  lang: "en" | "ar";
+  readonly toast: Toast;
+  readonly onDismiss: (id: string) => void;
+  readonly lang: "en" | "ar";
 }) {
   const [visible, setVisible] = useState(false);
   const [exiting, setExiting] = useState(false);
@@ -119,7 +119,7 @@ function ToastItem({
 
 // ─── Provider Component ─────────────────────────────────────────────────────
 
-export function NotificationProvider({ children }: { children: ReactNode }) {
+export function NotificationProvider({ children }: { readonly children: ReactNode }) {
   const { lang } = useTranslation();
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -136,8 +136,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
+  const contextValue = useMemo(() => ({ showNotification }), [showNotification]);
+
   return (
-    <NotificationContext.Provider value={{ showNotification }}>
+    <NotificationContext.Provider value={contextValue}>
       {children}
 
       {/* Toast container — bottom-left */}

@@ -119,7 +119,7 @@ export default function TermsOfService() {
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children }: { readonly title: string; readonly children: React.ReactNode }) {
   return (
     <section>
       <h2 className="mb-3 text-lg font-bold text-[#f0f4f8]">{title}</h2>

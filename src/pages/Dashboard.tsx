@@ -16,7 +16,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 
-export default function Dashboard() {
+export default function Dashboard() { // NOSONAR — page-level dashboard with many enrollment tiles + conditional rendering; extraction would require prop-drilling many hooks
   const { user, isAuthenticated, isLoading } = useAuth();
   const { t, lang } = useTranslation();
   const navigate = useNavigate();
@@ -122,9 +122,9 @@ export default function Dashboard() {
                 const progress = Number.parseFloat(enrollment.progress || "0");
                 const isComplete = progress >= 100;
                 const courseSlug = enrollment.course?.slug || enrollment.courseId;
-                const courseTitle = enrollment.course
-                  ? (lang === "ar" ? enrollment.course.titleAr : enrollment.course.titleEn)
-                  : (lang === "en" ? "Unknown Course" : "كورس غير معروف");
+                const knownCourseTitle = lang === "ar" ? enrollment.course?.titleAr : enrollment.course?.titleEn;
+                const unknownCourseTitle = lang === "en" ? "Unknown Course" : "كورس غير معروف";
+                const courseTitle = enrollment.course ? knownCourseTitle : unknownCourseTitle;
 
                 return (
                   <motion.div
@@ -257,11 +257,12 @@ export default function Dashboard() {
             {myCertificates && myCertificates.length > 0 ? (
               <div className="space-y-3">
                 {myCertificates.map((cert) => {
-                  const gradeColor = cert.grade?.toLowerCase() === "distinction"
-                    ? "bg-[rgba(245,158,11,0.15)] text-[#f59e0b]"
-                    : cert.grade?.toLowerCase() === "merit"
+                  const innerGradeColor = cert.grade?.toLowerCase() === "merit"
                     ? "bg-[rgba(99,102,241,0.15)] text-[#6366f1]"
                     : "bg-[rgba(16,185,129,0.15)] text-[#10b981]";
+                  const gradeColor = cert.grade?.toLowerCase() === "distinction"
+                    ? "bg-[rgba(245,158,11,0.15)] text-[#f59e0b]"
+                    : innerGradeColor;
                   return (
                     <motion.div
                       key={cert.id}

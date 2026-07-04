@@ -789,7 +789,7 @@ img[loading="lazy"] {
 [data-theme="light"] .bg-\[\#0d1420\] {          /* nav/control bg */
   background-color: #f1f5f9 !important;
 }
-[data-theme="light"] .bg-\[\#0a0e17\]\/95,
+[data-theme="light"] .bg-\[\#0a0e17\]/95,
 [data-theme="light"] .bg-\[rgba\(7\,11\,18\,0\.95\)\] {
   background-color: rgba(248, 250, 252, 0.95) !important;
 }

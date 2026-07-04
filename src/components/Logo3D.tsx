@@ -70,7 +70,7 @@ export default function Logo3D({
   /* ── Slow breathing glow (6s cycle, very subtle) ──────────────────────── */
   useEffect(() => {
     const prefersReduced =
-      typeof globalThis !== 'undefined' &&
+      globalThis !== undefined &&
       globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     if (prefersReduced) {
       setBreath(0.5);

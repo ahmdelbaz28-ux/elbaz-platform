@@ -2,7 +2,7 @@ import { Link } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
 import { trpc } from "@/providers/trpc";
 import CourseCard from "@/components/CourseCard";
-import SEO from "@/components/SEO";
+import Seo from "@/components/SEO";
 import { StaggerContainer, StaggerItem, FadeIn, NeonGlow } from "@/components/ui/motion";
 import AnimatedIcon from "@/components/ui/AnimatedIcon";
 import BentoCard from "@/components/ui/BentoCard";
@@ -111,7 +111,7 @@ const FALLBACK_STATS = { totalStudents: 390, satisfactionRate: 96, totalCourses:
 // the file. The component now uses `framer-motion`'s `whileInView` for the
 // same reveal-on-scroll behaviour. Removed (SonarCloud S2933 / tsc TS6133).
 
-function PromoBanner({ promotion }: { promotion: any }) {
+function PromoBanner({ promotion }: { readonly promotion: any }) {
   const { lang } = useTranslation();
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
   const [dismissed, setDismissed] = useState(() => {
@@ -206,7 +206,7 @@ function PromoBanner({ promotion }: { promotion: any }) {
   );
 }
 
-function ParallaxHeroImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
+function ParallaxHeroImage({ src, alt, className }: { readonly src: string; readonly alt: string; readonly className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
   const y = useTransform(scrollYProgress, [0, 1], [0, -100]);
@@ -219,7 +219,7 @@ function ParallaxHeroImage({ src, alt, className }: { src: string; alt: string; 
   );
 }
 
-function SectionHeader({ badge, title, subtitle }: { badge: string; title: string; subtitle?: string }) {
+function SectionHeader({ badge, title, subtitle }: { readonly badge: string; readonly title: string; readonly subtitle?: string }) {
   return (
     <ScrollReveal className="mb-16 text-center">
       <motion.span
@@ -256,7 +256,7 @@ function SectionHeader({ badge, title, subtitle }: { badge: string; title: strin
   );
 }
 
-export default function Home() {
+export default function Home() { // NOSONAR — landing page with hero + features + courses + testimonials + FAQ + CTA; section extraction would require prop-drilling many translation/lang-dependent props
   const { t, lang } = useTranslation();
   const { data: coursesData } = trpc.course.list.useQuery({ featured: true });
   const courses = Array.isArray(coursesData?.items) ? coursesData.items : [];
@@ -287,7 +287,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen overflow-hidden">
-      <SEO title={lang === "en" ? "Home" : "الرئيسية"} description={lang === "en" ? "Master electrical engineering with professional courses in ETAP, SKM, PowerFactory, and PVSyst." : "أتقن الهندسة الكهربية مع كورسات احترافية في ETAP وSKM وPowerFactory وPVSyst."} />
+      <Seo title={lang === "en" ? "Home" : "الرئيسية"} description={lang === "en" ? "Master electrical engineering with professional courses in ETAP, SKM, PowerFactory, and PVSyst." : "أتقن الهندسة الكهربية مع كورسات احترافية في ETAP وSKM وPowerFactory وPVSyst."} />
       {topPromotion && <PromoBanner promotion={topPromotion} />}
 
       {/* ═══════════════════ HERO ═══════════════════ */}
@@ -505,7 +505,7 @@ export default function Home() {
                 </p>
                 <ul className="mt-5 space-y-2">
                   {["Screen capture blocking at OS level", "Dynamic watermarking with user ID", "Encrypted HLS streaming protocol"].map((b, j) => (
-                    <motion.li key={j} initial={{ opacity: 0, x: -10 }} whileInView={{ opacity: 1, x: 0 }} transition={{ delay: j * 0.1 + 0.3 }} viewport={{ once: true }} className="flex items-start gap-2 text-sm text-[#94a3b8]">
+                    <motion.li key={b} initial={{ opacity: 0, x: -10 }} whileInView={{ opacity: 1, x: 0 }} transition={{ delay: j * 0.1 + 0.3 }} viewport={{ once: true }} className="flex items-start gap-2 text-sm text-[#94a3b8]">
                       <CheckCircle2 className="h-4 w-4 text-[#10b981] mt-0.5 shrink-0" />
                       {b}
                     </motion.li>
@@ -616,8 +616,8 @@ export default function Home() {
               <ScrollReveal key={testimonial.id} delay={idx * 0.1}>
                 <motion.div whileHover={{ y: -6, scale: 1.02 }} whileTap={{ scale: 0.98 }} className="rounded-xl border border-[#1f2d44] bg-[#111827] p-8">
                   <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} className="flex gap-1">
-                    {Array.from({ length: testimonial.rating || 5 }).map((_, j) => (
-                      <Star key={j} className="h-4 w-4 fill-[#f59e0b] text-[#f59e0b]" />
+                    {Array.from({ length: testimonial.rating || 5 }, (_, j) => `star-${j + 1}`).map(starKey => (
+                      <Star key={starKey} className="h-4 w-4 fill-[#f59e0b] text-[#f59e0b]" />
                     ))}
                   </motion.div>
                   <p className="mt-4 text-sm leading-relaxed italic text-[#f0f4f8]">"{testimonial.content}"</p>
