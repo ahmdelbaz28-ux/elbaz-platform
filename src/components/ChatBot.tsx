@@ -720,15 +720,20 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                     </button>
                   </div>
                   {/* Mode description */}
-                  <p className="text-[10px] text-slate-600 mt-1.5 text-center">
-                    {chatMode === "thinking"
-                      ? (lang === "ar"
-                          ? "\u0646\u0645\u0648\u0630\u062c GLM 5.1 \u2014 \u062a\u062d\u0644\u064a\u0644 \u0639\u0645\u064a\u0642 \u0648\u0623\u0633\u0626\u0644\u0629 \u0645\u0639\u0642\u062f\u0629"
-                          : "GLM 5.1 model \u2014 deep reasoning for complex questions")
-                      : (lang === "ar"
-                          ? "\u0646\u0645\u0627\u0630\u062c Groq \u2014 \u0631\u062f\u0648\u062f \u0633\u0631\u064a\u0639\u0629 \u0644\u0644\u0623\u0633\u0626\u0644\u0629 \u0627\u0644\u0628\u0633\u064a\u0637\u0629"
-                          : "Groq models \u2014 fast responses for simple questions")}
-                  </p>
+                  {(() => {
+                    const thinkingDesc = lang === "ar"
+                      ? "نموذج GLM 5.1 — تحليل عميق وأسئلة معقدة"
+                      : "GLM 5.1 model — deep reasoning for complex questions";
+                    const instantDesc = lang === "ar"
+                      ? "نماذج Groq — ردود سريعة للأسئلة البسيطة"
+                      : "Groq models — fast responses for simple questions";
+                    const modeDesc = chatMode === "thinking" ? thinkingDesc : instantDesc;
+                    return (
+                      <p className="text-[10px] text-slate-600 mt-1.5 text-center">
+                        {modeDesc}
+                      </p>
+                    );
+                  })()}
                 </div>
 
                 {/* ─── Messages Area ─── */}
