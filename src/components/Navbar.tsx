@@ -8,7 +8,7 @@ import { Magnetic } from "@/components/ui/motion";
 import {
   Menu, X, LayoutDashboard, Headphones,
   Shield, LogOut, BookOpen, ChevronDown,
-  UserCog,
+  UserCog, FileBox,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -131,6 +131,7 @@ export default function Navbar() { // NOSONAR — large navigation component wit
             {[
               { path: "/", label: lang === "ar" ? "الرئيسية" : "Home" },
               { path: "/courses", label: lang === "ar" ? "الكورسات" : "Courses", icon: <BookOpen className="h-3.5 w-3.5" /> },
+              { path: "/references", label: lang === "ar" ? "المراجع" : "References", icon: <FileBox className="h-3.5 w-3.5" /> },
             ].map((link) => (
               <Magnetic key={link.path}>
                 <Link
@@ -299,6 +300,7 @@ export default function Navbar() { // NOSONAR — large navigation component wit
           {[
             { path: "/", label: lang === "ar" ? "الرئيسية" : "Home" },
             { path: "/courses", label: lang === "ar" ? "الكورسات" : "Courses" },
+            { path: "/references", label: lang === "ar" ? "المراجع" : "References" },
             ...(isAuthenticated ? [
               { path: "/dashboard", label: lang === "ar" ? "لوحتي" : "Dashboard" },
               { path: "/profile", label: lang === "ar" ? "الملف الشخصي" : "Profile" },

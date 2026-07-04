@@ -24,6 +24,7 @@ const ChatBot = lazy(() => import("@/components/ChatBot").then(m => ({ default: 
 const Home = lazy(() => import("./pages/Home").then(m => ({ default: m.default })));
 const Courses = lazy(() => import("./pages/Courses").then(m => ({ default: m.default })));
 const CourseDetail = lazy(() => import("./pages/CourseDetail").then(m => ({ default: m.default })));
+const References = lazy(() => import("./pages/References").then(m => ({ default: m.default })));
 const Login = lazy(() => import("./pages/Login").then(m => ({ default: m.default })));
 const Register = lazy(() => import("./pages/Register").then(m => ({ default: m.default })));
 const Dashboard = lazy(() => import("./pages/Dashboard").then(m => ({ default: m.default })));
@@ -91,6 +92,7 @@ export default function App() {
             <Route path="/" element={<Home />} />
             <Route path="/courses" element={<Courses />} />
             <Route path="/courses/:slug" element={<CourseDetail />} />
+            <Route path="/references" element={<References />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/terms" element={<TermsOfService />} />

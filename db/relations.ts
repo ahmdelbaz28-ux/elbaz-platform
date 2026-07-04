@@ -24,6 +24,7 @@ import {
   userSessions,
   userNotes,
   licenses,
+  referenceFiles,
 } from "./schema";
 
 
@@ -137,6 +138,10 @@ export const licensesRelations = relations(licenses, ({ one }) => ({
   course: one(courses, { fields: [licenses.courseId], references: [courses.id] }),
 }));
 
+export const referenceFilesRelations = relations(referenceFiles, ({ one }) => ({
+  uploadedBy: one(users, { fields: [referenceFiles.uploadedById], references: [users.id] }),
+}));
+
 export const usersRelations = relations(users, ({ many }) => ({
   enrollments: many(enrollments),
   payments: many(payments),
@@ -152,4 +157,5 @@ export const usersRelations = relations(users, ({ many }) => ({
   sessions: many(userSessions),
   notes: many(userNotes),
   licenses: many(licenses),
+  referenceFiles: many(referenceFiles),
 }));

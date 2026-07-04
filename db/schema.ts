@@ -726,3 +726,41 @@ export const licenses = mysqlTable(
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
+// ============================================================================
+// 25. references  (uploaded reference files: PDF/DOCX/XLSX/JPG/PNG/etc)
+// ============================================================================
+export const referenceFiles = mysqlTable(
+  "referenceFiles",
+  {
+    id: bigint("id", { mode: "number", unsigned: true }).primaryKey().autoincrement(),
+    title: varchar("title", { length: 500 }).notNull(),
+    description: text("description"),
+    fileName: varchar("fileName", { length: 500 }).notNull(),
+    fileKey: varchar("fileKey", { length: 1000 }).notNull(), // R2 object key
+    fileUrl: varchar("fileUrl", { length: 1000 }).notNull(), // Public/presigned URL or direct R2 path
+    fileType: varchar("fileType", { length: 100 }).notNull(), // MIME type
+    fileSize: bigint("fileSize", { mode: "number", unsigned: true }).notNull(),
+    category: varchar("category", { length: 100 }).default("general"), // general, electrical, software, etc
+    uploadedById: bigint("uploadedById", { mode: "number", unsigned: true }), // admin who uploaded
+    isPublic: boolean("isPublic").notNull().default(true), // visible to non-enrolled users
+    isPublished: boolean("isPublished").notNull().default(true),
+    downloadCount: int("downloadCount").notNull().default(0),
+    sortOrder: int("sortOrder").notNull().default(0),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("reference_files_category_idx").on(table.category),
+    index("reference_files_published_idx").on(table.isPublished),
+    index("reference_files_sort_idx").on(table.sortOrder),
+    foreignKey({
+      columns: [table.uploadedById],
+      foreignColumns: [users.id],
+      name: "fk_reference_files_uploader",
+    }).onDelete("set null").onUpdate("cascade"),
+  ]
+);
+
+export type ReferenceFile = typeof referenceFiles.$inferSelect;
+export type InsertReferenceFile = typeof referenceFiles.$inferInsert;
+
