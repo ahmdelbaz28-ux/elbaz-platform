@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router";
+import { toast } from "sonner";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useAuth } from "@/hooks/useAuth";
 import { useChatFabAnimation } from "@/hooks/useChatFabAnimation";
@@ -502,14 +503,26 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
 
   // ─── Handle FAB click: auth gate ───
   const handleFabClick = useCallback(() => {
+    // While auth state is loading, show a toast and wait — don't silently ignore the click
+    if (authLoading) {
+      const loadingMsg = lang === "ar"
+        ? "جارٍ التحقق من تسجيل الدخول..."
+        : "Checking login status...";
+      toast(loadingMsg, { duration: 1500 });
+      return;
+    }
     // Auth gate: redirect to login if not authenticated
-    if (!authLoading && !isAuthenticated) {
+    if (!isAuthenticated) {
+      const redirectMsg = lang === "ar"
+        ? "يجب تسجيل الدخول أولاً لاستخدام المساعد الذكي"
+        : "Please log in to use the AI assistant";
+      toast(redirectMsg, { duration: 2500 });
       navigate("/login");
       return;
     }
     setIsOpen(true);
     setIsMinimized(false);
-  }, [authLoading, isAuthenticated, navigate]);
+  }, [authLoading, isAuthenticated, navigate, lang]);
 
   // ─── Retry handler that actually re-sends ───
   const handleRetry = useCallback((failedMsgId: string) => {
