@@ -285,7 +285,7 @@ app.get("/__webhook/status", async (c) => {
     const cidrBits = Number.parseInt(parts[1], 10);
     const networkParts = networkStr.split(".").map(Number);
     const ipParts = clientIp.split(".").map(Number);
-    if (networkParts.length !== 4 || ipParts.length !== 4 || networkParts.some(isNaN) || ipParts.some(isNaN)) {
+    if (networkParts.length !== 4 || ipParts.length !== 4 || networkParts.some(Number.isNaN) || ipParts.some(Number.isNaN)) {
       return clientIp === range;
     }
     const ipNum = ((ipParts[0] << 24) | (ipParts[1] << 16) | (ipParts[2] << 8) | ipParts[3]) >>> 0;
@@ -506,7 +506,7 @@ async function start() {
     console.warn("[Server] Redis unavailable, rate limiting disabled:", (err as Error).message);
   }
 
-  const useBun = Bun !== undefined && Bun?.serve;
+  const useBun = Bun?.serve;
   let server;
 
   if (useBun) {

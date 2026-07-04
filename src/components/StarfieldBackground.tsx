@@ -65,7 +65,6 @@ export default function StarfieldBackground() {
     if (!ctx) return;
 
     const prefersReduced =
-      globalThis !== undefined &&
       globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
     // ✅ FIX: Detect mobile devices to reduce particle count and disable
@@ -487,7 +486,7 @@ export default function StarfieldBackground() {
           // ✅ Dynamic background based on current theme
           // The CSS override [data-theme="light"] canvas also handles this,
           // but we set it inline for immediate effect before CSS loads.
-          background: document !== undefined && document.documentElement.dataset.theme === 'light'
+          background: document?.documentElement?.dataset?.theme === 'light'
             ? '#f8fafc'
             : '#070b12',
         }}

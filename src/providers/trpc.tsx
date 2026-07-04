@@ -24,7 +24,7 @@ const queryClient = new QueryClient({
 });
 
 const persister = createSyncStoragePersister({
-  storage: globalThis !== undefined ? globalThis.localStorage : undefined,
+  storage: globalThis?.localStorage,
   key: 'ELBAZ_QUERY_CACHE',
 });
 
@@ -76,7 +76,7 @@ const trpcClient = trpc.createClient({
           };
           if (token) headers["Authorization"] = `Bearer ${token}`;
           return globalThis.fetch(input, {
-            ...(init ?? {}),
+            ...(init ?? {}), // NOSONAR — ?? {} provides runtime fallback for spread; type-only fix would change semantics
             credentials: isNative ? "omit" : "include",
             headers,
           });

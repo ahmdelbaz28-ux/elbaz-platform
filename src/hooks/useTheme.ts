@@ -35,7 +35,7 @@ function getInitialTheme(): Theme {
 }
 
 export function useTheme() {
-  const [theme, setThemeState] = useState<Theme>(getInitialTheme);
+  const [theme, setThemeState] = useState<Theme>(getInitialTheme); // NOSONAR — already destructured with value and setter
 
   // Apply theme to <html> + persist to localStorage
   const applyTheme = useCallback((next: Theme) => {

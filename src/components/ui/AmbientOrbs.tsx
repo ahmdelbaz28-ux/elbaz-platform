@@ -43,7 +43,6 @@ export default function AmbientOrbs() {
 
   useEffect(() => {
     const prefersReduced =
-      globalThis !== undefined &&
       globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     
     if (prefersReduced) {
@@ -53,9 +52,7 @@ export default function AmbientOrbs() {
   }, []);
 
   // Detect theme and select appropriate orbs
-  const isLight = document !== undefined 
-    ? document.documentElement.dataset.theme === "light"
-    : false;
+  const isLight = document?.documentElement?.dataset?.theme === "light";
   
   const orbs = isLight ? LIGHT_MODE_ORBS : DARK_MODE_ORBS;
 

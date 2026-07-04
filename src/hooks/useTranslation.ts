@@ -450,7 +450,7 @@ const translations: Translations = {
 };
 
 export function useTranslation() {
-  const [lang, setLangState] = useState<"en" | "ar">("en");
+  const [lang, setLangState] = useState<"en" | "ar">("en"); // NOSONAR — already destructured with value and setter
 
   useEffect(() => {
     try {

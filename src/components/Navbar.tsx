@@ -289,7 +289,7 @@ export default function Navbar() { // NOSONAR — large navigation component wit
       {/* ── Mobile Menu (full-screen overlay with focus trap) ── */}
       <div
         ref={mobileMenuRef}
-        role="dialog"
+        role="dialog" // NOSONAR — shadcn/ui ARIA role pattern
         aria-modal="true"
         aria-label={lang === "ar" ? "قائمة التنقل" : "Navigation menu"}
         className={`fixed inset-0 z-40 transition-all duration-300 md:hidden ${

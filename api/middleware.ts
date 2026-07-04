@@ -1,7 +1,7 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { TrpcContext } from "./context";
-import { checkRateLimit, clearRateLimit, type RateLimitAction } from "./lib/rate-limiter";
+import { checkRateLimit } from "./lib/rate-limiter";
 import { env } from "./lib/env";
 
 const t = initTRPC.context<TrpcContext>().create({
@@ -25,7 +25,8 @@ const t = initTRPC.context<TrpcContext>().create({
 });
 
 export const createRouter = t.router;
-export { checkRateLimit, clearRateLimit, type RateLimitAction };
+export { checkRateLimit };
+export { clearRateLimit, type RateLimitAction } from "./lib/rate-limiter";
 
 const globalRateLimit = t.middleware(async (opts) => {
   const forwarded = opts.ctx.req?.headers?.get("x-forwarded-for");
@@ -48,7 +49,7 @@ const requireAuth = t.middleware(async (opts) => {
 
 function requireRole(role: string) {
   return t.middleware(async (opts) => {
-    if (!opts.ctx.user || opts.ctx.user.role !== role) throw new TRPCError({ code: "FORBIDDEN" });
+    if (opts.ctx.user?.role !== role) throw new TRPCError({ code: "FORBIDDEN" });
     return opts.next({ ctx: { ...opts.ctx, user: opts.ctx.user } });
   });
 }

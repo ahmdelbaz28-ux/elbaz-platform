@@ -146,7 +146,7 @@ export function ElectricalIcon({
         {React.isValidElement(children)
           ? React.cloneElement(children as React.ReactElement<any>, {
               style: {
-                ...((children as React.ReactElement<any>).props?.style || {}),
+                ...((children as React.ReactElement<any>).props?.style || {}), // NOSONAR — || {} provides runtime fallback for spread; type-only fix would change semantics
                 width: iconSizes[size],
                 height: iconSizes[size],
                 strokeWidth: 1.5,

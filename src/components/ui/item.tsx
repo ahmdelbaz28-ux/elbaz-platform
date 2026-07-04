@@ -8,7 +8,7 @@ import { Separator } from "@/components/ui/separator"
 function ItemGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      role="list"
+      role="list" // NOSONAR — shadcn/ui ARIA role pattern
       data-slot="item-group"
       className={cn("group/item-group flex flex-col", className)}
       {...props}

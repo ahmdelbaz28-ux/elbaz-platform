@@ -120,7 +120,7 @@ export async function initiatePasswordReset(email: string): Promise<{
   // This prevents email enumeration attacks
   const genericMessage = "If an account with this email exists, a reset link has been sent.";
 
-  if (!user || !user.email) {
+  if (!user?.email) {
     // Don't reveal whether the email exists
     return { success: true, message: genericMessage };
   }
@@ -240,7 +240,7 @@ export async function initiateEmailVerification(userId: number): Promise<{
     .where(eq(users.id, userId))
     .limit(1);
 
-  if (!user || !user.email) {
+  if (!user?.email) {
     return { success: false, message: "No email address associated with this account." };
   }
 

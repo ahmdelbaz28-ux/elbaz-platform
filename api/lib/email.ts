@@ -153,7 +153,7 @@ export async function initiatePasswordReset(email: string, headers?: Headers): P
   // This prevents email enumeration attacks
   const genericMessage = "If an account with this email exists, a reset link has been sent.";
 
-  if (!user || !user.email) {
+  if (!user?.email) {
     // Don't reveal whether the email exists
     return { success: true, message: genericMessage };
   }

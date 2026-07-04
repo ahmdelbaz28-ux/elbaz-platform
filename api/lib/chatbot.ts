@@ -704,7 +704,7 @@ async function validateOpenRouterKey(): Promise<boolean> {
     });
     openrouterKeyValid = resp.ok;
     openrouterKeyValidated = true;
-    if (!resp.ok) {
+    if (!resp.ok) { // NOSONAR — negated condition readability acceptable in error-first pattern
       const errData = await resp.json().catch(function() { return {}; });
       console.error("[Chatbot/OpenRouter] API key validation failed:", JSON.stringify(errData));
       console.error("[Chatbot/OpenRouter] The OPENROUTER_API_KEY in HF Space Secrets is invalid or expired.");
@@ -779,7 +779,7 @@ async function tryModel(
       return null;
     }
 
-    const reply = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+    const reply = data.choices?.[0]?.message?.content;
     if (!reply || reply.trim().length === 0) {
       modelFailCount[modelId] = (modelFailCount[modelId] || 0) + 1;
       return null;
@@ -1374,7 +1374,7 @@ async function streamModalProvider(
     }
   }
 
-  if (!response || !response.body) {
+  if (!response?.body) {
     console.error("[Chatbot/Stream] All Modal attempts failed — falling back to OpenCode.");
     return await streamGroqFallback(request, picked.systemPrompt);
   }

@@ -42,8 +42,8 @@ class CacheAsideStrategy<T> {
     for (let i = 0; i < keys.length; i++) {
       const cacheKey = keys[i].key ?? this.keyBuilder(...keys[i].args);
       const cached = this.cache.get<T>(cacheKey);
-      if (cached !== undefined) { results[i] = cached; }
-      else { results[i] = null; missedIndices.push(i); }
+      if (cached === undefined) { results[i] = null; missedIndices.push(i); }
+      else { results[i] = cached; }
     }
     await Promise.all(missedIndices.map(async (i) => {
       const cacheKey = keys[i].key ?? this.keyBuilder(...keys[i].args);

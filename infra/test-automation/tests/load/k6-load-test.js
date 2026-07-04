@@ -243,18 +243,18 @@ export default function defaultScenario(data) {
   const rand = u32 / 0x100000000;
   const token = data.token;
 
-  if (rand < 0.50) {
+  if (rand < 0.5) {
     group("Browse Courses (50%)", () => {
       browseCourses(token);
       sleep(randomInt(1, 3));
     });
-  } else if (rand < 0.70) {
+  } else if (rand < 0.7) {
     group("Login (20%)", () => {
       const email = `login_test_${__VU}_${Date.now()}@example.com`;
       loginUser(email, testUserPassword);
       sleep(randomInt(1, 2));
     });
-  } else if (rand < 0.90) {
+  } else if (rand < 0.9) {
     group("View Course Detail (20%)", () => {
       viewCourseDetail(token);
       sleep(randomInt(2, 4));

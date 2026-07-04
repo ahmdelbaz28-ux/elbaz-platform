@@ -70,7 +70,6 @@ export default function Logo3D({
   /* ── Slow breathing glow (6s cycle, very subtle) ──────────────────────── */
   useEffect(() => {
     const prefersReduced =
-      globalThis !== undefined &&
       globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     if (prefersReduced) {
       setBreath(0.5);
@@ -85,7 +84,7 @@ export default function Logo3D({
         rafRef.current = requestAnimationFrame(tick);
         return;
       }
-      if (start === null) start = ts;
+      start ??= ts;
       const t = (ts - start) / PERIOD;
       setBreath((Math.sin(t * Math.PI * 2) + 1) / 2);
       rafRef.current = requestAnimationFrame(tick);

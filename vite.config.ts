@@ -34,7 +34,7 @@ function buildIdPlugin(): Plugin {
 
     // Replace %%CACHE_BUST%% in index.html to bust Cloudflare/CDN caches
     transformIndexHtml(html: string) {
-      return html.replaceAll(/%%CACHE_BUST%%/g, buildId)
+      return html.replaceAll('%%CACHE_BUST%%', buildId)
     },
 
     async writeBundle() {

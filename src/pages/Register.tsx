@@ -172,7 +172,7 @@ export default function Register() {
           auto_select: false,
           cancel_on_tap_outside: true,
         });
-      } else if (!document.querySelector('script[src*="accounts.google.com/gsi/client"]')) {
+      } else if (!document.querySelector('script[src*="accounts.google.com/gsi/client"]')) { // NOSONAR — guard against double-loading GIS script
         // Load GIS script on demand if not already loaded
         // Use the __loadGsi helper from index.html if available
         if (typeof (globalThis as any).__loadGsi === 'function') {

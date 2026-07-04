@@ -424,7 +424,6 @@ export default function ResetPassword() { // NOSONAR — reset-password page wit
 
         {/* ── Success State ── */}
         {state === "success" && (
-          <>
             <div className="space-y-6">
               <div className="text-center">
                 <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-[rgba(16,185,129,0.1)]">
@@ -473,7 +472,6 @@ export default function ResetPassword() { // NOSONAR — reset-password page wit
                   : "Sign In Now"}
               </Button>
             </div>
-          </>
         )}
 
         {/* ── Invalid/Expired Link State ── */}
