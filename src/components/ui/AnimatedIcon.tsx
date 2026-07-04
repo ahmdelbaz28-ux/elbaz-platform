@@ -137,11 +137,9 @@ export default function AnimatedIcon({ // NOSONAR — motion-variant JSX switch 
           <div className="absolute inset-0 rounded-full border border-dashed opacity-20" style={{ borderColor: color }} />
           <motion.div
             className="absolute w-1.5 h-1.5 rounded-full"
-            style={{ background: color }}
+            style={{ background: color, originX: "50%", originY: "50%" }}
             animate={{ rotate: 360 }}
             transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-            originX="50%"
-            originY="50%"
           />
         </>
       )}

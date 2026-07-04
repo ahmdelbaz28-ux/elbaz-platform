@@ -1,8 +1,14 @@
 import React, { useEffect, useState } from "react";
-import { motion, type MotionProps } from "framer-motion";
+import { motion, type HTMLMotionProps } from "framer-motion";
 // ✅ FIX: Import cn() from utils.ts instead of duplicating it.
 // Duplicate cn() functions cause maintenance issues and bundle size bloat.
 import { cn } from "@/lib/utils";
+
+// Local alias: HTMLMotionProps already merges React DOM attributes with
+// framer-motion's MotionProps, avoiding onDrag/onDragStart conflicts that
+// arise when intersecting React.HTMLAttributes with MotionProps.
+type DivMotionProps = HTMLMotionProps<"div">;
+type SpanMotionProps = HTMLMotionProps<"span">;
 
 // ✅ Re-export cn for backward compatibility (4 files import cn from motion.tsx)
 export { cn };
@@ -25,7 +31,7 @@ export function FadeUp({
   className,
   delay = 0,
   ...props
-}: React.HTMLAttributes<HTMLDivElement> & MotionProps & { delay?: number }) {
+}: DivMotionProps & { delay?: number }) {
   return (
     <motion.div
       initial="hidden"
@@ -48,7 +54,7 @@ export function FadeIn({
   className,
   delay = 0,
   ...props
-}: React.HTMLAttributes<HTMLDivElement> & MotionProps & { delay?: number }) {
+}: DivMotionProps & { delay?: number }) {
   return (
     <motion.div
       initial="hidden"
@@ -72,7 +78,7 @@ export function StaggerContainer({
   delayChildren = 0.1,
   staggerChildren = 0.1,
   ...props
-}: React.HTMLAttributes<HTMLDivElement> & MotionProps & { delayChildren?: number; staggerChildren?: number }) {
+}: DivMotionProps & { delayChildren?: number; staggerChildren?: number }) {
   return (
     <motion.div
       initial="hidden"
@@ -95,7 +101,7 @@ export function StaggerContainer({
   );
 }
 
-export const StaggerItem = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement> & MotionProps>(
+export const StaggerItem = React.forwardRef<HTMLDivElement, DivMotionProps>(
   ({ children, className, ...props }, ref) => {
     return (
       <motion.div ref={ref} variants={FADE_UP_ANIMATION_VARIANTS} className={className} {...props}>
@@ -106,7 +112,7 @@ export const StaggerItem = React.forwardRef<HTMLDivElement, React.HTMLAttributes
 );
 StaggerItem.displayName = "StaggerItem";
 
-export function HoverSpring({ children, className, ...props }: React.HTMLAttributes<HTMLDivElement> & MotionProps) {
+export function HoverSpring({ children, className, ...props }: DivMotionProps) {
   return (
     <motion.div
       whileHover={{ scale: 1.05 }}
@@ -126,7 +132,7 @@ export function HoverSpring({ children, className, ...props }: React.HTMLAttribu
  * 3D Tilt Card Effect
  * Adds professional depth that follows mouse movement.
  */
-export function TiltCard({ children, className, ...props }: React.HTMLAttributes<HTMLDivElement> & MotionProps) {
+export function TiltCard({ children, className, ...props }: DivMotionProps) {
   const [rotateX, setRotateX] = React.useState(0);
   const [rotateY, setRotateY] = React.useState(0);
 
@@ -231,7 +237,7 @@ export function NeonGlow({ children, className, color = "#06b6d4", intensity = 1
  * Text Gradient Animation
  * Creates an animated gradient text effect for headings.
  */
-export function AnimatedGradientText({ children, className, ...props }: React.HTMLAttributes<HTMLSpanElement>) {
+export function AnimatedGradientText({ children, className, ...props }: SpanMotionProps) {
   return (
     <motion.span
       animate={{ 

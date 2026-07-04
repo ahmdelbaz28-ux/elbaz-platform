@@ -43,7 +43,9 @@ export function useWatchTracker({
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastPositionRef = useRef(0);
-  const lastTickRef = useRef<number>(Date.now());
+  // Initialize to 0 and lazy-set Date.now() inside effects/handlers — calling
+  // Date.now() directly in useRef initializer violates React Compiler's purity rule.
+  const lastTickRef = useRef<number>(0);
   const isPlayingRef = useRef(false);
   const lessonIdRef = useRef(lessonId);
   const mountedRef = useRef(true);

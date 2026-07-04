@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, type ReactNode, type ChangeEvent } from "react";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useAuth } from "@/hooks/useAuth";
 import { trpc } from "@/providers/trpc";
@@ -54,7 +54,7 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
 }
 
-function getFileIcon(fileType: string): React.ReactNode {
+function getFileIcon(fileType: string): ReactNode {
   if (fileType.startsWith("image/")) return <FileImage className="h-6 w-6 text-cyan-400" />;
   if (fileType.includes("pdf")) return <FileText className="h-6 w-6 text-red-400" />;
   if (fileType.includes("excel") || fileType.includes("spreadsheet") || fileType.includes("csv")) return <FileSpreadsheet className="h-6 w-6 text-green-400" />;
@@ -68,6 +68,119 @@ function getFileIcon(fileType: string): React.ReactNode {
 function getFileExtension(fileName: string): string {
   const parts = fileName.split(".");
   return parts.length > 1 ? parts.pop()!.toUpperCase() : "FILE";
+}
+
+/* ── File Card — extracted to keep References() below cognitive-complexity cap (S3776) ── */
+
+interface FileCardProps {
+  readonly item: ReferenceFile;
+  readonly lang: "ar" | "en";
+  readonly isAdmin: boolean;
+  readonly isDownloading: boolean;
+  readonly onDownload: (id: number, fileName: string) => void;
+  readonly onDelete: (id: number, title: string) => void;
+}
+
+function FileCard({ item, lang, isAdmin, isDownloading, onDownload, onDelete }: FileCardProps) {
+  return (
+    <div className="group relative flex flex-col rounded-xl border border-[#1e2d3d] bg-[#0d1521] p-5 transition-all hover:border-cyan-500/30 hover:bg-[#111827] hover:shadow-lg hover:shadow-cyan-500/5">
+      {/* File icon + extension badge */}
+      <div className="mb-3 flex items-start justify-between">
+        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#1a2434]">
+          {getFileIcon(item.fileType)}
+        </div>
+        <span className="rounded-md bg-[#1a2434] px-2 py-1 text-[10px] font-bold text-slate-400">
+          {getFileExtension(item.fileName)}
+        </span>
+      </div>
+
+      {/* Title + description */}
+      <h3 className="mb-1 line-clamp-2 text-sm font-semibold text-[#e8f0fe]" title={item.title}>
+        {item.title}
+      </h3>
+      {item.description && (
+        <p className="mb-3 line-clamp-2 text-xs text-slate-500" title={item.description}>
+          {item.description}
+        </p>
+      )}
+
+      {/* File meta */}
+      <div className="mt-auto space-y-2">
+        <div className="flex items-center justify-between text-[11px] text-slate-500">
+          <span className="truncate" title={item.fileName}>{item.fileName}</span>
+        </div>
+        <div className="flex items-center justify-between text-[11px] text-slate-500">
+          <span>{formatFileSize(item.fileSize)}</span>
+          <span className="flex items-center gap-1">
+            <HardDriveDownload className="h-3 w-3" />
+            {item.downloadCount}
+          </span>
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-2 pt-2">
+          <Button
+            onClick={() => onDownload(item.id, item.fileName)}
+            disabled={isDownloading}
+            className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-600 hover:shadow-md hover:shadow-cyan-500/20"
+            size="sm"
+          >
+            {isDownloading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Download className="h-3.5 w-3.5" />
+            )}
+            <span className="ml-1.5">{lang === "ar" ? "تنزيل" : "Download"}</span>
+          </Button>
+
+          {isAdmin && (
+            <Button
+              onClick={() => onDelete(item.id, item.title)}
+              variant="outline"
+              size="sm"
+              className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Category badge */}
+      {item.category && item.category !== "general" && (
+        <span className="absolute top-3 right-3 rounded-full bg-cyan-500/10 px-2 py-0.5 text-[10px] font-medium text-cyan-400">
+          {item.category}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/* ── Empty / Loading states — uses explicit if/return instead of nested ternary (S3358) ── */
+
+function ReferencesLoading({ lang }: { readonly lang: "ar" | "en" }) {
+  return (
+    <div className="flex items-center justify-center py-20">
+      <Loader2 className="h-8 w-8 animate-spin text-cyan-400" />
+      <span className="ml-3 text-slate-400">{lang === "ar" ? "جارٍ التحميل..." : "Loading..."}</span>
+    </div>
+  );
+}
+
+function ReferencesEmpty({ lang, hasFilter }: { readonly lang: "ar" | "en"; readonly hasFilter: boolean }) {
+  const heading = hasFilter
+    ? (lang === "ar" ? "لا توجد نتائج" : "No results found")
+    : (lang === "ar" ? "لا توجد ملفات بعد" : "No files yet");
+  const subtext = hasFilter
+    ? (lang === "ar" ? "جرب تغيير البحث أو الفئة" : "Try changing your search or category")
+    : (lang === "ar" ? "سيتم إضافة الملفات قريباً" : "Files will be added soon");
+  return (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <FileBox className="h-16 w-16 text-slate-600 mb-4" />
+      <h3 className="text-lg font-medium text-slate-300 mb-1">{heading}</h3>
+      <p className="text-sm text-slate-500">{subtext}</p>
+    </div>
+  );
 }
 
 /* ── Component ── */
@@ -109,13 +222,14 @@ export default function References() {
     setDownloadingId(id);
     try {
       const result = await getDownloadUrl.mutateAsync({ id });
-      // Create a temporary <a> element to trigger the download
+      // Create a temporary <a> element to trigger the download.
+      // Use element.remove() (S7762) instead of parentNode.removeChild().
       const a = document.createElement("a");
       a.href = result.downloadUrl;
       a.download = fileName;
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
+      a.remove();
       toast.success(lang === "ar" ? "بدأ التنزيل" : "Download started");
     } catch (err) {
       console.error("[References] Download failed:", err);
@@ -148,6 +262,29 @@ export default function References() {
   const totalDownloads = useMemo(() => {
     return (data?.items || []).reduce((sum: number, item: ReferenceFile) => sum + item.downloadCount, 0);
   }, [data]);
+
+  // ─── Files grid renderer (extracts the if/return branching from main render) ───
+  const renderFiles = () => {
+    if (isLoading) return <ReferencesLoading lang={lang} />;
+    if (items.length === 0) {
+      return <ReferencesEmpty lang={lang} hasFilter={Boolean(search) || selectedCategory !== "all"} />;
+    }
+    return (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {items.map((item: ReferenceFile) => (
+          <FileCard
+            key={item.id}
+            item={item}
+            lang={lang}
+            isAdmin={isAdmin}
+            isDownloading={downloadingId === item.id}
+            onDownload={handleDownload}
+            onDelete={handleDelete}
+          />
+        ))}
+      </div>
+    );
+  };
 
   return (
     <>
@@ -249,104 +386,7 @@ export default function References() {
 
         {/* ─── Files Grid ─── */}
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-20">
-              <Loader2 className="h-8 w-8 animate-spin text-cyan-400" />
-              <span className="ml-3 text-slate-400">{lang === "ar" ? "جارٍ التحميل..." : "Loading..."}</span>
-            </div>
-          ) : items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-              <FileBox className="h-16 w-16 text-slate-600 mb-4" />
-              <h3 className="text-lg font-medium text-slate-300 mb-1">
-                {search || selectedCategory !== "all"
-                  ? (lang === "ar" ? "لا توجد نتائج" : "No results found")
-                  : (lang === "ar" ? "لا توجد ملفات بعد" : "No files yet")}
-              </h3>
-              <p className="text-sm text-slate-500">
-                {search || selectedCategory !== "all"
-                  ? (lang === "ar" ? "جرب تغيير البحث أو الفئة" : "Try changing your search or category")
-                  : (lang === "ar" ? "سيتم إضافة الملفات قريباً" : "Files will be added soon")}
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {items.map((item: ReferenceFile) => (
-                <div
-                  key={item.id}
-                  className="group relative flex flex-col rounded-xl border border-[#1e2d3d] bg-[#0d1521] p-5 transition-all hover:border-cyan-500/30 hover:bg-[#111827] hover:shadow-lg hover:shadow-cyan-500/5"
-                >
-                  {/* File icon + extension badge */}
-                  <div className="mb-3 flex items-start justify-between">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#1a2434]">
-                      {getFileIcon(item.fileType)}
-                    </div>
-                    <span className="rounded-md bg-[#1a2434] px-2 py-1 text-[10px] font-bold text-slate-400">
-                      {getFileExtension(item.fileName)}
-                    </span>
-                  </div>
-
-                  {/* Title + description */}
-                  <h3 className="mb-1 line-clamp-2 text-sm font-semibold text-[#e8f0fe]" title={item.title}>
-                    {item.title}
-                  </h3>
-                  {item.description && (
-                    <p className="mb-3 line-clamp-2 text-xs text-slate-500" title={item.description}>
-                      {item.description}
-                    </p>
-                  )}
-
-                  {/* File meta */}
-                  <div className="mt-auto space-y-2">
-                    <div className="flex items-center justify-between text-[11px] text-slate-500">
-                      <span className="truncate" title={item.fileName}>{item.fileName}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-[11px] text-slate-500">
-                      <span>{formatFileSize(item.fileSize)}</span>
-                      <span className="flex items-center gap-1">
-                        <HardDriveDownload className="h-3 w-3" />
-                        {item.downloadCount}
-                      </span>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex gap-2 pt-2">
-                      <Button
-                        onClick={() => handleDownload(item.id, item.fileName)}
-                        disabled={downloadingId === item.id}
-                        className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-600 hover:shadow-md hover:shadow-cyan-500/20"
-                        size="sm"
-                      >
-                        {downloadingId === item.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Download className="h-3.5 w-3.5" />
-                        )}
-                        <span className="ml-1.5">{lang === "ar" ? "تنزيل" : "Download"}</span>
-                      </Button>
-
-                      {isAdmin && (
-                        <Button
-                          onClick={() => handleDelete(item.id, item.title)}
-                          variant="outline"
-                          size="sm"
-                          className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Category badge */}
-                  {item.category && item.category !== "general" && (
-                    <span className="absolute top-3 right-3 rounded-full bg-cyan-500/10 px-2 py-0.5 text-[10px] font-medium text-cyan-400">
-                      {item.category}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+          {renderFiles()}
         </div>
       </div>
 
@@ -388,6 +428,72 @@ interface UploadModalProps {
   }) => Promise<{ success: boolean; id: number }> };
 }
 
+/* ── Dropzone — extracted to reduce UploadModal cognitive complexity (S3776).
+   Uses role="button" + tabIndex + onKeyDown for keyboard accessibility (S6848, S1082). ── */
+interface DropzoneProps {
+  readonly file: File | null;
+  readonly lang: "ar" | "en";
+  readonly disabled: boolean;
+  readonly onPick: () => void;
+  readonly formatFileSize: (bytes: number) => string;
+}
+
+function UploadDropzone({ file, lang, disabled, onPick, formatFileSize }: DropzoneProps) {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Trigger pick on Enter or Space — required for keyboard-accessible clickable div (S1082)
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      if (!disabled) onPick();
+    }
+  };
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => !disabled && onPick()}
+      onKeyDown={handleKeyDown}
+      aria-disabled={disabled}
+      className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#1e2d3d] bg-[#0a0e17] px-4 py-8 text-center transition-colors hover:border-cyan-500/40 focus:outline-none focus:ring-2 focus:ring-cyan-500/40"
+    >
+      {file ? (
+        <>
+          <FileText className="mb-2 h-10 w-10 text-cyan-400" />
+          <p className="text-sm text-[#e8f0fe]">{file.name}</p>
+          <p className="text-xs text-slate-500">{formatFileSize(file.size)}</p>
+        </>
+      ) : (
+        <>
+          <Upload className="mb-2 h-10 w-10 text-slate-500" />
+          <p className="text-sm text-slate-400">
+            {lang === "ar" ? "اضغط لاختيار ملف" : "Click to select a file"}
+          </p>
+          <p className="mt-1 text-xs text-slate-600">
+            {lang === "ar" ? "PDF, DOCX, XLSX, JPG, PNG, ZIP, RAR — حتى 50MB" : "PDF, DOCX, XLSX, JPG, PNG, ZIP, RAR — up to 50MB"}
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ── Upload progress bar — extracted to reduce UploadModal cognitive complexity (S3776) ── */
+function UploadProgressBar({ progress, lang }: { readonly progress: number; readonly lang: "ar" | "en" }) {
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between text-xs text-slate-400">
+        <span>{lang === "ar" ? "جارٍ الرفع..." : "Uploading..."}</span>
+        <span>{progress}%</span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-[#1a2434]">
+        <div
+          className="h-full bg-gradient-to-r from-cyan-500 to-blue-600 transition-all duration-300"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function UploadModal({ lang, onClose, onUploaded, getUploadUrl, createReference }: UploadModalProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -397,12 +503,39 @@ function UploadModal({ lang, onClose, onUploaded, getUploadUrl, createReference 
   const [progress, setProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
     if (selected) {
       setFile(selected);
       if (!title) setTitle(selected.name.replace(/\.[^.]+$/, ""));
     }
+  };
+
+  // Step 2 of upload — performs the actual PUT to R2 with progress events.
+  // Extracted to keep handleUpload's cognitive complexity below the cap (S3776).
+  const uploadToR2 = (uploadUrl: string, fileObj: File, onProgress: (pct: number) => void): Promise<void> => {
+    return new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", uploadUrl);
+      xhr.setRequestHeader("Content-Type", fileObj.type || "application/octet-stream");
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          onProgress(30 + Math.round((e.loaded / e.total) * 50));
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve();
+        } else {
+          reject(new Error(`Upload failed: HTTP ${xhr.status} - ${xhr.responseText}`));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error("Network error during upload"));
+      xhr.send(fileObj);
+    });
   };
 
   const handleUpload = async () => {
@@ -428,28 +561,7 @@ function UploadModal({ lang, onClose, onUploaded, getUploadUrl, createReference 
       setProgress(30);
 
       // Step 2: Upload file directly to R2 via PUT
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("PUT", uploadUrl);
-        xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
-
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            setProgress(30 + Math.round((e.loaded / e.total) * 50));
-          }
-        };
-
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve();
-          } else {
-            reject(new Error(`Upload failed: HTTP ${xhr.status} - ${xhr.responseText}`));
-          }
-        };
-
-        xhr.onerror = () => reject(new Error("Network error during upload"));
-        xhr.send(file);
-      });
+      await uploadToR2(uploadUrl, file, setProgress);
 
       setProgress(85);
 
@@ -478,6 +590,8 @@ function UploadModal({ lang, onClose, onUploaded, getUploadUrl, createReference 
     }
   };
 
+  const uploadDisabled = uploading || !file || !title.trim();
+
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
       <div className="w-full max-w-lg rounded-2xl border border-[#1e2d3d] bg-[#0d1521] p-6 shadow-2xl">
@@ -502,28 +616,13 @@ function UploadModal({ lang, onClose, onUploaded, getUploadUrl, createReference 
             <label className="mb-1.5 block text-sm font-medium text-slate-300">
               {lang === "ar" ? "الملف" : "File"} <span className="text-red-400">*</span>
             </label>
-            <div
-              onClick={() => !uploading && fileInputRef.current?.click()}
-              className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#1e2d3d] bg-[#0a0e17] px-4 py-8 text-center transition-colors hover:border-cyan-500/40"
-            >
-              {file ? (
-                <>
-                  <FileText className="mb-2 h-10 w-10 text-cyan-400" />
-                  <p className="text-sm text-[#e8f0fe]">{file.name}</p>
-                  <p className="text-xs text-slate-500">{formatFileSize(file.size)}</p>
-                </>
-              ) : (
-                <>
-                  <Upload className="mb-2 h-10 w-10 text-slate-500" />
-                  <p className="text-sm text-slate-400">
-                    {lang === "ar" ? "اضغط لاختيار ملف" : "Click to select a file"}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-600">
-                    {lang === "ar" ? "PDF, DOCX, XLSX, JPG, PNG, ZIP, RAR — حتى 50MB" : "PDF, DOCX, XLSX, JPG, PNG, ZIP, RAR — up to 50MB"}
-                  </p>
-                </>
-              )}
-            </div>
+            <UploadDropzone
+              file={file}
+              lang={lang}
+              disabled={uploading}
+              onPick={() => fileInputRef.current?.click()}
+              formatFileSize={formatFileSize}
+            />
             <input
               ref={fileInputRef}
               type="file"
@@ -580,20 +679,7 @@ function UploadModal({ lang, onClose, onUploaded, getUploadUrl, createReference 
           </div>
 
           {/* Progress bar */}
-          {uploading && (
-            <div>
-              <div className="mb-1 flex items-center justify-between text-xs text-slate-400">
-                <span>{lang === "ar" ? "جارٍ الرفع..." : "Uploading..."}</span>
-                <span>{progress}%</span>
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-[#1a2434]">
-                <div
-                  className="h-full bg-gradient-to-r from-cyan-500 to-blue-600 transition-all duration-300"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-            </div>
-          )}
+          {uploading && <UploadProgressBar progress={progress} lang={lang} />}
         </div>
 
         {/* Footer */}
@@ -608,7 +694,7 @@ function UploadModal({ lang, onClose, onUploaded, getUploadUrl, createReference 
           </Button>
           <Button
             onClick={handleUpload}
-            disabled={uploading || !file || !title.trim()}
+            disabled={uploadDisabled}
             className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-600"
           >
             {uploading ? (

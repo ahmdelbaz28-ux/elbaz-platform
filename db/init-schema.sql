@@ -342,7 +342,7 @@ CREATE TABLE IF NOT EXISTS `supportTickets` (
   `userId`    BIGINT UNSIGNED        NOT NULL,
   `subject`   VARCHAR(500)           NOT NULL,
   `message`   TEXT                   NOT NULL,
-  `category`  VARCHAR(100)           NOT NULL DEFAULT 'general',
+  `category`  VARCHAR(100)           NOT NULL DEFAULT 'general', -- NOSONAR — 'general' is a domain value used as DEFAULT across 3 audit-style tables; SQL has no constant-injection mechanism, and replacing it with a session var would break schema portability
   `status`    VARCHAR(50)            NOT NULL DEFAULT 'open',
   `priority`  VARCHAR(20)            NOT NULL DEFAULT 'medium',
   `createdAt` TIMESTAMP              NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -4,6 +4,100 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { trpc } from "@/providers/trpc";
 import { Search, X, FileBox, HelpCircle, BookOpen } from "lucide-react";
 
+// ─── Helpers extracted to keep GlobalSearch below cognitive-complexity cap (S3776) ───
+function formatCoursePrice(course: { isPremium?: boolean; price?: number | string }, lang: "ar" | "en"): string {
+  if (course.isPremium) return `${course.price} EGP`;
+  return lang === "ar" ? "مجاني" : "Free";
+}
+
+interface CourseHit { id: string | number; slug: string; titleAr?: string; titleEn?: string; level?: string; isPremium?: boolean; price?: number | string }
+interface ReferenceHit { id: string | number; title: string; fileName: string }
+interface FaqHit { id: string | number; questionAr?: string; questionEn?: string; answerAr?: string; answerEn?: string }
+
+function CourseResults({ courses, lang, onPick }: {
+  readonly courses: CourseHit[];
+  readonly lang: "ar" | "en";
+  readonly onPick: (link: string) => void;
+}) {
+  if (courses.length === 0) return null;
+  return (
+    <div className="mb-2">
+      <p className="px-3 py-1.5 text-[10px] font-semibold uppercase text-slate-600">
+        {lang === "ar" ? "الكورسات" : "Courses"}
+      </p>
+      {courses.map((c) => (
+        <button
+          key={c.id}
+          onClick={() => onPick(`/courses/${c.slug}`)}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-[#111827] transition-colors"
+        >
+          <BookOpen className="h-4 w-4 flex-shrink-0 text-cyan-400" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-[#e8f0fe] truncate">{lang === "ar" ? c.titleAr : c.titleEn}</p>
+            <p className="text-xs text-slate-500">{c.level} • {formatCoursePrice(c, lang)}</p>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ReferenceResults({ references, lang, onPick }: {
+  readonly references: ReferenceHit[];
+  readonly lang: "ar" | "en";
+  readonly onPick: (link: string) => void;
+}) {
+  if (references.length === 0) return null;
+  return (
+    <div className="mb-2">
+      <p className="px-3 py-1.5 text-[10px] font-semibold uppercase text-slate-600">
+        {lang === "ar" ? "المراجع" : "References"}
+      </p>
+      {references.map((r) => (
+        <button
+          key={r.id}
+          onClick={() => onPick(`/references`)}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-[#111827] transition-colors"
+        >
+          <FileBox className="h-4 w-4 flex-shrink-0 text-violet-400" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-[#e8f0fe] truncate">{r.title}</p>
+            <p className="text-xs text-slate-500 truncate">{r.fileName}</p>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function FaqResults({ faqs, lang, onPick }: {
+  readonly faqs: FaqHit[];
+  readonly lang: "ar" | "en";
+  readonly onPick: (link: string) => void;
+}) {
+  if (faqs.length === 0) return null;
+  return (
+    <div className="mb-2">
+      <p className="px-3 py-1.5 text-[10px] font-semibold uppercase text-slate-600">
+        {lang === "ar" ? "الأسئلة الشائعة" : "FAQ"}
+      </p>
+      {faqs.map((f) => (
+        <button
+          key={f.id}
+          onClick={() => onPick(`/faq`)}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-[#111827] transition-colors"
+        >
+          <HelpCircle className="h-4 w-4 flex-shrink-0 text-yellow-400" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-[#e8f0fe] truncate">{lang === "ar" ? f.questionAr : f.questionEn}</p>
+            <p className="text-xs text-slate-500 truncate">{lang === "ar" ? f.answerAr : f.answerEn}</p>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function GlobalSearch() {
   const { lang } = useTranslation();
   const navigate = useNavigate();
@@ -52,10 +146,7 @@ export default function GlobalSearch() {
     return () => document.removeEventListener("mousedown", handler);
   }, [isOpen]);
 
-  const totalResults = useMemo(() => {
-    if (!data) return 0;
-    return data.total;
-  }, [data]);
+  const totalResults = useMemo(() => (data ? data.total : 0), [data]);
 
   const handleResultClick = (_type: string, link: string) => {
     navigate(link);
@@ -77,6 +168,9 @@ export default function GlobalSearch() {
     );
   }
 
+  const hasResults = data && totalResults > 0;
+  const showDropdown = query.length >= 2 && data;
+
   return (
     <div ref={containerRef} className="relative">
       <div className="flex items-center gap-2 rounded-lg border border-cyan-500/30 bg-[#0d1521] px-3 py-2">
@@ -96,79 +190,17 @@ export default function GlobalSearch() {
       </div>
 
       {/* Results dropdown */}
-      {query.length >= 2 && data && (
+      {showDropdown && (
         <div className="absolute top-full mt-2 w-full min-w-[400px] rounded-xl border border-[#1e2d3d] bg-[#0d1521] shadow-2xl shadow-black/50 max-h-[70vh] overflow-y-auto z-[100]">
-          {totalResults === 0 ? (
+          {!hasResults ? (
             <div className="p-6 text-center text-sm text-slate-500">
               {lang === "ar" ? "لا توجد نتائج" : "No results found"}
             </div>
           ) : (
             <div className="p-2">
-              {/* Courses */}
-              {data.courses.length > 0 && (
-                <div className="mb-2">
-                  <p className="px-3 py-1.5 text-[10px] font-semibold uppercase text-slate-600">
-                    {lang === "ar" ? "الكورسات" : "Courses"}
-                  </p>
-                  {data.courses.map((c: any) => (
-                    <button
-                      key={c.id}
-                      onClick={() => handleResultClick("course", `/courses/${c.slug}`)}
-                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-[#111827] transition-colors"
-                    >
-                      <BookOpen className="h-4 w-4 flex-shrink-0 text-cyan-400" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-[#e8f0fe] truncate">{lang === "ar" ? c.titleAr : c.titleEn}</p>
-                        <p className="text-xs text-slate-500">{c.level} • {c.isPremium ? `${c.price} EGP` : (lang === "ar" ? "مجاني" : "Free")}</p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* References */}
-              {data.references.length > 0 && (
-                <div className="mb-2">
-                  <p className="px-3 py-1.5 text-[10px] font-semibold uppercase text-slate-600">
-                    {lang === "ar" ? "المراجع" : "References"}
-                  </p>
-                  {data.references.map((r: any) => (
-                    <button
-                      key={r.id}
-                      onClick={() => handleResultClick("reference", `/references`)}
-                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-[#111827] transition-colors"
-                    >
-                      <FileBox className="h-4 w-4 flex-shrink-0 text-violet-400" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-[#e8f0fe] truncate">{r.title}</p>
-                        <p className="text-xs text-slate-500 truncate">{r.fileName}</p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* FAQ */}
-              {data.faqs.length > 0 && (
-                <div className="mb-2">
-                  <p className="px-3 py-1.5 text-[10px] font-semibold uppercase text-slate-600">
-                    {lang === "ar" ? "الأسئلة الشائعة" : "FAQ"}
-                  </p>
-                  {data.faqs.map((f: any) => (
-                    <button
-                      key={f.id}
-                      onClick={() => handleResultClick("faq", `/faq`)}
-                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-[#111827] transition-colors"
-                    >
-                      <HelpCircle className="h-4 w-4 flex-shrink-0 text-yellow-400" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-[#e8f0fe] truncate">{lang === "ar" ? f.questionAr : f.questionEn}</p>
-                        <p className="text-xs text-slate-500 truncate">{lang === "ar" ? f.answerAr : f.answerEn}</p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
+              <CourseResults courses={data.courses as CourseHit[]} lang={lang} onPick={(link) => handleResultClick("course", link)} />
+              <ReferenceResults references={data.references as ReferenceHit[]} lang={lang} onPick={(link) => handleResultClick("reference", link)} />
+              <FaqResults faqs={data.faqs as FaqHit[]} lang={lang} onPick={(link) => handleResultClick("faq", link)} />
 
               <div className="border-t border-[#1e2d3d] pt-2 px-3 py-1.5 text-[10px] text-slate-600">
                 {totalResults} {lang === "ar" ? "نتيجة" : "results"}

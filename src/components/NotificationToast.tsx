@@ -58,18 +58,20 @@ function ToastItem({
   const [exiting, setExiting] = useState(false);
   const isRTL = lang === "ar";
 
+  // Declare dismiss handler before useEffect so it can be referenced safely
+  // inside the auto-dismiss timeout (React Compiler / no-use-before-define).
+  const handleDismiss = useCallback(() => {
+    setExiting(true);
+    setTimeout(() => onDismiss(toast.id), 300);
+  }, [toast.id, onDismiss]);
+
   useEffect(() => {
     requestAnimationFrame(() => setVisible(true));
 
     const duration = toast.duration || 5000;
     const timer = setTimeout(() => handleDismiss(), duration);
     return () => clearTimeout(timer);
-  }, [toast.id, toast.duration]);
-
-  const handleDismiss = useCallback(() => {
-    setExiting(true);
-    setTimeout(() => onDismiss(toast.id), 300);
-  }, [toast.id, onDismiss]);
+  }, [toast.id, toast.duration, handleDismiss]);
 
   return (
     <div

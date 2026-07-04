@@ -10,6 +10,7 @@
  *   - update: Admin mutation — update reference file metadata
  *   - delete: Admin mutation — delete reference file (DB record + R2 object)
  */
+import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { desc, eq, sql, and, or, like } from "drizzle-orm";
 import { createRouter, publicQuery, publicMutation, adminMutation } from "./middleware";
@@ -88,11 +89,12 @@ export const referencesRouter = createRouter({
       }
 
       // Generate unique object key: references/<timestamp>-<random>.<ext>
+      // Use crypto.randomBytes (CSPRNG) instead of Math.random() — S2245.
       const ext = input.fileName.includes(".")
         ? input.fileName.split(".").pop()!.toLowerCase()
         : "bin";
       const timestamp = Date.now();
-      const random = Math.random().toString(36).slice(2, 10);
+      const random = randomBytes(6).toString("hex");
       const objectKey = `references/${timestamp}-${random}.${ext}`;
 
       const uploadUrl = await generateR2UploadUrl(objectKey, input.fileType, 300); // 5 min expiry
