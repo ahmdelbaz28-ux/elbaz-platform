@@ -1,11 +1,11 @@
 {
-  "id": "e3ae7da0-e565-4e89-a6ff-d1fc57c2fc55",
+  "id": "4783ab07-b429-4125-9329-5d197b098723",
   "version": "3.0",
   "name": "Support Page",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "ba56f1ba-637e-4cf6-a816-9bcec8f2d26d",
+      "id": "8a6b70f5-1c8d-47e9-b1f8-58a8411ccad0",
       "name": "Support Loads",
       "commands": [
         {
@@ -28,13 +28,13 @@
   ],
   "suites": [
     {
-      "id": "b435d87b-3860-40cf-9a83-72940c841ddc",
+      "id": "a4647493-7d5b-4efb-9132-bd6dbbf70708",
       "name": "Support Page Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "ba56f1ba-637e-4cf6-a816-9bcec8f2d26d"
+        "8a6b70f5-1c8d-47e9-b1f8-58a8411ccad0"
       ]
     }
   ],

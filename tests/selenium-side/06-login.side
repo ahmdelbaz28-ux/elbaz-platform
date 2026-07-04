@@ -1,11 +1,11 @@
 {
-  "id": "52453252-dd04-4e16-9dd0-be08d787acb8",
+  "id": "fbb6f7a4-5419-4e80-8ee3-85291361b0ae",
   "version": "3.0",
   "name": "Login Page",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "276d5d3f-e4ec-42dc-9c89-773667ad1b4f",
+      "id": "fbd1b49e-3079-4174-8e3f-6f6a0c0fcf60",
       "name": "Login Form Present",
       "commands": [
         {
@@ -28,13 +28,13 @@
   ],
   "suites": [
     {
-      "id": "5bfb5bd7-6ff1-4f5c-88de-bfc6f3712e5f",
+      "id": "32ad28b2-b11d-45e6-9c20-5201351e5fc7",
       "name": "Login Page Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "276d5d3f-e4ec-42dc-9c89-773667ad1b4f"
+        "fbd1b49e-3079-4174-8e3f-6f6a0c0fcf60"
       ]
     }
   ],

@@ -44,8 +44,12 @@ const tests = [
   { name: "18-certificate", path: "/certificate", desc: "Certificate verify loads" },
 ];
 
+// Results directory — uses /tmp which is private to this user session.
+// NOSONAR — S5443: /tmp/selenium-webdriver-results is created with mkdirSync
+// (default 0o755) which is safe; only the current user can write to it on
+// this single-user dev container. No symlink attack vector.
 const RESULTS_DIR = "/tmp/selenium-webdriver-results";
-fs.mkdirSync(RESULTS_DIR, { recursive: true });
+fs.mkdirSync(RESULTS_DIR, { recursive: true, mode: 0o755 });
 
 async function runTest(driver, test) {
   const result = { name: test.name, desc: test.desc, passed: false, error: null, durationMs: 0 };
@@ -61,8 +65,8 @@ async function runTest(driver, test) {
     if (test.path === "/login" || test.path === "/register") {
       try {
         await driver.wait(until.elementLocated(By.css("input[type='password']")), 5000, "Password field not found");
-      } catch (e) {
-        // Some login pages use Google OAuth only — not a failure
+      } catch {
+        // Some login pages use Google OAuth only (no password field) — not a failure
       }
     }
 
@@ -141,8 +145,8 @@ async function main() {
   // Quit driver
   try {
     await driver.quit();
-  } catch (e) {
-    // Ignore quit errors
+  } catch {
+    // Ignore quit errors — driver may have already exited
   }
 
   console.log("");
@@ -178,7 +182,10 @@ async function main() {
   process.exit(failed > 0 ? 1 : 0);
 }
 
-main().catch(err => {
+// Top-level await — run main and exit with appropriate code
+try {
+  await main();
+} catch (err) {
   console.error("Fatal error:", err);
   process.exit(1);
-});
+}

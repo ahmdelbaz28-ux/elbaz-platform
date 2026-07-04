@@ -1,11 +1,11 @@
 {
-  "id": "10f69ce6-744e-44d4-bfa7-cc9dd1362cfd",
+  "id": "09e847c7-b3f3-42e0-8faa-d60749e73b75",
   "version": "3.0",
   "name": "Certificate Verify",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "4dc3757a-34c2-4881-ba7b-2e6a7327f38f",
+      "id": "b47118d1-a5de-42fd-98bf-3cf8a9499d19",
       "name": "Certificate Verify Loads",
       "commands": [
         {
@@ -28,13 +28,13 @@
   ],
   "suites": [
     {
-      "id": "1471e363-b9bf-43a6-9ce9-b9ed58205456",
+      "id": "f76f8e85-bc2b-46f3-95f3-9ba7e329d1e0",
       "name": "Certificate Verify Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "4dc3757a-34c2-4881-ba7b-2e6a7327f38f"
+        "b47118d1-a5de-42fd-98bf-3cf8a9499d19"
       ]
     }
   ],

@@ -1,11 +1,11 @@
 {
-  "id": "cf3d48b8-bd24-48d9-95bd-e22d6cd74683",
+  "id": "6acd0f1b-0653-4cf4-b1e0-c074688d9001",
   "version": "3.0",
   "name": "tRPC Ping",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "260798c9-27b8-4a8a-91fc-7b7496ff634c",
+      "id": "5f71bc25-2b0c-4c10-b82e-dd366f08d6e9",
       "name": "tRPC ping Returns OK",
       "commands": [
         {
@@ -28,13 +28,13 @@
   ],
   "suites": [
     {
-      "id": "3191e6bf-7bf6-4725-b27f-86ab976fa473",
+      "id": "d08fbbc5-f1ac-4c7b-b948-3bccd97e139d",
       "name": "tRPC Ping Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "260798c9-27b8-4a8a-91fc-7b7496ff634c"
+        "5f71bc25-2b0c-4c10-b82e-dd366f08d6e9"
       ]
     }
   ],

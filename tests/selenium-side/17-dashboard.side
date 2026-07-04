@@ -1,11 +1,11 @@
 {
-  "id": "822c5256-6e94-424c-a90f-53b6121484d6",
+  "id": "098b9112-b872-4ce5-8836-8b1b67354e1d",
   "version": "3.0",
   "name": "Dashboard (auth gate)",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "cedf55d3-8a68-490a-8593-855727eb779f",
+      "id": "ded4c57b-08ab-444d-b9bf-62ca42b3f6d1",
       "name": "Dashboard Loads",
       "commands": [
         {
@@ -28,13 +28,13 @@
   ],
   "suites": [
     {
-      "id": "981d23ca-398b-4233-9e5e-03286dd1c69c",
+      "id": "e03ed8f0-f0e6-4a44-a911-b82b95bb5162",
       "name": "Dashboard (auth gate) Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "cedf55d3-8a68-490a-8593-855727eb779f"
+        "ded4c57b-08ab-444d-b9bf-62ca42b3f6d1"
       ]
     }
   ],

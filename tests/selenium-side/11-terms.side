@@ -1,11 +1,11 @@
 {
-  "id": "437615b0-1582-40b9-a082-64c535b088be",
+  "id": "a88d5fe5-61e6-4053-9744-a9e285ffb85d",
   "version": "3.0",
   "name": "Terms of Service",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "5ed7509b-46b9-4e79-87a6-3be37b742384",
+      "id": "3696f428-efa9-4371-9bbc-d5a904c6246c",
       "name": "Terms Loads",
       "commands": [
         {
@@ -28,13 +28,13 @@
   ],
   "suites": [
     {
-      "id": "01b573f6-0e3b-4c72-9f24-9b8bdd676027",
+      "id": "4663d285-5d90-448d-98bd-8fc27cb289b5",
       "name": "Terms of Service Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "5ed7509b-46b9-4e79-87a6-3be37b742384"
+        "3696f428-efa9-4371-9bbc-d5a904c6246c"
       ]
     }
   ],

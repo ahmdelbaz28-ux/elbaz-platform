@@ -1,11 +1,11 @@
 {
-  "id": "c66f0d58-8fd7-4095-808c-1f9e6ad58701",
+  "id": "b34f5afe-7248-4a77-89e7-dbd75966d103",
   "version": "3.0",
   "name": "Home Page",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "75401149-26e8-4a5b-8b90-5e22d87cb944",
+      "id": "c134fc5e-0324-4164-b335-0888724b0f64",
       "name": "Home Loads",
       "commands": [
         {
@@ -28,13 +28,13 @@
   ],
   "suites": [
     {
-      "id": "1765c925-1ac3-43c4-ba01-5620f3c5a2e9",
+      "id": "fcd6bf5a-3316-459e-87ee-190d15ac1869",
       "name": "Home Page Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "75401149-26e8-4a5b-8b90-5e22d87cb944"
+        "c134fc5e-0324-4164-b335-0888724b0f64"
       ]
     }
   ],

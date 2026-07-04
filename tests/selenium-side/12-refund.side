@@ -1,11 +1,11 @@
 {
-  "id": "2a852c3f-d004-44d3-a72b-e7cff0f3c9ad",
+  "id": "e1e3f279-40fc-4b29-a979-d919db889454",
   "version": "3.0",
   "name": "Refund Policy",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "bc9d98ab-64e9-43c9-a201-e235f68eda0e",
+      "id": "52143cf8-69a2-4d97-8df6-340980f92e0d",
       "name": "Refund Loads",
       "commands": [
         {
@@ -28,13 +28,13 @@
   ],
   "suites": [
     {
-      "id": "b599f246-cb2c-4c9f-b855-82f60e0e9e28",
+      "id": "2e4b7663-2665-4dca-8e34-7744594116de",
       "name": "Refund Policy Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "bc9d98ab-64e9-43c9-a201-e235f68eda0e"
+        "52143cf8-69a2-4d97-8df6-340980f92e0d"
       ]
     }
   ],

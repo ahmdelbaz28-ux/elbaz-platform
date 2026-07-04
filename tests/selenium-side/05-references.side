@@ -1,11 +1,11 @@
 {
-  "id": "6e072a9d-c649-42da-b986-920f28332039",
+  "id": "b5ff575e-d436-414e-a95f-152d6b1cf787",
   "version": "3.0",
   "name": "References Page",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "d2397497-efd4-46bc-8948-cbc377c0f6ad",
+      "id": "9aa22ece-99a4-4c4b-8553-031f6254da99",
       "name": "References Loads",
       "commands": [
         {
@@ -28,13 +28,13 @@
   ],
   "suites": [
     {
-      "id": "38e48140-1f14-40c4-a38d-87157028e3d1",
+      "id": "7d1752c9-891d-4a10-8555-eba814d53f73",
       "name": "References Page Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "d2397497-efd4-46bc-8948-cbc377c0f6ad"
+        "9aa22ece-99a4-4c4b-8553-031f6254da99"
       ]
     }
   ],

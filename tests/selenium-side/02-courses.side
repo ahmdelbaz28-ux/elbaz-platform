@@ -1,11 +1,11 @@
 {
-  "id": "4c5997ee-d971-4c2e-90de-ca27be193e10",
+  "id": "6bc22673-edef-4cf8-9900-de460d32d6d5",
   "version": "3.0",
   "name": "Courses Page",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "96b85dc3-5fbb-4d36-ae8b-0490d35f06d2",
+      "id": "12cec04d-1354-4396-ab19-9cfcc38e5c6f",
       "name": "Courses Loads",
       "commands": [
         {
@@ -28,13 +28,13 @@
   ],
   "suites": [
     {
-      "id": "91bf666f-6fdc-426d-9043-5f0c2d8063bb",
+      "id": "5c1b3203-c009-4cf3-9df1-af2ea7bb911a",
       "name": "Courses Page Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "96b85dc3-5fbb-4d36-ae8b-0490d35f06d2"
+        "12cec04d-1354-4396-ab19-9cfcc38e5c6f"
       ]
     }
   ],
