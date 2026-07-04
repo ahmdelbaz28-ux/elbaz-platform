@@ -53,7 +53,7 @@ chatbotRouter.post("/", async (c) => {
     if (!checkChatbotRateLimit(ip)) {
       return c.json({ success: false, error: "Rate limit exceeded. Please try again later." }, 429);
     }
-    const body = await c.req.json<{ messages: { role: string; content: string }[]; language?: string; chatId?: string }>();
+    const body = await c.req.json<{ messages: { role: string; content: string }[]; language?: string; chatId?: string; mode?: "thinking" | "instant" }>();
 
     if (!body.messages || !Array.isArray(body.messages) || body.messages.length === 0) {
       return c.json({ success: false, error: "Messages array is required" }, 400);
@@ -65,6 +65,7 @@ chatbotRouter.post("/", async (c) => {
     const result = await getChatResponse({
       messages,
       language: body.language,
+      mode: body.mode,
     });
 
     if (result.success) {
@@ -183,7 +184,7 @@ chatbotRouter.post("/stream", async (c) => {
       clearTimeout(timeoutId);
       return c.json({ success: false, error: "Rate limit exceeded. Please try again later." }, 429);
     }
-    const body = await c.req.json<{ messages: { role: string; content: string }[]; language?: string; chatId?: string }>();
+    const body = await c.req.json<{ messages: { role: string; content: string }[]; language?: string; chatId?: string; mode?: "thinking" | "instant" }>();
 
     if (!body.messages || !Array.isArray(body.messages) || body.messages.length === 0) {
       clearTimeout(timeoutId);
@@ -196,6 +197,7 @@ chatbotRouter.post("/stream", async (c) => {
     const streamPromise = getStreamResponse({
       messages,
       language: body.language,
+      mode: body.mode,
     });
 
     // Race between stream response and timeout
