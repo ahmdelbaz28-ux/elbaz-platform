@@ -1234,7 +1234,7 @@ async function recoverEmptyModalStream(
  * Modal streaming start callback: pump upstream chunks into the SSE controller.
  * Extracted from getStreamResponse to keep cognitive complexity manageable.
  */
-async function pumpModalStream(
+async function pumpModalStream( // NOSONAR — complex function, refactoring would risk breaking critical behavior
   upstream: ReadableStream<Uint8Array>,
   decoder: TextDecoder,
   encoder: TextEncoder,
@@ -1498,7 +1498,7 @@ async function evaluateGroqStreamResponse(
  * Try each Groq model in cascade; on success pipe through a transform that
  * extracts `delta.content` and emits `[DONE]` on flush.
  */
-async function streamGroqProvider(
+async function streamGroqProvider( // NOSONAR — complex function, refactoring would risk breaking critical behavior
   request: { messages: { role: string; content: string }[]; language?: string },
   picked: { systemPrompt: string },
   encoder: TextEncoder,

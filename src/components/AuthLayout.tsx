@@ -234,7 +234,7 @@ function AuthLayoutContent({
             </DropdownMenu>
           </SidebarFooter>
         </Sidebar>
-        <div
+        <div // NOSONAR — S6819/S6845/S6847: interactive resize handle; using <div> with ARIA + keyboard handler instead of <button> to preserve pixel-perfect resize cursor and prevent default button styling
           className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/20 transition-colors ${isCollapsed ? "hidden" : ""}`}
           role="separator"
           aria-orientation="vertical"

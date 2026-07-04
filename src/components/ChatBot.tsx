@@ -86,7 +86,7 @@ function renderMarkdown(text: string): string {
   // cannot backtrack super-linearly.
   // NOSONAR — S8786: regex is intentionally bounded; `[\s\S]+?` is the
   // canonical non-backtracking pattern for delimited multiline captures.
-  html = html.replaceAll(/```(\w*)\n?([\s\S]+?)```/g, function(_match, _lang, code) {
+  html = html.replaceAll(/```(\w*)\n?([\s\S]+?)```/g, function(_match, _lang, code) { // NOSONAR — regex backtracking acceptable for bounded input
     return '<pre class="bg-black/40 border border-[#1e2d3d] rounded-lg p-2.5 my-1.5 overflow-x-auto text-[12px] leading-5 text-[#b4c6e0]"><code>' + code.trim() + '</code></pre>';
   });
 
@@ -197,7 +197,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
       // NOSONAR — S1874: fallback for non-secure contexts (HTTP) where
       // navigator.clipboard is unavailable. The primary path uses the
       // async Clipboard API above.
-      document.execCommand("copy");
+      document.execCommand("copy"); // NOSONAR — deprecated API used as fallback for non-secure contexts
       ta.remove();
       setCopiedId(msgId);
     });
@@ -504,10 +504,8 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   const innerSeenCount = lastSeenCount > 0
     ? messages.slice(0, lastSeenCount).filter(function(m) { return m.role === "assistant" && !m.isError; }).length
     : 0;
-  const unreadCount = !isOpen
-    ? Math.max(0, messages.filter(function(m) { return m.role === "assistant" && !m.isError; }).length -
-        innerSeenCount)
-    : 0;
+  const unreadCount = isOpen ? 0 : Math.max(0, messages.filter(function(m) { return m.role === "assistant" && !m.isError; }).length -
+        innerSeenCount);
 
   // ─── Streaming model display ───
   const streamingModelName = activeModel ? getShortModelName(activeModel) : "";

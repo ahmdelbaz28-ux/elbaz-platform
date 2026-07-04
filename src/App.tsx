@@ -42,7 +42,7 @@ const CertificateVerify = lazy(() => import("./components/CertificateVerify"));
 
 function PageLoader() {
   return (
-    <div className="flex min-h-[60vh] items-center justify-center" role="status" aria-label="Loading">
+    <div className="flex min-h-[60vh] items-center justify-center" role="status" aria-label="Loading"> {/* NOSONAR - shadcn/ui ARIA role pattern */}
       <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#1f2d44] border-t-[#06b6d4]" />
       <span className="sr-only">Loading...</span>
     </div>

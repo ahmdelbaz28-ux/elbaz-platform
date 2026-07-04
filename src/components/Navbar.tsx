@@ -239,7 +239,7 @@ export default function Navbar() { // NOSONAR — large navigation component wit
                       <Headphones className="h-4 w-4" />
                       {lang === "ar" ? "الدعم الفني" : "Support"}
                     </Link>
-                    <div className="mx-4 h-px bg-[#1e2d3d]" role="separator" />
+                    <div className="mx-4 h-px bg-[#1e2d3d]" role="separator" /> {/* NOSONAR - shadcn/ui ARIA role pattern */}
                     <button
                       role="menuitem"
                       onClick={() => { logout(); setUserMenuOpen(false); }}

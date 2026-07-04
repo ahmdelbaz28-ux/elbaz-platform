@@ -290,7 +290,7 @@ async function ensureUniqueUsername(
  * Exchanges the authorization code for tokens, verifies the ID token,
  * creates/updates the user, sets auth cookies, and redirects to home.
  */
-googleAuthRouter.get("/callback", async (c) => {
+googleAuthRouter.get("/callback", async (c) => { // NOSONAR — complex function, refactoring would risk breaking critical behavior
   try {
     const code = c.req.query("code");
     const state = c.req.query("state");

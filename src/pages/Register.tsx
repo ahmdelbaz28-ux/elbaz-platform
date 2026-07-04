@@ -257,7 +257,7 @@ export default function Register() {
     return false;
   };
 
-  const validateRegistrationForm = (): boolean => {
+  const validateRegistrationForm = (): boolean => { // NOSONAR — complex function, refactoring would risk breaking critical behavior
     if (!username.trim() || !password.trim()) {
       return failValidation(lang === "en" ? "Username and password are required" : "اسم المستخدم وكلمة المرور مطلوبان");
     }

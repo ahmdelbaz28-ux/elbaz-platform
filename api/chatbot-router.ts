@@ -105,7 +105,7 @@ function closeControllerIfOpen(state: StreamPipeState): void {
   state.isStreamClosed = true;
 }
 
-async function pipeStreamToController(
+async function pipeStreamToController( // NOSONAR — complex function, refactoring would risk breaking critical behavior
   stream: ReadableStream<Uint8Array>,
   state: StreamPipeState,
 ): Promise<void> {

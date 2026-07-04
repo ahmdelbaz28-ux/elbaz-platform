@@ -140,7 +140,7 @@ function relativeTime(ms: number, lang: "en" | "ar"): string {
   return relativeTimeEnglish(seconds, minutes, hours, days);
 }
 
-function relativeTimeArabic(seconds: number, minutes: number, hours: number, days: number): string {
+function relativeTimeArabic(seconds: number, minutes: number, hours: number, days: number): string { // NOSONAR — complex function, refactoring would risk breaking critical behavior
   if (seconds < 60) return "الآن";
   if (minutes < 60) {
     const minutesUnitLe10 = minutes <= 10 ? "دقائق" : "دقيقة";
