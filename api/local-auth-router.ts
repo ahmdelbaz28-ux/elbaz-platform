@@ -11,6 +11,7 @@ import { initiatePasswordReset, completePasswordReset, initiateEmailVerification
 // ✅ SECURITY FIX: Import auth cookie helpers for httpOnly cookie auth
 import { serializeAuthCookie, serializeAuthFlagCookie, clearAuthCookies } from "./lib/cookies";
 import { logger } from "./lib/logger";
+import { getClientIpFromHeaders } from "./lib/client-ip";
 
 // ─── Dummy hash for constant-time login ───────────────────────────────────────
 // To prevent username enumeration via response timing, when a login attempt
@@ -48,14 +49,6 @@ interface AuthUser {
 interface AuthResponse {
   user: AuthUser;
   token?: string;
-}
-
-// ─── Helper: extract client IP from common proxy headers ───
-function getClientIpFromHeaders(headers: Headers): string {
-  const cfIp = headers.get("cf-connecting-ip");
-  const forwarded = headers.get("x-forwarded-for");
-  const realIp = headers.get("x-real-ip");
-  return (cfIp || realIp || (forwarded ? forwarded.split(",").shift()?.trim() : "unknown")) ?? "unknown";
 }
 
 // ─── Helper: convert a registration DB error into the appropriate TRPCError ───
@@ -245,10 +238,7 @@ export const localAuthRouter = createRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const cfIp = ctx.req.headers.get("cf-connecting-ip");
-      const forwarded = ctx.req.headers.get("x-forwarded-for");
-      const realIp = ctx.req.headers.get("x-real-ip");
-      const ip = (cfIp || realIp || (forwarded ? forwarded.split(",").shift()?.trim() : "unknown")) ?? "unknown";
+      const ip = getClientIpFromHeaders(ctx.req.headers);
 
       try {
         await checkRateLimit(ip, "login");
@@ -327,10 +317,7 @@ export const localAuthRouter = createRouter({
       });
 
       // ✅ Clear rate limit on success
-      const cfIp2 = ctx.req.headers.get("cf-connecting-ip");
-      const forwarded2 = ctx.req.headers.get("x-forwarded-for");
-      const realIp2 = ctx.req.headers.get("x-real-ip");
-      const loginIp = (cfIp2 || realIp2 || (forwarded2 ? forwarded2.split(",").shift()?.trim() : "unknown")) ?? "unknown";
+      const loginIp = getClientIpFromHeaders(ctx.req.headers);
       // clearRateLimit() is synchronous; no `await` needed (SonarCloud S4123).
       clearRateLimit(loginIp, "login");
 
@@ -456,10 +443,7 @@ export const localAuthRouter = createRouter({
     .input(z.object({ email: z.string().email() }))
     .mutation(async ({ ctx, input }) => {
       // ✅ FIXED: Use dedicated rate limit for forgotPassword (not shared with register)
-      const cfIp = ctx.req.headers.get("cf-connecting-ip");
-      const forwarded = ctx.req.headers.get("x-forwarded-for");
-      const realIp = ctx.req.headers.get("x-real-ip");
-      const ip = (cfIp || realIp || (forwarded ? forwarded.split(",").shift()?.trim() : "unknown")) ?? "unknown";
+      const ip = getClientIpFromHeaders(ctx.req.headers);
       await checkRateLimit(ip, "forgotPassword");
 
       const result = await initiatePasswordReset(input.email, ctx.req.headers);
@@ -481,10 +465,7 @@ export const localAuthRouter = createRouter({
     }))
     .mutation(async ({ ctx, input }) => {
       // ✅ FIXED: Add rate limiting to resetPassword to prevent brute-force
-      const cfIp = ctx.req.headers.get("cf-connecting-ip");
-      const forwarded = ctx.req.headers.get("x-forwarded-for");
-      const realIp = ctx.req.headers.get("x-real-ip");
-      const ip = (cfIp || realIp || (forwarded ? forwarded.split(",").shift()?.trim() : "unknown")) ?? "unknown";
+      const ip = getClientIpFromHeaders(ctx.req.headers);
       await checkRateLimit(ip, "resetPassword");
 
       const result = await completePasswordReset(
@@ -547,10 +528,7 @@ export const localAuthRouter = createRouter({
 
   // Step 1: Authenticated user requests a verification email
   sendVerificationEmail: authedQuery.mutation(async ({ ctx }) => {
-    const cfIp = ctx.req.headers.get("cf-connecting-ip");
-    const forwarded = ctx.req.headers.get("x-forwarded-for");
-    const realIp = ctx.req.headers.get("x-real-ip");
-    const ip = (cfIp || realIp || (forwarded ? forwarded.split(",").shift()?.trim() : "unknown")) ?? "unknown";
+    const ip = getClientIpFromHeaders(ctx.req.headers);
     await checkRateLimit(ip, "sendVerification");
 
     const result = await initiateEmailVerification(ctx.user.id, undefined, ctx.req.headers);
@@ -566,10 +544,7 @@ export const localAuthRouter = createRouter({
     }))
     .mutation(async ({ ctx, input }) => {
       // ✅ SECURITY FIX: Rate limit to prevent brute-force token guessing
-      const cfIp = ctx.req.headers.get("cf-connecting-ip");
-      const forwarded = ctx.req.headers.get("x-forwarded-for");
-      const realIp = ctx.req.headers.get("x-real-ip");
-      const ip = (cfIp || realIp || (forwarded ? forwarded.split(",").shift()?.trim() : "unknown")) ?? "unknown";
+      const ip = getClientIpFromHeaders(ctx.req.headers);
       await checkRateLimit(ip, "verifyEmail");
 
       const result = await completeEmailVerification(input.userId, input.token);

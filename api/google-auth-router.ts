@@ -23,6 +23,7 @@ import { serializeAuthCookie, serializeAuthFlagCookie } from "./lib/cookies";
 import { env } from "./lib/env";
 import { checkRateLimit } from "./lib/rate-limiter";
 import { logger } from "./lib/logger";
+import { getClientIpFromHono as getClientIp } from "./lib/client-ip";
 
 const googleAuthRouter = new Hono();
 
@@ -412,14 +413,6 @@ googleAuthRouter.get("/callback", async (c) => { // NOSONAR — complex function
     return c.redirect("/?google_error=callback_error");
   }
 });
-
-// ─── Helper: extract client IP from common proxy headers ───
-function getClientIp(c: any): string {
-  const cfIp = c.req.header("cf-connecting-ip");
-  const forwarded = c.req.header("x-forwarded-for");
-  const realIp = c.req.header("x-real-ip");
-  return (cfIp || realIp || (forwarded ? forwarded.split(",").shift()?.trim() : "unknown")) ?? "unknown";
-}
 
 // ─── Helper: build a public user response object from a user record ───
 function buildUserResponseData(user: { id: number; username: string; name: string | null; email: string | null; role: string; avatar: string | null }) {

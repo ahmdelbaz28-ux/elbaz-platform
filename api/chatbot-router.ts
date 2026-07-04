@@ -8,6 +8,7 @@
 
 import { Hono } from "hono";
 import { getChatResponse, getStreamResponse } from "./lib/chatbot.js";
+import { getClientIpFromHono as getChatbotIp } from "./lib/client-ip";
 // Removed checkRateLimit
 
 const chatbotRouter = new Hono();
@@ -16,13 +17,6 @@ const chatbotRouter = new Hono();
 const chatbotRequests = new Map<string, { count: number; resetAt: number }>();
 const CHATBOT_RATE_LIMIT = 20; // requests per window per IP
 const CHATBOT_WINDOW_MS = 60_000; // 1 minute window
-
-function getChatbotIp(c: any): string {
-  return c.req.header("cf-connecting-ip")
-    || c.req.header("x-real-ip")
-    || (c.req.header("x-forwarded-for")?.split(",").shift()?.trim())
-    || "unknown";
-}
 
 function checkChatbotRateLimit(ip: string): boolean {
   const now = Date.now();
