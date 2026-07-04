@@ -60,7 +60,39 @@ class CacheAsideStrategy<T> {
     return this.cache.invalidateTags(tags ?? this.tags);
   }
 
-  private async fetchAndCache(cacheKey: string, ...args: unknown[]): Promise<T | null> {
+  /**
+   * If SWR is enabled and a stale cache entry exists, schedule a background
+   * refresh and return the stale entry. Returns undefined otherwise.
+   */
+  private maybeServeStale(cacheKey: string, ...args: unknown[]): T | undefined {
+    if (!this.staleWhileRevalidate) return undefined;
+    const staleEntry = this.cache.get<T>(cacheKey);
+    if (staleEntry === undefined) return undefined;
+    Promise.resolve(this.queryFn(...args)).then((fresh) => {
+      if (fresh !== null && fresh !== undefined) this.cache.set(cacheKey, fresh, { ttl: this.ttl, tags: this.tags });
+    }).catch(() => {});
+    return staleEntry;
+  }
+
+  /**
+   * Decide what to do after a fetch attempt failed: serve stale (on first
+   * retry only), rethrow if we've exhausted retries, or return undefined to
+   * signal "try again". Extracted from fetchWithRetry to keep cognitive
+   * complexity manageable.
+   *
+   * Returns `T | undefined` if the caller should keep retrying (with the
+   * stale value if applicable), or throws `error` if retries are exhausted.
+   */
+  private handleRetryFailure(cacheKey: string, args: unknown[], retries: number, error: unknown): T | undefined {
+    if (retries === 1) {
+      const stale = this.maybeServeStale(cacheKey, ...args);
+      if (stale !== undefined) return stale;
+    }
+    if (retries > this.maxRetries) throw error;
+    return undefined;
+  }
+
+  private async fetchWithRetry(cacheKey: string, ...args: unknown[]): Promise<T | null> {
     let retries = 0;
     while (retries <= this.maxRetries) {
       try {
@@ -71,20 +103,16 @@ class CacheAsideStrategy<T> {
         return result;
       } catch (error) {
         retries++;
-        if (this.staleWhileRevalidate && retries === 1) {
-          const staleEntry = this.cache.get<T>(cacheKey);
-          if (staleEntry !== undefined) {
-            Promise.resolve(this.queryFn(...args)).then((fresh) => {
-              if (fresh !== null && fresh !== undefined) this.cache.set(cacheKey, fresh, { ttl: this.ttl, tags: this.tags });
-            }).catch(() => {});
-            return staleEntry;
-          }
-        }
-        if (retries > this.maxRetries) throw error;
+        const fallback = this.handleRetryFailure(cacheKey, args, retries, error);
+        if (fallback !== undefined) return fallback;
         await new Promise((r) => setTimeout(r, Math.min(100 * Math.pow(2, retries), 1000)));
       }
     }
     return null;
+  }
+
+  private async fetchAndCache(cacheKey: string, ...args: unknown[]): Promise<T | null> {
+    return this.fetchWithRetry(cacheKey, ...args);
   }
 }
 

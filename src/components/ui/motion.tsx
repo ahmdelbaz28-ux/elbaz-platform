@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils";
 
 // ✅ Re-export cn for backward compatibility (4 files import cn from motion.tsx)
 export { cn };
-
 // ─── Animation Variants ───
 
 export const FADE_UP_ANIMATION_VARIANTS = {
@@ -168,7 +167,7 @@ export function TiltCard({ children, className, ...props }: React.HTMLAttributes
  * Magnetic Attraction Effect
  * Elements feel "alive" by subtly gravitating towards the cursor.
  */
-export function Magnetic({ children, ...props }: { children: React.ReactElement }) {
+export function Magnetic({ children, ...props }: { readonly children: React.ReactElement }) {
   const ref = React.useRef<HTMLDivElement>(null);
   const [position, setPosition] = React.useState({ x: 0, y: 0 });
 
@@ -205,10 +204,10 @@ export function Magnetic({ children, ...props }: { children: React.ReactElement 
  * Theme-aware: adapts intensity and color based on light/dark mode.
  */
 export function NeonGlow({ children, className, color = "#06b6d4", intensity = 1, ...props }: { 
-  children: React.ReactNode; 
-  className?: string; 
-  color?: string;
-  intensity?: number;
+  readonly children: React.ReactNode; 
+  readonly className?: string; 
+  readonly color?: string;
+  readonly intensity?: number;
 }) {
   return (
     <motion.div

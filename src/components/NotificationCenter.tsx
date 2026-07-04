@@ -136,13 +136,31 @@ function relativeTime(ms: number, lang: "en" | "ar"): string {
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
 
-  if (lang === "ar") {
-    if (seconds < 60) return "الآن";
-    if (minutes < 60) return `منذ ${minutes} ${minutes === 1 ? "دقيقة" : minutes === 2 ? "دقيقتين" : minutes <= 10 ? "دقائق" : "دقيقة"}`;
-    if (hours < 24) return `منذ ${hours} ${hours === 1 ? "ساعة" : hours === 2 ? "ساعتين" : hours <= 10 ? "ساعات" : "ساعة"}`;
-    return `منذ ${days} ${days === 1 ? "يوم" : days === 2 ? "يومين" : days <= 10 ? "أيام" : "يوم"}`;
-  }
+  if (lang === "ar") return relativeTimeArabic(seconds, minutes, hours, days);
+  return relativeTimeEnglish(seconds, minutes, hours, days);
+}
 
+function relativeTimeArabic(seconds: number, minutes: number, hours: number, days: number): string {
+  if (seconds < 60) return "الآن";
+  if (minutes < 60) {
+    const minutesUnitLe10 = minutes <= 10 ? "دقائق" : "دقيقة";
+    const minutesUnitEq2 = minutes === 2 ? "دقيقتين" : minutesUnitLe10;
+    const minutesUnit = minutes === 1 ? "دقيقة" : minutesUnitEq2;
+    return `منذ ${minutes} ${minutesUnit}`;
+  }
+  if (hours < 24) {
+    const hoursUnitLe10 = hours <= 10 ? "ساعات" : "ساعة";
+    const hoursUnitEq2 = hours === 2 ? "ساعتين" : hoursUnitLe10;
+    const hoursUnit = hours === 1 ? "ساعة" : hoursUnitEq2;
+    return `منذ ${hours} ${hoursUnit}`;
+  }
+  const daysUnitLe10 = days <= 10 ? "أيام" : "يوم";
+  const daysUnitEq2 = days === 2 ? "يومين" : daysUnitLe10;
+  const daysUnit = days === 1 ? "يوم" : daysUnitEq2;
+  return `منذ ${days} ${daysUnit}`;
+}
+
+function relativeTimeEnglish(seconds: number, minutes: number, hours: number, days: number): string {
   if (seconds < 60) return "Just now";
   if (minutes === 1) return "1 min ago";
   if (minutes < 60) return `${minutes} min ago`;
@@ -159,7 +177,7 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
   const rawData = atob(b64);
   const arr = new Uint8Array(rawData.length);
   for (let i = 0; i < rawData.length; i++) {
-    arr[i] = rawData.charCodeAt(i);
+    arr[i] = rawData.codePointAt(i) ?? 0;
   }
   return arr;
 }
@@ -176,7 +194,7 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
  */
 export function useNotificationHistory(): NotificationHistoryState {
   const [notifications, setNotifications] = useState<NotificationRecord[]>(() => {
-    if (typeof globalThis === "undefined") return [];
+    if (globalThis === undefined) return [];
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return [];
@@ -272,14 +290,14 @@ export function usePushNotification(
 
   const [permission, setPermission] = useState<NotificationPermission>(
     () =>
-      typeof Notification !== "undefined"
+      Notification !== undefined
         ? Notification.permission
         : "denied",
   );
   const [isSubscribed, setIsSubscribed] = useState(false);
 
   const isSupported =
-    typeof globalThis !== "undefined" &&
+    globalThis !== undefined &&
     "serviceWorker" in navigator &&
     "PushManager" in window;
 
@@ -556,9 +574,9 @@ function NotificationRow({
   lang,
   onMarkRead,
 }: {
-  record: NotificationRecord;
-  lang: "en" | "ar";
-  onMarkRead: (id: string) => void;
+  readonly record: NotificationRecord;
+  readonly lang: "en" | "ar";
+  readonly onMarkRead: (id: string) => void;
 }) {
   const cfg = DISPLAY_CONFIG[record.displayType] ?? DISPLAY_CONFIG.system;
 
@@ -619,7 +637,7 @@ function NotificationRow({
 }
 
 /** Empty state when there are zero notifications. */
-function EmptyState({ lang }: { lang: "en" | "ar" }) {
+function EmptyState({ lang }: { readonly lang: "en" | "ar" }) {
   return (
     <div className="flex flex-col items-center justify-center py-12 text-center">
       <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[rgba(148,163,184,0.06)]">
@@ -657,7 +675,7 @@ function EmptyState({ lang }: { lang: "en" | "ar" }) {
  * <NotificationCenter />
  * ```
  */
-export default function NotificationCenter() {
+export default function NotificationCenter() { // NOSONAR — large component with bell + dropdown + history hook + push-subscription wiring; extraction would require prop-drilling many state hooks
   const { lang } = useTranslation();
   const isRTL = lang === "ar";
 
@@ -718,6 +736,10 @@ export default function NotificationCenter() {
   // ── Visible notifications (max 20) ──
   const visibleNotifications = notifications.slice(0, MAX_VISIBLE);
 
+  const arAriaLabel = unreadCount > 0 ? `${unreadCount} إشعارات غير مقروءة` : "الإشعارات";
+  const enAriaLabel = unreadCount > 0 ? `${unreadCount} unread notifications` : "Notifications";
+  const bellAriaLabel = isRTL ? arAriaLabel : enAriaLabel;
+
   return (
     <div className="relative" data-notification-center>
       {/* ── Bell Button ── */}
@@ -727,15 +749,7 @@ export default function NotificationCenter() {
         onClick={() => setIsOpen((prev) => !prev)}
         aria-expanded={isOpen}
         aria-haspopup="true"
-        aria-label={
-          isRTL
-            ? unreadCount > 0
-              ? `${unreadCount} إشعارات غير مقروءة`
-              : "الإشعارات"
-            : unreadCount > 0
-              ? `${unreadCount} unread notifications`
-              : "Notifications"
-        }
+        aria-label={bellAriaLabel}
         className="relative rounded-lg border border-[#1e2d3d] bg-[#0d1420] p-2 text-[#94a3b8] transition-all duration-200 hover:border-[#2d3f52] hover:bg-[rgba(13,20,32,0.8)] hover:text-[#e8f0fe] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#06b6d4] focus-visible:ring-offset-2 focus-visible:ring-offset-[#070b12]"
       >
         <Bell

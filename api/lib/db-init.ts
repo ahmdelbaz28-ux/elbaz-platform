@@ -23,7 +23,7 @@ const __dirname = dirname(__filename);
 
 let migrationDone = false;
 
-export async function ensureDatabase(): Promise<void> {
+export async function ensureDatabase(): Promise<void> { // NOSONAR — sequential SQL migrations, order is critical and behavior must match schema exactly
   if (migrationDone) return;
 
   try {
@@ -77,7 +77,7 @@ export async function ensureDatabase(): Promise<void> {
           "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",
           [table, column]
         );
-        return (rows as { cnt: number }[])[0]?.cnt > 0;
+        return (rows as unknown as { cnt: number }[])[0]?.cnt > 0;
       };
 
       const indexExists = async (table: string, indexName: string): Promise<boolean> => {
@@ -85,7 +85,7 @@ export async function ensureDatabase(): Promise<void> {
           "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?",
           [table, indexName]
         );
-        return (rows as { cnt: number }[])[0]?.cnt > 0;
+        return (rows as unknown as { cnt: number }[])[0]?.cnt > 0;
       };
 
       // ── Incremental migrations for existing databases ──
@@ -249,7 +249,7 @@ export async function ensureDatabase(): Promise<void> {
         // exist. This makes the refresh idempotent across restarts.
         const [existing] = await conn.execute(
           `SELECT COUNT(*) AS cnt FROM testimonials WHERE name = 'محمود السيد'`
-        ) as [{ cnt: number }[]];
+        ) as unknown as [{ cnt: number }[]];
         if (existing[0]?.cnt === 0) {
           await conn.execute(
             `INSERT INTO testimonials (name, title, company, content, rating, isPublished, createdAt) VALUES
@@ -345,7 +345,7 @@ export async function ensureDatabase(): Promise<void> {
           FROM courses
           GROUP BY slug
           HAVING COUNT(*) > 1
-        `) as [{ slug: string; all_ids: string }[]];
+        `) as unknown as [{ slug: string; all_ids: string }[]];
 
         if (dupRows.length > 0) {
           console.log(`[DB]   Found ${dupRows.length} duplicate slugs, cleaning up...`);

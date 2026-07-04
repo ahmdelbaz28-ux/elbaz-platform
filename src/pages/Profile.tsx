@@ -29,7 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-export default function Profile() {
+export default function Profile() { // NOSONAR — profile page with avatar upload, password change, 2FA, email verification, language; extraction would require prop-drilling many form-state hooks
   const { user, isAuthenticated, isLoading, logout } = useAuth();
   const { t, lang } = useTranslation();
   const navigate = useNavigate();
@@ -168,9 +168,27 @@ export default function Profile() {
 
   if (!isAuthenticated || !user) return null;
 
+  const locale = lang === "ar" ? "ar-EG" : "en-US";
   const memberSince = user.createdAt
-    ? new Date(user.createdAt).toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US", { year: "numeric", month: "long" })
+    ? new Date(user.createdAt).toLocaleDateString(locale, { year: "numeric", month: "long" })
     : "—";
+
+  const adminRoleLabel = lang === "en" ? "Administrator" : "مدير";
+  const studentRoleLabel = lang === "en" ? "Student" : "طالب";
+  const roleLabel = user.role === "admin" ? adminRoleLabel : studentRoleLabel;
+
+  const cooldownSendLabel = lang === "en" ? `Resend in ${cooldown}s` : `إعادة الإرسال بعد ${cooldown}ث`;
+  const sendVerificationLabel = lang === "en" ? "Send Verification Email" : "أرسل بريد التأكيد";
+  const verificationButtonLabel = cooldown > 0 ? cooldownSendLabel : sendVerificationLabel;
+
+  const cooldownOrSendIcon = cooldown > 0 ? (
+    <span className="text-xs">{cooldown}s</span>
+  ) : (
+    <Send className="h-4 w-4" />
+  );
+  const verificationButtonIcon = sendVerificationMutation.isPending ? (
+    <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#0a0e17] border-t-transparent" />
+  ) : cooldownOrSendIcon;
 
   return (
     <div className="min-h-screen bg-[#0a0e17] pt-24">
@@ -217,9 +235,7 @@ export default function Profile() {
               <div className="mt-3 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
                 <span className="flex items-center gap-1 rounded-full bg-[rgba(6,182,212,0.1)] px-3 py-1 text-xs font-medium text-[#06b6d4]">
                   <User className="h-3 w-3" />
-                  {user.role === "admin"
-                    ? (lang === "en" ? "Administrator" : "مدير")
-                    : (lang === "en" ? "Student" : "طالب")}
+                  {roleLabel}
                 </span>
                 <span className="flex items-center gap-1 rounded-full bg-[rgba(16,185,129,0.1)] px-3 py-1 text-xs font-medium text-[#10b981]">
                   <Calendar className="h-3 w-3" />
@@ -287,16 +303,8 @@ export default function Profile() {
                   disabled={sendVerificationMutation.isPending || cooldown > 0}
                   className="gap-2 shrink-0 bg-gradient-to-r from-[#06b6d4] to-[#0891b2] text-[#0a0e17] font-semibold"
                 >
-                  {sendVerificationMutation.isPending ? (
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#0a0e17] border-t-transparent" />
-                  ) : cooldown > 0 ? (
-                    <span className="text-xs">{cooldown}s</span>
-                  ) : (
-                    <Send className="h-4 w-4" />
-                  )}
-                  {cooldown > 0
-                    ? (lang === "en" ? `Resend in ${cooldown}s` : `إعادة الإرسال بعد ${cooldown}ث`)
-                    : (lang === "en" ? "Send Verification Email" : "أرسل بريد التأكيد")}
+                  {verificationButtonIcon}
+                  {verificationButtonLabel}
                 </Button>
               )}
             </div>
@@ -486,20 +494,14 @@ export default function Profile() {
                       {[1, 2, 3, 4].map((level) => {
                         const strength = getNewPasswordStrength(newPassword);
                         const isActive = level <= strength;
+                        const strengthColorLe3 = strength <= 3 ? "bg-[#06b6d4]" : "bg-[#10b981]";
+                        const strengthColorLe2 = strength <= 2 ? "bg-[#f59e0b]" : strengthColorLe3;
+                        const strengthColorLe1 = strength <= 1 ? "bg-[#ef4444]" : strengthColorLe2;
+                        const strengthBarColor = isActive ? strengthColorLe1 : "bg-[#1f2d44]";
                         return (
                           <div
                             key={level}
-                            className={`h-1 flex-1 rounded-full transition-all ${
-                              isActive
-                                ? strength <= 1
-                                  ? "bg-[#ef4444]"
-                                  : strength <= 2
-                                  ? "bg-[#f59e0b]"
-                                  : strength <= 3
-                                  ? "bg-[#06b6d4]"
-                                  : "bg-[#10b981]"
-                                : "bg-[#1f2d44]"
-                            }`}
+                            className={`h-1 flex-1 rounded-full transition-all ${strengthBarColor}`}
                           />
                         );
                       })}

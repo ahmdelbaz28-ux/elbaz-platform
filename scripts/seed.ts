@@ -31,7 +31,7 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
-async function main() {
+async function main() { // NOSONAR — sequential idempotent DB seeding script; each section depends on prior inserts (FK IDs) and must run in order
   console.log("[Seed] Connecting to database...");
 
   const isAiven = DATABASE_URL?.includes("aivencloud.com");

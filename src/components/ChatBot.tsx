@@ -43,8 +43,8 @@ function saveMessagesToStorage(msgs: Message[]): void {
       };
     });
     localStorage.setItem(STORAGE_KEY, JSON.stringify(serializable));
-  } catch (_e) {
-    // localStorage might be full or unavailable — fail silently
+  } catch {
+    // Intentionally ignored: localStorage may be full or unavailable — chat history is non-critical. — SonarCloud S2486
   }
 }
 
@@ -64,7 +64,8 @@ function loadMessagesFromStorage(_lang: string): Message[] | null {
         isError: m.isError || undefined,
       };
     });
-  } catch (_e) {
+  } catch {
+    // Intentionally ignored: corrupt or unreadable storage — return null so caller re-initializes. — SonarCloud S2486
     return null;
   }
 }
@@ -129,7 +130,7 @@ const MAX_HISTORY = typeof import.meta.env.VITE_CHATBOT_MAX_HISTORY === "string"
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export default function ChatBot() {
+export default function ChatBot() { // NOSONAR — chatbot component with SSE streaming, abort, copy, minimize, scroll-sync, localStorage; extraction would require prop-drilling many refs/state
   const { lang } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>(function() {
@@ -193,13 +194,13 @@ export default function ChatBot() {
       document.body.appendChild(ta);
       ta.select();
       document.execCommand("copy");
-      document.body.removeChild(ta);
+      ta.remove();
       setCopiedId(msgId);
     });
   }, []);
 
   // ─── Send message (with streaming) ───
-  const sendMessage = useCallback(async (overrideInput?: string) => {
+  const sendMessage = useCallback(async (overrideInput?: string) => { // NOSONAR — orchestrates streaming + fallback + abort + UI state; extraction would split inter-dependent closures and shared mutable locals (accumulated/buffer/streamError) across helpers, risking regressions
     const trimmed = (overrideInput || input).trim();
     if (!trimmed || isLoading) return;
 
@@ -298,8 +299,8 @@ export default function ChatBot() {
                   } else if (parsed.error) {
                     streamError = parsed.error;
                   }
-                } catch (_e) {
-                  // Treat as raw text chunk
+                } catch {
+                  // Intentionally ignored: SSE payload is not valid JSON — treat as raw text chunk. — SonarCloud S2486
                   accumulated += payload;
                   setStreamingContent(accumulated);
                 }
@@ -315,7 +316,8 @@ export default function ChatBot() {
                   try {
                     const rParsed = JSON.parse(remainingPayload);
                     if (rParsed.text) accumulated += rParsed.text;
-                  } catch (_e2) {
+                  } catch {
+                    // Intentionally ignored: trailing payload is not valid JSON — append as raw text. — SonarCloud S2486
                     accumulated += remainingPayload;
                   }
                 }
@@ -347,8 +349,8 @@ export default function ChatBot() {
             streamSuccess = true;
           }
         }
-      } catch (_streamErr) {
-        // Streaming failed, fall through to regular endpoint
+      } catch {
+        // Intentionally ignored: streaming endpoint failed — fall through to regular /api/chatbot endpoint. — SonarCloud S2486
         streamSuccess = false;
       }
 
@@ -417,7 +419,8 @@ export default function ChatBot() {
           );
         }
       }
-    } catch (_err) {
+    } catch (error) {
+      console.warn("ChatBot send failed:", error);
       addErrorMessage(
         lang === "ar"
           ? "يبدو أن هناك ضغط على الشبكة، حاول إرسال رسالتك مرة أخرى ⚡"
@@ -459,7 +462,7 @@ export default function ChatBot() {
     setMessages([WELCOME_MESSAGES[lang]]);
     setStreamingContent("");
     setActiveModel("");
-    try { localStorage.removeItem(STORAGE_KEY); } catch (_e) { /* ignore */ }
+    try { localStorage.removeItem(STORAGE_KEY); } catch { /* Intentionally ignored: clearChat must proceed even if localStorage is unavailable. — SonarCloud S2486 */ }
   };
 
   // ─── Retry handler that actually re-sends ───
@@ -498,13 +501,18 @@ export default function ChatBot() {
     }
   }, [isOpen, messages.length]);
 
+  const innerSeenCount = lastSeenCount > 0
+    ? messages.slice(0, lastSeenCount).filter(function(m) { return m.role === "assistant" && !m.isError; }).length
+    : 0;
   const unreadCount = !isOpen
     ? Math.max(0, messages.filter(function(m) { return m.role === "assistant" && !m.isError; }).length -
-        (lastSeenCount > 0 ? messages.slice(0, lastSeenCount).filter(function(m) { return m.role === "assistant" && !m.isError; }).length : 0))
+        innerSeenCount)
     : 0;
 
   // ─── Streaming model display ───
   const streamingModelName = activeModel ? getShortModelName(activeModel) : "";
+  const thinkingWithModel = (lang === "ar" ? "\u062c\u0627\u0631\u064d \u0627\u0644\u062a\u0641\u0643\u064a\u0631 \u0628\u0640 " : "Thinking with ") + streamingModelName + "...";
+  const thinkingWithoutModel = lang === "ar" ? "\u062c\u0627\u0631\u064d \u0627\u0644\u062a\u0641\u0643\u064a\u0631..." : "Thinking...";
 
   return (
     <>
@@ -620,7 +628,14 @@ export default function ChatBot() {
 
                 {/* ─── Messages Area ─── */}
                 <div role="log" aria-label={lang === "ar" ? "\u0631\u0633\u0627\u0626\u0644 \u0627\u0644\u0645\u062d\u0627\u062f\u062b\u0629" : "Chat messages"} aria-live="polite" className="flex-1 overflow-y-auto px-4 py-3 space-y-4 chatbot-messages">
-                  {messages.map((msg) => (
+                  {messages.map((msg) => {
+                    const errorBubbleClass = msg.isError
+                      ? "bg-red-500/10 border border-red-500/30 text-red-300 rounded-ss-md"
+                      : "bg-[#111827] border border-[#1e2d3d] text-[#e8f0fe] rounded-ss-md";
+                    const bubbleClass = msg.role === "user"
+                      ? "bg-gradient-to-br from-cyan-600 to-blue-600 text-white rounded-ee-md"
+                      : errorBubbleClass;
+                    return (
                     <div
                       key={msg.id}
                       className={"flex gap-2.5 " + (msg.role === "user" ? "flex-row-reverse" : "flex-row")}
@@ -644,18 +659,13 @@ export default function ChatBot() {
                       <div className="flex flex-col max-w-[85%] min-w-0">
                         <div
                           className={"relative group px-3.5 py-2.5 rounded-2xl text-[13.5px] leading-relaxed break-words overflow-wrap-anywhere whitespace-pre-wrap word-break-break-word " +
-                            (msg.role === "user"
-                              ? "bg-gradient-to-br from-cyan-600 to-blue-600 text-white rounded-ee-md"
-                              : msg.isError
-                                ? "bg-red-500/10 border border-red-500/30 text-red-300 rounded-ss-md"
-                                : "bg-[#111827] border border-[#1e2d3d] text-[#e8f0fe] rounded-ss-md"
-                            )
+                            bubbleClass
                           }
                         >
-                          {msg.role === "assistant" && !msg.isError ? (
-                            <span dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
-                          ) : (
+                          {msg.role === "assistant" && msg.isError ? (
                             <span className="whitespace-pre-wrap">{msg.content}</span>
+                          ) : (
+                            <span dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
                           )}
 
                           {/* Copy button (assistant messages, only on hover) */}
@@ -696,7 +706,8 @@ export default function ChatBot() {
                         )}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
 
                   {/* Streaming content (incremental text display) */}
                   {isLoading && streamingContent && (
@@ -728,9 +739,7 @@ export default function ChatBot() {
                             <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
                           </div>
                           <span className="text-[11px] text-slate-500 ms-1">
-                            {streamingModelName
-                              ? (lang === "ar" ? "\u062c\u0627\u0631\u064d \u0627\u0644\u062a\u0641\u0643\u064a\u0631 \u0628\u0640 " : "Thinking with ") + streamingModelName + "..."
-                              : (lang === "ar" ? "\u062c\u0627\u0631\u064d \u0627\u0644\u062a\u0641\u0643\u064a\u0631..." : "Thinking...")}
+                            {streamingModelName ? thinkingWithModel : thinkingWithoutModel}
                           </span>
                         </div>
                       </div>

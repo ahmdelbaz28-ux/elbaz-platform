@@ -1,12 +1,12 @@
 import type { FetchCreateContextFnOptions } from "@trpc/server/adapters/fetch";
 import type { User } from "@db/schema";
-import { verifyToken, createToken, getTokenRemainingSeconds } from "./lib/jwt";
+import { verifyToken, createToken, getTokenRemainingSeconds, type TokenPayload } from "./lib/jwt";
 import { getDb } from "./queries/connection";
 import { users } from "@db/schema";
 import { eq } from "drizzle-orm";
-import { AUTH_COOKIE_NAME } from "./lib/cookies";
+import { AUTH_COOKIE_NAME, serializeAuthCookie, serializeAuthFlagCookie } from './lib/cookies';
 import { parse } from "cookie";
-import { serializeAuthCookie, serializeAuthFlagCookie } from "./lib/cookies";
+
 import { logger } from "./lib/logger";
 
 // ✅ SECURITY FIX: Define a SafeUser type that excludes passwordHash
@@ -50,6 +50,73 @@ setInterval(() => {
 // after 24h (the JWT TTL). No frontend changes required.
 const SLIDING_REFRESH_THRESHOLD_S = 2 * 60 * 60; // 2 hours
 
+function extractAuthToken(req: Request): string | undefined {
+  // 1. Try httpOnly cookie (preferred — XSS cannot steal httpOnly cookies)
+  const cookieHeader = req.headers.get("cookie") || "";
+  const parsedCookies = parse(cookieHeader);
+  if (parsedCookies[AUTH_COOKIE_NAME]) {
+    return parsedCookies[AUTH_COOKIE_NAME];
+  }
+  // 2. Fallback to Authorization header (for backward compatibility during migration)
+  return req.headers.get("x-auth-token")
+    || req.headers.get("authorization")?.replaceAll("Bearer ", "");
+}
+
+async function maybeRefreshToken(
+  payload: TokenPayload,
+  reqHeaders: Headers,
+  resHeaders: Headers,
+): Promise<void> {
+  const remaining = getTokenRemainingSeconds(payload);
+  if (remaining <= 0 || remaining >= SLIDING_REFRESH_THRESHOLD_S) return;
+  const newToken = await createToken({
+    userId: payload.userId,
+    username: payload.username,
+    role: payload.role,
+    tokenVersion: payload.tokenVersion,
+  });
+  resHeaders.append("set-cookie", serializeAuthCookie(reqHeaders, newToken));
+  resHeaders.append("set-cookie", serializeAuthFlagCookie(reqHeaders));
+}
+
+function evictOldestCacheEntries(): void {
+  if (userCache.size < USER_CACHE_MAX_SIZE) return;
+  // Evict oldest 20% of entries (approximate LRU)
+  const keysToEvict = Array.from(userCache.keys()).slice(0, Math.floor(USER_CACHE_MAX_SIZE * 0.2));
+  for (const k of keysToEvict) {
+    userCache.delete(k);
+  }
+}
+
+async function loadUserFromDb(
+  payload: TokenPayload,
+  cacheKey: string,
+): Promise<SafeUser | null> {
+  const db = getDb();
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, payload.userId))
+    .limit(1);
+  if (!user) return null;
+
+  // ✅ SECURITY FIX: Verify tokenVersion to support token revocation
+  if (payload.tokenVersion !== undefined && payload.tokenVersion !== user.tokenVersion) {
+    // Token has been revoked — do not authenticate
+    return null;
+  }
+
+  // ✅ SECURITY FIX: Strip passwordHash before putting user in context
+  const { passwordHash: _ph, ...safeUser } = user;
+
+  evictOldestCacheEntries();
+  userCache.set(cacheKey, {
+    user: safeUser,
+    expiry: Date.now() + USER_CACHE_TTL_MS,
+  });
+  return safeUser;
+}
+
 export async function createContext(
   opts: FetchCreateContextFnOptions,
 ): Promise<TrpcContext> {
@@ -57,100 +124,33 @@ export async function createContext(
 
   // Try local auth token
   try {
-    // ✅ SECURITY FIX: Check httpOnly cookie first, then fallback to header
-    // Cookie-based auth is the primary method (XSS-safe)
-    let token: string | undefined;
+    const token = extractAuthToken(opts.req);
+    if (!token) return ctx;
 
-    // 1. Try httpOnly cookie (preferred — XSS cannot steal httpOnly cookies)
-    const cookieHeader = opts.req.headers.get("cookie") || "";
-    const parsedCookies = parse(cookieHeader);
-    if (parsedCookies[AUTH_COOKIE_NAME]) {
-      token = parsedCookies[AUTH_COOKIE_NAME];
+    const payload = await verifyToken(token);
+    if (!payload) return ctx;
+
+    // ✅ PERFORMANCE FIX: Check cache first to avoid DB query
+    const cacheKey = `${payload.userId}:${payload.tokenVersion}`;
+    const cached = userCache.get(cacheKey);
+    // Use `&&` instead of `?.` here because we need TypeScript to narrow
+    // `cached` to non-undefined inside the block (cached.expiry is then
+    // safely accessible). The `?.` form would leave `cached` as
+    // `T | undefined` and trip TS18048 on subsequent accesses.
+    // sonar:off[typescript:S6582] — see comment above.
+    if (cached && cached.expiry > Date.now()) {
+      ctx.user = cached.user;
+      // ✅ SLIDING SESSION: Check if token needs refresh even for cached users
+      await maybeRefreshToken(payload, opts.req.headers, ctx.resHeaders);
+      return ctx;
     }
 
-    // 2. Fallback to Authorization header (for backward compatibility during migration)
-    if (!token) {
-      token =
-        opts.req.headers.get("x-auth-token") ||
-        opts.req.headers.get("authorization")?.replaceAll("Bearer ", "");
-    }
-    if (token) {
-      const payload = await verifyToken(token);
-      if (payload) {
-        // ✅ PERFORMANCE FIX: Check cache first to avoid DB query
-        const cacheKey = `${payload.userId}:${payload.tokenVersion}`;
-        const cached = userCache.get(cacheKey);
-        // Use `&&` instead of `?.` here because we need TypeScript to narrow
-        // `cached` to non-undefined inside the block (cached.expiry is then
-        // safely accessible). The `?.` form would leave `cached` as
-        // `T | undefined` and trip TS18048 on subsequent accesses.
-        // sonar:off[typescript:S6582] — see comment above.
-        if (cached && cached.expiry > Date.now()) {
-          ctx.user = cached.user;
-          // ✅ SLIDING SESSION: Check if token needs refresh even for cached users
-          const remaining = getTokenRemainingSeconds(payload);
-          if (remaining > 0 && remaining < SLIDING_REFRESH_THRESHOLD_S) {
-            const newToken = await createToken({
-              userId: payload.userId,
-              username: payload.username,
-              role: payload.role,
-              tokenVersion: payload.tokenVersion,
-            });
-            ctx.resHeaders.append("set-cookie", serializeAuthCookie(opts.req.headers, newToken));
-            ctx.resHeaders.append("set-cookie", serializeAuthFlagCookie(opts.req.headers));
-          }
-          return ctx;
-        }
+    const safeUser = await loadUserFromDb(payload, cacheKey);
+    if (!safeUser) return ctx;
+    ctx.user = safeUser;
 
-        const db = getDb();
-        const [user] = await db
-          .select()
-          .from(users)
-          .where(eq(users.id, payload.userId))
-          .limit(1);
-        if (user) {
-          // ✅ SECURITY FIX: Verify tokenVersion to support token revocation
-          // If admin changed user's role or user changed password, tokenVersion
-          // in DB will be higher than in the JWT, invalidating the token
-          if (payload.tokenVersion !== undefined && payload.tokenVersion !== user.tokenVersion) {
-            // Token has been revoked — do not authenticate
-            return ctx;
-          }
-
-          // ✅ SECURITY FIX: Strip passwordHash before putting user in context
-          const { passwordHash: _ph, ...safeUser } = user;
-          ctx.user = safeUser;
-
-          // Store in cache for subsequent requests
-          // Enforce max size to prevent memory leak
-          if (userCache.size >= USER_CACHE_MAX_SIZE) {
-            // Evict oldest 20% of entries (approximate LRU)
-            const keysToEvict = Array.from(userCache.keys()).slice(0, Math.floor(USER_CACHE_MAX_SIZE * 0.2));
-            for (const k of keysToEvict) {
-              userCache.delete(k);
-            }
-          }
-          userCache.set(cacheKey, {
-            user: safeUser,
-            expiry: Date.now() + USER_CACHE_TTL_MS,
-          });
-
-          // ✅ SLIDING SESSION: Auto-refresh token if < 2h remaining
-          // This extends the session for active users without requiring re-login
-          const remaining = getTokenRemainingSeconds(payload);
-          if (remaining > 0 && remaining < SLIDING_REFRESH_THRESHOLD_S) {
-            const newToken = await createToken({
-              userId: payload.userId,
-              username: payload.username,
-              role: payload.role,
-              tokenVersion: payload.tokenVersion,
-            });
-            ctx.resHeaders.append("set-cookie", serializeAuthCookie(opts.req.headers, newToken));
-            ctx.resHeaders.append("set-cookie", serializeAuthFlagCookie(opts.req.headers));
-          }
-        }
-      }
-    }
+    // ✅ SLIDING SESSION: Auto-refresh token if < 2h remaining
+    await maybeRefreshToken(payload, opts.req.headers, ctx.resHeaders);
   } catch {
     // Authentication is optional
   }

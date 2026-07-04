@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
-function TicketThread({ ticketId, initialMessage }: { ticketId: number, initialMessage: string }) {
+function TicketThread({ ticketId, initialMessage }: { readonly ticketId: number, readonly initialMessage: string }) {
   const { t } = useTranslation();
   const utils = trpc.useUtils();
   const [replyText, setReplyText] = useState("");
@@ -152,6 +152,50 @@ export default function Support() {
     createMutation.mutate({ subject: subject.trim(), message: message.trim(), category, priority: "medium" });
   };
 
+  const ticketsContent = tickets?.length > 0 ? (
+    <div className="space-y-3">
+      {tickets.map((ticket: Ticket) => {
+        const statusColorResolved = ticket.status === "resolved" ? "bg-[rgba(6,182,212,0.15)] text-[#22d3ee]" : "bg-[#1a2233] text-[#64748b]";
+        const statusColorInProgress = ticket.status === "in_progress" ? "bg-[rgba(6,182,212,0.15)] text-[#06b6d4]" : statusColorResolved;
+        const ticketStatusColor = ticket.status === "open" ? "bg-[rgba(16,185,129,0.15)] text-[#10b981]" : statusColorInProgress;
+        return (
+          <div key={ticket.id} className="rounded-xl border border-[#1f2d44] bg-[#111827] p-5">
+            <button
+              onClick={() => setExpandedTicket(expandedTicket === ticket.id ? null : ticket.id)}
+              className="flex w-full items-start justify-between text-start"
+            >
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <span className={`rounded px-2 py-0.5 text-xs ${ticketStatusColor}`}>
+                    {ticket.status}
+                  </span>
+                  <span className="text-xs text-[#64748b]">{ticket.category}</span>
+                </div>
+                <h3 className="mt-2 font-medium text-[#f0f4f8]">{ticket.subject}</h3>
+                <p className="mt-1 text-sm text-[#94a3b8] line-clamp-2">{ticket.message}</p>
+              </div>
+              {expandedTicket === ticket.id ? (
+                <ChevronUp className="ml-3 h-5 w-5 text-[#64748b]" />
+              ) : (
+                <ChevronDown className="ml-3 h-5 w-5 text-[#64748b]" />
+              )}
+            </button>
+
+            {expandedTicket === ticket.id && (
+              <TicketThread ticketId={ticket.id} initialMessage={ticket.message} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  ) : (
+    <div className="rounded-xl border border-dashed border-[#1f2d44] bg-[#111827] py-16 text-center">
+      <Ticket className="mx-auto h-12 w-12 text-[#1f2d44]" />
+      <p className="mt-4 text-lg text-[#94a3b8]">{t("noTickets")}</p>
+      <p className="mt-1 text-sm text-[#64748b]">{t("createFirstTicket")}</p>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-[#0a0e17] pt-24">
       <div className="mx-auto max-w-4xl px-4 pb-20 lg:px-6">
@@ -242,49 +286,7 @@ export default function Support() {
             <div className="py-12 text-center">
               <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[#1f2d44] border-t-[#06b6d4]" />
             </div>
-           ) : tickets?.length > 0 ? (
-             <div className="space-y-3">
-               {tickets.map((ticket: Ticket) => (
-                <div key={ticket.id} className="rounded-xl border border-[#1f2d44] bg-[#111827] p-5">
-                  <button
-                    onClick={() => setExpandedTicket(expandedTicket === ticket.id ? null : ticket.id)}
-                    className="flex w-full items-start justify-between text-start"
-                  >
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className={`rounded px-2 py-0.5 text-xs ${
-                          ticket.status === "open" ? "bg-[rgba(16,185,129,0.15)] text-[#10b981]" :
-                          ticket.status === "in_progress" ? "bg-[rgba(6,182,212,0.15)] text-[#06b6d4]" :
-                          ticket.status === "resolved" ? "bg-[rgba(6,182,212,0.15)] text-[#22d3ee]" :
-                          "bg-[#1a2233] text-[#64748b]"
-                        }`}>
-                          {ticket.status}
-                        </span>
-                        <span className="text-xs text-[#64748b]">{ticket.category}</span>
-                      </div>
-                      <h3 className="mt-2 font-medium text-[#f0f4f8]">{ticket.subject}</h3>
-                      <p className="mt-1 text-sm text-[#94a3b8] line-clamp-2">{ticket.message}</p>
-                    </div>
-                    {expandedTicket === ticket.id ? (
-                      <ChevronUp className="ml-3 h-5 w-5 text-[#64748b]" />
-                    ) : (
-                      <ChevronDown className="ml-3 h-5 w-5 text-[#64748b]" />
-                    )}
-                  </button>
-
-                  {expandedTicket === ticket.id && (
-                    <TicketThread ticketId={ticket.id} initialMessage={ticket.message} />
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-xl border border-dashed border-[#1f2d44] bg-[#111827] py-16 text-center">
-              <Ticket className="mx-auto h-12 w-12 text-[#1f2d44]" />
-              <p className="mt-4 text-lg text-[#94a3b8]">{t("noTickets")}</p>
-              <p className="mt-1 text-sm text-[#64748b]">{t("createFirstTicket")}</p>
-            </div>
-          )}
+          ) : ticketsContent}
         </div>
       </div>
     </div>

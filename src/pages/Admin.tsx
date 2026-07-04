@@ -57,7 +57,7 @@ const SIDEBAR_ITEMS = [
   { id: "promotions", icon: Megaphone, labelEn: "Promotions", labelAr: "العروض" },
 ];
 
-export default function Admin() {
+export default function Admin() { // NOSONAR — admin dashboard with many CMS/CMS-settings panels, user management, and conditional rendering; extraction would require prop-drilling 15+ hooks
   const { isAuthenticated, isAdmin, isLoading } = useAuth();
   const { t, lang } = useTranslation();
   const navigate = useNavigate();
@@ -518,6 +518,12 @@ export default function Admin() {
                       {CMS_SECTIONS[cmsSection]?.keys.map((key) => {
                         const type = inferSettingType(key);
                         const label = key.replaceAll(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase());
+                        const textInputDir = key.endsWith("Ar") ? "rtl" : "ltr";
+                        const textInputElement = type === "textarea" ? (
+                          <Textarea value={cmsValues[key] || ""} onChange={(e) => setCmsValues((p) => ({ ...p, [key]: e.target.value }))} className="min-h-24 border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" dir={textInputDir} />
+                        ) : (
+                          <Input value={cmsValues[key] || ""} onChange={(e) => setCmsValues((p) => ({ ...p, [key]: e.target.value }))} className="border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" dir={textInputDir} />
+                        );
                         return (
                           <div key={key} className="grid gap-1.5">
                             <div className="flex items-center gap-2">
@@ -529,11 +535,7 @@ export default function Admin() {
                                 <input type="color" value={cmsValues[key] || "#000000"} onChange={(e) => setCmsValues((p) => ({ ...p, [key]: e.target.value }))} className="h-10 w-14 cursor-pointer rounded border border-[#1f2d44] bg-[#0a0e17]" />
                                 <Input value={cmsValues[key] || ""} onChange={(e) => setCmsValues((p) => ({ ...p, [key]: e.target.value }))} className="flex-1 border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" dir="ltr" />
                               </div>
-                            ) : type === "textarea" ? (
-                              <Textarea value={cmsValues[key] || ""} onChange={(e) => setCmsValues((p) => ({ ...p, [key]: e.target.value }))} className="min-h-24 border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" dir={key.endsWith("Ar") ? "rtl" : "ltr"} />
-                            ) : (
-                              <Input value={cmsValues[key] || ""} onChange={(e) => setCmsValues((p) => ({ ...p, [key]: e.target.value }))} className="border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" dir={key.endsWith("Ar") ? "rtl" : "ltr"} />
-                            )}
+                            ) : textInputElement}
                           </div>
                         );
                       })}

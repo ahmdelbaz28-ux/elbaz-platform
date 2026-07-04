@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { EngineeringModeToggle } from "@/components/ui/EngineeringMode";
 import ThemeToggle from "@/components/ThemeToggle";
 
-export default function Navbar() {
+export default function Navbar() { // NOSONAR — large navigation component with intertwined auth/admin/RTL logic and many JSX conditionals; extraction would require prop-drilling many hooks
   const { lang, setLang } = useTranslation();
   const { user, isAuthenticated, isAdmin, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);

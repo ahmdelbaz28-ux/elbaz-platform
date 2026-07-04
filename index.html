@@ -2,7 +2,7 @@
 <html lang="en" dir="ltr">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 
     <!-- ✅ CRITICAL: Force Dark Mode background IMMEDIATELY before any CSS/JS loads.
          This prevents any flash of white/light background (FOUC) during page load.
@@ -81,7 +81,7 @@
     <script>
       globalThis.addEventListener('error', function(e) {
         var msg = (e.message || "").toLowerCase();
-        var isChunkError = msg.indexOf('chunk') > -1 || msg.indexOf('loading') > -1;
+        var isChunkError = msg.includes('chunk') || msg.includes('loading');
         if (isChunkError && typeof globalThis.__nukeAndReload === 'function') {
           console.error('[Self-Healing] Asset failed to load. Triggering recovery...');
           globalThis.__nukeAndReload('asset_load_failure', 'automatic recovery');
@@ -110,7 +110,7 @@
          If no ID is configured, Clarity is not loaded. -->
     <script type="text/javascript">
       (function(){
-        var clarityId = (globalThis.__ENV__ && globalThis.__ENV__.CLARITY_PROJECT_ID) || "";
+        var clarityId = (globalThis.__ENV__?.CLARITY_PROJECT_ID) || "";
         if (!clarityId) return; // No Clarity ID configured — skip loading
         globalThis.clarity = globalThis.clarity || function(){(globalThis.clarity.q = globalThis.clarity.q || []).push(arguments)};
         var s = document.createElement("script");
@@ -191,7 +191,9 @@
           // chose 'light' via the theme toggle.
           var theme = saved === 'light' ? 'light' : 'dark';
           document.documentElement.dataset.theme = theme;
-        } catch(e) {
+        } catch {
+          // Intentionally ignored: localStorage may be unavailable in
+          // private-browsing / disabled-cookie modes — default to dark theme. — SonarCloud S2486
           document.documentElement.dataset.theme = 'dark';
         }
       })();

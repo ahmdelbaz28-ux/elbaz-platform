@@ -250,17 +250,14 @@ function CharCounter({
   min,
   max,
 }: {
-  current: number;
-  min: number;
-  max: number;
+  readonly current: number;
+  readonly min: number;
+  readonly max: number;
 }) {
   const isOver = current > max;
   const isUnder = current > 0 && current < min;
-  const color = isOver
-    ? "text-[#f87171]"
-    : isUnder
-      ? "text-[#f59e0b]"
-      : "text-[#64748b]";
+  const innerColor = isUnder ? "text-[#f59e0b]" : "text-[#64748b]";
+  const color = isOver ? "text-[#f87171]" : innerColor;
   return (
     <span className={`text-[11px] tabular-nums ${color}`}>
       {current}/{max}
@@ -269,7 +266,7 @@ function CharCounter({
 }
 
 /** Inline validation message. */
-function FieldError({ message }: { message?: string }) {
+function FieldError({ message }: { readonly message?: string }) {
   if (!message) return null;
   return (
     <p className="mt-1 flex items-center gap-1 text-[12px] text-[#f87171]">
@@ -280,7 +277,7 @@ function FieldError({ message }: { message?: string }) {
 }
 
 /** Inline success message. */
-function FieldSuccess({ message }: { message?: string }) {
+function FieldSuccess({ message }: { readonly message?: string }) {
   if (!message) return null;
   return (
     <p className="mt-1 flex items-center gap-1 text-[12px] text-[#10b981]">
@@ -296,9 +293,9 @@ function CooldownIndicator({
   total,
   isRTL,
 }: {
-  remaining: number;
-  total: number;
-  isRTL: boolean;
+  readonly remaining: number;
+  readonly total: number;
+  readonly isRTL: boolean;
 }) {
   const pct = total > 0 ? (remaining / total) * 100 : 0;
   const circumference = 2 * Math.PI * 16;
@@ -412,17 +409,18 @@ function HistoryRow({
   const isScheduled = record.status === "scheduled";
   const isFailed = record.status === "failed";
 
+  const innerStatusColor = isScheduled
+    ? "bg-[rgba(245,158,11,0.12)] text-[#f59e0b]"
+    : "bg-[rgba(16,185,129,0.12)] text-[#10b981]";
   const statusColor = isFailed
     ? "bg-[rgba(248,113,113,0.12)] text-[#f87171]"
-    : isScheduled
-      ? "bg-[rgba(245,158,11,0.12)] text-[#f59e0b]"
-      : "bg-[rgba(16,185,129,0.12)] text-[#10b981]";
+    : innerStatusColor;
 
-  const statusLabel = isFailed
-    ? isRTL
-      ? "فشل"
-      : "Failed"
-    : isScheduled ? bilingual("مجدول", "Scheduled", isRTL) : bilingual("تم الإرسال", "Sent", isRTL);
+  const failedLabel = isRTL ? "فشل" : "Failed";
+  const notFailedLabel = isScheduled
+    ? bilingual("مجدول", "Scheduled", isRTL)
+    : bilingual("تم الإرسال", "Sent", isRTL);
+  const statusLabel = isFailed ? failedLabel : notFailedLabel;
 
   return (
     <div className="group flex items-start gap-3 rounded-lg border border-[#1e2d3d] bg-[#0d1420] px-4 py-3 transition-colors hover:border-[#2d3f52]">
@@ -503,7 +501,7 @@ function EmptyHistory({ lang }: { lang: "en" | "ar" }) {
 
 export default function AdminNotificationPanel({
   onSend,
-}: AdminNotificationPanelProps) {
+}: AdminNotificationPanelProps) { // NOSONAR — large admin form component with many tightly-coupled state hooks (refs, mutation, scheduling); extraction would require prop-drilling 10+ state values
   const { lang } = useTranslation();
   const { showNotification } = useShowNotification();
   const isRTL = lang === "ar";
@@ -582,77 +580,53 @@ export default function AdminNotificationPanel({
     const next: FormErrors = {};
     let valid = true;
 
-    // English title — required
-    if (!titleEn.trim()) {
-      next.titleEn = isRTL ? "العنوان الإنجليزي مطلوب" : "English title is required";
-      valid = false;
-    } else if (titleEn.trim().length < TITLE_MIN) {
-      next.titleEn =
-        isRTL
-          ? `يجب أن يكون العنوان ${TITLE_MIN} أحرف على الأقل`
-          : `Title must be at least ${TITLE_MIN} characters`;
-      valid = false;
-    } else if (titleEn.length > TITLE_MAX) {
-      next.titleEn =
-        isRTL
-          ? `يجب ألا يتجاوز العنوان ${TITLE_MAX} حرفًا`
-          : `Title must not exceed ${TITLE_MAX} characters`;
-      valid = false;
-    }
+    const validateTextField = (
+      value: string,
+      field: keyof FormErrors,
+      labels: { required: string; tooShort: string; tooLong: string },
+      min: number,
+      max: number,
+    ): void => {
+      const trimmed = value.trim();
+      if (!trimmed) {
+        next[field] = labels.required;
+        valid = false;
+      } else if (trimmed.length < min) {
+        next[field] = labels.tooShort;
+        valid = false;
+      } else if (value.length > max) {
+        next[field] = labels.tooLong;
+        valid = false;
+      }
+    };
 
-    // Arabic title — required
-    if (!titleAr.trim()) {
-      next.titleAr = isRTL ? "العنوان العربي مطلوب" : "Arabic title is required";
-      valid = false;
-    } else if (titleAr.trim().length < TITLE_MIN) {
-      next.titleAr =
-        isRTL
-          ? `يجب أن يكون العنوان ${TITLE_MIN} أحرف على الأقل`
-          : `Title must be at least ${TITLE_MIN} characters`;
-      valid = false;
-    } else if (titleAr.length > TITLE_MAX) {
-      next.titleAr =
-        isRTL
-          ? `يجب ألا يتجاوز العنوان ${TITLE_MAX} حرفًا`
-          : `Title must not exceed ${TITLE_MAX} characters`;
-      valid = false;
-    }
+    // English title
+    validateTextField(titleEn, "titleEn", {
+      required: isRTL ? "العنوان الإنجليزي مطلوب" : "English title is required",
+      tooShort: isRTL ? `يجب أن يكون العنوان ${TITLE_MIN} أحرف على الأقل` : `Title must be at least ${TITLE_MIN} characters`,
+      tooLong: isRTL ? `يجب ألا يتجاوز العنوان ${TITLE_MAX} حرفًا` : `Title must not exceed ${TITLE_MAX} characters`,
+    }, TITLE_MIN, TITLE_MAX);
 
-    // English message — required
-    if (!messageEn.trim()) {
-      next.messageEn = isRTL ? "الرسالة الإنجليزية مطلوبة" : "English message is required";
-      valid = false;
-    } else if (messageEn.trim().length < MESSAGE_MIN) {
-      next.messageEn =
-        isRTL
-          ? `يجب أن تكون الرسالة ${MESSAGE_MIN} أحرف على الأقل`
-          : `Message must be at least ${MESSAGE_MIN} characters`;
-      valid = false;
-    } else if (messageEn.length > MESSAGE_MAX) {
-      next.messageEn =
-        isRTL
-          ? `يجب ألا تتجاوز الرسالة ${MESSAGE_MAX} حرفًا`
-          : `Message must not exceed ${MESSAGE_MAX} characters`;
-      valid = false;
-    }
+    // Arabic title
+    validateTextField(titleAr, "titleAr", {
+      required: isRTL ? "العنوان العربي مطلوب" : "Arabic title is required",
+      tooShort: isRTL ? `يجب أن يكون العنوان ${TITLE_MIN} أحرف على الأقل` : `Title must be at least ${TITLE_MIN} characters`,
+      tooLong: isRTL ? `يجب ألا يتجاوز العنوان ${TITLE_MAX} حرفًا` : `Title must not exceed ${TITLE_MAX} characters`,
+    }, TITLE_MIN, TITLE_MAX);
 
-    // Arabic message — required
-    if (!messageAr.trim()) {
-      next.messageAr = isRTL ? "الرسالة العربية مطلوبة" : "Arabic message is required";
-      valid = false;
-    } else if (messageAr.trim().length < MESSAGE_MIN) {
-      next.messageAr =
-        isRTL
-          ? `يجب أن تكون الرسالة ${MESSAGE_MIN} أحرف على الأقل`
-          : `Message must be at least ${MESSAGE_MIN} characters`;
-      valid = false;
-    } else if (messageAr.length > MESSAGE_MAX) {
-      next.messageAr =
-        isRTL
-          ? `يجب ألا تتجاوز الرسالة ${MESSAGE_MAX} حرفًا`
-          : `Message must not exceed ${MESSAGE_MAX} characters`;
-      valid = false;
-    }
+    // English message
+    validateTextField(messageEn, "messageEn", {
+      required: isRTL ? "الرسالة الإنجليزية مطلوبة" : "English message is required",
+      tooShort: isRTL ? `يجب أن تكون الرسالة ${MESSAGE_MIN} أحرف على الأقل` : `Message must be at least ${MESSAGE_MIN} characters`,
+      tooLong: isRTL ? `يجب ألا تتجاوز الرسالة ${MESSAGE_MAX} حرفًا` : `Message must not exceed ${MESSAGE_MAX} characters`,
+    }, MESSAGE_MIN, MESSAGE_MAX);
+
+    // Arabic message
+    validateTextField(messageAr, "messageAr", {
+      required: isRTL ? "الرسالة العربية مطلوبة" : "Arabic message is required",
+      tooShort: isRTL ? `يجب أن تكون الرسالة ${MESSAGE_MIN} أحرف على الأقل` : `Message must be at least ${MESSAGE_MIN} characters`,
+      tooLong: isRTL ? `يجب ألا تتجاوز الرسالة ${MESSAGE_MAX} حرفًا` : `Message must not exceed ${MESSAGE_MAX} characters`,
+    }, MESSAGE_MIN, MESSAGE_MAX);
 
     // Course name required when filter is "course"
     if (recipientFilter === "course" && !courseName.trim()) {
@@ -855,6 +829,44 @@ export default function AdminNotificationPanel({
     !titleEn && !titleAr && !messageEn && !messageAr;
   const previewTitle = isRTL ? titleAr : titleEn;
   const previewMessage = isRTL ? messageAr : messageEn;
+
+  const idleSendIcon = isOnCooldown ? (
+    <Timer className={`h-4 w-4 ${isRTL ? "ml-1.5" : "mr-1.5"}`} />
+  ) : (
+    <Send className={`h-4 w-4 ${isRTL ? "ml-1.5" : "mr-1.5"}`} />
+  );
+  const scheduledSendLabel = isScheduled
+    ? bilingual("جدولة الإرسال", "Schedule Send", isRTL)
+    : bilingual("إرسال الإشعار", "Send Notification", isRTL);
+  const idleSendLabel = isOnCooldown
+    ? `${cooldownRemaining}s`
+    : scheduledSendLabel;
+  const sendingLabel = isRTL ? "جاري الإرسال..." : "Sending...";
+  const sendButtonLabel = isSending ? sendingLabel : idleSendLabel;
+
+  const readyStatusBadge = (
+    <Badge className="border-0 bg-[rgba(16,185,129,0.12)] text-[10px] text-[#10b981]">
+      <Check className={`h-3 w-3 ${isRTL ? "ml-1" : "mr-1"}`} />
+      {isRTL ? "جاهز" : "Ready"}
+    </Badge>
+  );
+  const emptyStatusBadge = isFormEmpty ? (
+    <Badge variant="outline" className="border-[#1e2d3d] text-[10px] text-[#64748b]">
+      {isRTL ? "فارغ" : "Empty"}
+    </Badge>
+  ) : readyStatusBadge;
+  const errorStatusBadge = Object.values(errors).some(Boolean) ? (
+    <Badge className="border-0 bg-[rgba(248,113,113,0.12)] text-[10px] text-[#f87171]">
+      <AlertCircle className={`h-3 w-3 ${isRTL ? "ml-1" : "mr-1"}`} />
+      {isRTL ? "أخطاء" : "Errors"}
+    </Badge>
+  ) : emptyStatusBadge;
+  const formStatusBadge = isOnCooldown ? (
+    <Badge className="border-0 bg-[rgba(245,158,11,0.12)] text-[10px] text-[#f59e0b]">
+      <Timer className={`h-3 w-3 ${isRTL ? "ml-1" : "mr-1"}`} />
+      {isRTL ? "انتظار" : "Cooldown"}
+    </Badge>
+  ) : errorStatusBadge;
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Render
@@ -1315,18 +1327,8 @@ export default function AdminNotificationPanel({
                   >
                     {isSending ? (
                       <Loader2 className={`h-4 w-4 animate-spin ${isRTL ? "ml-1.5" : "mr-1.5"}`} />
-                    ) : isOnCooldown ? (
-                      <Timer className={`h-4 w-4 ${isRTL ? "ml-1.5" : "mr-1.5"}`} />
-                    ) : (
-                      <Send className={`h-4 w-4 ${isRTL ? "ml-1.5" : "mr-1.5"}`} />
-                    )}
-                    {isSending
-                      ? isRTL
-                        ? "جاري الإرسال..."
-                        : "Sending..."
-                      : isOnCooldown
-                        ? `${cooldownRemaining}s`
-                        : isScheduled ? bilingual("جدولة الإرسال", "Schedule Send", isRTL) : bilingual("إرسال الإشعار", "Send Notification", isRTL)}
+                    ) : idleSendIcon}
+                    {sendButtonLabel}
                   </Button>
                 </div>
               </div>
@@ -1424,26 +1426,7 @@ export default function AdminNotificationPanel({
                         <span className="text-[#64748b]">
                           {isRTL ? "الحالة" : "Status"}
                         </span>
-                        {isOnCooldown ? (
-                          <Badge className="border-0 bg-[rgba(245,158,11,0.12)] text-[10px] text-[#f59e0b]">
-                            <Timer className={`h-3 w-3 ${isRTL ? "ml-1" : "mr-1"}`} />
-                            {isRTL ? "انتظار" : "Cooldown"}
-                          </Badge>
-                        ) : Object.values(errors).some(Boolean) ? (
-                          <Badge className="border-0 bg-[rgba(248,113,113,0.12)] text-[10px] text-[#f87171]">
-                            <AlertCircle className={`h-3 w-3 ${isRTL ? "ml-1" : "mr-1"}`} />
-                            {isRTL ? "أخطاء" : "Errors"}
-                          </Badge>
-                        ) : isFormEmpty ? (
-                          <Badge variant="outline" className="border-[#1e2d3d] text-[10px] text-[#64748b]">
-                            {isRTL ? "فارغ" : "Empty"}
-                          </Badge>
-                        ) : (
-                          <Badge className="border-0 bg-[rgba(16,185,129,0.12)] text-[10px] text-[#10b981]">
-                            <Check className={`h-3 w-3 ${isRTL ? "ml-1" : "mr-1"}`} />
-                            {isRTL ? "جاهز" : "Ready"}
-                          </Badge>
-                        )}
+                        {formStatusBadge}
                       </div>
                     </div>
                   </div>

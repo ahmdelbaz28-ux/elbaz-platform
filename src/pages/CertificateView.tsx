@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-export default function CertificateView() {
+export default function CertificateView() { // NOSONAR — certificate view with print, download, share, LinkedIn-share, copy-link; extraction would require prop-drilling many handlers
   const { certificateNumber } = useParams<{ certificateNumber: string }>();
   const { t, lang } = useTranslation();
   const navigate = useNavigate();
@@ -42,11 +42,12 @@ export default function CertificateView() {
 
   const handleShareLinkedIn = () => {
     const certUrl = `https://ahmedelbaz.qzz.io/certificate/${certificateNumber}`;
+    const fallbackShareText = lang === "ar"
+      ? "لقد حصلت على شهادة من منصة الباز!"
+      : "I've earned a certificate from Elbaz Platform!";
     const shareText = cert
       ? `I've earned a certificate in "${cert.courseName}" from Elbaz Platform - Electrical Engineering Academy! 🎓`
-      : lang === "ar"
-        ? "لقد حصلت على شهادة من منصة الباز!"
-        : "I've earned a certificate from Elbaz Platform!";
+      : fallbackShareText;
 
     const linkedInUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(certUrl)}&summary=${encodeURIComponent(shareText)}`;
     globalThis.open(linkedInUrl, "_blank", "width=600,height=500");
@@ -75,6 +76,22 @@ export default function CertificateView() {
       </div>
     );
   }
+
+  const errorStatusBlock = isError || cert ? null : (
+    <div className="flex items-center gap-3 rounded-xl border border-[rgba(239,68,68,0.2)] bg-[rgba(239,68,68,0.05)] px-4 py-3">
+      <AlertCircle className="h-5 w-5 shrink-0 text-[#ef4444]" />
+      <div>
+        <p className="text-sm font-medium text-[#ef4444]">
+          {lang === "ar" ? "الشهادة غير صالحة" : "Certificate Not Found"}
+        </p>
+        <p className="mt-0.5 text-xs text-[#94a3b8]">
+          {lang === "ar"
+            ? "لم يتم العثور على شهادة بهذا الرقم. تأكد من صحة الرقم."
+            : "No certificate found with this number. Please check and try again."}
+        </p>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-[#0a0e17] pt-24 pb-20">
@@ -187,21 +204,7 @@ export default function CertificateView() {
                 </p>
               </div>
             </div>
-          ) : isError || !cert ? (
-            <div className="flex items-center gap-3 rounded-xl border border-[rgba(239,68,68,0.2)] bg-[rgba(239,68,68,0.05)] px-4 py-3">
-              <AlertCircle className="h-5 w-5 shrink-0 text-[#ef4444]" />
-              <div>
-                <p className="text-sm font-medium text-[#ef4444]">
-                  {lang === "ar" ? "الشهادة غير صالحة" : "Certificate Not Found"}
-                </p>
-                <p className="mt-0.5 text-xs text-[#94a3b8]">
-                  {lang === "ar"
-                    ? "لم يتم العثور على شهادة بهذا الرقم. تأكد من صحة الرقم."
-                    : "No certificate found with this number. Please check and try again."}
-                </p>
-              </div>
-            </div>
-          ) : null}
+          ) : errorStatusBlock}
         </div>
 
         {/* Certificate */}

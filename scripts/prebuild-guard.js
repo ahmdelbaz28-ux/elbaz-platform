@@ -56,6 +56,50 @@ console.log("[GUARD 2/3] Scanning API imports for broken paths...");
   const importRe = /from\s+["'](\.[^"']+)["'];?/g;
   const excludeDirs = new Set(["node_modules", "dist", ".git"]);
 
+  function buildResolutionCandidates(resolvedBase) {
+    // ESM + TypeScript: .js imports resolve to .ts files
+    // Strip .js/.jsx extension and try both .ts and .js variants
+    const stripped = resolvedBase.replace(/\.jsx?$/, "");
+    const candidates = [
+      resolvedBase,
+      stripped + ".ts",
+      stripped + ".tsx",
+      stripped + ".js",
+      stripped + ".jsx",
+      resolvedBase + ".ts",
+      resolvedBase + ".tsx",
+      resolvedBase + "/index.ts",
+      resolvedBase + "/index.tsx",
+      resolvedBase + "/index.js",
+    ];
+    // Deduplicate candidates
+    return [...new Set(candidates)];
+  }
+
+  function checkFileImports(filePath, content) {
+    const fileDir = dirname(filePath);
+    for (const match of content.matchAll(importRe)) {
+      const rawImport = match[1];
+
+      // Skip barrel imports and index patterns that Node can resolve
+      if (rawImport.includes("*")) continue;
+
+      const resolvedBase = resolve(fileDir, rawImport);
+      const candidates = buildResolutionCandidates(resolvedBase);
+
+      const found = candidates.some((c) => existsSync(c));
+      if (!found) {
+        console.error(
+          `  FAIL: '${rawImport}' not found (imported in ${filePath})`
+        );
+        console.error(
+          `  Tried: ${candidates.map((c) => basename(c)).join(", ")}`
+        );
+        errors++;
+      }
+    }
+  }
+
   function scanDir(dir, depth = 0) {
     if (depth > 10) return;
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -67,46 +111,7 @@ console.log("[GUARD 2/3] Scanning API imports for broken paths...");
 
       const filePath = join(dir, entry.name);
       const content = readFileSync(filePath, "utf8");
-      const fileDir = dirname(filePath);
-
-      for (const match of content.matchAll(importRe)) {
-        const rawImport = match[1];
-
-        // Skip barrel imports and index patterns that Node can resolve
-        if (rawImport.includes("*")) continue;
-
-        const resolvedBase = resolve(fileDir, rawImport);
-
-        // ESM + TypeScript: .js imports resolve to .ts files
-        // Strip .js/.jsx extension and try both .ts and .js variants
-        const stripped = resolvedBase.replace(/\.jsx?$/, "");
-        const candidates = [
-          resolvedBase,
-          stripped + ".ts",
-          stripped + ".tsx",
-          stripped + ".js",
-          stripped + ".jsx",
-          resolvedBase + ".ts",
-          resolvedBase + ".tsx",
-          resolvedBase + "/index.ts",
-          resolvedBase + "/index.tsx",
-          resolvedBase + "/index.js",
-        ];
-
-        // Deduplicate candidates
-        const uniqueCandidates = [...new Set(candidates)];
-
-        const found = uniqueCandidates.some((c) => existsSync(c));
-        if (!found) {
-          console.error(
-            `  FAIL: '${rawImport}' not found (imported in ${filePath})`
-          );
-          console.error(
-            `  Tried: ${candidates.map((c) => basename(c)).join(", ")}`
-          );
-          errors++;
-        }
-      }
+      checkFileImports(filePath, content);
     }
   }
 

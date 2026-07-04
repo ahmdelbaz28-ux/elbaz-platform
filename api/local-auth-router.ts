@@ -50,6 +50,73 @@ interface AuthResponse {
   token?: string;
 }
 
+// ─── Helper: extract client IP from common proxy headers ───
+function getClientIpFromHeaders(headers: Headers): string {
+  const cfIp = headers.get("cf-connecting-ip");
+  const forwarded = headers.get("x-forwarded-for");
+  const realIp = headers.get("x-real-ip");
+  return (cfIp || realIp || (forwarded ? forwarded.split(",").shift()?.trim() : "unknown")) ?? "unknown";
+}
+
+// ─── Helper: convert a registration DB error into the appropriate TRPCError ───
+function toRegistrationTRPCError(err: unknown): TRPCError {
+  if (err instanceof TRPCError) return err;
+  const errMsg = (err as Error).message || String(err);
+  console.error("[Auth] DB insert error during registration:", errMsg);
+  if (errMsg.includes("Duplicate") || errMsg.includes("UNIQUE") || errMsg.includes("unique")) {
+    return new TRPCError({
+      code: "CONFLICT",
+      message: "Username or email already exists. Please choose different credentials.",
+    });
+  }
+  if (errMsg.includes("ER_TOO_MANY") || errMsg.includes("max_connections") || errMsg.includes("Pool")) {
+    return new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Server is busy. Please try again in a moment.",
+    });
+  }
+  return new TRPCError({
+    code: "INTERNAL_SERVER_ERROR",
+    message: "Registration failed due to a server error. Please try again.",
+  });
+}
+
+// ─── Helper: verify email uniqueness, throws CONFLICT TRPCError on collision ───
+async function assertEmailUnique(db: ReturnType<typeof getDb>, safeEmail: string): Promise<void> {
+  try {
+    const existingEmail = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, safeEmail))
+      .limit(1);
+
+    if (existingEmail.length > 0) {
+      throw new TRPCError({ code: "CONFLICT", message: "Email already registered" });
+    }
+  } catch (err) {
+    if (err instanceof TRPCError) throw err;
+    console.error("[Auth] DB error checking email uniqueness:", (err as Error).message);
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Could not verify email. Please try again.",
+    });
+  }
+}
+
+// ─── Helper: send verification email (non-blocking; logs failures) ───
+async function sendVerificationEmailIfEligible(userId: number, safeEmail: string, headers: Headers): Promise<void> {
+  try {
+    const result = await initiateEmailVerification(userId, safeEmail, headers);
+    if (result.success) {
+      logger.info("Verification email sent", { userId, email: safeEmail });
+    } else {
+      logger.warn("Verification email not sent", { userId, email: safeEmail, reason: result.message });
+    }
+  } catch (emailErr) {
+    logger.error("Failed to send verification email", { userId, error: (emailErr as Error).message });
+  }
+}
+
 // ───────────────────────────────────────────────────────────────────────────────
 
 export const localAuthRouter = createRouter({
@@ -72,10 +139,7 @@ export const localAuthRouter = createRouter({
        })
      )
      .mutation(async ({ ctx, input }): Promise<AuthResponse> => {
-      const cfIp = ctx.req.headers.get("cf-connecting-ip");
-      const forwarded = ctx.req.headers.get("x-forwarded-for");
-      const realIp = ctx.req.headers.get("x-real-ip");
-      const ip = (cfIp || realIp || (forwarded ? forwarded.split(",").shift()?.trim() : "unknown")) ?? "unknown";
+      const ip = getClientIpFromHeaders(ctx.req.headers);
 
       try {
         await checkRateLimit(ip, "register");
@@ -104,24 +168,7 @@ export const localAuthRouter = createRouter({
         }
 
         if (safeEmail) {
-          try {
-            const existingEmail = await db
-              .select({ id: users.id })
-              .from(users)
-              .where(eq(users.email, safeEmail))
-              .limit(1);
-
-            if (existingEmail.length > 0) {
-              throw new TRPCError({ code: "CONFLICT", message: "Email already registered" });
-            }
-          } catch (err) {
-            if (err instanceof TRPCError) throw err;
-            console.error("[Auth] DB error checking email uniqueness:", (err as Error).message);
-            throw new TRPCError({
-              code: "INTERNAL_SERVER_ERROR",
-              message: "Could not verify email. Please try again.",
-            });
-          }
+          await assertEmailUnique(db, safeEmail);
         }
 
         const passwordHash = await hashPassword(input.password);
@@ -144,25 +191,7 @@ export const localAuthRouter = createRouter({
             });
           }
         } catch (err) {
-          if (err instanceof TRPCError) throw err;
-          const errMsg = (err as Error).message || String(err);
-          console.error("[Auth] DB insert error during registration:", errMsg);
-          if (errMsg.includes("Duplicate") || errMsg.includes("UNIQUE") || errMsg.includes("unique")) {
-            throw new TRPCError({
-              code: "CONFLICT",
-              message: "Username or email already exists. Please choose different credentials.",
-            });
-          }
-          if (errMsg.includes("ER_TOO_MANY") || errMsg.includes("max_connections") || errMsg.includes("Pool")) {
-            throw new TRPCError({
-              code: "INTERNAL_SERVER_ERROR",
-              message: "Server is busy. Please try again in a moment.",
-            });
-          }
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: "Registration failed due to a server error. Please try again.",
-          });
+          throw toRegistrationTRPCError(err);
         }
 
         const token = await createToken({ userId, username: input.username, role: "user", tokenVersion: 0 });
@@ -188,16 +217,7 @@ export const localAuthRouter = createRouter({
         // succeeds. The user can request a new verification link from their
         // profile page. We just log the failure for the operator.
         if (safeEmail) {
-          try {
-            const result = await initiateEmailVerification(userId, safeEmail, ctx.req.headers);
-            if (result.success) {
-              logger.info("Verification email sent", { userId, email: safeEmail });
-            } else {
-              logger.warn("Verification email not sent", { userId, email: safeEmail, reason: result.message });
-            }
-          } catch (emailErr) {
-            logger.error("Failed to send verification email", { userId, error: (emailErr as Error).message });
-          }
+          await sendVerificationEmailIfEligible(userId, safeEmail, ctx.req.headers);
         }
 
         logger.info("Registration successful", { userId, username: input.username, email: safeEmail });

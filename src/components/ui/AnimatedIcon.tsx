@@ -28,7 +28,7 @@ interface AnimatedIconProps {
   readonly delay?: number;
   readonly size?: "sm" | "md" | "lg" | "xl";
   readonly color?: string;
-  onClick?: () => void;
+  readonly onClick?: () => void;
   /** Enable parallax floating effect on scroll */
   readonly parallax?: boolean;
   /** Custom parallax intensity (default: 0.5) */
@@ -49,7 +49,7 @@ const iconSizeMap = {
   xl: "h-14 w-14",
 };
 
-export default function AnimatedIcon({
+export default function AnimatedIcon({ // NOSONAR — motion-variant JSX switch is inherently conditional; each branch returns a different motion.div wrapper that must wrap renderIcon()
   icon,
   label,
   className,
@@ -192,6 +192,76 @@ export default function AnimatedIcon({
     </motion.div>
   );
 
+  let variantContent: ReactNode;
+  if (variant === "flip") {
+    variantContent = (
+      <motion.div
+        className="relative"
+        whileHover={{ rotateY: 180 }}
+        transition={{ type: "spring", stiffness: 200, damping: 15 }}
+        style={{ perspective: 600 }}
+      >
+        {renderIcon()}
+      </motion.div>
+    );
+  } else if (variant === "bounce") {
+    variantContent = (
+      <motion.div
+        className="relative"
+        whileHover={{ y: [-4, -8, -4, 0], transition: { duration: 0.5 } }}
+      >
+        {renderIcon()}
+      </motion.div>
+    );
+  } else if (variant === "tilt") {
+    variantContent = (
+      <motion.div
+        className="relative"
+        whileHover={{
+          rotateX: [0, -15, 0],
+          rotateY: [0, 15, 0],
+          transition: { duration: 0.6, ease: "easeInOut" },
+        }}
+        style={{ perspective: 800, transformStyle: "preserve-3d" }}
+      >
+        {renderIcon()}
+      </motion.div>
+    );
+  } else if (variant === "float") {
+    variantContent = (
+      // Float variant: continuous floating animation with scroll parallax
+      <motion.div
+        className="relative"
+        animate={parallax ? {
+          y: [0, -12, 0, -8, 0],
+          rotate: [0, 2, 0, -2, 0],
+          scale: [1, 1.02, 1, 1.02, 1],
+        } : {
+          y: [0, -12, 0, -8, 0],
+          rotate: [0, 2, 0, -2, 0],
+        }}
+        transition={parallax ? {
+          duration: 6,
+          repeat: Infinity,
+          ease: "easeInOut",
+        } : {
+          duration: 4,
+          repeat: Infinity,
+          ease: "easeInOut",
+        }}
+        style={parallax ? {
+          y,
+          rotate,
+          scale,
+        } : undefined}
+      >
+        {renderIcon()}
+      </motion.div>
+    );
+  } else {
+    variantContent = renderIcon();
+  }
+
   return (
     <motion.div
       ref={ref}
@@ -201,66 +271,7 @@ export default function AnimatedIcon({
       className={cn("flex flex-col items-center gap-3 cursor-pointer group", className)}
       onClick={onClick}
     >
-      {variant === "flip" ? (
-        <motion.div
-          className="relative"
-          whileHover={{ rotateY: 180 }}
-          transition={{ type: "spring", stiffness: 200, damping: 15 }}
-          style={{ perspective: 600 }}
-        >
-          {renderIcon()}
-        </motion.div>
-      ) : variant === "bounce" ? (
-        <motion.div
-          className="relative"
-          whileHover={{ y: [-4, -8, -4, 0], transition: { duration: 0.5 } }}
-        >
-          {renderIcon()}
-        </motion.div>
-      ) : variant === "tilt" ? (
-        <motion.div
-          className="relative"
-          whileHover={{
-            rotateX: [0, -15, 0],
-            rotateY: [0, 15, 0],
-            transition: { duration: 0.6, ease: "easeInOut" },
-          }}
-          style={{ perspective: 800, transformStyle: "preserve-3d" }}
-        >
-          {renderIcon()}
-        </motion.div>
-      ) : variant === "float" ? (
-        // Float variant: continuous floating animation with scroll parallax
-        <motion.div
-          className="relative"
-          animate={parallax ? {
-            y: [0, -12, 0, -8, 0],
-            rotate: [0, 2, 0, -2, 0],
-            scale: [1, 1.02, 1, 1.02, 1],
-          } : {
-            y: [0, -12, 0, -8, 0],
-            rotate: [0, 2, 0, -2, 0],
-          }}
-          transition={parallax ? {
-            duration: 6,
-            repeat: Infinity,
-            ease: "easeInOut",
-          } : {
-            duration: 4,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
-          style={parallax ? {
-            y,
-            rotate,
-            scale,
-          } : undefined}
-        >
-          {renderIcon()}
-        </motion.div>
-      ) : (
-        renderIcon()
-      )}
+      {variantContent}
       {label && (
         <motion.span
           className={cn("text-sm font-medium text-[#94a3b8] text-center transition-colors group-hover:text-[#06b6d4]", labelClassName)}

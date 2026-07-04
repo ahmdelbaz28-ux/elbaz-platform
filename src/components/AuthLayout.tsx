@@ -40,7 +40,7 @@ const MAX_WIDTH = 480;
 export default function AuthLayout({
   children,
 }: {
-  children: ReactNode;
+  readonly children: ReactNode;
 }) {
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
@@ -99,8 +99,8 @@ export default function AuthLayout({
 }
 
 type AuthLayoutContentProps = {
-  children: ReactNode;
-  setSidebarWidth: (width: number) => void;
+  readonly children: ReactNode;
+  readonly setSidebarWidth: (width: number) => void;
 };
 
 function AuthLayoutContent({
@@ -170,13 +170,13 @@ function AuthLayoutContent({
               >
                 <PanelLeft className="h-4 w-4 text-muted-foreground" />
               </button>
-              {!isCollapsed ? (
+              {isCollapsed ? null : (
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="font-semibold tracking-tight truncate">
                     Navigation
                   </span>
                 </div>
-              ) : null}
+              )}
             </div>
           </SidebarHeader>
 

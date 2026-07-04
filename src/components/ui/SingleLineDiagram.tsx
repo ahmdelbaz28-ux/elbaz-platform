@@ -135,7 +135,7 @@ export default function SingleLineDiagram({ color = "#06b6d4", enabled = true }:
       {/* Lines */}
       {PATHS.map((d, i) => (
         <path
-          key={`path-${i}`}
+          key={d}
           d={d}
           stroke={color}
           strokeWidth={activePathIdx === i ? 2 : 1}

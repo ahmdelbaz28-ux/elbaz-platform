@@ -28,6 +28,143 @@ import { invalidateSitemapCache } from "./boot.js";
 
 const paymobWebhook = new Hono();
 
+/**
+ * Compute the new payment status based on webhook flags.
+ */
+function computeNewPaymentStatus(isSuccess: boolean, isRefunded: boolean, isVoided: boolean): string {
+  const successStatus = isSuccess ? "completed" : "failed";
+  const voidedStatus = isVoided ? "failed" : successStatus;
+  return isRefunded ? "refunded" : voidedStatus;
+}
+
+/**
+ * Verify the webhook amount matches our recorded amount (prevent partial-payment attacks).
+ * Returns null on success, or an error Response on mismatch.
+ */
+async function verifyWebhookAmount(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], paymentRecord: { finalAmount: string | null; amount: string }, obj: PaymobWebhookPayload["obj"], merchantOrderId: string): Promise<Response | null> {
+  const expectedAmount = Number.parseFloat(String(paymentRecord.finalAmount ?? paymentRecord.amount));
+  const webhookAmount = Number.parseFloat(obj.amount_cents?.toString() ?? obj.amount as string) / 100;
+  const amountValid = Math.abs(webhookAmount - expectedAmount) < 0.01;
+  if (amountValid) return null;
+
+  console.error(`[Paymob Webhook] AMOUNT MISMATCH! Expected: ${expectedAmount}, Got: ${webhookAmount}, txn: ${merchantOrderId}`);
+  // Block payment — mark as failed to prevent partial-payment attacks
+  await tx
+    .update(payments)
+    .set({ status: "failed", providerPaymentId: String(obj.id) })
+    .where(eq(payments.transactionId, merchantOrderId));
+  return new Response(JSON.stringify({ ok: false, error: "Amount mismatch" }), {
+    status: 400,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+/**
+ * Create the user's enrollment if it doesn't already exist (idempotent),
+ * bump the course's student count, and invalidate caches.
+ */
+async function createEnrollmentIfMissing(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  paymentRecord: { userId: number | string; courseId: number | string },
+): Promise<void> {
+  const existingEnrollment = await tx
+    .select({ id: enrollments.id })
+    .from(enrollments)
+    .where(
+      and(
+        eq(enrollments.userId, Number(paymentRecord.userId)),
+        eq(enrollments.courseId, Number(paymentRecord.courseId))
+      )
+    )
+    .limit(1);
+
+  if (existingEnrollment.length > 0) return;
+
+  // Create enrollment
+  await tx.insert(enrollments).values({
+    userId: Number(paymentRecord.userId),
+    courseId: Number(paymentRecord.courseId),
+    progress: "0.00",
+    isCompleted: false,
+  });
+
+  // Update course enrolled count
+  await tx
+    .update(courses)
+    .set({
+      studentCount: sql`${courses.studentCount} + 1`,
+    })
+    .where(eq(courses.id, Number(paymentRecord.courseId)));
+
+  console.log(`[Paymob Webhook] Enrollment created: userId=${paymentRecord.userId}, courseId=${paymentRecord.courseId}`);
+}
+
+/**
+ * Run the payment-update + enrollment-creation logic inside the transaction.
+ * Returns the JSON response to send to Paymob.
+ */
+async function processWebhookInTransaction(
+  c: any,
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  obj: PaymobWebhookPayload["obj"],
+  merchantOrderId: string,
+  isSuccess: boolean,
+  isRefunded: boolean,
+  isVoided: boolean,
+): Promise<Response> {
+  // ── Step 2: Find our payment record by transactionId ──
+  const paymentRows = await tx
+    .select()
+    .from(payments)
+    .where(eq(payments.transactionId, merchantOrderId))
+    .limit(1);
+
+  const paymentRecord = paymentRows[0];
+
+  if (!paymentRecord) {
+    console.warn(`[Paymob Webhook] Payment not found for transactionId: ${merchantOrderId}`);
+    return c.json({ ok: true, message: "Transaction not found" }, 200);
+  }
+
+  // ── Step 3: Skip if already processed (idempotency) ──
+  if (paymentRecord.status === "completed" && !isRefunded && !isVoided) {
+    console.log(`[Paymob Webhook] Payment ${merchantOrderId} already completed, skipping`);
+    return c.json({ ok: true, message: "Already processed" }, 200);
+  }
+
+  // ── Step 4: Verify amount matches what we expect ──
+  if (isSuccess) {
+    const amountMismatch = await verifyWebhookAmount(tx, paymentRecord, obj, merchantOrderId);
+    if (amountMismatch) return amountMismatch;
+  }
+
+  // ── Step 5: Update payment status ──
+  const newStatus = computeNewPaymentStatus(isSuccess, isRefunded, isVoided);
+
+  await tx
+    .update(payments)
+    .set({
+      status: newStatus,
+      providerPaymentId: String(obj.id),
+      paidAt: isSuccess ? new Date() : null,
+    })
+    .where(eq(payments.transactionId, merchantOrderId));
+
+  console.log(`[Paymob Webhook] Payment ${merchantOrderId} status updated to: ${newStatus}`);
+
+  // ── Step 6: Create enrollment if payment successful ──
+  if (isSuccess && newStatus === "completed") {
+    await createEnrollmentIfMissing(tx, paymentRecord);
+
+    // Invalidate caches (outside transaction logic but within handler)
+    await invalidateCourseCache();
+    await invalidateStatsCache();
+    invalidateSitemapCache();
+  }
+
+  return c.json({ ok: true, status: newStatus }, 200);
+}
+
 paymobWebhook.post("/webhook", async (c) => {
   const contentType = c.req.header("content-type") ?? "";
 
@@ -65,106 +202,9 @@ paymobWebhook.post("/webhook", async (c) => {
   console.log(`[Paymob Webhook] Received: txn=${obj.id}, order=${obj.order?.id}, success=${isSuccess}, amount=${obj.amount}, merchantOrderId=${merchantOrderId}`);
 
   try {
-    return await db.transaction(async (tx) => {
-      // ── Step 2: Find our payment record by transactionId ──
-      const paymentRows = await tx
-        .select()
-        .from(payments)
-        .where(eq(payments.transactionId, merchantOrderId))
-        .limit(1);
-
-      const paymentRecord = paymentRows[0];
-
-      if (!paymentRecord) {
-        console.warn(`[Paymob Webhook] Payment not found for transactionId: ${merchantOrderId}`);
-        return c.json({ ok: true, message: "Transaction not found" }, 200);
-      }
-
-      // ── Step 3: Skip if already processed (idempotency) ──
-      if (paymentRecord.status === "completed" && !isRefunded && !isVoided) {
-        console.log(`[Paymob Webhook] Payment ${merchantOrderId} already completed, skipping`);
-        return c.json({ ok: true, message: "Already processed" }, 200);
-      }
-
-      // ── Step 4: Verify amount matches what we expect ──
-      if (isSuccess) {
-        const expectedAmount = Number.parseFloat(String(paymentRecord.finalAmount ?? paymentRecord.amount));
-        const webhookAmount = Number.parseFloat(obj.amount_cents?.toString() ?? obj.amount) / 100;
-        const amountValid = Math.abs(webhookAmount - expectedAmount) < 0.01;
-
-        if (!amountValid) {
-          console.error(`[Paymob Webhook] AMOUNT MISMATCH! Expected: ${expectedAmount}, Got: ${webhookAmount}, txn: ${merchantOrderId}`);
-          // Block payment — mark as failed to prevent partial-payment attacks
-          await tx
-            .update(payments)
-            .set({ status: "failed", providerPaymentId: String(obj.id) })
-            .where(eq(payments.transactionId, merchantOrderId));
-          return c.json({ ok: false, error: "Amount mismatch" }, 400);
-        }
-      }
-
-      // ── Step 5: Update payment status ──
-      const newStatus = isRefunded
-        ? "refunded"
-        : isVoided
-          ? "failed"
-          : isSuccess
-            ? "completed"
-            : "failed";
-
-      await tx
-        .update(payments)
-        .set({
-          status: newStatus,
-          providerPaymentId: String(obj.id),
-          paidAt: isSuccess ? new Date() : null,
-        })
-        .where(eq(payments.transactionId, merchantOrderId));
-
-      console.log(`[Paymob Webhook] Payment ${merchantOrderId} status updated to: ${newStatus}`);
-
-      // ── Step 6: Create enrollment if payment successful ──
-      if (isSuccess && newStatus === "completed") {
-        // Check if already enrolled (idempotent)
-        const existingEnrollment = await tx
-          .select({ id: enrollments.id })
-          .from(enrollments)
-          .where(
-            and(
-              eq(enrollments.userId, Number(paymentRecord.userId)),
-              eq(enrollments.courseId, Number(paymentRecord.courseId))
-            )
-          )
-          .limit(1);
-
-        if (existingEnrollment.length === 0) {
-          // Create enrollment
-          await tx.insert(enrollments).values({
-            userId: Number(paymentRecord.userId),
-            courseId: Number(paymentRecord.courseId),
-            progress: "0.00",
-            isCompleted: false,
-          });
-
-          // Update course enrolled count
-          await tx
-            .update(courses)
-            .set({
-              studentCount: sql`${courses.studentCount} + 1`,
-            })
-            .where(eq(courses.id, Number(paymentRecord.courseId)));
-
-          console.log(`[Paymob Webhook] Enrollment created: userId=${paymentRecord.userId}, courseId=${paymentRecord.courseId}`);
-        }
-        
-        // Invalidate caches (outside transaction logic but within handler)
-        await invalidateCourseCache();
-        await invalidateStatsCache();
-        invalidateSitemapCache();
-      }
-
-      return c.json({ ok: true, status: newStatus }, 200);
-    });
+    return await db.transaction(async (tx) =>
+      processWebhookInTransaction(c, tx, obj, merchantOrderId, isSuccess, isRefunded, isVoided),
+    );
   } catch (err) {
     console.error("[Paymob Webhook] Database Error — Triggering Retry:", err);
     // ⚠️ Return 503 to make Paymob retry later if DB is locked/down

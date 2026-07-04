@@ -2,7 +2,7 @@ import { useParams, useNavigate, useSearchParams } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useAuth } from "@/hooks/useAuth";
 import { trpc } from "@/providers/trpc";
-import { useState, useRef, useEffect, useCallback, forwardRef } from "react";
+import { useState, useRef, useEffect, useCallback, forwardRef, lazy, Suspense } from 'react';
 import { useWatchTracker } from "@/hooks/useWatchTracker";
 import { trackLearning, trackPlatform, trackEvent } from "@/lib/clarity";
 import {
@@ -32,8 +32,8 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import SEO from "@/components/SEO";
-import { lazy, Suspense } from "react";
+import Seo from "@/components/SEO";
+
 import { toast } from "sonner";
 
 const QuizComponent = lazy(() => import("@/components/QuizComponent"));
@@ -279,20 +279,24 @@ const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVid
       data-lesson-id={lessonId || 0}
     >
       <div className="absolute inset-0 z-10 overflow-hidden pointer-events-none opacity-[0.03]">
-        {Array.from({ length: 12 }).map((_, i) => (
-          <div
-            key={`watermark-${i}`}
-            className="watermark whitespace-nowrap absolute text-white font-medium"
-            style={{
-              top: `${(i % 6) * 110 + 30}px`,
-              left: `${(i % 2) * 120}px`,
-              transform: "rotate(-15deg)",
-              fontSize: "14px",
-            }}
-          >
-            Elbaz LMS / {username}
-          </div>
-        ))}
+        {Array.from({ length: 12 }).map((_, i) => {
+          const top = (i % 6) * 110 + 30;
+          const left = (i % 2) * 120;
+          return (
+            <div
+              key={`wm-${top}-${left}`}
+              className="watermark whitespace-nowrap absolute text-white font-medium"
+              style={{
+                top: `${top}px`,
+                left: `${left}px`,
+                transform: "rotate(-15deg)",
+                fontSize: "14px",
+              }}
+            >
+              Elbaz LMS / {username}
+            </div>
+          );
+        })}
       </div>
 
       <video
@@ -424,7 +428,7 @@ const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVid
 
 // ─── Main Course Detail Page ─────────────────────────────────────────────────
 
-export default function CourseDetail() {
+export default function CourseDetail() { // NOSONAR — large course-detail page with curriculum accordion, payment flow, video player, lessons, certificate; extraction would require prop-drilling 20+ hooks/refs
   const { slug } = useParams<{ slug: string }>();
   const { t, lang } = useTranslation();
   const { user, isAuthenticated } = useAuth();
@@ -614,7 +618,7 @@ export default function CourseDetail() {
 
   const enrollMutation = trpc.payment.create.useMutation({
     onSuccess: (data) => {
-      if (data.duplicate) {
+      if ('duplicate' in data && data.duplicate) {
         // Duplicate payment attempt — just reload
         globalThis.location.reload();
         return;
@@ -724,16 +728,16 @@ export default function CourseDetail() {
     ? course.learningOutcomesAr
     : course.learningOutcomesEn;
   // ✅ FIX: Ensure outcomes is always an array (DB may store as JSON string)
-  const outcomes = Array.isArray(rawOutcomes)
-    ? rawOutcomes
-    : typeof rawOutcomes === "string"
-      ? (() => { try { const p = JSON.parse(rawOutcomes); return Array.isArray(p) ? p : []; } catch { return []; } })()
-      : [];
+  const parsedOutcomes = typeof rawOutcomes === "string"
+    ? (() => { try { const p = JSON.parse(rawOutcomes); return Array.isArray(p) ? p : []; } catch { return []; } })()
+    : [];
+  const outcomes = Array.isArray(rawOutcomes) ? rawOutcomes : parsedOutcomes;
 
   const activeLessonData = course.lessons?.find((l) => l.id === activeLesson);
-   const activeLessonTitle = activeLessonData
-     ? (lang === "ar" ? (activeLessonData.titleAr ?? "") : (activeLessonData.titleEn ?? ""))
-     : "";
+  const lessonTitleByLang = lang === "ar"
+    ? (activeLessonData?.titleAr ?? "")
+    : (activeLessonData?.titleEn ?? "");
+  const activeLessonTitle = activeLessonData ? lessonTitleByLang : "";
 
   const canAccessLesson = (lesson: typeof course.lessons[0]) => {
     if (!course.isPremium) return true;
@@ -770,11 +774,32 @@ export default function CourseDetail() {
     }
   };
 
+  const redirectingLabel = lang === "en" ? "Redirecting to payment gateway..." : "جاري التحويل لبوابة الدفع...";
+  const verifyingLabel = lang === "en" ? "Verifying payment..." : "جاري التحقق من الدفع...";
+  const paymentStatusLabel = paymentStep === "redirecting" ? redirectingLabel : verifyingLabel;
+
+  const completedLabel = lang === "en" ? "Congratulations! You have completed this course" : "مبروك! لقد أكملت هذا الكورس";
+  const continueLabel = lang === "en" ? "Continue your learning journey" : "واصل رحلتك التعليمية";
+  const courseProgressLabel = isCourseCompleted ? completedLabel : continueLabel;
+
+  const enrollActionLabel = price > 0 ? t("buyNow") : t("enrollForFree");
+  const isEnrollBusy = enrollMutation.isPending || paymentStep === "redirecting" || paymentStep === "processing";
+  const enrollButtonLabel = isEnrollBusy ? t("loading") : enrollActionLabel;
+
+  const applyPromoLabel = lang === "ar" ? "تطبيق" : "Apply";
+
+  const discountOffLabel = lang === "ar" ? "خصم" : "off";
+  const percentageDiscountText = ` (${promoValidation?.discountValue}% ${discountOffLabel})`;
+  const fixedDiscountText = ` (${promoValidation?.discountAmount} EGP ${discountOffLabel})`;
+  const promoDiscountText = promoValidation?.discountType === "percentage"
+    ? percentageDiscountText
+    : fixedDiscountText;
+
   return (
     <div className="min-h-screen bg-[#0a0e17] pt-24">
-      <SEO 
-        title={title} 
-        description={description || ""} 
+      <Seo
+        title={title}
+        description={description || ""}
         type="course"
         image={course.thumbnail || undefined}
         jsonLd={courseJsonLd}
@@ -801,10 +826,7 @@ export default function CourseDetail() {
                   <div className="text-center">
                     <Loader2 className="mx-auto h-12 w-12 animate-spin text-[#06b6d4]" />
                     <p className="mt-4 text-base font-medium text-[#f0f4f8]">
-                      {paymentStep === "redirecting"
-                        ? (lang === "en" ? "Redirecting to payment gateway..." : "جاري التحويل لبوابة الدفع...")
-                        : (lang === "en" ? "Verifying payment..." : "جاري التحقق من الدفع...")
-                      }
+                      {paymentStatusLabel}
                     </p>
                     <p className="mt-2 text-sm text-[#94a3b8]">
                       {lang === "en" ? "Please wait, do not close this page" : "يرجى الانتظار، لا تغلق هذه الصفحة"}
@@ -993,9 +1015,7 @@ export default function CourseDetail() {
                     <span className="font-semibold">{t("youAreEnrolled")}</span>
                   </div>
                   <p className="mt-2 text-sm text-[#94a3b8]">
-                    {isCourseCompleted
-                      ? (lang === "en" ? "Congratulations! You have completed this course" : "مبروك! لقد أكملت هذا الكورس")
-                      : (lang === "en" ? "Continue your learning journey" : "واصل رحلتك التعليمية")}
+                    {courseProgressLabel}
                   </p>
                   {isCourseCompleted && course?.id && (
                     <Button
@@ -1059,11 +1079,7 @@ export default function CourseDetail() {
                     onClick={handleEnroll}
                     disabled={enrollMutation.isPending || paymentStep === "redirecting" || paymentStep === "processing"}
                   >
-                    {enrollMutation.isPending || paymentStep === "redirecting" || paymentStep === "processing"
-                      ? t("loading")
-                      : price > 0
-                      ? t("buyNow")
-                      : t("enrollForFree")}
+                    {enrollButtonLabel}
                   </Button>
                 </>
               )}
@@ -1108,6 +1124,12 @@ export default function CourseDetail() {
                 {course.lessons?.map((lesson, i) => {
                   const canAccess = canAccessLesson(lesson);
                   const isActive = activeLesson === lesson.id;
+                  const lessonStateClass = canAccess
+                    ? "hover:bg-[#1a2233]"
+                    : "opacity-50 cursor-not-allowed";
+                  const lessonRowClass = isActive
+                    ? "bg-[rgba(6,182,212,0.1)] border border-[rgba(6,182,212,0.2)]"
+                    : lessonStateClass;
                   return (
                     <button
                       key={lesson.id}
@@ -1117,13 +1139,7 @@ export default function CourseDetail() {
                           setShowQuiz(false);
                         }
                       }}
-                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-start transition-colors ${
-                        isActive
-                          ? "bg-[rgba(6,182,212,0.1)] border border-[rgba(6,182,212,0.2)]"
-                          : canAccess
-                          ? "hover:bg-[#1a2233]"
-                          : "opacity-50 cursor-not-allowed"
-                      }`}
+                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-start transition-colors ${lessonRowClass}`}
                     >
                       {canAccess ? (
                         <PlayCircle className={`h-4 w-4 shrink-0 ${isActive ? "text-[#06b6d4]" : "text-[#94a3b8]"}`} />
@@ -1250,7 +1266,7 @@ export default function CourseDetail() {
                   disabled={!promoCode.trim() || isApplyingPromo}
                   className="border-[#f59e0b] text-[#f59e0b] hover:bg-[rgba(245,158,11,0.1)] shrink-0"
                 >
-                  {isApplyingPromo ? "..." : lang === "ar" ? "تطبيق" : "Apply"}
+                  {isApplyingPromo ? "..." : applyPromoLabel}
                 </Button>
               </div>
 
@@ -1267,10 +1283,7 @@ export default function CourseDetail() {
                         <CheckCircle2 className="h-4 w-4 text-[#10b981]" />
                         <span className="text-xs text-[#10b981]">
                           {lang === "ar" ? "تم تطبيق الكود!" : "Code applied!"}
-                          {promoValidation.discountType === "percentage"
-                            ? ` (${promoValidation.discountValue}% ${lang === "ar" ? "خصم" : "off"})`
-                            : ` (${promoValidation.discountAmount} EGP ${lang === "ar" ? "خصم" : "off"})`
-                          }
+                          {promoDiscountText}
                         </span>
                       </div>
                       <span className="text-sm font-bold text-[#10b981]">

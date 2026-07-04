@@ -800,6 +800,70 @@ async function tryModel(
 }
 
 /**
+ * Try the last working model first, if recent and not failing too much.
+ */
+async function tryLastWorkingModel(
+  messages: { role: string; content: string }[],
+  systemPrompt: string,
+  tierTimeouts: Record<number, number>,
+): Promise<{ reply: string; model: string } | null> {
+  if (!lastWorkingModel) return null;
+  if ((Date.now() - lastWorkingTime) >= 300000) return null;
+  if ((modelFailCount[lastWorkingModel] || 0) >= 3) return null;
+  return await tryModel(lastWorkingModel, messages, systemPrompt, tierTimeouts[1]);
+}
+
+/**
+ * Iterate over all AI_MODELS by tier (1..4) and return the first success.
+ */
+async function tryModelsByTier(
+  messages: { role: string; content: string }[],
+  systemPrompt: string,
+  tierTimeouts: Record<number, number>,
+  globalStartTime: number,
+  globalTimeoutMs: number,
+): Promise<{ reply: string; model: string } | null> {
+  for (let tier = 1; tier <= 4; tier++) {
+    let tierTried = 0;
+    let tierSkipped = 0;
+
+    for (const model of AI_MODELS) {
+      if (model.tier !== tier) continue;
+      if ((modelFailCount[model.id] || 0) >= 3) {
+        tierSkipped++;
+        continue;
+      }
+      tierTried++;
+      const result = await tryModel(model.id, messages, systemPrompt, tierTimeouts[tier]);
+      if (result) return result;
+    }
+
+    console.log("[Chatbot/OpenRouter] Tier " + tier + ": tried " + tierTried + ", skipped " + tierSkipped);
+    if (Date.now() - globalStartTime > globalTimeoutMs) {
+      console.warn("[Chatbot/OpenRouter] Global timeout reached (" + Math.round((Date.now() - globalStartTime) / 1000) + "s)");
+      break;
+    }
+  }
+  return null;
+}
+
+/**
+ * Last resort: reset fail counts and try EVERY model.
+ */
+async function tryAllModelsAsLastResort(
+  messages: { role: string; content: string }[],
+  systemPrompt: string,
+): Promise<{ reply: string; model: string } | null> {
+  console.warn("[Chatbot/OpenRouter] All tiers exhausted with skips. Trying all models as last resort...");
+  for (const model of AI_MODELS) {
+    modelFailCount[model.id] = 0;
+    const result = await tryModel(model.id, messages, systemPrompt, 10000);
+    if (result) return result;
+  }
+  return null;
+}
+
+/**
  * Run the full OpenRouter cascading fallback (only if Modal was unavailable/failed).
  */
 async function openRouterFallback(
@@ -833,43 +897,16 @@ async function openRouterFallback(
   };
 
   // Step 1: Try last working model first
-  if (lastWorkingModel && (Date.now() - lastWorkingTime) < 300000) {
-    if ((modelFailCount[lastWorkingModel] || 0) < 3) {
-      const result = await tryModel(lastWorkingModel, messages, systemPrompt, TIER_TIMEOUTS[1]);
-      if (result) return result;
-    }
-  }
+  const lastResult = await tryLastWorkingModel(messages, systemPrompt, TIER_TIMEOUTS);
+  if (lastResult) return lastResult;
 
   // Step 2: Try all models by tier
-  for (let tier = 1; tier <= 4; tier++) {
-    let tierTried = 0;
-    let tierSkipped = 0;
-
-    for (const model of AI_MODELS) {
-      if (model.tier !== tier) continue;
-      if ((modelFailCount[model.id] || 0) >= 3) {
-        tierSkipped++;
-        continue;
-      }
-      tierTried++;
-      const result = await tryModel(model.id, messages, systemPrompt, TIER_TIMEOUTS[tier]);
-      if (result) return result;
-    }
-
-    console.log("[Chatbot/OpenRouter] Tier " + tier + ": tried " + tierTried + ", skipped " + tierSkipped);
-    if (Date.now() - globalStartTime > GLOBAL_TIMEOUT_MS) {
-      console.warn("[Chatbot/OpenRouter] Global timeout reached (" + Math.round((Date.now() - globalStartTime) / 1000) + "s)");
-      break;
-    }
-  }
+  const tierResult = await tryModelsByTier(messages, systemPrompt, TIER_TIMEOUTS, globalStartTime, GLOBAL_TIMEOUT_MS);
+  if (tierResult) return tierResult;
 
   // Step 3: ABSOLUTE LAST RESORT - try ALL models including known-bad ones
-  console.warn("[Chatbot/OpenRouter] All tiers exhausted with skips. Trying all models as last resort...");
-  for (const model of AI_MODELS) {
-    modelFailCount[model.id] = 0;
-    const result = await tryModel(model.id, messages, systemPrompt, 10000);
-    if (result) return result;
-  }
+  const lastResort = await tryAllModelsAsLastResort(messages, systemPrompt);
+  if (lastResort) return lastResort;
 
   // Note: previously had `void language;` here to silence the unused-param
   // warning; the parameter is now named `_language` so the no-op is no
@@ -881,95 +918,11 @@ async function openRouterFallback(
 // MAIN: non-streaming response
 // ════════════════════════════════════════════════════════════════════════
 
-export async function getChatResponse(request: {
-  messages: { role: string; content: string }[];
-  language?: string;
-}): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
-  const systemPrompt = getSystemPrompt(request.language);
+function buildSuccessResult(result: { reply: string; model: string }): { success: boolean; reply: string; model: string } {
+  return { success: true, reply: result.reply, model: result.model };
+}
 
-  // ─── TIER 1: Modal (GLM-5.1-FP8) with smart retry ───
-  if (modalIsAvailable()) {
-    if (modalKeyValid === null) {
-      await validateModalKey();
-    }
-    if (modalIsAvailable()) {
-      // Attempt 1: 3 minutes
-      let result = await tryModal(request.messages, systemPrompt, 180000);
-      if (result) {
-        return { success: true, reply: result.reply, model: result.model };
-      }
-      
-      // Attempt 2: 5 minutes (with 5s backoff for queue congestion)
-      console.warn("[Chatbot] Modal attempt 1 failed — waiting 5s then retrying (5min timeout)...");
-      await sleep(5000);
-      result = await tryModal(request.messages, systemPrompt, 300000);
-      if (result) {
-        return { success: true, reply: result.reply, model: result.model };
-      }
-      
-      // Attempt 3: 8 minutes (with 10s backoff)
-      console.warn("[Chatbot] Modal attempt 2 failed — waiting 10s then FINAL retry (8min timeout)...");
-      await sleep(10000);
-      result = await tryModal(request.messages, systemPrompt, 480000);
-      if (result) {
-        return { success: true, reply: result.reply, model: result.model };
-      }
-      
-      console.error("[Chatbot] GLM-5.1 completely failed after 3 attempts.");
-    }
-  } else {
-    console.info("[Chatbot] Modal not available — trying OpenCode next.");
-  }
-
-  // ─── TIER 2: OpenCode cascade (DeepSeek V4 → MiMo → Big Pickle → North Mini Code) ───
-  if (groqIsAvailable()) {
-    if (groqKeyValid === null) {
-      await validateGroqKey();
-    }
-    if (groqIsAvailable()) {
-      // Try each OpenCode model in priority order
-      for (let i = 0; i < GROQ_MODELS.length; i++) {
-        groqCurrentModelIndex = i;
-        const modelId = GROQ_MODELS[i];
-        
-        // Attempt 1: 2 minutes
-        let result = await tryGroq(request.messages, systemPrompt, modelId, 120000);
-        if (result) {
-          return { success: true, reply: result.reply, model: result.model };
-        }
-        
-        // Attempt 2: 3 minutes (no backoff — fast retry for non-streaming)
-        result = await tryGroq(request.messages, systemPrompt, modelId, 180000);
-        if (result) {
-          return { success: true, reply: result.reply, model: result.model };
-        }
-        
-        console.warn(`[Chatbot] OpenCode/${modelId} failed after 2 attempts — trying next model...`);
-      }
-      
-      console.error("[Chatbot] All Groq models failed — falling back to NVIDIA (MiniMax-M3).");
-      const nvidiaResult = await nvidiaFallback(request.messages, systemPrompt);
-      if (nvidiaResult) {
-        return { success: true, reply: nvidiaResult.reply, model: nvidiaResult.model };
-      }
-      console.error("[Chatbot] NVIDIA also failed — falling back to OpenRouter.");
-    }
-  } else {
-    console.info("[Chatbot] Groq not available — trying NVIDIA...");
-    const nvidiaResult = await nvidiaFallback(request.messages, systemPrompt);
-    if (nvidiaResult) {
-      return { success: true, reply: nvidiaResult.reply, model: nvidiaResult.model };
-    }
-    console.info("[Chatbot] NVIDIA also not available — using OpenRouter fallback.");
-  }
-
-  // ─── TIER 3: OpenRouter cascade ───
-  const orResult = await openRouterFallback(request.messages, systemPrompt, request.language);
-  if (orResult) {
-    return { success: true, reply: orResult.reply, model: orResult.model };
-  }
-
-  // ─── ALL TIERS FAILED ───
+function buildAllTiersFailedResponse(language?: string): { success: boolean; error: string } {
   const modalDead = modalKeyValid === false || !MODAL_API_KEY;
   const groqDead = groqKeyValid === false || !GROQ_API_KEY;
   const orDead = openrouterKeyValid === false || !OPENROUTER_API_KEY;
@@ -977,7 +930,7 @@ export async function getChatResponse(request: {
   if (modalDead && groqDead && orDead) {
     return {
       success: false,
-      error: request.language === "ar"
+      error: language === "ar"
         ? "مفتاحات API الخاصة بالشات بوت غير مُهيأة أو غير صالحة. يرجى التواصل مع الدعم الفني."
         : "The chatbot API keys are not configured or invalid. Please contact support.",
     };
@@ -986,10 +939,104 @@ export async function getChatResponse(request: {
   console.error("[Chatbot] All tiers failed (Modal + OpenCode + OpenRouter).");
   return {
     success: false,
-    error: request.language === "ar"
+    error: language === "ar"
       ? "جميع نماذج الذكاء الاصطناعي مشغولة حالياً. يرجى المحاولة بعد قليل."
       : "All AI models are temporarily busy. Please try again in a few seconds.",
   };
+}
+
+/**
+ * TIER 1: Modal (GLM-5.1-FP8) with smart retry — 3 attempts with backoff.
+ */
+async function tryModalTier(messages: { role: string; content: string }[], systemPrompt: string): Promise<{ success: boolean; reply?: string; model?: string } | null> {
+  if (!modalIsAvailable()) {
+    console.info("[Chatbot] Modal not available — trying OpenCode next.");
+    return null;
+  }
+  if (modalKeyValid === null) {
+    await validateModalKey();
+  }
+  if (!modalIsAvailable()) return null;
+
+  // Attempt 1: 3 minutes
+  let result = await tryModal(messages, systemPrompt, 180000);
+  if (result) return buildSuccessResult(result);
+
+  // Attempt 2: 5 minutes (with 5s backoff for queue congestion)
+  console.warn("[Chatbot] Modal attempt 1 failed — waiting 5s then retrying (5min timeout)...");
+  await sleep(5000);
+  result = await tryModal(messages, systemPrompt, 300000);
+  if (result) return buildSuccessResult(result);
+
+  // Attempt 3: 8 minutes (with 10s backoff)
+  console.warn("[Chatbot] Modal attempt 2 failed — waiting 10s then FINAL retry (8min timeout)...");
+  await sleep(10000);
+  result = await tryModal(messages, systemPrompt, 480000);
+  if (result) return buildSuccessResult(result);
+
+  console.error("[Chatbot] GLM-5.1 completely failed after 3 attempts.");
+  return null;
+}
+
+/**
+ * TIER 2: OpenCode cascade — try each Groq model, then NVIDIA fallback.
+ */
+async function tryGroqTier(messages: { role: string; content: string }[], systemPrompt: string): Promise<{ success: boolean; reply?: string; model?: string } | null> {
+  if (!groqIsAvailable()) {
+    console.info("[Chatbot] Groq not available — trying NVIDIA...");
+    const nvidiaResult = await nvidiaFallback(messages, systemPrompt);
+    if (nvidiaResult) return buildSuccessResult(nvidiaResult);
+    console.info("[Chatbot] NVIDIA also not available — using OpenRouter fallback.");
+    return null;
+  }
+  if (groqKeyValid === null) {
+    await validateGroqKey();
+  }
+  if (!groqIsAvailable()) return null;
+
+  // Try each OpenCode model in priority order
+  for (let i = 0; i < GROQ_MODELS.length; i++) {
+    groqCurrentModelIndex = i;
+    const modelId = GROQ_MODELS[i];
+
+    // Attempt 1: 2 minutes
+    let result = await tryGroq(messages, systemPrompt, modelId, 120000);
+    if (result) return buildSuccessResult(result);
+
+    // Attempt 2: 3 minutes (no backoff — fast retry for non-streaming)
+    result = await tryGroq(messages, systemPrompt, modelId, 180000);
+    if (result) return buildSuccessResult(result);
+
+    console.warn(`[Chatbot] OpenCode/${modelId} failed after 2 attempts — trying next model...`);
+  }
+
+  console.error("[Chatbot] All Groq models failed — falling back to NVIDIA (MiniMax-M3).");
+  const nvidiaResult = await nvidiaFallback(messages, systemPrompt);
+  if (nvidiaResult) return buildSuccessResult(nvidiaResult);
+  console.error("[Chatbot] NVIDIA also failed — falling back to OpenRouter.");
+  return null;
+}
+
+export async function getChatResponse(request: {
+  messages: { role: string; content: string }[];
+  language?: string;
+}): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
+  const systemPrompt = getSystemPrompt(request.language);
+
+  // ─── TIER 1: Modal (GLM-5.1-FP8) with smart retry ───
+  const modalResult = await tryModalTier(request.messages, systemPrompt);
+  if (modalResult) return modalResult;
+
+  // ─── TIER 2: OpenCode cascade (DeepSeek V4 → MiMo → Big Pickle → North Mini Code) ───
+  const groqResult = await tryGroqTier(request.messages, systemPrompt);
+  if (groqResult) return groqResult;
+
+  // ─── TIER 3: OpenRouter cascade ───
+  const orResult = await openRouterFallback(request.messages, systemPrompt, request.language);
+  if (orResult) return buildSuccessResult(orResult);
+
+  // ─── ALL TIERS FAILED ───
+  return buildAllTiersFailedResponse(request.language);
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -1000,43 +1047,37 @@ export async function getChatResponse(request: {
  * Pick the best provider/model to stream from.
  * Cascade: Modal → OpenCode → OpenRouter
  */
-export async function pickWorkingModel(
-  _messages: { role: string; content: string }[],
-  language?: string
-): Promise<
-  | { provider: "modal"; modelId: string; systemPrompt: string }
-  | { provider: "groq"; modelId: string; systemPrompt: string }
-  | { provider: "openrouter"; modelId: string; systemPrompt: string }
-  | null
-> {
-  const systemPrompt = getSystemPrompt(language);
-
-  // ─── TIER 1: Modal (GLM-5.1) ───
-  if (modalIsAvailable()) {
-    if (modalKeyValid === null) {
-      await validateModalKey();
-    }
-    if (modalIsAvailable()) {
-      console.info("[Chatbot] Using TIER 1: GLM-5.1-FP8 (Modal)");
-      return { provider: "modal", modelId: MODAL_MODEL, systemPrompt };
-    }
+/**
+ * Try to pick the Modal provider if available.
+ */
+async function tryPickModalProvider(systemPrompt: string): Promise<{ provider: "modal"; modelId: string; systemPrompt: string } | null> {
+  if (!modalIsAvailable()) return null;
+  if (modalKeyValid === null) {
+    await validateModalKey();
   }
+  if (!modalIsAvailable()) return null;
+  console.info("[Chatbot] Using TIER 1: GLM-5.1-FP8 (Modal)");
+  return { provider: "modal", modelId: MODAL_MODEL, systemPrompt };
+}
 
-  // ─── TIER 2: OpenCode ─── (if Modal unavailable)
-  if (groqIsAvailable()) {
-    if (groqKeyValid === null) {
-      await validateGroqKey();
-    }
-    if (groqIsAvailable()) {
-      const modelId = GROQ_MODELS[groqCurrentModelIndex] || GROQ_MODELS[0];
-      console.info("[Chatbot] Using TIER 2: " + modelId + " (OpenCode)");
-      return { provider: "groq", modelId, systemPrompt };
-    }
+/**
+ * Try to pick the Groq provider if available.
+ */
+async function tryPickGroqProvider(systemPrompt: string): Promise<{ provider: "groq"; modelId: string; systemPrompt: string } | null> {
+  if (!groqIsAvailable()) return null;
+  if (groqKeyValid === null) {
+    await validateGroqKey();
   }
+  if (!groqIsAvailable()) return null;
+  const modelId = GROQ_MODELS[groqCurrentModelIndex] || GROQ_MODELS[0];
+  console.info("[Chatbot] Using TIER 2: " + modelId + " (OpenCode)");
+  return { provider: "groq", modelId, systemPrompt };
+}
 
-  // ─── TIER 3: OpenRouter ─── (if Modal and OpenCode unavailable)
-  console.warn("[Chatbot] Modal + OpenCode unavailable — using TIER 3: OpenRouter");
-  
+/**
+ * Try to pick an OpenRouter provider (last working model or best tier-1).
+ */
+async function tryPickOpenRouterProvider(systemPrompt: string): Promise<{ provider: "openrouter"; modelId: string; systemPrompt: string } | null> {
   if (!openrouterKeyValidated) {
     await validateOpenRouterKey();
   }
@@ -1060,61 +1101,25 @@ export async function pickWorkingModel(
   return null;
 }
 
-/**
- * Probe an OpenRouter model with streaming to check if it responds.
- * Returns true if we get at least one SSE data chunk.
- */
-async function probeModel(
-  modelId: string,
-  systemPrompt: string,
-  timeoutMs: number
-): Promise<boolean> {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(function() { controller.abort(); }, timeoutMs);
+export async function pickWorkingModel(
+  _messages: { role: string; content: string }[],
+  language?: string
+): Promise<
+  | { provider: "modal"; modelId: string; systemPrompt: string }
+  | { provider: "groq"; modelId: string; systemPrompt: string }
+  | { provider: "openrouter"; modelId: string; systemPrompt: string }
+  | null
+> {
+  const systemPrompt = getSystemPrompt(language);
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": "Bearer " + OPENROUTER_API_KEY,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://ahmedelbaz.qzz.io",
-        "X-Title": "Elbaz LMS Chatbot",
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: modelId,
-        messages: [{ role: "system", content: systemPrompt }],
-        stream: true,
-        max_tokens: 1,
-      }),
-    });
+  const modalPick = await tryPickModalProvider(systemPrompt);
+  if (modalPick) return modalPick;
 
-    clearTimeout(timeoutId);
+  const groqPick = await tryPickGroqProvider(systemPrompt);
+  if (groqPick) return groqPick;
 
-    if (response.status === 401) {
-      openrouterKeyValid = false;
-      openrouterKeyValidated = true;
-      return false;
-    }
-    if (!response.ok) {
-      modelFailCount[modelId] = (modelFailCount[modelId] || 0) + 1;
-      return false;
-    }
-
-    modelSuccessCount[modelId] = (modelSuccessCount[modelId] || 0) + 1;
-    modelFailCount[modelId] = 0;
-    lastWorkingModel = modelId;
-    lastWorkingTime = Date.now();
-
-    if (response.body) {
-      await response.body.cancel();
-    }
-    return true;
-  } catch {
-    modelFailCount[modelId] = (modelFailCount[modelId] || 0) + 1;
-    return false;
-  }
+  console.warn("[Chatbot] Modal + OpenCode unavailable — using TIER 3: OpenRouter");
+  return await tryPickOpenRouterProvider(systemPrompt);
 }
 
 /**
@@ -1129,294 +1134,422 @@ async function probeModel(
  * If the chosen provider stream fails partway, we transparently fall back to
  * the other provider (non-streaming) so the user still gets an answer.
  */
-export async function getStreamResponse(request: {
-  messages: { role: string; content: string }[];
-  language?: string;
-}): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
-  const picked = await pickWorkingModel(request.messages, request.language);
+function buildStreamErrorResponse(kind: "noProvider" | "openRouterError" | "openRouterConnectError", language?: string): { error: string } {
+  const messages: Record<typeof kind, { ar: string; en: string }> = {
+    noProvider: {
+      ar: "جميع نماذج الذكاء الاصطناعي مشغولة حالياً. يرجى المحاولة بعد قليل.",
+      en: "All AI models are temporarily busy. Please try again in a few seconds.",
+    },
+    openRouterError: {
+      ar: "عذراً، حدث خطأ. يرجى المحاولة مرة أخرى.",
+      en: "Sorry, an error occurred. Please try again.",
+    },
+    openRouterConnectError: {
+      ar: "تعذر الاتصال بالخدمة. يرجى المحاولة مرة أخرى.",
+      en: "Could not connect to the service. Please try again.",
+    },
+  };
+  return { error: language === "ar" ? messages[kind].ar : messages[kind].en };
+}
 
-  if (!picked) {
-    return {
-      error: request.language === "ar"
-        ? "جميع نماذج الذكاء الاصطناعي مشغولة حالياً. يرجى المحاولة بعد قليل."
-        : "All AI models are temporarily busy. Please try again in a few seconds.",
-    };
+/**
+ * Process one SSE line from an upstream chat-completion stream.
+ * Mutates `state.sawContent` and `state.streamClosed`. Returns true to
+ * break the surrounding for-of loop (when the stream is closed).
+ */
+function processSSEDeltaLine(
+  line: string,
+  encoder: TextEncoder,
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  state: { sawContent: boolean; streamClosed: boolean },
+): boolean {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed === "data: [DONE]") return false;
+  if (!trimmed.startsWith("data: ")) return false;
+  try {
+    const parsed = JSON.parse(trimmed.slice(6));
+    const delta = parsed.choices?.[0]?.delta;
+    if (!delta) return false;
+    if (delta.content) {
+      state.sawContent = true;
+      try {
+        controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: delta.content }) + "\n\n"));
+      } catch {
+        state.streamClosed = true;
+        return true;
+      }
+    }
+  } catch {
+    // Skip malformed JSON chunks
+  }
+  return false;
+}
+
+/**
+ * Flush any trailing buffered SSE line after the upstream stream ends.
+ */
+function flushTrailingSSEBuffer(
+  buffer: string,
+  encoder: TextEncoder,
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  state: { sawContent: boolean; streamClosed: boolean },
+): void {
+  if (state.streamClosed) return;
+  const rest = buffer.trim();
+  if (!rest.startsWith("data: ") || rest.slice(6).trim() === "[DONE]") return;
+  try {
+    const parsed = JSON.parse(rest.slice(6).trim());
+    const delta = parsed.choices?.[0]?.delta;
+    if (delta?.content) {
+      state.sawContent = true;
+      try { controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: delta.content }) + "\n\n")); } catch { /* already closed */ }
+    }
+  } catch {
+    // Skip malformed trailing chunk
+  }
+}
+
+/**
+ * If Modal produced no usable content, recover via OpenCode then OpenRouter.
+ */
+async function recoverEmptyModalStream(
+  request: { messages: { role: string; content: string }[]; language?: string },
+  picked: { systemPrompt: string },
+  encoder: TextEncoder,
+  controller: ReadableStreamDefaultController<Uint8Array>,
+): Promise<void> {
+  console.warn("[Chatbot/Stream] Modal returned no content (only reasoning) — trying OpenCode...");
+  const fb2 = await groqFallback(request.messages, picked.systemPrompt);
+  if (fb2) {
+    try { controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: fb2.reply }) + "\n\n")); } catch { /* controller already closed */ }
+    return;
+  }
+  const fb = await openRouterFallback(request.messages, picked.systemPrompt, request.language);
+  if (fb) {
+    try { controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: fb.reply }) + "\n\n")); } catch { /* controller already closed */ }
+  }
+}
+
+/**
+ * Modal streaming start callback: pump upstream chunks into the SSE controller.
+ * Extracted from getStreamResponse to keep cognitive complexity manageable.
+ */
+async function pumpModalStream(
+  upstream: ReadableStream<Uint8Array>,
+  decoder: TextDecoder,
+  encoder: TextEncoder,
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  request: { messages: { role: string; content: string }[]; language?: string },
+  picked: { systemPrompt: string },
+): Promise<void> {
+  const reader = upstream.getReader();
+  const state = { sawContent: false, streamClosed: false };
+  let buffer = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done || state.streamClosed) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || ""; // keep incomplete line
+
+      for (const line of lines) {
+        if (state.streamClosed) break;
+        if (processSSEDeltaLine(line, encoder, controller, state)) break;
+      }
+    }
+
+    flushTrailingSSEBuffer(buffer, encoder, controller, state);
+  } catch (e) {
+    try { controller.error(e); } catch { /* already closed */ }
+    return;
+  } finally {
+    try { reader.releaseLock(); } catch { /* already released */ }
   }
 
-  const encoder = new TextEncoder();
+  if (!state.sawContent) {
+    await recoverEmptyModalStream(request, picked, encoder, controller);
+  }
 
-  // ─── Modal stream (GLM-5.1) with smart RETRY ───
-  if (picked.provider === "modal") {
-    const timeouts = [180000, 300000, 480000]; // 3min, 5min, 8min
-    let response: Response | null = null;
+  try { controller.enqueue(encoder.encode("data: [DONE]\n\n")); } catch { /* controller already closed */ }
+  try { controller.close(); } catch { /* already closed */ }
+}
+
+/**
+ * Build the Modal fetch request body for the chosen model + system prompt.
+ */
+function buildModalStreamBody(picked: { modelId: string; systemPrompt: string }, request: { messages: { role: string; content: string }[] }) {
+  return JSON.stringify({
+    model: picked.modelId,
+    messages: [
+      { role: "system", content: picked.systemPrompt },
+      ...request.messages.map(function(m) { return { role: m.role, content: m.content }; }),
+    ],
+    temperature: 0.7,
+    max_tokens: 2048,
+    stream: true,
+  });
+}
+
+/**
+ * Try a single Modal fetch attempt with the given timeout.
+ * Returns the Response on success, or null if the caller should retry.
+ * Performs the appropriate backoff sleep internally before returning null
+ * (so the caller can simply loop without per-case sleep logic).
+ */
+async function tryModalStreamFetch(picked: { modelId: string; systemPrompt: string }, request: { messages: { role: string; content: string }[] }, timeout: number, attempt: number, totalAttempts: number, isLastAttempt: boolean): Promise<Response | null> {
+  console.info(`[Chatbot/Stream] GLM-5.1 attempt ${attempt + 1}/${totalAttempts} (${timeout/1000}s timeout)`);
+  let response: Response;
+  try {
+    response = await fetch(MODAL_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + MODAL_API_KEY,
+        "Content-Type": "application/json",
+      },
+      body: buildModalStreamBody(picked, request),
+      signal: AbortSignal.timeout(timeout),
+    });
+  } catch (e) {
+    modalConsecFails++;
+    modalLastFailTime = Date.now();
+    console.warn(`[Chatbot/Stream] Modal attempt ${attempt + 1} threw:`, String(e));
+    if (!isLastAttempt) {
+      console.info("[Chatbot/Stream] Retrying Modal in 5s (queue congestion)...");
+      await sleep(5000);
+    }
+    return null;
+  }
+
+  if (response.status === 429 || response.status === 503) {
+    modalConsecFails++;
+    modalLastFailTime = Date.now();
+    const retryAfter = response.headers.get("retry-after") || "5";
+    console.warn(`[Chatbot/Stream] Modal overloaded (${response.status}) — waiting ${retryAfter}s before retry...`);
+    await sleep(Number.parseInt(retryAfter) * 1000);
+    if (!isLastAttempt) {
+      console.info("[Chatbot/Stream] Retrying Modal after queue clear...");
+    }
+    return null;
+  }
+
+  if (!response.ok || !response.body) {
+    modalConsecFails++;
+    modalLastFailTime = Date.now();
+    console.warn(`[Chatbot/Stream] Modal attempt ${attempt + 1} failed: HTTP ${response.status}`);
+    if (!isLastAttempt) {
+      console.info("[Chatbot/Stream] Retrying Modal...");
+      await sleep(3000);
+    }
+    return null;
+  }
+
+  // SUCCESS
+  modalConsecFails = 0;
+  modalLastSuccess = Date.now();
+  modalKeyValid = true;
+  console.info(`[Chatbot/Stream] GLM-5.1 attempt ${attempt + 1} SUCCESS`);
+  return response;
+}
+
+/**
+ * Modal stream (GLM-5.1) with smart RETRY — 3 attempts with backoff.
+ */
+async function streamModalProvider(
+  request: { messages: { role: string; content: string }[]; language?: string },
+  picked: { modelId: string; systemPrompt: string },
+  encoder: TextEncoder,
+): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
+  const timeouts = [180000, 300000, 480000]; // 3min, 5min, 8min
+  let response: Response | null = null;
+
+  for (let attempt = 0; attempt < timeouts.length; attempt++) {
+    const timeout = timeouts[attempt];
+    const isLastAttempt = attempt === timeouts.length - 1;
+    const result = await tryModalStreamFetch(picked, request, timeout, attempt, timeouts.length, isLastAttempt);
+    if (result) {
+      response = result;
+      break;
+    }
+  }
+
+  if (!response || !response.body) {
+    console.error("[Chatbot/Stream] All Modal attempts failed — falling back to OpenCode.");
+    return await streamGroqFallback(request, picked.systemPrompt);
+  }
+
+  const upstream = response.body;
+  const decoder = new TextDecoder();
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      await pumpModalStream(upstream, decoder, encoder, controller, request, picked);
+    },
+  });
+
+  return { stream, model: picked.modelId };
+}
+
+/**
+ * Build a TransformStream that decodes upstream SSE chunks and re-emits
+ * lightweight `data: {"text": "..."}` events for our client.
+ * Extracted from streamGroqProvider/streamOpenRouterProvider to keep
+ * cognitive complexity manageable.
+ */
+function buildSSEContentTransformStream(encoder: TextEncoder): TransformStream<Uint8Array, Uint8Array> {
+  const decoder = new TextDecoder();
+  return new TransformStream<Uint8Array, Uint8Array>({
+    async transform(chunk, controller) {
+      try {
+        const text = decoder.decode(chunk, { stream: true });
+        const lines = text.split("\n");
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed === "data: [DONE]") continue;
+          if (!trimmed.startsWith("data: ")) continue;
+          try {
+            const parsed = JSON.parse(trimmed.slice(6));
+            const delta = parsed.choices?.[0]?.delta;
+            if (delta?.content) {
+              try { controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: delta.content }) + "\n\n")); } catch { /* closed */ }
+            }
+          } catch { /* skip malformed JSON */ }
+        }
+      } catch { /* decode error */ }
+    },
+    flush(controller) {
+      try { controller.enqueue(encoder.encode("data: [DONE]\n\n")); } catch { /* closed */ }
+      try { controller.terminate(); } catch { /* terminated */ }
+    },
+  });
+}
+
+/**
+ * Try a single Groq streaming fetch attempt with the given timeout.
+ * Returns the Response on success, or null if the caller should try the
+ * next attempt or model. Performs the appropriate backoff sleep internally
+ * before returning null so the caller can simply loop.
+ */
+async function tryGroqStreamFetch(
+  request: { messages: { role: string; content: string }[] },
+  picked: { systemPrompt: string },
+  modelId: string,
+  timeout: number,
+  attempt: number,
+  totalAttempts: number,
+): Promise<Response | null> {
+  try {
+    return await fetch(GROQ_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + GROQ_API_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: modelId,
+        messages: [
+          { role: "system", content: picked.systemPrompt },
+          ...request.messages.map(function(m) { return { role: m.role, content: m.content }; }),
+        ],
+        temperature: 0.7,
+        max_tokens: 2048,
+        stream: true,
+      }),
+      signal: AbortSignal.timeout(timeout),
+    });
+  } catch (e) {
+    console.warn(`[Chatbot/Stream/Groq] ${modelId} attempt ${attempt + 1} threw:`, String(e));
+    if (attempt < totalAttempts - 1) await sleep(5000);
+    return null;
+  }
+}
+
+/**
+ * Inspect a Groq fetch Response and decide whether to use it, retry, or
+ * give up on this model. Returns:
+ *   - { kind: "ok", response }    → caller should pipe the response
+ *   - { kind: "retry" }            → caller should retry the next attempt (sleeps handled here)
+ *   - { kind: "nextModel" }        → caller should move to the next model
+ */
+async function evaluateGroqStreamResponse(
+  response: Response,
+  modelId: string,
+  attempt: number,
+  totalAttempts: number,
+): Promise<{ kind: "ok" | "retry" | "nextModel" }> {
+  if (response.status === 429 || response.status === 503) {
+    console.warn(`[Chatbot/Stream/Groq] ${modelId} overloaded (${response.status}) — trying next model...`);
+    return { kind: "nextModel" };
+  }
+  if (!response.ok || !response.body) {
+    console.warn(`[Chatbot/Stream/Groq] ${modelId} attempt ${attempt + 1} failed: HTTP ${response.status}`);
+    if (attempt < totalAttempts - 1) {
+      await sleep(3000);
+      return { kind: "retry" };
+    }
+    return { kind: "nextModel" };
+  }
+  return { kind: "ok" };
+}
+
+/**
+ * OpenCode stream (DeepSeek V4 → MiMo → Big Pickle → North Mini Code).
+ * Try each Groq model in cascade; on success pipe through a transform that
+ * extracts `delta.content` and emits `[DONE]` on flush.
+ */
+async function streamGroqProvider(
+  request: { messages: { role: string; content: string }[]; language?: string },
+  picked: { systemPrompt: string },
+  encoder: TextEncoder,
+): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
+  const timeouts = [120000, 180000]; // 2min, 3min with backoff
+
+  for (let i = 0; i < GROQ_MODELS.length; i++) {
+    const modelId = GROQ_MODELS[i];
+    groqCurrentModelIndex = i;
 
     for (let attempt = 0; attempt < timeouts.length; attempt++) {
-      const timeout = timeouts[attempt];
-      console.info(`[Chatbot/Stream] GLM-5.1 attempt ${attempt + 1}/${timeouts.length} (${timeout/1000}s timeout)`);
-
-      try {
-        response = await fetch(MODAL_ENDPOINT, {
-          method: "POST",
-          headers: {
-            "Authorization": "Bearer " + MODAL_API_KEY,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: picked.modelId,
-            messages: [
-              { role: "system", content: picked.systemPrompt },
-              ...request.messages.map(function(m) { return { role: m.role, content: m.content }; }),
-            ],
-            temperature: 0.7,
-            max_tokens: 2048,
-            stream: true,
-          }),
-          signal: AbortSignal.timeout(timeout),
-        });
-      } catch (e) {
-        modalConsecFails++;
-        modalLastFailTime = Date.now();
-        console.warn(`[Chatbot/Stream] Modal attempt ${attempt + 1} threw:`, String(e));
-        if (attempt < timeouts.length - 1) {
-          console.info("[Chatbot/Stream] Retrying Modal in 5s (queue congestion)...");
-          await sleep(5000); // Wait 5s before retry (Modal queue might clear)
-          continue;
-        }
-        console.error("[Chatbot/Stream] All Modal attempts failed — falling back to OpenCode.");
-        return await streamGroqFallback(request, picked.systemPrompt);
+      const response = await tryGroqStreamFetch(request, picked, modelId, timeouts[attempt], attempt, timeouts.length);
+      if (!response) {
+        // Fetch threw — try next attempt (sleep handled in helper) or fall through to next model
+        if (attempt < timeouts.length - 1) continue;
+        break;
       }
 
-      // Check for "too many concurrent requests" — retry with backoff
-      if (response.status === 429 || response.status === 503) {
-        modalConsecFails++;
-        modalLastFailTime = Date.now();
-        const retryAfter = response.headers.get("retry-after") || "5";
-        console.warn(`[Chatbot/Stream] Modal overloaded (${response.status}) — waiting ${retryAfter}s before retry...`);
-        await sleep(Number.parseInt(retryAfter) * 1000);
-        if (attempt < timeouts.length - 1) {
-          console.info("[Chatbot/Stream] Retrying Modal after queue clear...");
-          continue;
-        }
-        console.error("[Chatbot/Stream] Modal still overloaded after retries — falling back to OpenCode.");
-        return await streamGroqFallback(request, picked.systemPrompt);
-      }
-
-      if (!response.ok || !response.body) {
-        modalConsecFails++;
-        modalLastFailTime = Date.now();
-        console.warn(`[Chatbot/Stream] Modal attempt ${attempt + 1} failed: HTTP ${response.status}`);
-        if (attempt < timeouts.length - 1) {
-          console.info("[Chatbot/Stream] Retrying Modal...");
-          await sleep(3000);
-          continue;
-        }
-        console.error("[Chatbot/Stream] All Modal attempts failed — falling back to OpenCode.");
-        return await streamGroqFallback(request, picked.systemPrompt);
-      }
+      const evaluation = await evaluateGroqStreamResponse(response, modelId, attempt, timeouts.length);
+      if (evaluation.kind === "nextModel") break;
+      if (evaluation.kind === "retry") continue;
 
       // SUCCESS
-      modalConsecFails = 0;
-      modalLastSuccess = Date.now();
-      modalKeyValid = true;
-      console.info(`[Chatbot/Stream] GLM-5.1 attempt ${attempt + 1} SUCCESS`);
-      break; // Exit retry loop, proceed with stream
+      groqConsecFails = 0;
+      groqLastSuccess = Date.now();
+      groqKeyValid = true;
+      console.info(`[Chatbot/Stream/Groq] ${modelId} SUCCESS`);
+
+      const transformStreamOC = buildSSEContentTransformStream(encoder);
+      return { stream: response.body!.pipeThrough(transformStreamOC), model: modelId };
     }
 
-    // If we got here without a response, something went wrong
-    if (!response || !response.body) {
-      console.error("[Chatbot/Stream] No Modal response after all attempts");
-      return await streamGroqFallback(request, picked.systemPrompt);
-    }
-
-    const upstream = response.body;
-    const decoder = new TextDecoder();
-
-    const stream = new ReadableStream<Uint8Array>({
-      async start(controller) {
-        const reader = upstream.getReader();
-        let sawContent = false;
-        let buffer = "";
-        let streamClosed = false;
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done || streamClosed) break;
-            buffer += decoder.decode(value, { stream: true });
-
-            const lines = buffer.split("\n");
-            buffer = lines.pop() || ""; // keep incomplete line
-
-            for (const line of lines) {
-              if (streamClosed) break;
-              const trimmed = line.trim();
-              if (!trimmed || trimmed === "data: [DONE]") continue;
-              if (!trimmed.startsWith("data: ")) continue;
-              try {
-                const parsed = JSON.parse(trimmed.slice(6));
-                const delta = parsed.choices?.[0]?.delta;
-                if (!delta) continue;
-                // ✅ Forward ONLY `content`. Discard `reasoning_content` (chain-of-thought).
-                if (delta.content) {
-                  sawContent = true;
-                  try { controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: delta.content }) + "\n\n")); } catch { streamClosed = true; break; }
-                }
-              } catch {
-                // Skip malformed JSON chunks
-              }
-            }
-          }
-
-          // Flush any trailing buffered line
-          if (!streamClosed) {
-            const rest = buffer.trim();
-            if (rest.startsWith("data: ") && rest.slice(6).trim() !== "[DONE]") {
-              try {
-                const parsed = JSON.parse(rest.slice(6).trim());
-                const delta = parsed.choices?.[0]?.delta;
-                if (delta?.content) {
-                  sawContent = true;
-                  try { controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: delta.content }) + "\n\n")); } catch { /* already closed */ }
-                }
-              } catch {
-                // Skip malformed trailing chunk
-              }
-            }
-          }
-        } catch (e) {
-          try { controller.error(e); } catch { /* already closed */ }
-          return;
-        } finally {
-          try { reader.releaseLock(); } catch { /* already released */ }
-        }
-
-        // Modal produced only reasoning (or nothing usable) — recover via OpenCode then OpenRouter.
-        if (!sawContent) {
-          console.warn("[Chatbot/Stream] Modal returned no content (only reasoning) — trying OpenCode...");
-          // Try OpenCode first
-          const fb2 = await groqFallback(request.messages, picked.systemPrompt);
-          if (fb2) {
-            try { controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: fb2.reply }) + "\n\n")); } catch { /* controller already closed */ }
-          } else {
-            // Fall back to OpenRouter
-            const fb = await openRouterFallback(request.messages, picked.systemPrompt, request.language);
-            if (fb) {
-              try { controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: fb.reply }) + "\n\n")); } catch { /* controller already closed */ }
-            }
-          }
-        }
-
-        try { controller.enqueue(encoder.encode("data: [DONE]\n\n")); } catch { /* controller already closed */ }
-        try { controller.close(); } catch { /* already closed */ }
-      },
-    });
-
-    return { stream, model: picked.modelId };
+    // Model exhausted — try next
+    groqConsecFails++;
+    groqLastFailTime = Date.now();
+    console.warn(`[Chatbot/Stream/Groq] ${modelId} exhausted — trying next model...`);
   }
 
-  // ─── OpenCode stream (DeepSeek V4 → MiMo → Big Pickle → North Mini Code) ───
-  if (picked.provider === "groq") {
-    // Try each OpenCode model in cascade
-    for (let i = 0; i < GROQ_MODELS.length; i++) {
-      const modelId = GROQ_MODELS[i];
-      groqCurrentModelIndex = i;
+  // All OpenCode models failed
+  console.error("[Chatbot/Stream] All OpenCode models exhausted — falling back to OpenRouter.");
+  return await streamOpenRouterFallback(request, picked.systemPrompt);
+}
 
-      const timeouts = [120000, 180000]; // 2min, 3min with backoff
-      let response: Response | null = null;
-
-      for (let attempt = 0; attempt < timeouts.length; attempt++) {
-        const timeout = timeouts[attempt];
-        try {
-          response = await fetch(GROQ_ENDPOINT, {
-            method: "POST",
-            headers: {
-              "Authorization": "Bearer " + GROQ_API_KEY,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: modelId,
-              messages: [
-                { role: "system", content: picked.systemPrompt },
-                ...request.messages.map(function(m) { return { role: m.role, content: m.content }; }),
-              ],
-              temperature: 0.7,
-              max_tokens: 2048,
-              stream: true,
-            }),
-            signal: AbortSignal.timeout(timeout),
-          });
-        } catch (e) {
-          console.warn(`[Chatbot/Stream/Groq] ${modelId} attempt ${attempt + 1} threw:`, String(e));
-          if (attempt < timeouts.length - 1) {
-            await sleep(5000);
-            continue;
-          }
-          break; // Try next model
-        }
-
-        // Check for overload — try next model
-        if (response.status === 429 || response.status === 503) {
-          // `retryAfter` header was previously read here but never used
-          // (the warning uses response.status, not retryAfter). Removed
-          // (SonarCloud S1854).
-          console.warn(`[Chatbot/Stream/Groq] ${modelId} overloaded (${response.status}) — trying next model...`);
-          break; // Try next model
-        }
-
-        if (!response.ok || !response.body) {
-          console.warn(`[Chatbot/Stream/Groq] ${modelId} attempt ${attempt + 1} failed: HTTP ${response.status}`);
-          if (attempt < timeouts.length - 1) {
-            await sleep(3000);
-            continue;
-          }
-          break; // Try next model
-        }
-
-        // SUCCESS
-        groqConsecFails = 0;
-        groqLastSuccess = Date.now();
-        groqKeyValid = true;
-        console.info(`[Chatbot/Stream/Groq] ${modelId} SUCCESS`);
-
-        const decoderOC = new TextDecoder();
-        const transformStreamOC = new TransformStream<Uint8Array, Uint8Array>({
-          async transform(chunk, controller) {
-            try {
-              const text = decoderOC.decode(chunk, { stream: true });
-              const lines = text.split("\n");
-              for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed || trimmed === "data: [DONE]") continue;
-                if (!trimmed.startsWith("data: ")) continue;
-                try {
-                  const parsed = JSON.parse(trimmed.slice(6));
-                  const delta = parsed.choices?.[0]?.delta;
-                  if (delta?.content) {
-                    try { controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: delta.content }) + "\n\n")); } catch { /* closed */ }
-                  }
-                } catch { /* skip */ }
-              }
-            } catch { /* decode error */ }
-          },
-          flush(controller) {
-            try { controller.enqueue(encoder.encode("data: [DONE]\n\n")); } catch { /* closed */ }
-            try { controller.terminate(); } catch { /* terminated */ }
-          },
-        });
-        return { stream: response!.body!.pipeThrough(transformStreamOC), model: modelId };
-      }
-
-      // Model exhausted — try next
-      groqConsecFails++;
-      groqLastFailTime = Date.now();
-      console.warn(`[Chatbot/Stream/Groq] ${modelId} exhausted — trying next model...`);
-    }
-
-    // All OpenCode models failed
-    console.error("[Chatbot/Stream] All OpenCode models exhausted — falling back to OpenRouter.");
-    return await streamOpenRouterFallback(request, picked.systemPrompt);
-  }
-
-  // ─── OpenRouter stream ───
+/**
+ * OpenRouter stream — direct fetch + transform that extracts `delta.content`.
+ */
+async function streamOpenRouterProvider(
+  request: { messages: { role: string; content: string }[]; language?: string },
+  picked: { modelId: string; systemPrompt: string },
+  encoder: TextEncoder,
+): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
   try {
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -1440,55 +1573,39 @@ export async function getStreamResponse(request: {
 
     if (!response.ok || !response.body) {
       modelFailCount[picked.modelId] = (modelFailCount[picked.modelId] || 0) + 1;
-      return {
-        error: request.language === "ar"
-          ? "عذراً، حدث خطأ. يرجى المحاولة مرة أخرى."
-          : "Sorry, an error occurred. Please try again.",
-      };
+      return buildStreamErrorResponse("openRouterError", request.language);
     }
 
-    const decoder = new TextDecoder();
-    const transformStream = new TransformStream<Uint8Array, Uint8Array>({
-      async transform(chunk, controller) {
-        try {
-          const text = decoder.decode(chunk, { stream: true });
-          const lines = text.split("\n");
-
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed || trimmed === "data: [DONE]") continue;
-            if (!trimmed.startsWith("data: ")) continue;
-
-            try {
-              const parsed = JSON.parse(trimmed.slice(6));
-              const delta = parsed.choices?.[0]?.delta;
-              if (delta?.content) {
-                try {
-                  controller.enqueue(encoder.encode("data: " + JSON.stringify({ text: delta.content }) + "\n\n"));
-                } catch { /* stream closed */ }
-              }
-            } catch {
-              // Skip malformed JSON chunks
-            }
-          }
-        } catch { /* decode error - skip */ }
-      },
-      flush(controller) {
-        try { controller.enqueue(encoder.encode("data: [DONE]\n\n")); } catch { /* already closed */ }
-        try { controller.terminate(); } catch { /* already terminated */ }
-      },
-    });
-
+    const transformStream = buildSSEContentTransformStream(encoder);
     const stream = response.body.pipeThrough(transformStream);
     return { stream, model: picked.modelId };
   } catch {
     modelFailCount[picked.modelId] = (modelFailCount[picked.modelId] || 0) + 1;
-    return {
-      error: request.language === "ar"
-        ? "تعذر الاتصال بالخدمة. يرجى المحاولة مرة أخرى."
-        : "Could not connect to the service. Please try again.",
-    };
+    return buildStreamErrorResponse("openRouterConnectError", request.language);
   }
+}
+
+export async function getStreamResponse(request: {
+  messages: { role: string; content: string }[];
+  language?: string;
+}): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
+  const picked = await pickWorkingModel(request.messages, request.language);
+
+  if (!picked) {
+    return buildStreamErrorResponse("noProvider", request.language);
+  }
+
+  const encoder = new TextEncoder();
+
+  if (picked.provider === "modal") {
+    return await streamModalProvider(request, picked, encoder);
+  }
+
+  if (picked.provider === "groq") {
+    return await streamGroqProvider(request, picked, encoder);
+  }
+
+  return await streamOpenRouterProvider(request, picked, encoder);
 }
 
 /**

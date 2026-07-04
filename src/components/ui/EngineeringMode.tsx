@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from "react";
 
 interface EngineeringModeContextType {
   isActive: boolean;
@@ -14,7 +14,7 @@ export function useEngineeringMode() {
   return useContext(EngineeringModeContext);
 }
 
-export function EngineeringModeProvider({ children }: { children: ReactNode }) {
+export function EngineeringModeProvider({ children }: { readonly children: ReactNode }) {
   const [isActive, setIsActive] = useState(false);
 
   const toggle = useCallback(() => {
@@ -29,8 +29,10 @@ export function EngineeringModeProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const contextValue = useMemo(() => ({ isActive, toggle }), [isActive, toggle]);
+
   return (
-    <EngineeringModeContext.Provider value={{ isActive, toggle }}>
+    <EngineeringModeContext.Provider value={contextValue}>
       {children}
     </EngineeringModeContext.Provider>
   );

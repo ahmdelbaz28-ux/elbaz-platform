@@ -82,69 +82,15 @@ export default function QuizComponent({ lessonId }: QuizComponentProps) {
     return answers.find((a) => a.questionId === question.id)?.selectedOption === optionIndex;
   };
 
+  const handleRetake = () => {
+    setShowResult(false);
+    setAnswers([]);
+    setCurrentQ(0);
+    submitMutation.reset();
+  };
+
   if (showResult && submitMutation.data) {
-    const result = submitMutation.data;
-    return (
-      <div className="rounded-lg border border-[#1f2d44] bg-[#0a0e17] p-6">
-        <div className="text-center">
-          <div className={`mx-auto flex h-16 w-16 items-center justify-center rounded-full ${
-            result.passed ? "bg-[rgba(16,185,129,0.15)]" : "bg-[rgba(244,63,94,0.15)]"
-          }`}>
-            {result.passed ? (
-              <CheckCircle className="h-8 w-8 text-[#10b981]" />
-            ) : (
-              <XCircle className="h-8 w-8 text-[#f43f5e]" />
-            )}
-          </div>
-          <h4 className="mt-4 text-xl font-bold text-[#f0f4f8]">
-            {t("yourScore")}: {result.percentage}%
-          </h4>
-          <p className={`mt-1 text-sm font-medium ${result.passed ? "text-[#10b981]" : "text-[#f43f5e]"}`}>
-            {result.passed ? t("passed") : t("failed")}
-          </p>
-          <p className="mt-2 text-sm text-[#94a3b8]">
-            {result.score} / {result.totalPoints} {lang === "en" ? "points" : "نقطة"}
-          </p>
-        </div>
-
-        {/* Detailed results */}
-        <div className="mt-6 space-y-4">
-          {result.results.map((r: any) => {
-            const q = questions.find((q) => q.id === r.questionId);
-            return (
-              <div key={r.questionId} className="rounded-lg border border-[#1f2d44] p-4">
-                <div className="flex items-start gap-2">
-                  {r.isCorrect ? (
-                    <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#10b981]" />
-                  ) : (
-                    <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#f43f5e]" />
-                  )}
-                  <div>
-                    <p className="text-sm font-medium text-[#f0f4f8]">
-                      {lang === "ar" ? q?.questionAr : q?.questionEn}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        <Button
-          variant="outline"
-          className="mt-6 w-full border-[#1f2d44] text-[#06b6d4] hover:bg-[rgba(6,182,212,0.05)]"
-          onClick={() => {
-            setShowResult(false);
-            setAnswers([]);
-            setCurrentQ(0);
-            submitMutation.reset();
-          }}
-        >
-          <RotateCcw className="mr-2 h-4 w-4" />
-          {t("retakeQuiz")}
-        </Button>
-      </div>
-    );
+    return <QuizResultView result={submitMutation.data} questions={questions} t={t} lang={lang} onRetake={handleRetake} />;
   }
 
   return (
@@ -181,7 +127,7 @@ export default function QuizComponent({ lessonId }: QuizComponentProps) {
                   : "bg-[#1a2233] text-[#64748b]"
               }`}
             >
-              {String.fromCharCode(65 + i)}
+              {String.fromCodePoint(65 + i)}
             </span>
             {opt}
           </button>
@@ -220,6 +166,73 @@ export default function QuizComponent({ lessonId }: QuizComponentProps) {
           </Button>
         )}
       </div>
+    </div>
+  );
+}
+
+interface QuizResultViewProps {
+  readonly result: any;
+  readonly questions: any[];
+  readonly t: (key: string) => string;
+  readonly lang: "ar" | "en";
+  readonly onRetake: () => void;
+}
+
+function QuizResultView({ result, questions, t, lang, onRetake }: QuizResultViewProps) {
+  return (
+    <div className="rounded-lg border border-[#1f2d44] bg-[#0a0e17] p-6">
+      <div className="text-center">
+        <div className={`mx-auto flex h-16 w-16 items-center justify-center rounded-full ${
+          result.passed ? "bg-[rgba(16,185,129,0.15)]" : "bg-[rgba(244,63,94,0.15)]"
+        }`}>
+          {result.passed ? (
+            <CheckCircle className="h-8 w-8 text-[#10b981]" />
+          ) : (
+            <XCircle className="h-8 w-8 text-[#f43f5e]" />
+          )}
+        </div>
+        <h4 className="mt-4 text-xl font-bold text-[#f0f4f8]">
+          {t("yourScore")}: {result.percentage}%
+        </h4>
+        <p className={`mt-1 text-sm font-medium ${result.passed ? "text-[#10b981]" : "text-[#f43f5e]"}`}>
+          {result.passed ? t("passed") : t("failed")}
+        </p>
+        <p className="mt-2 text-sm text-[#94a3b8]">
+          {result.score} / {result.totalPoints} {lang === "en" ? "points" : "نقطة"}
+        </p>
+      </div>
+
+      {/* Detailed results */}
+      <div className="mt-6 space-y-4">
+        {result.results.map((r: any) => {
+          const q = questions.find((q) => q.id === r.questionId);
+          return (
+            <div key={r.questionId} className="rounded-lg border border-[#1f2d44] p-4">
+              <div className="flex items-start gap-2">
+                {r.isCorrect ? (
+                  <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#10b981]" />
+                ) : (
+                  <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#f43f5e]" />
+                )}
+                <div>
+                  <p className="text-sm font-medium text-[#f0f4f8]">
+                    {lang === "ar" ? q?.questionAr : q?.questionEn}
+                  </p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <Button
+        variant="outline"
+        className="mt-6 w-full border-[#1f2d44] text-[#06b6d4] hover:bg-[rgba(6,182,212,0.05)]"
+        onClick={onRetake}
+      >
+        <RotateCcw className="mr-2 h-4 w-4" />
+        {t("retakeQuiz")}
+      </Button>
     </div>
   );
 }

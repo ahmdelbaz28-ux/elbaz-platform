@@ -8,6 +8,85 @@ import { nanoid } from "nanoid";
 import { initiatePaymobPayment, isPaymobConfigured } from "./lib/paymob";
 import { invalidateCourseCache, invalidateStatsCache } from "./lib/cache";
 
+/**
+ * Apply a promo code to compute the discount amount, final amount, and applied promo id.
+ * Returns null if the promo code is invalid/expired/over-used; otherwise the computed values.
+ */
+async function applyPromoCode(
+  tx: Parameters<Parameters<typeof withTransaction>[0]>[0],
+  promoCodeId: number,
+  amount: string,
+): Promise<{ discountAmount: number; finalAmount: string; appliedPromoCodeId: number } | null> {
+  const [promo] = await tx
+    .select()
+    .from(promoCodes)
+    .where(eq(promoCodes.id, promoCodeId))
+    .limit(1);
+
+  if (!promo?.isActive) return null;
+  const now = new Date();
+  if (now < promo.validFrom) return null;
+  if (promo.validUntil !== null && now > promo.validUntil) return null;
+  if (promo.maxUses !== null && promo.usedCount >= promo.maxUses) return null;
+
+  let discountAmount: number;
+  if (promo.discountType === "percentage") {
+    discountAmount = (Number.parseFloat(amount) * Number.parseFloat(String(promo.discountValue))) / 100;
+  } else {
+    discountAmount = Number.parseFloat(String(promo.discountValue));
+  }
+  discountAmount = Math.min(discountAmount, Number.parseFloat(amount));
+  const finalAmount = Math.max(Number.parseFloat(amount) - discountAmount, 0).toString();
+  return { discountAmount, finalAmount, appliedPromoCodeId: promo.id };
+}
+
+/**
+ * Handle a free course: insert a completed payment + enrollment + bump student count.
+ */
+async function enrollInFreeCourse(
+  tx: Parameters<Parameters<typeof withTransaction>[0]>[0],
+  ctx: { user: { id: number } },
+  input: { courseId: number; paymentMethod: string; phoneNumber?: string },
+  amount: string,
+  transactionId: string,
+): Promise<{ success: true; transactionId: string; paymentId: number; requiresRedirect: false; message: string }> {
+  const [payment] = await tx.insert(payments).values({
+    userId: ctx.user.id,
+    courseId: input.courseId,
+    amount,
+    currency: "EGP",
+    provider: "free",
+    paymentMethod: input.paymentMethod,
+    transactionId,
+    status: "completed",
+    paidAt: new Date(),
+    phoneNumber: input.phoneNumber || null,
+  });
+
+  await tx.insert(enrollments).values({
+    userId: ctx.user.id,
+    courseId: input.courseId,
+    progress: "0",
+    isCompleted: false,
+  });
+
+  await tx
+    .update(courses)
+    .set({ studentCount: sql`${courses.studentCount} + 1` })
+    .where(eq(courses.id, input.courseId));
+
+  await invalidateCourseCache();
+  await invalidateStatsCache();
+
+  return {
+    success: true,
+    transactionId,
+    paymentId: Number(payment.insertId),
+    requiresRedirect: false,
+    message: "Enrolled successfully!",
+  };
+}
+
 export const paymentRouter = createRouter({
   /**
    * ✅ FULLY FUNCTIONAL: Create payment and redirect to Paymob
@@ -82,66 +161,17 @@ export const paymentRouter = createRouter({
         let appliedPromoCodeId: number | null = null;
 
         if (input.promoCodeId && !isFree) {
-          const [promo] = await tx
-            .select()
-            .from(promoCodes)
-            .where(eq(promoCodes.id, input.promoCodeId))
-            .limit(1);
-
-          if (promo?.isActive) {
-            const now = new Date();
-            if (now >= promo.validFrom && (promo.validUntil === null || now <= promo.validUntil)) {
-              if (promo.maxUses === null || promo.usedCount < promo.maxUses) {
-                if (promo.discountType === "percentage") {
-                  discountAmount = (Number.parseFloat(amount) * Number.parseFloat(String(promo.discountValue))) / 100;
-                } else {
-                  discountAmount = Number.parseFloat(String(promo.discountValue));
-                }
-                discountAmount = Math.min(discountAmount, Number.parseFloat(amount));
-                finalAmount = Math.max(Number.parseFloat(amount) - discountAmount, 0).toString();
-                appliedPromoCodeId = promo.id;
-              }
-            }
+          const promoResult = await applyPromoCode(tx, input.promoCodeId, amount);
+          if (promoResult) {
+            discountAmount = promoResult.discountAmount;
+            finalAmount = promoResult.finalAmount;
+            appliedPromoCodeId = promoResult.appliedPromoCodeId;
           }
         }
 
         // ✅ Free courses: enroll immediately, no Paymob needed
         if (isFree) {
-          const [payment] = await tx.insert(payments).values({
-            userId: ctx.user.id,
-            courseId: input.courseId,
-            amount,
-            currency: "EGP",
-            provider: "free",
-            paymentMethod: input.paymentMethod,
-            transactionId,
-            status: "completed",
-            paidAt: new Date(),
-            phoneNumber: input.phoneNumber || null,
-          });
-
-          await tx.insert(enrollments).values({
-            userId: ctx.user.id,
-            courseId: input.courseId,
-            progress: "0",
-            isCompleted: false,
-          });
-
-          await tx
-            .update(courses)
-            .set({ studentCount: sql`${courses.studentCount} + 1` })
-            .where(eq(courses.id, input.courseId));
-
-          await invalidateCourseCache();
-          await invalidateStatsCache();
-
-          return {
-            success: true,
-            transactionId,
-            paymentId: Number(payment.insertId),
-            requiresRedirect: false,
-            message: "Enrolled successfully!",
-          };
+          return await enrollInFreeCourse(tx, ctx, input, amount, transactionId);
         }
 
         // ✅ PAID COURSES: Initiate Paymob payment

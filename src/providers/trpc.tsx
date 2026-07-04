@@ -24,7 +24,7 @@ const queryClient = new QueryClient({
 });
 
 const persister = createSyncStoragePersister({
-  storage: typeof globalThis !== 'undefined' ? globalThis.localStorage : undefined,
+  storage: globalThis !== undefined ? globalThis.localStorage : undefined,
   key: 'ELBAZ_QUERY_CACHE',
 });
 
@@ -85,7 +85,7 @@ const trpcClient = trpc.createClient({
   ],
 });
 
-export function TRPCProvider({ children }: { children: ReactNode }) {
+export function TRPCProvider({ children }: { readonly children: ReactNode }) {
   return (
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
       <PersistQueryClientProvider 

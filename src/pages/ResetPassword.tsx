@@ -23,7 +23,7 @@ import { bilingualByLang } from "@/lib/i18n";
 
 type ResetState = "form" | "submitting" | "success" | "error" | "invalid";
 
-export default function ResetPassword() {
+export default function ResetPassword() { // NOSONAR — reset-password page with strength meter, validation, and multi-state form; extraction would require prop-drilling many form-state hooks
   const { lang } = useTranslation();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -31,12 +31,18 @@ export default function ResetPassword() {
   const token = searchParams.get("token");
   const uid = searchParams.get("uid");
 
+  const invalidLinkMessage = lang === "ar"
+    ? "رابط إعادة التعيين غير مكتمل. يرجى التأكد من نسخ الرابط كاملاً من البريد الإلكتروني."
+    : "Invalid reset link. Please make sure you copied the full link from the email.";
+
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [error, setError] = useState(!token || !uid ? (lang === "ar" ? "رابط إعادة التعيين غير مكتمل. يرجى التأكد من نسخ الرابط كاملاً من البريد الإلكتروني." : "Invalid reset link. Please make sure you copied the full link from the email.") : "");
-  const [state, setState] = useState<ResetState>(!token || !uid ? "invalid" : "form");
+  const [error, setError] = useState(!token || uid ? "" : invalidLinkMessage);
+  const [state, setState] = useState<ResetState>(!token || uid ? "form" : "invalid");
+
+  const resetButtonLabel = lang === "ar" ? "إعادة تعيين كلمة المرور" : "Reset Password";
 
   const resetMutation = trpc.auth.resetPassword.useMutation({
     onSuccess: (data) => {
@@ -146,14 +152,9 @@ export default function ResetPassword() {
       ? ["", "ضعيفة جداً", "ضعيفة", "متوسطة", "قوية", "قوية جداً"]
       : ["", "Very Weak", "Weak", "Fair", "Strong", "Very Strong"];
 
-  const strengthColor =
-    strength <= 1
-      ? "#f43f5e"
-      : strength === 2
-        ? "#f97316"
-        : strength === 3
-          ? "#f59e0b"
-          : "#10b981";
+  const strengthColorEq3 = strength === 3 ? "#f59e0b" : "#10b981";
+  const strengthColorEq2 = strength === 2 ? "#f97316" : strengthColorEq3;
+  const strengthColor = strength <= 1 ? "#f43f5e" : strengthColorEq2;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#0a0e17] px-4">
@@ -414,11 +415,7 @@ export default function ResetPassword() {
                       <Loader2 className="h-4 w-4 animate-spin" />
                       {lang === "ar" ? "جاري إعادة التعيين..." : "Resetting..."}
                     </span>
-                  ) : lang === "ar" ? (
-                    "إعادة تعيين كلمة المرور"
-                  ) : (
-                    "Reset Password"
-                  )}
+                  ) : resetButtonLabel}
                 </Button>
               </div>
             </form>

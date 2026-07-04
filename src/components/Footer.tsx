@@ -10,6 +10,43 @@ const TiktokIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
+interface SocialLink {
+  readonly icon: React.ReactNode;
+  readonly href: string;
+  readonly label: string;
+}
+
+function pushIfValid(
+  out: SocialLink[],
+  url: string | null | undefined,
+  icon: React.ReactNode,
+  label: string,
+  hrefTransform?: (url: string) => string,
+): void {
+  if (!url || url === "#") return;
+  out.push({ icon, href: hrefTransform ? hrefTransform(url) : url, label });
+}
+
+function buildSocialLinks(contact: {
+  youtubeUrl?: string | null;
+  linkedinUrl?: string | null;
+  facebookUrl?: string | null;
+  instagramUrl?: string | null;
+  twitterUrl?: string | null;
+  tiktokUrl?: string | null;
+  email?: string | null;
+}): SocialLink[] {
+  const out: SocialLink[] = [];
+  pushIfValid(out, contact.youtubeUrl, <Youtube className="h-4 w-4" />, "YouTube");
+  pushIfValid(out, contact.linkedinUrl, <Linkedin className="h-4 w-4" />, "LinkedIn");
+  pushIfValid(out, contact.facebookUrl, <Facebook className="h-4 w-4" />, "Facebook");
+  pushIfValid(out, contact.instagramUrl, <Instagram className="h-4 w-4" />, "Instagram");
+  pushIfValid(out, contact.twitterUrl, <Twitter className="h-4 w-4" />, "Twitter");
+  pushIfValid(out, contact.tiktokUrl, <TiktokIcon className="h-4 w-4" />, "TikTok");
+  pushIfValid(out, contact.email, <Mail className="h-4 w-4" />, "Email", (e) => `mailto:${e}`);
+  return out;
+}
+
 const BRAND_COLORS: Record<string, string> = {
   YouTube: "hover:border-[#FF0000] hover:text-[#FF0000] hover:bg-[rgba(255,0,0,0.1)] hover:shadow-[0_0_15px_rgba(255,0,0,0.3)]",
   LinkedIn: "hover:border-[#0A66C2] hover:text-[#0A66C2] hover:bg-[rgba(10,102,194,0.1)] hover:shadow-[0_0_15px_rgba(10,102,194,0.3)]",
@@ -41,29 +78,7 @@ export default function Footer() {
   };
 
   // Build social links from dynamic settings — only include non-empty, non-"#" URLs
-  const socialLinks: { icon: React.ReactNode; href: string; label: string }[] = [];
-
-  if (contact.youtubeUrl && contact.youtubeUrl !== "#") {
-    socialLinks.push({ icon: <Youtube className="h-4 w-4" />, href: contact.youtubeUrl, label: "YouTube" });
-  }
-  if (contact.linkedinUrl && contact.linkedinUrl !== "#") {
-    socialLinks.push({ icon: <Linkedin className="h-4 w-4" />, href: contact.linkedinUrl, label: "LinkedIn" });
-  }
-  if (contact.facebookUrl && contact.facebookUrl !== "#") {
-    socialLinks.push({ icon: <Facebook className="h-4 w-4" />, href: contact.facebookUrl, label: "Facebook" });
-  }
-  if (contact.instagramUrl && contact.instagramUrl !== "#") {
-    socialLinks.push({ icon: <Instagram className="h-4 w-4" />, href: contact.instagramUrl, label: "Instagram" });
-  }
-  if (contact.twitterUrl && contact.twitterUrl !== "#") {
-    socialLinks.push({ icon: <Twitter className="h-4 w-4" />, href: contact.twitterUrl, label: "Twitter" });
-  }
-  if (contact.tiktokUrl && contact.tiktokUrl !== "#") {
-    socialLinks.push({ icon: <TiktokIcon className="h-4 w-4" />, href: contact.tiktokUrl, label: "TikTok" });
-  }
-  if (contact.email) {
-    socialLinks.push({ icon: <Mail className="h-4 w-4" />, href: `mailto:${contact.email}`, label: "Email" });
-  }
+  const socialLinks = buildSocialLinks(contact);
 
   return (
     <footer className="relative border-t border-[#1e2d3d] bg-[#070b12]">

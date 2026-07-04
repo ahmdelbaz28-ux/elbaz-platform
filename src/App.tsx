@@ -49,7 +49,7 @@ function PageLoader() {
   );
 }
 
-function Layout({ children }: { children: React.ReactNode }) {
+function Layout({ children }: { readonly children: React.ReactNode }) {
   const location = useLocation();
   const isAuthPage = location.pathname === "/login" || location.pathname === "/register" || location.pathname === "/forgot-password" || location.pathname === "/reset-password";
 

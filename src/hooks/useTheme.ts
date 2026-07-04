@@ -17,7 +17,7 @@ export type Theme = 'dark' | 'light';
 const STORAGE_KEY = 'elbaz-theme';
 
 function getInitialTheme(): Theme {
-  if (typeof globalThis === 'undefined') return 'dark';
+  if (globalThis === undefined) return 'dark';
 
   // ✅ FIX: Dark Mode is ALWAYS the default.
   // Only switch to Light if user EXPLICITLY chose it.

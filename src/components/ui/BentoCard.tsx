@@ -9,7 +9,7 @@ interface BentoCardProps {
   readonly rowSpan?: 1 | 2;
   readonly delay?: number;
   readonly glowColor?: string;
-  onClick?: () => void;
+  readonly onClick?: () => void;
 }
 
 export default function BentoCard({
