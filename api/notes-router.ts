@@ -7,11 +7,11 @@ import { userNotes } from "@db/schema";
 
 // ─── Helper: build the values payload for a new note insertion ───
 function buildNewNoteValues(userId: number, note: {
-  courseId?: number | undefined;
-  lessonId?: number | undefined;
-  title?: string | undefined;
+  courseId?: number;
+  lessonId?: number;
+  title?: string;
   content: string;
-  tags?: string[] | undefined;
+  tags?: string[];
   isPinned: boolean;
 }) {
   return {
@@ -27,11 +27,11 @@ function buildNewNoteValues(userId: number, note: {
 
 // ─── Helper: build the updates payload for an existing note ───
 function buildNoteUpdates(note: {
-  courseId?: number | undefined;
-  lessonId?: number | undefined;
-  title?: string | undefined;
+  courseId?: number;
+  lessonId?: number;
+  title?: string;
   content: string;
-  tags?: string[] | undefined;
+  tags?: string[];
   isPinned: boolean;
 }) {
   const updates: any = {
