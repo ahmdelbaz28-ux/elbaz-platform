@@ -1,6 +1,6 @@
 import http from "k6/http";
 import { check, sleep, group } from "k6";
-import { Rate, Trend, Counter } from "k6/metrics";
+import { Rate, Trend } from "k6/metrics";
 
 const BASE_URL = "https://ahmedelbaz.qzz.io";
 
@@ -234,7 +234,7 @@ export function setup() {
   return { token };
 }
 
-export default function (data) {
+export default function defaultScenario(data) {
   // k6/crypto provides a CSPRNG; prefer it over Math.random() in load tests
   // to avoid SonarCloud S2245 (PRNGs in security contexts).
   const crypto = require("k6/crypto");
@@ -296,8 +296,6 @@ function textSummary(data, options) {
   if (options.enableColors) {
     output += "\x1b[0m";
   }
-  for (const indent of Array((options.indent?.length || 0) / 2 + 1)) {
-    output += " ";
-  }
+  output += " ".repeat((options.indent?.length || 0) / 2 + 1);
   return output;
 }

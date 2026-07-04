@@ -108,11 +108,10 @@ export default function CookieConsent() {
       {/* Backdrop — clickable to dismiss; also keyboard-accessible via
           Escape so screen-reader users can close the banner without a
           mouse (SonarCloud S1082). */}
-      <div
+      <button
+        type="button"
         data-testid="cookie-consent-backdrop"
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        role="button"
-        tabIndex={0}
+        className="absolute inset-0 w-full h-full bg-black/50 backdrop-blur-sm cursor-default"
         aria-label="Dismiss cookie consent banner"
         onClick={handleAcceptNecessary}
         onKeyDown={(e) => {

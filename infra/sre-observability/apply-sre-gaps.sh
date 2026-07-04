@@ -1,6 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 NAMESPACE="ahmedelbaz"
+
+# Shared separator literal (SonarCloud shelldre:S1192)
+SEP='========================================='
+
 ORDER=(
   "infra/sre-observability/loki/00-loki.yaml"
   "infra/sre-observability/promtail/00-promtail.yaml"
@@ -12,10 +16,10 @@ ORDER=(
   "infra/sre-observability/grafana-dashboards/06-loki-log-analytics.json"
   "infra/sre-observability/grafana-dashboards/07-node-monitoring.json"
 )
-echo "========================================="
+echo "$SEP"
 echo "  Elbaz Platform SRE Gap Deployment"
 echo "  $(date -u)"
-echo "========================================="
+echo "$SEP"
 kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 || kubectl create namespace "$NAMESPACE"
 kubectl apply -f infra/sre-observability/cert-manager/00-cluster-issuer.yaml 2>/dev/null || echo "[SKIP] cert-manager issuer (requires cert-manager installed)"
 for MANIFEST in "${ORDER[@]}"; do
@@ -27,9 +31,9 @@ for MANIFEST in "${ORDER[@]}"; do
   fi
 done
 echo ""
-echo "========================================="
+echo "$SEP"
 echo "  Verifying Deployments"
-echo "========================================="
+echo "$SEP"
 DEPLOYMENTS=("loki" "thanos-querier" "thanos-store" "thanos-compact")
 DAEMONSETS=("promtail" "node-exporter")
 CRONJOBS=("elbaz-platform-health-probe" "elbaz-platform-auto-heal")
@@ -47,9 +51,9 @@ for CJ in "${CRONJOBS[@]}"; do
   echo "  CronJob $CJ: $(kubectl get cronjob "$CJ" -n "$NAMESPACE" -o jsonpath='{.status.lastScheduleTime}' 2>/dev/null || echo 'not scheduled')"
 done
 echo ""
-echo "========================================="
+echo "$SEP"
 echo "  Service Endpoints"
-echo "========================================="
+echo "$SEP"
 SERVICES=("loki:3100" "promtail:3101" "node-exporter:9100" "thanos-querier:19192" "thanos-store:10901" "thanos-compact:10902")
 for SVC in "${SERVICES[@]}"; do
   NAME="${SVC%%:*}"
@@ -57,6 +61,6 @@ for SVC in "${SERVICES[@]}"; do
   echo "  $NAME:$PORT"
 done
 echo ""
-echo "========================================="
+echo "$SEP"
 echo "  Deployment Complete"
-echo "========================================="
+echo "$SEP"

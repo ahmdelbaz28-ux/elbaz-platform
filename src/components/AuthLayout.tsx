@@ -236,9 +236,20 @@ function AuthLayoutContent({
         </Sidebar>
         <div
           className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/20 transition-colors ${isCollapsed ? "hidden" : ""}`}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize sidebar"
+          tabIndex={0}
           onMouseDown={() => {
             if (isCollapsed) return;
             setIsResizing(true);
+          }}
+          onKeyDown={(e) => {
+            // Allow keyboard users to start resize with Enter/Space
+            if ((e.key === "Enter" || e.key === " ") && !isCollapsed) {
+              e.preventDefault();
+              setIsResizing(true);
+            }
           }}
           style={{ zIndex: 50 }}
         />

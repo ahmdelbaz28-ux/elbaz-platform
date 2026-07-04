@@ -153,10 +153,9 @@ export default function CertificateView() { // NOSONAR — certificate view with
                   {/* Dropdown backdrop — keyboard-accessible via Escape so
                       screen-reader users can close the menu without a mouse
                       (SonarCloud S1082). */}
-                  <div
-                    className="fixed inset-0 z-40"
-                    role="button"
-                    tabIndex={0}
+                  <button
+                    type="button"
+                    className="fixed inset-0 z-40 w-full h-full cursor-default"
                     aria-label="Close share menu"
                     onClick={() => setShowLinkedInShare(false)}
                     onKeyDown={(e) => {
@@ -220,7 +219,6 @@ export default function CertificateView() { // NOSONAR — certificate view with
                 grade: cert.grade || "Pass",
                 averageScore: cert.averageScore ?? undefined,
               }}
-              lang={lang}
             />
           </div>
         ) : (

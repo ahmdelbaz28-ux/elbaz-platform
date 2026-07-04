@@ -39,19 +39,19 @@ usage() {
 }
 
 if [[ -z "$LOCAL_DIR" ]]; then
-    echo -e "${RED}Error: No local folder specified${NC}"
+    echo -e "${RED}Error: No local folder specified${NC}" >&2
     usage
 fi
 
 if [[ ! -d "$LOCAL_DIR" ]]; then
-    echo -e "${RED}Error: Directory not found: $LOCAL_DIR${NC}"
+    echo -e "${RED}Error: Directory not found: $LOCAL_DIR${NC}" >&2
     exit 1
 fi
 
 if ! command -v aws &>/dev/null; then
-    echo -e "${RED}Error: AWS CLI is not installed${NC}"
-    echo "Install with: pip install awscli"
-    echo "  or:  curl https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o awscliv2.zip"
+    echo -e "${RED}Error: AWS CLI is not installed${NC}" >&2
+    echo "Install with: pip install awscli" >&2
+    echo "  or:  curl https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o awscliv2.zip" >&2
     exit 1
 fi
 
@@ -67,8 +67,8 @@ if [[ -z "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
 fi
 
 if [[ -z "$AWS_ACCESS_KEY_ID" ]] || [[ -z "$AWS_SECRET_ACCESS_KEY" ]]; then
-    echo -e "${RED}Error: R2 credentials not configured${NC}"
-    echo "Set R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY in your environment"
+    echo -e "${RED}Error: R2 credentials not configured${NC}" >&2
+    echo "Set R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY in your environment" >&2
     exit 1
 fi
 

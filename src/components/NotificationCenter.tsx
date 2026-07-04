@@ -581,8 +581,8 @@ function NotificationRow({
   const cfg = DISPLAY_CONFIG[record.displayType] ?? DISPLAY_CONFIG.system;
 
   return (
-    <div
-      role="listitem"
+    <button
+      type="button"
       dir={lang === "ar" ? "rtl" : "ltr"}
       onClick={() => {
         if (!record.read) onMarkRead(record.id);
@@ -593,9 +593,8 @@ function NotificationRow({
           onMarkRead(record.id);
         }
       }}
-      tabIndex={0}
       aria-label={`${record.title} – ${record.message}`}
-      className={`group flex cursor-pointer items-start gap-3 rounded-lg border px-3.5 py-3 transition-all duration-200 ${
+      className={`group flex w-full cursor-pointer items-start gap-3 rounded-lg border px-3.5 py-3 text-start transition-all duration-200 ${
         record.read
           ? "border-transparent bg-transparent opacity-60 hover:bg-[rgba(255,255,255,0.02)] hover:opacity-80"
           : `border-[#1e2d3d] bg-[rgba(13,20,32,0.6)] ring-1 ring-inset ${cfg.ring} hover:bg-[rgba(13,20,32,0.9)]`
@@ -632,7 +631,7 @@ function NotificationRow({
           {relativeTime(record.timestamp, lang)}
         </p>
       </div>
-    </div>
+    </button>
   );
 }
 

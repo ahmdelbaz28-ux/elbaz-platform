@@ -112,7 +112,12 @@
       (function(){
         var clarityId = (globalThis.__ENV__?.CLARITY_PROJECT_ID) || "";
         if (!clarityId) return; // No Clarity ID configured — skip loading
-        globalThis.clarity = globalThis.clarity || function(){(globalThis.clarity.q = globalThis.clarity.q || []).push(arguments)};
+        globalThis.clarity = globalThis.clarity || function(){
+          if (!globalThis.clarity.q) {
+            globalThis.clarity.q = [];
+          }
+          globalThis.clarity.q.push(arguments);
+        };
         var s = document.createElement("script");
         s.async = 1; s.src = "https://www.clarity.ms/tag/" + clarityId;
         var y = document.getElementsByTagName("script")[0];

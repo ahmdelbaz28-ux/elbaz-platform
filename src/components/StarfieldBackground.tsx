@@ -472,25 +472,26 @@ export default function StarfieldBackground() {
   }, []);
 
   return (
-    <canvas
-      ref={canvasRef}
-      aria-hidden="true"
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: '100%',
-        // ✅ FIX: z-index: -1 ensures the canvas stays BEHIND all content.
-        zIndex: -1,
-        pointerEvents: 'none',
-        // ✅ Dynamic background based on current theme
-        // The CSS override [data-theme="light"] canvas also handles this,
-        // but we set it inline for immediate effect before CSS loads.
-        background: document !== undefined && document.documentElement.dataset.theme === 'light'
-          ? '#f8fafc'
-          : '#070b12',
-      }}
-    />
+    <div aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: -1, pointerEvents: 'none' }}>
+      <canvas
+        ref={canvasRef}
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          // ✅ FIX: z-index: -1 ensures the canvas stays BEHIND all content.
+          zIndex: -1,
+          pointerEvents: 'none',
+          // ✅ Dynamic background based on current theme
+          // The CSS override [data-theme="light"] canvas also handles this,
+          // but we set it inline for immediate effect before CSS loads.
+          background: document !== undefined && document.documentElement.dataset.theme === 'light'
+            ? '#f8fafc'
+            : '#070b12',
+        }}
+      />
+    </div>
   );
 }

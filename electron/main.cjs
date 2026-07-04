@@ -16,8 +16,6 @@ function createWindow() {
   });
 
   // For this demonstration/start, we load the built file
-  const forceProd = process.argv.includes('--prod') || !isDev;
-  
   if (isDev && !process.argv.includes('--prod')) {
     win.loadURL('http://localhost:5173').catch(() => {
       console.log("Dev server not found, loading local file...");

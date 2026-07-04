@@ -39,7 +39,7 @@ export class DashboardPage {
       '.courses-count',
       '[class*="stat"] [class*="number"]',
       '.stat-value',
-      'text=/\\d+\\s*courses?/i',
+      String.raw`text=/\d+\s*courses?/i`,
     ];
     for (const selector of selectors) {
       if (selector.startsWith("text=")) {

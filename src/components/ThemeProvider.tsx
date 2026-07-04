@@ -58,40 +58,40 @@ export default function ThemeProvider({ children }: { readonly children: React.R
 
   return (
     <>
-      <style>{`
+      <style>{String.raw`
         /* Dynamic Theme Overrides for Tailwind Arbitrary Values */
         /* Backgrounds */
-        .bg-\\[\\#0a0e17\\] { background-color: var(--theme-bg) !important; }
-        .bg-\\[\\#070b12\\] { background-color: var(--theme-bg-darker) !important; }
-        .bg-\\[\\#111827\\] { background-color: var(--theme-card) !important; }
-        .bg-\\[\\#1a2233\\] { background-color: var(--theme-card) !important; }
-        
+        .bg-\[\#0a0e17\] { background-color: var(--theme-bg) !important; }
+        .bg-\[\#070b12\] { background-color: var(--theme-bg-darker) !important; }
+        .bg-\[\#111827\] { background-color: var(--theme-card) !important; }
+        .bg-\[\#1a2233\] { background-color: var(--theme-card) !important; }
+
         /* Primary accent (cyan) */
-        .text-\\[\\#06b6d4\\] { color: var(--theme-primary) !important; }
-        .border-\\[\\#06b6d4\\] { border-color: var(--theme-primary) !important; }
-        .bg-\\[\\#06b6d4\\] { background-color: var(--theme-primary) !important; }
-        .from-\\[\\#06b6d4\\] { --tw-gradient-from: var(--theme-primary) var(--tw-gradient-from-position) !important; --tw-gradient-to: rgb(6 182 212 / 0) var(--tw-gradient-to-position); --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
-        
+        .text-\[\#06b6d4\] { color: var(--theme-primary) !important; }
+        .border-\[\#06b6d4\] { border-color: var(--theme-primary) !important; }
+        .bg-\[\#06b6d4\] { background-color: var(--theme-primary) !important; }
+        .from-\[\#06b6d4\] { --tw-gradient-from: var(--theme-primary) var(--tw-gradient-from-position) !important; --tw-gradient-to: rgb(6 182 212 / 0) var(--tw-gradient-to-position); --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
+
         /* Secondary accent */
-        .text-\\[\\#0891b2\\] { color: var(--theme-secondary) !important; }
-        .bg-\\[\\#0891b2\\] { background-color: var(--theme-secondary) !important; }
-        .to-\\[\\#0891b2\\] { --tw-gradient-to: var(--theme-secondary) var(--tw-gradient-to-position) !important; }
-        
+        .text-\[\#0891b2\] { color: var(--theme-secondary) !important; }
+        .bg-\[\#0891b2\] { background-color: var(--theme-secondary) !important; }
+        .to-\[\#0891b2\] { --tw-gradient-to: var(--theme-secondary) var(--tw-gradient-to-position) !important; }
+
         /* Borders */
-        .border-\\[\\#1f2d44\\] { border-color: var(--theme-border) !important; }
-        .border-\\[\\#1e2d3d\\] { border-color: var(--theme-border) !important; }
-        .border-\\[\\#2d3f52\\] { border-color: var(--theme-border) !important; }
-        
+        .border-\[\#1f2d44\] { border-color: var(--theme-border) !important; }
+        .border-\[\#1e2d3d\] { border-color: var(--theme-border) !important; }
+        .border-\[\#2d3f52\] { border-color: var(--theme-border) !important; }
+
         /* Primary text (headings, important text) */
-        .text-\\[\\#f0f4f8\\] { color: var(--theme-text) !important; }
-        .text-\\[\\#e8f0fe\\] { color: var(--theme-text) !important; }
-        .text-\\[\\#eaf0ff\\] { color: var(--theme-text) !important; }
-        
+        .text-\[\#f0f4f8\] { color: var(--theme-text) !important; }
+        .text-\[\#e8f0fe\] { color: var(--theme-text) !important; }
+        .text-\[\#eaf0ff\] { color: var(--theme-text) !important; }
+
         /* Muted/secondary text */
-        .text-\\[\\#94a3b8\\] { color: var(--theme-muted) !important; }
-        .text-\\[\\#64748b\\] { color: var(--theme-muted) !important; }
-        .text-\\[\\#475569\\] { color: var(--theme-muted) !important; }
-        
+        .text-\[\#94a3b8\] { color: var(--theme-muted) !important; }
+        .text-\[\#64748b\] { color: var(--theme-muted) !important; }
+        .text-\[\#475569\] { color: var(--theme-muted) !important; }
+
         /* General document resets */
         body { background-color: var(--theme-bg) !important; color: var(--theme-text) !important; }
       `}</style>

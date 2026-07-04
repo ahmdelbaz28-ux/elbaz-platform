@@ -4,6 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NAMESPACE="ahmedelbaz"
 
+# Shared separator literal (SonarCloud shelldre:S1192)
+SEP='============================================'
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -116,9 +119,9 @@ verify_pods_health() {
 }
 
 main() {
-    echo "============================================"
+    echo "$SEP"
     echo " Ahmed El-Baz LMS - K8s Manifest Deployment"
-    echo "============================================"
+    echo "$SEP"
     echo ""
 
     check_kubectl
@@ -163,9 +166,9 @@ main() {
     done
 
     echo ""
-    echo "============================================"
+    echo "$SEP"
     log_info "Applying StorageClasses..."
-    echo "============================================"
+    echo "$SEP"
     for sc_file in "${SCRIPT_DIR}"/12-storageclasses.yaml; do
         if [[ -f "${sc_file}" ]]; then
             apply_manifest "${sc_file}" || failed=$((failed + 1))
@@ -173,9 +176,9 @@ main() {
     done
 
     echo ""
-    echo "============================================"
+    echo "$SEP"
     log_info "Deployment Summary"
-    echo "============================================"
+    echo "$SEP"
     if [[ "${failed}" -gt 0 ]]; then
         log_warn "${failed} manifest(s) failed to apply"
     else
@@ -193,9 +196,9 @@ main() {
     verify_pods_health
 
     echo ""
-    echo "============================================"
+    echo "$SEP"
     log_info "Deployment complete!"
-    echo "============================================"
+    echo "$SEP"
     echo ""
     echo "Useful commands:"
     echo "  kubectl get all -n ${NAMESPACE}"

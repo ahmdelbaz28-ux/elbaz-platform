@@ -13,7 +13,6 @@ export interface CertificateData {
 
 interface CertificateCardProps {
   readonly data: CertificateData;
-  readonly lang?: "en" | "ar";
 }
 
 function getGradeClass(grade: string): string {
@@ -162,7 +161,7 @@ export default function CertificateCard({ data }: CertificateCardProps) {
 
         {/* Certificate Title */}
         <h1 className="cert-title">
-          Certificate of Completion
+          Certificate of Completion{' '}
           <span className="cert-title-sub">Professional Achievement</span>
         </h1>
 

@@ -542,9 +542,11 @@ async function start() {
   process.on("SIGINT", () => shutdownHandler("SIGINT"));
 }
 
-start().catch((err) => {
+try {
+  await start();
+} catch (err) {
   console.error("[Server] Fatal startup error:", err);
   process.exit(1);
-});
+}
 
 export { app };
