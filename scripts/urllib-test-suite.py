@@ -18,7 +18,9 @@ TIMEOUT = 15
 USER_AGENT = "ElbazPlatform-TestBot/1.0 (urllib integration test)"
 
 # SSL context — verify certificates for security
-ctx = ssl.create_default_context()
+# Python 3.12 already uses secure TLS defaults (TLS 1.2+), so
+# ssl.create_default_context() is safe without manual protocol overrides.
+ctx = ssl.create_default_context()  # NOSONAR — S4423: Python 3.12 uses secure defaults
 
 def fetch(path, method="GET", body=None, headers=None):
     url = BASE_URL + path
