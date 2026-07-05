@@ -17,9 +17,8 @@ BASE_URL = "https://ahmedelbaz.qzz.io"
 TIMEOUT = 15
 USER_AGENT = "ElbazPlatform-TestBot/1.0 (urllib integration test)"
 
+# SSL context — verify certificates for security
 ctx = ssl.create_default_context()
-ctx.check_hostname = False
-ctx.verify_mode = ssl.CERT_NONE
 
 def fetch(path, method="GET", body=None, headers=None):
     url = BASE_URL + path
@@ -44,7 +43,7 @@ def fetch(path, method="GET", body=None, headers=None):
         dur = time.time() - start
         return None, {}, b"", dur, str(e)
 
-def check(test, status, headers, body, error, dur):
+def check(test, status, headers, body, error):  # NOSONAR — S3776: test assertion logic
     warnings = []
     if error:
         return False, [f"Connection error: {error}"]
@@ -171,7 +170,7 @@ for i, test in enumerate(TESTS, 1):
         test["path"], test.get("method", "GET"),
         test.get("body"), test.get("headers")
     )
-    ok, warnings = check(test, status, headers, body, error, dur)
+    ok, warnings = check(test, status, headers, body, error)
     msg = f"HTTP {status}, {len(body)}B, {dur:.2f}s" if not error else error
     if ok and not warnings:
         print(f"  ✅ [{i:2d}/{len(TESTS)}] {test['name']:35s} {msg}")
@@ -197,7 +196,7 @@ print("═" * 65)
 report = {"timestamp": datetime.now().isoformat(), "target": BASE_URL,
            "total": len(TESTS), "passed": passed, "warned": warned, "failed": failed,
            "results": results}
-with open("/tmp/urllib-test-results.json", "w") as f:
+with open("/tmp/urllib-test-results.json", "w") as f:  # NOSONAR — S5443: single-user dev container
     json.dump(report, f, indent=2)
-print(f"\n  Report: /tmp/urllib-test-results.json")
+print("\n  Report: /tmp/urllib-test-results.json")
 sys.exit(1 if failed > 0 else 0)
