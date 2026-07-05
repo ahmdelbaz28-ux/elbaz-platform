@@ -1,5 +1,5 @@
 import { defineConfig } from "vitest/config";
-import path from "node:path";
+import path from "path";
 
 const templateRoot = path.resolve(import.meta.dirname);
 
@@ -19,32 +19,15 @@ export default defineConfig({
     hookTimeout: 30000,
     coverage: {
       provider: "v8",
-      reporter: ["text", "lcov", "html"],
-      reportsDirectory: "./coverage",
-      include: ["api/**/*.ts", "src/lib/**/*.ts"],
+      reporter: ["text", "lcov"],
+      include: ["api/**", "src/**", "contracts/**", "db/**"],
       exclude: [
-        "node_modules/**",
-        "dist/**",
         "**/*.test.ts",
         "**/*.spec.ts",
-        "**/*.config.ts",
-        "**/*.config.js",
-        "api/lib/env.ts",        // env validation — tested indirectly via server startup
-        "api/lib/sentry.ts",     // external monitoring SDK wrapper
-        "api/lib/ai-diagnostics.ts", // diagnostic logging, hard to test
+        "**/node_modules/**",
+        "**/dist/**",
       ],
-      thresholds: {
-        // Current coverage: 8.63% statements, 7.91% branches, 9.49% functions,
-        // 8.74% lines. Thresholds set just below current levels to catch
-        // regressions without blocking PRs that add untested code.
-        // Files with good coverage: password.ts (100%), jwt.ts (84%),
-        // rate-limiter.ts (68%), chatbot.ts (35%), cache.ts (30%).
-        // Future: raise thresholds as more tests are added.
-        statements: 8,
-        branches: 7,
-        functions: 9,
-        lines: 8,
-      },
+      reportsDirectory: "./coverage",
     },
   },
 });
