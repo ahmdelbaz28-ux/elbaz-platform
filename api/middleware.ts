@@ -28,6 +28,7 @@ const t = initTRPC.context<TrpcContext>().create({
 export const createRouter = t.router;
 export { checkRateLimit };
 export { clearRateLimit, type RateLimitAction } from "./lib/rate-limiter";
+export { authRateLimit };
 
 const globalRateLimit = t.middleware(async (opts) => {
   // Unified IP extraction (cf-connecting-ip > x-real-ip > first x-forwarded-for)
@@ -38,6 +39,19 @@ const globalRateLimit = t.middleware(async (opts) => {
 
 export const publicQuery = t.procedure.use(globalRateLimit);
 export const publicMutation = t.procedure;
+
+// Auth-specific rate limit middleware — runs BEFORE input validation.
+// This prevents attackers from bypassing per-action rate limits by sending
+// invalid inputs (which would fail Zod validation before reaching the
+// in-handler checkRateLimit call).
+// Usage: login: publicQuery.use(authRateLimit('login')).input(...).mutation(...)
+function authRateLimit(action: import("./lib/rate-limiter").RateLimitAction) {
+  return t.middleware(async (opts) => {
+    const ip = opts.ctx.req?.headers ? getClientIpFromHeaders(opts.ctx.req.headers) : "unknown";
+    await checkRateLimit(ip, action);
+    return opts.next();
+  });
+}
 
 const requireAuth = t.middleware(async (opts) => {
   if (!opts.ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
