@@ -65,6 +65,12 @@ coverage/
 .turbo/
 .vercel/
 
+# ── SonarCloud ──
+.scannerwork/
+sonar-scanner-*
+sonar-report.json
+eslint-report.json
+
 # ── Cache ──
 .cache/
 .eslintcache
@@ -122,3 +128,5 @@ dist-electron/
 
 # ── LFS (managed by .gitattributes) ──
 # Add any binary that must be tracked via git-lfs here
+
+update_hf_secrets.py
