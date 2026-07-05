@@ -46,10 +46,10 @@ class TestDef:
     body: dict[str, Any] | None = None
     headers: dict[str, str] | None = None
     expect_status: int | list[int] | None = None
-    expect_contains: list[str] = field(default_factory=lambda: list[str]())
+    expect_contains: list[str] = field(default_factory=list)
     min_size: int | None = None
     is_json: bool = False
-    check_headers: dict[str, str] = field(default_factory=lambda: dict[str, str]())
+    check_headers: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -105,7 +105,7 @@ def fetch(test: TestDef) -> FetchResult:
         )
 
 
-def check(test: TestDef, fr: FetchResult) -> tuple[bool, list[str]]:
+def check(test: TestDef, fr: FetchResult) -> tuple[bool, list[str]]:  # NOSONAR — S3776: test assertion logic is inherently conditional
     """Check if a test passed. Returns (passed, warnings)."""
     warnings: list[str] = []
 
