@@ -1,43 +1,43 @@
 {
-  "id": "4d693c2d-c8b1-4705-9f13-ad9958aa48bc",
+  "id": "b847da09-9e0d-4c7c-8004-7fa70744ee34",
   "version": "3.0",
   "name": "Privacy Policy",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "d0db85b0-9ba2-4100-ac3b-581470088486",
+      "id": "038e3a39-3ab4-4eec-9237-5871a48d6d22",
       "name": "Privacy Loads",
       "commands": [
         {
           "command": "open",
           "target": "/privacy",
           "value": "",
-          "id": "2bf52f65-8d93-4146-b46a-b974c7d362bf"
+          "id": "9c70a761-1957-4f01-b059-a92df5f953cb"
         },
         {
           "command": "waitForElementVisible",
           "target": "css=body",
           "value": "15000",
-          "id": "12e3ba7e-8cee-48d4-a4ef-a9a9a99263e2"
+          "id": "fc604aa6-edff-4e8d-a388-99de5a55e787"
         },
         {
           "command": "assertElementPresent",
           "target": "css=body",
           "value": "",
-          "id": "cb20a22f-b77b-44df-84d8-aab7e66785a0"
+          "id": "43f32e2c-3ab4-4dc7-83b6-2e836894a1a3"
         }
       ]
     }
   ],
   "suites": [
     {
-      "id": "dea66613-962d-442a-b01b-cc069a46ac21",
+      "id": "e3e4fc66-846e-4c31-bbcf-050e6b4384f9",
       "name": "Privacy Policy Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "d0db85b0-9ba2-4100-ac3b-581470088486"
+        "038e3a39-3ab4-4eec-9237-5871a48d6d22"
       ]
     }
   ],

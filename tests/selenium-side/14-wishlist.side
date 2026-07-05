@@ -1,43 +1,43 @@
 {
-  "id": "1a78e6ca-e471-4c83-a0e5-2a2ec5fa1908",
+  "id": "531a2e91-461e-4c07-bdb2-eedffeeab6fe",
   "version": "3.0",
   "name": "Wishlist Page",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "010e46fe-5b90-4785-a1df-8cee2524e71e",
+      "id": "957881f2-75e1-4006-af2a-da3245d8fa47",
       "name": "Wishlist Loads",
       "commands": [
         {
           "command": "open",
           "target": "/wishlist",
           "value": "",
-          "id": "3ed4f01d-d1e3-4470-b650-83f6d2b5aac5"
+          "id": "33c8920e-bae0-4cd9-ac04-2150f9793dff"
         },
         {
           "command": "waitForElementVisible",
           "target": "css=body",
           "value": "15000",
-          "id": "993d55ac-0580-4ed0-8bb1-d0a9547895ca"
+          "id": "2165ce95-a949-482c-9345-28a4e25a8b34"
         },
         {
           "command": "assertElementPresent",
           "target": "css=body",
           "value": "",
-          "id": "21badcdc-2c1e-4f13-aaca-e8a88c96bc46"
+          "id": "7c0a3e88-38b0-4072-9ab5-737432ad2d2c"
         }
       ]
     }
   ],
   "suites": [
     {
-      "id": "3b7d0f6e-a412-483e-a599-b8be1be6249f",
+      "id": "bce22a8c-95b2-431d-89cf-8322e82323c4",
       "name": "Wishlist Page Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "010e46fe-5b90-4785-a1df-8cee2524e71e"
+        "957881f2-75e1-4006-af2a-da3245d8fa47"
       ]
     }
   ],

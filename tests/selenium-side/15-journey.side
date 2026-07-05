@@ -1,43 +1,43 @@
 {
-  "id": "f4ae8856-9fb8-4929-8fb7-eadf77f59afd",
+  "id": "d836b2ae-918c-4535-b439-c03732fe15d2",
   "version": "3.0",
   "name": "Learning Journey",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "d4d2dacd-1c7b-42ad-8eec-ccc5352b864a",
+      "id": "95ec0031-528e-44c2-aae1-ec1c3e0dfaf9",
       "name": "Journey Loads",
       "commands": [
         {
           "command": "open",
           "target": "/journey",
           "value": "",
-          "id": "17cbf6b4-5506-4aaa-87ea-5c303c9a1557"
+          "id": "e2d2c94c-b24b-4945-af8b-4ffe92f4f4e9"
         },
         {
           "command": "waitForElementVisible",
           "target": "css=body",
           "value": "15000",
-          "id": "8dc65f2e-cfe2-4fc2-899a-fd419d63a53d"
+          "id": "0de67775-9d82-477d-873d-384dd52ccad8"
         },
         {
           "command": "assertElementPresent",
           "target": "css=body",
           "value": "",
-          "id": "087901a9-46b8-4e75-884d-ff9c448e2e91"
+          "id": "379d4b80-8e1c-4a1e-812d-2e56eeaf572c"
         }
       ]
     }
   ],
   "suites": [
     {
-      "id": "6f225583-7ee0-440c-97b3-72b688ad4b2e",
+      "id": "b3b1e182-407a-45b4-bcd3-5d1495daf861",
       "name": "Learning Journey Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "d4d2dacd-1c7b-42ad-8eec-ccc5352b864a"
+        "95ec0031-528e-44c2-aae1-ec1c3e0dfaf9"
       ]
     }
   ],

@@ -1,43 +1,43 @@
 {
-  "id": "0dc3bc9d-4015-4f98-9f10-79d9925ec2b2",
+  "id": "4926c2e0-806f-402b-b673-8a16503b00f0",
   "version": "3.0",
   "name": "Register Page",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "3f1fe493-474f-43bc-9cab-b8640738a1fa",
+      "id": "2ab15824-aa47-4a3f-88d8-c8af84f13429",
       "name": "Register Form Present",
       "commands": [
         {
           "command": "open",
           "target": "/register",
           "value": "",
-          "id": "017a0aac-f443-483e-bc2f-b7f75f3e0e1d"
+          "id": "ff2d5044-f5a3-4d09-8584-afbac7b63cef"
         },
         {
           "command": "waitForElementVisible",
           "target": "css=body",
           "value": "15000",
-          "id": "6d691e72-7c7d-48fd-9cc7-2977c87a2245"
+          "id": "8ea4d8ad-a436-4771-b7d3-b5f74f873da4"
         },
         {
           "command": "assertElementPresent",
           "target": "css=input[type='password']",
           "value": "",
-          "id": "098dfffb-778a-4a36-b5aa-518c90dd0190"
+          "id": "094a8b16-2694-4413-ba3b-945f96a75386"
         }
       ]
     }
   ],
   "suites": [
     {
-      "id": "22bb83f5-8293-47ee-ae48-bf6d6f81fc53",
+      "id": "c220345d-ddeb-4aa4-98b0-71348d932488",
       "name": "Register Page Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "3f1fe493-474f-43bc-9cab-b8640738a1fa"
+        "2ab15824-aa47-4a3f-88d8-c8af84f13429"
       ]
     }
   ],

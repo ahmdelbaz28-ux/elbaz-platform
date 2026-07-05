@@ -1,43 +1,43 @@
 {
-  "id": "a88d5fe5-61e6-4053-9744-a9e285ffb85d",
+  "id": "a70aad64-50b0-41ab-85d7-c9e6f3389827",
   "version": "3.0",
   "name": "Terms of Service",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "3696f428-efa9-4371-9bbc-d5a904c6246c",
+      "id": "32e7190d-2ca5-434e-ae80-69a06fe61e60",
       "name": "Terms Loads",
       "commands": [
         {
           "command": "open",
           "target": "/terms",
           "value": "",
-          "id": "2d7db69a-fc41-4b64-9bb0-0982d29345e2"
+          "id": "c97b9948-b5e9-4b1e-8e38-dbaf1197044d"
         },
         {
           "command": "waitForElementVisible",
           "target": "css=body",
           "value": "15000",
-          "id": "8d895632-4b87-45e8-8ecd-6c8054018055"
+          "id": "314a3d85-37f1-4f32-9e65-8627ebc529cc"
         },
         {
           "command": "assertElementPresent",
           "target": "css=body",
           "value": "",
-          "id": "e9ea0312-8624-42c3-a4e6-709270b27672"
+          "id": "db766bd8-a404-40be-a9a9-c5745d195bc3"
         }
       ]
     }
   ],
   "suites": [
     {
-      "id": "4663d285-5d90-448d-98bd-8fc27cb289b5",
+      "id": "1ad5c419-f832-4147-bb1b-5fbbac75c860",
       "name": "Terms of Service Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "3696f428-efa9-4371-9bbc-d5a904c6246c"
+        "32e7190d-2ca5-434e-ae80-69a06fe61e60"
       ]
     }
   ],

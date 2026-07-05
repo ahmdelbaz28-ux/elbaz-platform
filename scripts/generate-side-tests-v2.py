@@ -8,180 +8,243 @@ Based on actual test runs — avoid:
 Use:
   - open + waitForElementVisible + assertElementPresent (most reliable)
 """
+from __future__ import annotations
+
 import json
 import uuid
 from pathlib import Path
+from typing import Any, TypedDict
 
-BASE_URL = "https://ahmedelbaz.qzz.io"
-OUTPUT_DIR = Path("/home/z/my-project/elbaz-platform/tests/selenium-side")
+
+BASE_URL: str = "https://ahmedelbaz.qzz.io"
+OUTPUT_DIR: Path = Path("/home/z/my-project/elbaz-platform/tests/selenium-side")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Constants — avoid duplicating literals (SonarCloud python:S1192)
-BODY_SELECTOR = "css=body"
-WAIT_TIMEOUT = "15000"
+BODY_SELECTOR: str = "css=body"
+WAIT_TIMEOUT: str = "15000"
+
+
+class SideCommand(TypedDict):
+    """A single Selenium IDE command."""
+    command: str
+    target: str
+    value: str
+    id: str
+
+
+class SideTest(TypedDict):
+    """A Selenium IDE test case."""
+    id: str
+    name: str
+    commands: list[SideCommand]
+
+
+class SideSuite(TypedDict):
+    """A Selenium IDE test suite."""
+    id: str
+    name: str
+    persistSession: bool
+    parallel: bool
+    timeout: int
+    tests: list[str]
+
+
+class SideProject(TypedDict):
+    """A complete Selenium IDE .side project file."""
+    id: str
+    version: str
+    name: str
+    url: str
+    tests: list[SideTest]
+    suites: list[SideSuite]
+    urls: list[str]
+    plugins: list[Any]
+
+
+class TestConfig(TypedDict):
+    """Configuration for a single test."""
+    name: str
+    commands: list[SideCommand]
+
+
+class SuiteConfig(TypedDict):
+    """Configuration for a test suite."""
+    filename: str
+    suite_name: str
+    tests: list[TestConfig]
+
 
 # Clear old files
 for f in OUTPUT_DIR.glob("*.side"):
     f.unlink()
 
 
-def make_side(name, tests):
-    return {
-        "id": str(uuid.uuid4()),
-        "version": "3.0",
-        "name": name,
-        "url": BASE_URL,
-        "tests": tests,
-        "suites": [{
-            "id": str(uuid.uuid4()),
-            "name": f"{name} Suite",
-            "persistSession": False,
-            "parallel": False,
-            "timeout": 60,
-            "tests": [t["id"] for t in tests],
-        }],
-        "urls": [BASE_URL],
-        "plugins": [],
-    }
+def make_side(name: str, tests: list[SideTest]) -> SideProject:
+    """Create a complete .side project structure."""
+    return SideProject(
+        id=str(uuid.uuid4()),
+        version="3.0",
+        name=name,
+        url=BASE_URL,
+        tests=tests,
+        suites=[SideSuite(
+            id=str(uuid.uuid4()),
+            name=f"{name} Suite",
+            persistSession=False,
+            parallel=False,
+            timeout=60,
+            tests=[t["id"] for t in tests],
+        )],
+        urls=[BASE_URL],
+        plugins=[],
+    )
 
 
-def make_test(name, commands):
-    return {
-        "id": str(uuid.uuid4()),
-        "name": name,
-        "commands": commands,
-    }
+def make_test(name: str, commands: list[SideCommand]) -> SideTest:
+    """Create a single test case with a unique ID."""
+    return SideTest(
+        id=str(uuid.uuid4()),
+        name=name,
+        commands=commands,
+    )
 
 
-def cmd(command, target="", value=""):
-    return {"command": command, "target": target, "value": value}
+def cmd(command: str, target: str = "", value: str = "") -> SideCommand:
+    """Create a single Selenium IDE command with a unique ID."""
+    return SideCommand(
+        command=command,
+        target=target,
+        value=value,
+        id=str(uuid.uuid4()),
+    )
 
 
 # All tests use ONLY: open + waitForElementVisible + assertElementPresent
 # These are the most reliable Selenium IDE commands.
 
-tests_config = [
-    ("01-home.side", "Home Page", [
-        ("Home Loads", [
+tests_config: list[SuiteConfig] = [
+    SuiteConfig(filename="01-home.side", suite_name="Home Page", tests=[
+        TestConfig(name="Home Loads", commands=[
             cmd("open", "/"),
             cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
             cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
-    ("02-courses.side", "Courses Page", [
-        ("Courses Loads", [
+    SuiteConfig(filename="02-courses.side", suite_name="Courses Page", tests=[
+        TestConfig(name="Courses Loads", commands=[
             cmd("open", "/courses"),
             cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
             cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
-    ("03-faq.side", "FAQ Page", [
-        ("FAQ Loads", [
+    SuiteConfig(filename="03-faq.side", suite_name="FAQ Page", tests=[
+        TestConfig(name="FAQ Loads", commands=[
             cmd("open", "/faq"),
             cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
             cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
-    ("04-support.side", "Support Page", [
-        ("Support Loads", [
+    SuiteConfig(filename="04-support.side", suite_name="Support Page", tests=[
+        TestConfig(name="Support Loads", commands=[
             cmd("open", "/support"),
             cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
             cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
-    ("05-references.side", "References Page", [
-        ("References Loads", [
+    SuiteConfig(filename="05-references.side", suite_name="References Page", tests=[
+        TestConfig(name="References Loads", commands=[
             cmd("open", "/references"),
             cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
             cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
-    ("06-login.side", "Login Page", [
-        ("Login Form Present", [
+    SuiteConfig(filename="06-login.side", suite_name="Login Page", tests=[
+        TestConfig(name="Login Form Present", commands=[
             cmd("open", "/login"),
             cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
             cmd("assertElementPresent", "css=input[type='password']"),
         ]),
     ]),
-    ("07-register.side", "Register Page", [
-        ("Register Form Present", [
+    SuiteConfig(filename="07-register.side", suite_name="Register Page", tests=[
+        TestConfig(name="Register Form Present", commands=[
             cmd("open", "/register"),
             cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
             cmd("assertElementPresent", "css=input[type='password']"),
         ]),
     ]),
-    ("08-404.side", "404 Page", [
-        ("404 Returns Content", [
+    SuiteConfig(filename="08-404.side", suite_name="404 Page", tests=[
+        TestConfig(name="404 Returns Content", commands=[
             cmd("open", "/nonexistent-page-xyz-123"),
             cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
             cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
-    ("09-api-health.side", "API Health", [
-        ("API Health Returns 200", [
+    SuiteConfig(filename="09-api-health.side", suite_name="API Health", tests=[
+        TestConfig(name="API Health Returns 200", commands=[
             cmd("open", "/api/health"),
             cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
             cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
-    ("10-privacy.side", "Privacy Policy", [
-        ("Privacy Loads", [
+    SuiteConfig(filename="10-privacy.side", suite_name="Privacy Policy", tests=[
+        TestConfig(name="Privacy Loads", commands=[
             cmd("open", "/privacy"),
             cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
             cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
-    ("11-terms.side", "Terms of Service", [
-        ("Terms Loads", [
+    SuiteConfig(filename="11-terms.side", suite_name="Terms of Service", tests=[
+        TestConfig(name="Terms Loads", commands=[
             cmd("open", "/terms"),
             cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
             cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
-    ("12-refund.side", "Refund Policy", [
-        ("Refund Loads", [
+    SuiteConfig(filename="12-refund.side", suite_name="Refund Policy", tests=[
+        TestConfig(name="Refund Loads", commands=[
             cmd("open", "/refund"),
             cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
             cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
-    ("13-forgot-password.side", "Forgot Password", [
-        ("Forgot Password Form", [
+    SuiteConfig(filename="13-forgot-password.side", suite_name="Forgot Password", tests=[
+        TestConfig(name="Forgot Password Form", commands=[
             cmd("open", "/forgot-password"),
             cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
             cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
-    ("14-wishlist.side", "Wishlist Page", [
-        ("Wishlist Loads", [
+    SuiteConfig(filename="14-wishlist.side", suite_name="Wishlist Page", tests=[
+        TestConfig(name="Wishlist Loads", commands=[
             cmd("open", "/wishlist"),
             cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
             cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
-    ("15-journey.side", "Learning Journey", [
-        ("Journey Loads", [
+    SuiteConfig(filename="15-journey.side", suite_name="Learning Journey", tests=[
+        TestConfig(name="Journey Loads", commands=[
             cmd("open", "/journey"),
             cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
             cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
-    ("16-trpc.side", "tRPC Ping", [
-        ("tRPC ping Returns OK", [
+    SuiteConfig(filename="16-trpc.side", suite_name="tRPC Ping", tests=[
+        TestConfig(name="tRPC ping Returns OK", commands=[
             cmd("open", "/api/trpc/ping"),
             cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
             cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
-    ("17-dashboard.side", "Dashboard (auth gate)", [
-        ("Dashboard Loads", [
+    SuiteConfig(filename="17-dashboard.side", suite_name="Dashboard (auth gate)", tests=[
+        TestConfig(name="Dashboard Loads", commands=[
             cmd("open", "/dashboard"),
             cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
             cmd("assertElementPresent", BODY_SELECTOR),
         ]),
     ]),
-    ("18-certificate.side", "Certificate Verify", [
-        ("Certificate Verify Loads", [
+    SuiteConfig(filename="18-certificate.side", suite_name="Certificate Verify", tests=[
+        TestConfig(name="Certificate Verify Loads", commands=[
             cmd("open", "/certificate"),
             cmd("waitForElementVisible", BODY_SELECTOR, WAIT_TIMEOUT),
             cmd("assertElementPresent", BODY_SELECTOR),
@@ -189,14 +252,14 @@ tests_config = [
     ]),
 ]
 
-total_tests = 0
-for filename, suite_name, tests in tests_config:
-    test_objs = [make_test(name, cmds) for name, cmds in tests]
-    side = make_side(suite_name, test_objs)
-    path = OUTPUT_DIR / filename
-    with open(path, "w", encoding="utf-8") as f:
+total_tests: int = 0
+for suite in tests_config:
+    test_objs: list[SideTest] = [make_test(t["name"], t["commands"]) for t in suite["tests"]]
+    side: SideProject = make_side(suite["suite_name"], test_objs)
+    file_path: Path = OUTPUT_DIR / suite["filename"]
+    with open(file_path, "w", encoding="utf-8") as f:
         json.dump(side, f, indent=2, ensure_ascii=False)
     total_tests += len(test_objs)
-    print(f"  ✅ {filename} ({len(test_objs)} tests)")
+    print(f"  ✅ {suite['filename']} ({len(test_objs)} tests)")
 
 print(f"\nTotal: {len(tests_config)} .side files, {total_tests} tests")

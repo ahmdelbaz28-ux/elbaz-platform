@@ -1,43 +1,43 @@
 {
-  "id": "fbb6f7a4-5419-4e80-8ee3-85291361b0ae",
+  "id": "cf481110-78bf-4478-9442-d701aeda1b1c",
   "version": "3.0",
   "name": "Login Page",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "fbd1b49e-3079-4174-8e3f-6f6a0c0fcf60",
+      "id": "12ad2ad1-5a10-4cde-a326-7294ef7b6436",
       "name": "Login Form Present",
       "commands": [
         {
           "command": "open",
           "target": "/login",
           "value": "",
-          "id": "a392993f-d03e-44df-83c1-c1d55c4f4ee6"
+          "id": "ed141b90-20fc-4d62-b245-68178d5d189f"
         },
         {
           "command": "waitForElementVisible",
           "target": "css=body",
           "value": "15000",
-          "id": "69bb5c1a-c2de-4884-9af0-e9337dd25d6c"
+          "id": "427ff6b8-9d0c-4006-95bd-128f1ff28c2f"
         },
         {
           "command": "assertElementPresent",
           "target": "css=input[type='password']",
           "value": "",
-          "id": "c33fc82b-6648-4121-9874-4c1a80f633f6"
+          "id": "a3e57ae0-e44a-452a-bde8-5f476d9e3eb2"
         }
       ]
     }
   ],
   "suites": [
     {
-      "id": "32ad28b2-b11d-45e6-9c20-5201351e5fc7",
+      "id": "418334bb-73cd-4747-8d06-bd2defd7afa4",
       "name": "Login Page Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "fbd1b49e-3079-4174-8e3f-6f6a0c0fcf60"
+        "12ad2ad1-5a10-4cde-a326-7294ef7b6436"
       ]
     }
   ],

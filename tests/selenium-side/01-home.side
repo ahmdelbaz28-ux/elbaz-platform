@@ -1,43 +1,43 @@
 {
-  "id": "b34f5afe-7248-4a77-89e7-dbd75966d103",
+  "id": "f5e5ce8d-95c1-441c-b568-f7b7943b8700",
   "version": "3.0",
   "name": "Home Page",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "c134fc5e-0324-4164-b335-0888724b0f64",
+      "id": "86938847-b292-464a-b735-8ec5c56f9b57",
       "name": "Home Loads",
       "commands": [
         {
           "command": "open",
           "target": "/",
           "value": "",
-          "id": "6e90a706-b873-47ea-9b6a-855a9e04f54f"
+          "id": "ae989949-11a2-4da4-9cfe-bac601d81ea8"
         },
         {
           "command": "waitForElementVisible",
           "target": "css=body",
           "value": "15000",
-          "id": "4ce26845-9582-4c00-a197-6f608d25bc0c"
+          "id": "acf342c1-56b1-45b7-b8eb-6771e1373b25"
         },
         {
           "command": "assertElementPresent",
           "target": "css=body",
           "value": "",
-          "id": "82ec5824-2aee-4bd9-b297-8ba6744baafc"
+          "id": "431c64bf-89fd-4f56-953d-06933b4b71ef"
         }
       ]
     }
   ],
   "suites": [
     {
-      "id": "fcd6bf5a-3316-459e-87ee-190d15ac1869",
+      "id": "0d877a0e-fcb8-4191-aa1f-976018ae8d13",
       "name": "Home Page Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "c134fc5e-0324-4164-b335-0888724b0f64"
+        "86938847-b292-464a-b735-8ec5c56f9b57"
       ]
     }
   ],
