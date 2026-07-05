@@ -1,43 +1,43 @@
 {
-  "id": "e81364b9-476f-4b44-ac41-b0919dca6787",
+  "id": "10471bbe-4b98-4565-8abf-d41f63aea50f",
   "version": "3.0",
   "name": "404 Page",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "5dd640a7-e463-4c56-8926-8d7c3e9e3d57",
+      "id": "bbbd045d-c7dc-4dc0-bf17-1b858b90f088",
       "name": "404 Returns Content",
       "commands": [
         {
           "command": "open",
           "target": "/nonexistent-page-xyz-123",
           "value": "",
-          "id": "b9834ba1-db11-483a-970d-adc025749e24"
+          "id": "c5840f50-c53d-48b8-a507-f4e280f67f12"
         },
         {
           "command": "waitForElementVisible",
           "target": "css=body",
           "value": "15000",
-          "id": "7d538d1a-19dc-495d-b720-f8876a3fd910"
+          "id": "85a2d55d-538c-4868-af19-4c1f464583bf"
         },
         {
           "command": "assertElementPresent",
           "target": "css=body",
           "value": "",
-          "id": "7c52ae0d-759b-46dc-b17b-d09c76d75588"
+          "id": "174ecf1a-bc3d-4ebe-b907-841d062c9333"
         }
       ]
     }
   ],
   "suites": [
     {
-      "id": "6082e595-00ce-4971-8bca-547196d71adc",
+      "id": "a72925ba-8d86-42e4-8d41-a9badb6e64c1",
       "name": "404 Page Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "5dd640a7-e463-4c56-8926-8d7c3e9e3d57"
+        "bbbd045d-c7dc-4dc0-bf17-1b858b90f088"
       ]
     }
   ],

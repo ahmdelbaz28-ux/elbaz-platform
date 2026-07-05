@@ -1,0 +1,30 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/pyright/main/packages/vscode-pyright/schemas/pyrightconfig.schema.json",
+  "include": [
+    "scripts"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.git"
+  ],
+  "typeCheckingMode": "strict",
+  "reportMissingImports": "error",
+  "reportMissingTypeStubs": "warning",
+  "reportUnknownMemberType": "error",
+  "reportUnknownParameterType": "error",
+  "reportUnknownArgumentType": "error",
+  "reportUnknownVariableType": "error",
+  "reportUntypedFunctionDecorator": "error",
+  "reportUntypedClassDecorator": "error",
+  "reportMissingTypeArgument": "error",
+  "reportInvalidTypeVarUse": "error",
+  "reportCallInDefaultInitializer": "error",
+  "reportUnknownLambdaType": "error",
+  "reportUnnecessaryTypeIgnoreComment": "warning",
+  "reportMatchNotExhaustive": "error",
+  "reportOverlappingOverload": "error",
+  "reportInconsistentOverload": "error",
+  "strictParameterNoneValue": true,
+  "enableTypeIgnoreComments": true
+}

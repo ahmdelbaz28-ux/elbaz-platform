@@ -1,43 +1,43 @@
 {
-  "id": "098b9112-b872-4ce5-8836-8b1b67354e1d",
+  "id": "86c7d433-4f50-4fbd-9728-3f86670ea908",
   "version": "3.0",
   "name": "Dashboard (auth gate)",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "ded4c57b-08ab-444d-b9bf-62ca42b3f6d1",
+      "id": "d994e330-c226-431f-8633-b4c98f927fea",
       "name": "Dashboard Loads",
       "commands": [
         {
           "command": "open",
           "target": "/dashboard",
           "value": "",
-          "id": "f775ca90-361b-4b9e-9163-13ec6813d9c5"
+          "id": "88761c91-0e84-4c17-b581-7d3aa640163d"
         },
         {
           "command": "waitForElementVisible",
           "target": "css=body",
           "value": "15000",
-          "id": "0df227f8-09c9-4df1-8732-b430f187101d"
+          "id": "f32a388b-98b3-4b96-b687-0977dda90263"
         },
         {
           "command": "assertElementPresent",
           "target": "css=body",
           "value": "",
-          "id": "3bdc1e36-2670-4b07-b407-d7ef2485f99f"
+          "id": "b3533426-a23b-4c44-af8f-b1c25d66440a"
         }
       ]
     }
   ],
   "suites": [
     {
-      "id": "e03ed8f0-f0e6-4a44-a911-b82b95bb5162",
+      "id": "8a632af4-dc21-491e-bbd8-25193abf01b8",
       "name": "Dashboard (auth gate) Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "ded4c57b-08ab-444d-b9bf-62ca42b3f6d1"
+        "d994e330-c226-431f-8633-b4c98f927fea"
       ]
     }
   ],

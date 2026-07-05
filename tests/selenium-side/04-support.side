@@ -1,43 +1,43 @@
 {
-  "id": "4783ab07-b429-4125-9329-5d197b098723",
+  "id": "5859dbc0-846e-44b6-afcc-0b79bdc872fd",
   "version": "3.0",
   "name": "Support Page",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "8a6b70f5-1c8d-47e9-b1f8-58a8411ccad0",
+      "id": "612fe2b7-4ccf-4230-b9c1-a53a4cb0a1a1",
       "name": "Support Loads",
       "commands": [
         {
           "command": "open",
           "target": "/support",
           "value": "",
-          "id": "0b1f8230-17e0-48e8-b250-f4c552a066e1"
+          "id": "65bf49c0-acd7-4cc1-94ce-c1fae4a2273c"
         },
         {
           "command": "waitForElementVisible",
           "target": "css=body",
           "value": "15000",
-          "id": "4fc1de69-f951-499e-a45a-8c8842d5c3ad"
+          "id": "45b09151-aa19-4dca-897a-58576c32f861"
         },
         {
           "command": "assertElementPresent",
           "target": "css=body",
           "value": "",
-          "id": "a506607b-9410-4f3c-b019-829874cb2f48"
+          "id": "f060b2f8-a14f-4c2b-a431-faa36a1ee9ef"
         }
       ]
     }
   ],
   "suites": [
     {
-      "id": "a4647493-7d5b-4efb-9132-bd6dbbf70708",
+      "id": "f2c8e64d-6483-4108-ae12-0118404e13e1",
       "name": "Support Page Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "8a6b70f5-1c8d-47e9-b1f8-58a8411ccad0"
+        "612fe2b7-4ccf-4230-b9c1-a53a4cb0a1a1"
       ]
     }
   ],

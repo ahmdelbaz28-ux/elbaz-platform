@@ -1,43 +1,43 @@
 {
-  "id": "b5ff575e-d436-414e-a95f-152d6b1cf787",
+  "id": "f03d81f1-ebdd-4841-860d-685dfa17a62f",
   "version": "3.0",
   "name": "References Page",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "9aa22ece-99a4-4c4b-8553-031f6254da99",
+      "id": "536d424a-f9d1-43bb-95b7-d16eb7a91728",
       "name": "References Loads",
       "commands": [
         {
           "command": "open",
           "target": "/references",
           "value": "",
-          "id": "20454b6f-b95c-43bc-9457-6c2258171ab2"
+          "id": "55df640a-8b71-4819-9252-50f587c93b16"
         },
         {
           "command": "waitForElementVisible",
           "target": "css=body",
           "value": "15000",
-          "id": "937ba17d-b783-47b4-8781-d8871fbe6eba"
+          "id": "228cd02a-8c39-4abd-be92-580532fcc94e"
         },
         {
           "command": "assertElementPresent",
           "target": "css=body",
           "value": "",
-          "id": "88656c4b-091e-4fe7-a6d7-4aa145205e0d"
+          "id": "d43ee1de-3ca9-49e8-ac35-4b9aef153ad7"
         }
       ]
     }
   ],
   "suites": [
     {
-      "id": "7d1752c9-891d-4a10-8555-eba814d53f73",
+      "id": "485a9b7c-255a-4402-8eb3-9d1bcc4ec34e",
       "name": "References Page Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "9aa22ece-99a4-4c4b-8553-031f6254da99"
+        "536d424a-f9d1-43bb-95b7-d16eb7a91728"
       ]
     }
   ],

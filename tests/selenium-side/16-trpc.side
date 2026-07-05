@@ -1,43 +1,43 @@
 {
-  "id": "6acd0f1b-0653-4cf4-b1e0-c074688d9001",
+  "id": "ff82f192-e4cd-4363-a929-a1ac85dc3e88",
   "version": "3.0",
   "name": "tRPC Ping",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "5f71bc25-2b0c-4c10-b82e-dd366f08d6e9",
+      "id": "07d31303-1394-46a3-a6b7-ae55c8d7ac97",
       "name": "tRPC ping Returns OK",
       "commands": [
         {
           "command": "open",
           "target": "/api/trpc/ping",
           "value": "",
-          "id": "33f83476-ee8b-42cc-8716-65c346b3461e"
+          "id": "a29fd779-1f4a-4bfc-9713-62e6dae99092"
         },
         {
           "command": "waitForElementVisible",
           "target": "css=body",
           "value": "15000",
-          "id": "77236925-3518-4238-a1e2-af0fc41ddb95"
+          "id": "29a3f3ad-9d64-4274-bc7d-d9fa1a39d749"
         },
         {
           "command": "assertElementPresent",
           "target": "css=body",
           "value": "",
-          "id": "5b8ed232-483a-4d46-ae7f-743e8546f20f"
+          "id": "9dc2a28c-c7c2-49d2-acdd-fc5e0a785c1c"
         }
       ]
     }
   ],
   "suites": [
     {
-      "id": "d08fbbc5-f1ac-4c7b-b948-3bccd97e139d",
+      "id": "854f76e7-0448-4ad7-972c-1c8ae9d06f26",
       "name": "tRPC Ping Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "5f71bc25-2b0c-4c10-b82e-dd366f08d6e9"
+        "07d31303-1394-46a3-a6b7-ae55c8d7ac97"
       ]
     }
   ],

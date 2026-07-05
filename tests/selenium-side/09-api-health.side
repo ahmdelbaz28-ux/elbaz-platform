@@ -1,43 +1,43 @@
 {
-  "id": "68e5e487-5730-4355-9527-3f29eee5c70d",
+  "id": "8e1ddc13-3cb6-4fb8-b65a-b1be9cab6a36",
   "version": "3.0",
   "name": "API Health",
   "url": "https://ahmedelbaz.qzz.io",
   "tests": [
     {
-      "id": "e36c5e96-e323-40ed-be35-a0a1580278fb",
+      "id": "48f2e2f1-beb6-40c2-8aaa-d12fd676ad73",
       "name": "API Health Returns 200",
       "commands": [
         {
           "command": "open",
           "target": "/api/health",
           "value": "",
-          "id": "15ea3329-5dfb-4a3d-b2e6-65d22d2324da"
+          "id": "fe5e9092-9a61-4194-a6a4-9ab632d1782c"
         },
         {
           "command": "waitForElementVisible",
           "target": "css=body",
           "value": "15000",
-          "id": "cc9bdc9e-6071-4cbe-9827-d14b0878b271"
+          "id": "9d95696a-f4bb-4ff0-bbfc-b7668bead183"
         },
         {
           "command": "assertElementPresent",
           "target": "css=body",
           "value": "",
-          "id": "843a703d-a1dd-44f9-96af-5992904061d7"
+          "id": "360f5c6b-b5bc-4b3c-8a6b-37a8b41ec223"
         }
       ]
     }
   ],
   "suites": [
     {
-      "id": "71dd0479-d636-4225-b4ea-6832863e230b",
+      "id": "31ca1a42-912d-4da5-bbdf-af8d2999f549",
       "name": "API Health Suite",
       "persistSession": false,
       "parallel": false,
       "timeout": 60,
       "tests": [
-        "e36c5e96-e323-40ed-be35-a0a1580278fb"
+        "48f2e2f1-beb6-40c2-8aaa-d12fd676ad73"
       ]
     }
   ],
