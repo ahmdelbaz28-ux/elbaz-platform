@@ -46,10 +46,10 @@ class TestDef:
     body: dict[str, Any] | None = None
     headers: dict[str, str] | None = None
     expect_status: int | list[int] | None = None
-    expect_contains: list[str] = field(default_factory=list)
+    expect_contains: list[str] = field(default_factory=lambda: [])
     min_size: int | None = None
     is_json: bool = False
-    check_headers: dict[str, str] = field(default_factory=dict)
+    check_headers: dict[str, str] = field(default_factory=lambda: {})
 
 
 @dataclass
