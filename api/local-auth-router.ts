@@ -3,7 +3,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { eq, sql } from "drizzle-orm";
 import { users, enrollments, lessonProgress, payments, certificates, supportTickets } from "@db/schema";
-import { createRouter, publicQuery, authedQuery, checkRateLimit, clearRateLimit } from "./middleware";
+import { createRouter, publicQuery, authedQuery, checkRateLimit, clearRateLimit, authRateLimit } from "./middleware";
 import { getDb } from "./queries/connection";
 import { hashPassword, verifyPassword } from "./lib/password";
 import { createToken } from "./lib/jwt";
@@ -114,6 +114,7 @@ async function sendVerificationEmailIfEligible(userId: number, safeEmail: string
 
 export const localAuthRouter = createRouter({
    register: publicQuery
+     .use(authRateLimit('register'))
      .input(
        z.object({
          username: z.string()
@@ -227,6 +228,7 @@ export const localAuthRouter = createRouter({
     }),
 
   login: publicQuery
+    .use(authRateLimit('login'))
     .input(
       z.object({
         username: z.string().min(1),
@@ -440,6 +442,7 @@ export const localAuthRouter = createRouter({
 
   // Step 1: Request password reset (sends email with reset link)
   forgotPassword: publicQuery
+    .use(authRateLimit('forgotPassword'))
     .input(z.object({ email: z.string().email() }))
     .mutation(async ({ ctx, input }) => {
       // ✅ FIXED: Use dedicated rate limit for forgotPassword (not shared with register)
@@ -452,6 +455,7 @@ export const localAuthRouter = createRouter({
 
   // Step 2: Complete password reset (verify token + set new password)
   resetPassword: publicQuery
+    .use(authRateLimit('resetPassword'))
     .input(z.object({
       userId: z.number().int().positive(),
       token: z.string().min(1),
@@ -538,6 +542,7 @@ export const localAuthRouter = createRouter({
   // Step 2: Anyone with a valid token completes verification (e.g. from email link)
   // ✅ FIX: Added rate limiting to prevent brute-force attacks
   verifyEmail: publicQuery
+    .use(authRateLimit('verifyEmail'))
     .input(z.object({
       userId: z.number().int().positive(),
       token: z.string().min(1),
