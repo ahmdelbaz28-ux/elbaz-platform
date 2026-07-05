@@ -11,17 +11,20 @@
         {
           "command": "open",
           "target": "/refund",
-          "value": ""
+          "value": "",
+          "id": "dc6ecc92-0ef1-4b62-b3b2-9e8c7aa7d1d8"
         },
         {
           "command": "waitForElementVisible",
           "target": "css=body",
-          "value": "15000"
+          "value": "15000",
+          "id": "2c9bd9e7-031e-4f91-8481-1d77b1520e54"
         },
         {
           "command": "assertElementPresent",
           "target": "css=body",
-          "value": ""
+          "value": "",
+          "id": "d8c9a7b3-919f-40d8-ad7e-d48d2e4d6a88"
         }
       ]
     }

@@ -11,17 +11,20 @@
         {
           "command": "open",
           "target": "/support",
-          "value": ""
+          "value": "",
+          "id": "0b1f8230-17e0-48e8-b250-f4c552a066e1"
         },
         {
           "command": "waitForElementVisible",
           "target": "css=body",
-          "value": "15000"
+          "value": "15000",
+          "id": "4fc1de69-f951-499e-a45a-8c8842d5c3ad"
         },
         {
           "command": "assertElementPresent",
           "target": "css=body",
-          "value": ""
+          "value": "",
+          "id": "a506607b-9410-4f3c-b019-829874cb2f48"
         }
       ]
     }

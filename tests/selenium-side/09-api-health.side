@@ -11,17 +11,20 @@
         {
           "command": "open",
           "target": "/api/health",
-          "value": ""
+          "value": "",
+          "id": "15ea3329-5dfb-4a3d-b2e6-65d22d2324da"
         },
         {
           "command": "waitForElementVisible",
           "target": "css=body",
-          "value": "15000"
+          "value": "15000",
+          "id": "cc9bdc9e-6071-4cbe-9827-d14b0878b271"
         },
         {
           "command": "assertElementPresent",
           "target": "css=body",
-          "value": ""
+          "value": "",
+          "id": "843a703d-a1dd-44f9-96af-5992904061d7"
         }
       ]
     }
