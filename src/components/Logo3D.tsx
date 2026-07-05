@@ -3,32 +3,30 @@ import { useEffect, useRef, useState } from 'react';
 /* -------------------------------------------------------------------------- */
 /*  Logo3D                                                                     */
 /*  ─────────────────────────────────────────────────────────────────────────  */
-/*  Professional circular logo badge — theme-aware (dark + light).            */
+/*  Professional rounded-square logo badge — modern, clean, theme-aware.      */
 /*                                                                             */
 /*  Design intent:                                                             */
-/*    • The logo image file (/logo.png, /logo.webp) is NEVER modified —       */
-/*      same brand asset as supplied by the owner.                            */
-/*    • The badge surrounding it adapts to the active theme:                   */
-/*        - Dark mode:  deep gradient (#101724 → #05080d) + cyan accent       */
-/*        - Light mode: light gradient (#ffffff → #f1f5f9) + darker cyan      */
-/*    • Slow 6s "breathing" glow halo — alive but never distracting           */
-/*    • On hover: subtle lift + brighter halo, NO tilt, NO sweep              */
-/*    • Accessibility: respects prefers-reduced-motion.                        */
-/*    • Performance: one rAF per instance, paused when tab hidden.             */
+/*    • Rounded-square (squircle) container instead of circle — more modern    */
+/*    • Clean gradient backing + subtle border — no inner decorative rings     */
+/*    • Slow 6s breathing glow halo — alive but never distracting              */
+/*    • On hover: subtle lift + brighter halo, NO tilt, NO sweep               */
+/*    • Accessibility: respects prefers-reduced-motion                          */
+/*    • Performance: one rAF per instance, paused when tab hidden              */
+/*    • Matching aesthetic with BackgroundLogoWatermark                         */
 /* -------------------------------------------------------------------------- */
 
 interface Logo3DProps {
-  readonly size?: 'sm' | 'md' | 'lg' | 'xl';
-  readonly className?: string;
-  readonly interactive?: boolean;
+  size?: 'sm' | 'md' | 'lg' | 'xl';
+  className?: string;
+  interactive?: boolean;
 }
 
 const ACCENT_RGB_DARK = '6,182,212';
-const ACCENT_RGB_LIGHT = '8,145,178';  // cyan-600 — darker for contrast on light bg
-const BADGE_TOP_DARK = '#101724';
-const BADGE_BOTTOM_DARK = '#05080d';
+const ACCENT_RGB_LIGHT = '8,145,178';
+const BADGE_TOP_DARK = '#0f1729';
+const BADGE_BOTTOM_DARK = '#070b12';
 const BADGE_TOP_LIGHT = '#ffffff';
-const BADGE_BOTTOM_LIGHT = '#e2e8f0';
+const BADGE_BOTTOM_LIGHT = '#f1f5f9';
 
 const SIZE_MAP: Record<NonNullable<Logo3DProps['size']>, number> = {
   sm: 28,
@@ -56,7 +54,7 @@ export default function Logo3D({
   /* ── Theme detection ──────────────────────────────────────────────────── */
   useEffect(() => {
     const checkTheme = () => {
-      setIsLight(document.documentElement.dataset.theme === 'light');
+      setIsLight(document.documentElement.getAttribute('data-theme') === 'light');
     };
     checkTheme();
     const observer = new MutationObserver(checkTheme);
@@ -70,7 +68,8 @@ export default function Logo3D({
   /* ── Slow breathing glow (6s cycle, very subtle) ──────────────────────── */
   useEffect(() => {
     const prefersReduced =
-      globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     if (prefersReduced) {
       setBreath(0.5);
       return;
@@ -84,7 +83,7 @@ export default function Logo3D({
         rafRef.current = requestAnimationFrame(tick);
         return;
       }
-      start ??= ts;
+      if (start === null) start = ts;
       const t = (ts - start) / PERIOD;
       setBreath((Math.sin(t * Math.PI * 2) + 1) / 2);
       rafRef.current = requestAnimationFrame(tick);
@@ -108,19 +107,17 @@ export default function Logo3D({
   const accentRgb = isLight ? ACCENT_RGB_LIGHT : ACCENT_RGB_DARK;
   const badgeTop = isLight ? BADGE_TOP_LIGHT : BADGE_TOP_DARK;
   const badgeBottom = isLight ? BADGE_BOTTOM_LIGHT : BADGE_BOTTOM_DARK;
-  const haloAlpha = isHovered ? 0.45 : 0.14 + breath * 0.1;
-  const ringAlpha = isHovered ? 0.55 : 0.3 + breath * 0.06;
-  const innerRingAlpha = isHovered ? 0.25 : 0.08 + breath * 0.04;
+  const haloAlpha = isHovered ? 0.45 : 0.14 + breath * 0.10;
+  const ringAlpha = isHovered ? 0.55 : 0.30 + breath * 0.06;
   const lift = isHovered && interactive ? -1 : 0;
   const haloBlur = Math.max(4, Math.round(px * 0.22));
   const ringWidth = Math.max(1, Math.round(px * 0.025));
+  const borderRadiusPx = Math.round(px * 0.22); // ~22% radius for squircle effect
 
   /* ── Render ───────────────────────────────────────────────────────────── */
   return (
     <div
       className={`logo-3d-container select-none ${className}`}
-      role="img"
-      aria-label="Elbaz platform logo"
       style={{
         width: outerSize,
         height: outerSize,
@@ -140,8 +137,8 @@ export default function Logo3D({
         style={{
           position: 'absolute',
           inset: -Math.round(px * 0.08),
-          borderRadius: '50%',
-          background: `radial-gradient(circle, rgba(${accentRgb},${haloAlpha}) 0%, rgba(${accentRgb},${haloAlpha * 0.35}) 35%, transparent 72%)`,
+          borderRadius: borderRadiusPx + Math.round(px * 0.08),
+          background: `radial-gradient(circle at 40% 30%, rgba(${accentRgb},${haloAlpha}) 0%, rgba(${accentRgb},${haloAlpha * 0.35}) 30%, transparent 70%)`,
           transition: 'background 0.6s ease',
           pointerEvents: 'none',
           filter: `blur(${haloBlur * 0.6}px)`,
@@ -149,13 +146,13 @@ export default function Logo3D({
         }}
       />
 
-      {/* ── Main circular badge ─────────────────────────────────────────── */}
+      {/* ── Main rounded-square badge ───────────────────────────────────── */}
       <div
         style={{
           position: 'relative',
           width: px,
           height: px,
-          borderRadius: '50%',
+          borderRadius: borderRadiusPx,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -163,7 +160,7 @@ export default function Logo3D({
           transition: 'transform 0.45s cubic-bezier(.2,.8,.2,1)',
           willChange: 'transform',
           background: `
-            radial-gradient(circle at 30% 25%, rgba(255,255,255,${isLight ? 0.9 : 0.08}) 0%, transparent 55%),
+            radial-gradient(circle at 30% 25%, rgba(255,255,255,${isLight ? 0.9 : 0.08}) 0%, transparent 50%),
             linear-gradient(155deg, ${badgeTop} 0%, ${badgeBottom} 100%)
           `,
           border: `${ringWidth}px solid rgba(${accentRgb}, ${ringAlpha})`,
@@ -175,21 +172,24 @@ export default function Logo3D({
           `,
         }}
       >
-        {/* Decorative inner ring (static, hairline) */}
+        {/* ── Subtle inner highlight (top edge only, no full ring) ──────── */}
         <div
           aria-hidden="true"
           style={{
             position: 'absolute',
-            inset: Math.max(2, Math.round(px * 0.1)),
-            borderRadius: '50%',
-            border: `1px solid rgba(${accentRgb}, ${innerRingAlpha})`,
+            top: 0,
+            left: '12%',
+            right: '12%',
+            height: '1px',
+            borderRadius: '1px',
+            background: `linear-gradient(90deg, transparent, rgba(${accentRgb}, ${isHovered ? 0.3 : 0.12}), transparent)`,
             pointerEvents: 'none',
-            transition: 'border-color 0.5s ease',
           }}
         />
 
         {/* ── Logo image — NEVER modified, only its container ──────────── */}
         <picture
+          aria-hidden="true"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -205,8 +205,7 @@ export default function Logo3D({
           <img
             src="/logo.png"
             srcSet="/logo.png 1x, /logo@2x.webp 2x"
-            alt=""
-            aria-hidden="true"
+            alt="Elbaz Platform Logo"
             draggable={false}
             loading="eager"
             decoding="async"
@@ -219,7 +218,7 @@ export default function Logo3D({
               objectFit: 'contain',
               filter: isHovered
                 ? `drop-shadow(0 0 9px rgba(${accentRgb},0.55)) brightness(1.08)`
-                : `drop-shadow(0 0 3px rgba(${accentRgb},${0.2 + breath * 0.1}))`,
+                : `drop-shadow(0 0 3px rgba(${accentRgb},${0.20 + breath * 0.10}))`,
               transition: 'filter 0.5s ease',
             }}
           />
