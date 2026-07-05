@@ -11,17 +11,20 @@
         {
           "command": "open",
           "target": "/nonexistent-page-xyz-123",
-          "value": ""
+          "value": "",
+          "id": "b9834ba1-db11-483a-970d-adc025749e24"
         },
         {
           "command": "waitForElementVisible",
           "target": "css=body",
-          "value": "15000"
+          "value": "15000",
+          "id": "7d538d1a-19dc-495d-b720-f8876a3fd910"
         },
         {
           "command": "assertElementPresent",
           "target": "css=body",
-          "value": ""
+          "value": "",
+          "id": "7c52ae0d-759b-46dc-b17b-d09c76d75588"
         }
       ]
     }

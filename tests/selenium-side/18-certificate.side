@@ -11,17 +11,20 @@
         {
           "command": "open",
           "target": "/certificate",
-          "value": ""
+          "value": "",
+          "id": "67964997-6308-4cc2-978a-10c07528a725"
         },
         {
           "command": "waitForElementVisible",
           "target": "css=body",
-          "value": "15000"
+          "value": "15000",
+          "id": "19e97686-30a7-481b-88f8-556c309592af"
         },
         {
           "command": "assertElementPresent",
           "target": "css=body",
-          "value": ""
+          "value": "",
+          "id": "585411d6-df37-4097-9339-e726b959c386"
         }
       ]
     }

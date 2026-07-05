@@ -11,17 +11,20 @@
         {
           "command": "open",
           "target": "/journey",
-          "value": ""
+          "value": "",
+          "id": "17cbf6b4-5506-4aaa-87ea-5c303c9a1557"
         },
         {
           "command": "waitForElementVisible",
           "target": "css=body",
-          "value": "15000"
+          "value": "15000",
+          "id": "8dc65f2e-cfe2-4fc2-899a-fd419d63a53d"
         },
         {
           "command": "assertElementPresent",
           "target": "css=body",
-          "value": ""
+          "value": "",
+          "id": "087901a9-46b8-4e75-884d-ff9c448e2e91"
         }
       ]
     }

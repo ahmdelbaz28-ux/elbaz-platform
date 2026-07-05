@@ -11,17 +11,20 @@
         {
           "command": "open",
           "target": "/wishlist",
-          "value": ""
+          "value": "",
+          "id": "3ed4f01d-d1e3-4470-b650-83f6d2b5aac5"
         },
         {
           "command": "waitForElementVisible",
           "target": "css=body",
-          "value": "15000"
+          "value": "15000",
+          "id": "993d55ac-0580-4ed0-8bb1-d0a9547895ca"
         },
         {
           "command": "assertElementPresent",
           "target": "css=body",
-          "value": ""
+          "value": "",
+          "id": "21badcdc-2c1e-4f13-aaca-e8a88c96bc46"
         }
       ]
     }

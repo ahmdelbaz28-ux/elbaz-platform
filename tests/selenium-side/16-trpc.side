@@ -11,17 +11,20 @@
         {
           "command": "open",
           "target": "/api/trpc/ping",
-          "value": ""
+          "value": "",
+          "id": "33f83476-ee8b-42cc-8716-65c346b3461e"
         },
         {
           "command": "waitForElementVisible",
           "target": "css=body",
-          "value": "15000"
+          "value": "15000",
+          "id": "77236925-3518-4238-a1e2-af0fc41ddb95"
         },
         {
           "command": "assertElementPresent",
           "target": "css=body",
-          "value": ""
+          "value": "",
+          "id": "5b8ed232-483a-4d46-ae7f-743e8546f20f"
         }
       ]
     }

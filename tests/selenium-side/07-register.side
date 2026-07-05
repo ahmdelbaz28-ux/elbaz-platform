@@ -11,17 +11,20 @@
         {
           "command": "open",
           "target": "/register",
-          "value": ""
+          "value": "",
+          "id": "017a0aac-f443-483e-bc2f-b7f75f3e0e1d"
         },
         {
           "command": "waitForElementVisible",
           "target": "css=body",
-          "value": "15000"
+          "value": "15000",
+          "id": "6d691e72-7c7d-48fd-9cc7-2977c87a2245"
         },
         {
           "command": "assertElementPresent",
           "target": "css=input[type='password']",
-          "value": ""
+          "value": "",
+          "id": "098dfffb-778a-4a36-b5aa-518c90dd0190"
         }
       ]
     }

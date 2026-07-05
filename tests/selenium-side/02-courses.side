@@ -11,17 +11,20 @@
         {
           "command": "open",
           "target": "/courses",
-          "value": ""
+          "value": "",
+          "id": "09bfd093-c635-47c4-811a-c1a31dbd4f07"
         },
         {
           "command": "waitForElementVisible",
           "target": "css=body",
-          "value": "15000"
+          "value": "15000",
+          "id": "4f2ff9c4-42fc-47b9-8c08-c5b8cebf7173"
         },
         {
           "command": "assertElementPresent",
           "target": "css=body",
-          "value": ""
+          "value": "",
+          "id": "6e699a52-7603-48ce-b105-2919da623928"
         }
       ]
     }

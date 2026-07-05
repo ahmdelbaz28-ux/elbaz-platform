@@ -1,34 +1,14 @@
-# Selenium IDE CLI Runner Configuration — Patched + Cloudflare-aware
-# Official docs: https://www.selenium.dev/selenium-ide/docs/en/introduction/command-line-runner
-
-# Local mode (no Grid) — chromedriver started automatically by runner
-# chromedriver must be on PATH
-
-# Base URL — the live deployment
-baseUrl: https://ahmedelbaz.qzz.io
-
-# Capabilities — Chrome headless with:
-#   - binary: non-standard Chrome location
-#   - user-agent: real browser UA to bypass Cloudflare bot detection
-#   - args: headless + no-sandbox (required in containers)
 capabilities:
-  browserName: chrome
+  browserName: "chrome"
+  pageLoadStrategy: "none"
   goog:chromeOptions:
-    binary: /home/z/.agent-browser/browsers/chrome-149.0.7827.115/chrome
+    binary: "/home/z/.agent-browser/browsers/chrome-149.0.7827.115/chrome"
     args:
-      - --headless=new
-      - --no-sandbox
-      - --disable-dev-shm-usage
-      - --disable-gpu
-      - --window-size=1920,1080
-      - --user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36
+      - "--headless=new"
+      - "--no-sandbox"
+      - "--disable-dev-shm-usage"
+      - "--disable-gpu"
+      - "--window-size=1920,1080"
+      - "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"
 
-# Timeout settings — generous to allow Cloudflare challenge to resolve
-timeout: 30000
-jest-timeout: 120000
-
-# Run tests sequentially
-max-workers: 1
-
-# Retry once for transient Cloudflare issues
-retries: 1
+baseUrl: "https://ahmedelbaz.qzz.io"
