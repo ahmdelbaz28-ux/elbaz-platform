@@ -41,7 +41,7 @@ const NotFound = lazy(() => import("./pages/NotFound").then(m => ({ default: m.d
 const VerifyEmail = lazy(() => import("./pages/VerifyEmail").then(m => ({ default: m.default })));
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword").then(m => ({ default: m.default })));
 const ResetPassword = lazy(() => import("./pages/ResetPassword").then(m => ({ default: m.default })));
-const Documents = lazy(() => import("./pages/Documents").then(m => ({ default: m.default })));
+
 const CertificateView = lazy(() => import("./pages/CertificateView"));
 const CertificateVerify = lazy(() => import("./components/CertificateVerify"));
 
@@ -124,9 +124,7 @@ export default function App() {
             <Route path="/journey" element={
               <ProtectedRoute><LearningJourney /></ProtectedRoute>
             } />
-            <Route path="/documents" element={
-              <ProtectedRoute><Documents /></ProtectedRoute>
-            } />
+
 
             {/* ── Admin Route (requires admin role) ── */}
             <Route path="/admin" element={

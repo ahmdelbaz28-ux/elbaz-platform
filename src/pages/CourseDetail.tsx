@@ -30,6 +30,7 @@ import {
   X,
   CheckCircle2,
   AlertCircle,
+  ImageOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Seo from "@/components/SEO";
@@ -37,6 +38,32 @@ import Seo from "@/components/SEO";
 import { toast } from "sonner";
 
 const QuizComponent = lazy(() => import("@/components/QuizComponent"));
+
+// ─── Course Thumbnail with Graceful Fallback ────────────────────────────────
+
+function CourseThumbnailWithFallback({ thumbnail, title }: { readonly thumbnail: string | null; readonly title: string }) {
+  const [err, setErr] = useState(false);
+
+  if (err) {
+    return (
+      <div className="aspect-video w-full bg-gradient-to-br from-[#0a1628] to-[#1e2d3d] flex items-center justify-center">
+        <div className="text-center">
+          <ImageOff className="mx-auto h-10 w-10 text-[#475569]" />
+          <p className="mt-2 text-xs text-[#475569]">{title}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={thumbnail || "/hero-bg.jpg"}
+      alt={title}
+      onError={() => setErr(true)}
+      className="aspect-video w-full object-cover opacity-100"
+    />
+  );
+}
 
 // ─── Video Player Component ──────────────────────────────────────────────────
 
@@ -919,12 +946,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
 
                   {!activeLesson || !activeLessonData || canAccessLesson(activeLessonData) ? null : (
                     <div className="relative">
-                      <img
-                        src={course.thumbnail || "/hero-bg.jpg"}
-                        alt={title}
-                        onError={(e) => { e.currentTarget.src = "/hero-bg.jpg"; e.currentTarget.onerror = null; }}
-                        className="aspect-video w-full object-cover opacity-100"
-                      />
+                      <CourseThumbnailWithFallback thumbnail={course.thumbnail} title={title} />
                       <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-t from-[#0a0e17]/90 via-[#0a0e17]/40 to-transparent">
                         <div className="text-center">
                           {!isEnrolled && course.isPremium ? (

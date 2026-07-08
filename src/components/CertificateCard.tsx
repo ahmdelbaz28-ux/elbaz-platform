@@ -149,7 +149,7 @@ export default function CertificateCard({ data }: CertificateCardProps) {
                 height={120}
                 loading="eager"
                 decoding="async"
-                onError={(e) => { e.currentTarget.src = "/hero-bg.jpg"; e.currentTarget.onerror = null; }}
+                onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.onerror = null; const parent = e.currentTarget.closest('.cert-logo-ring'); if (parent) parent.style.background = 'linear-gradient(135deg, rgba(6,182,212,0.3), rgba(16,185,129,0.2))'; }}
               />
             </picture>
           </div>

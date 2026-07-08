@@ -210,6 +210,14 @@ export default function Logo3D({
             loading="eager"
             decoding="async"
             fetchPriority="high"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+              e.currentTarget.onerror = null;
+              const parent = e.currentTarget.closest('[class*="logo-3d"]');
+              if (parent) {
+                (parent as HTMLElement).style.display = 'none';
+              }
+            }}
             style={{
               maxWidth: '100%',
               maxHeight: '100%',

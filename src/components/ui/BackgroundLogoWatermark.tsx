@@ -119,6 +119,10 @@ export default function BackgroundLogoWatermark() {
               loading="lazy"
               decoding="async"
               className="w-full h-full object-contain"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+                e.currentTarget.onerror = null;
+              }}
               style={{
                 filter: isLight
                   ? "brightness(0.55) saturate(0.7)"
