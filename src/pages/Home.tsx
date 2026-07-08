@@ -437,13 +437,12 @@ export default function Home() { // NOSONAR — landing page with hero + feature
                         decoding="async"
                         className="max-h-10 max-w-full object-contain filter brightness-110 contrast-125 transition-all group-hover:scale-110 drop-shadow-md"
                         onError={(e) => {
-                          e.currentTarget.style.display = 'none';
-                          const next = e.currentTarget.nextElementSibling as HTMLElement | null;
-                          if (next) next.style.display = 'block';
+                          // Hide the broken image completely — no logo fallback available
+                          const pill = e.currentTarget.closest('.software-logo-pill');
+                          if (pill) pill.style.display = 'none';
                         }}
                       />
                     </picture>
-                    <span className="hidden text-sm font-bold text-[#06b6d4]">{tool.name}</span>
                   </div>
                   <span className="text-[11px] font-bold uppercase tracking-widest text-[#64748b] group-hover:text-[#06b6d4] transition-colors">{tool.name}</span>
                 </motion.div>

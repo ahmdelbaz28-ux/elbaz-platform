@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { Link } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
-import { Clock, Star, Users, Zap, ChevronRight } from "lucide-react";
+import { Clock, Star, Users, Zap, ChevronRight, ImageOff } from "lucide-react";
 import { TiltCard } from "@/components/ui/motion";
 
 interface CourseCardProps {
@@ -53,6 +54,17 @@ function CourseCardBadges({ course, lang, discount }: { readonly course: { reado
   );
 }
 
+function ThumbnailFallback({ title }: { readonly title: string }) {
+  return (
+    <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#0a1628] to-[#1e2d3d]">
+      <div className="text-center">
+        <ImageOff className="mx-auto h-8 w-8 text-[#475569]" />
+        <p className="mt-2 text-xs text-[#475569]">{title}</p>
+      </div>
+    </div>
+  );
+}
+
 function CourseCardPrice({ coursePrice, originalPrice, lang }: { readonly coursePrice: number; readonly originalPrice: number; readonly lang: "ar" | "en" }) {
   if (coursePrice === 0) {
     return (
@@ -86,6 +98,7 @@ export default function CourseCard({ course }: CourseCardProps) {
     ? Math.round(((originalPrice - coursePrice) / originalPrice) * 100)
     : 0;
   const lvl = levelColors[course.level] || levelColors.beginner;
+  const [thumbError, setThumbError] = useState(false);
 
   return (
     <TiltCard className="h-full">
@@ -97,16 +110,20 @@ export default function CourseCard({ course }: CourseCardProps) {
         >
           {/* ── Thumbnail ── */}
           <div className="relative h-48 overflow-hidden bg-gradient-to-br from-[#0a1628] to-[#1e2d3d]">
-            <img
-              src={course.thumbnail || "/hero-bg.jpg"}
-              alt={title}
-              loading="lazy"
-              width="384"
-              height="192"
-              decoding="async"
-              onError={(e) => { e.currentTarget.src = "/hero-bg.jpg"; e.currentTarget.onerror = null; }}
-              className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
-            />
+            {thumbError ? (
+              <ThumbnailFallback title={title} />
+            ) : (
+              <img
+                src={course.thumbnail || "/hero-bg.jpg"}
+                alt={title}
+                loading="lazy"
+                width="384"
+                height="192"
+                decoding="async"
+                onError={() => setThumbError(true)}
+                className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
+              />
+            )}
 
             {/* Gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-t from-[#0d1420] via-transparent to-transparent" />
