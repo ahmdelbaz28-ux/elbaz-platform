@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import { env } from "./env";
+import { logger } from "./logger.js";
 
 // ✅ SECURITY FIX: Use centralized env.ts — required() throws in production if missing
 function getSecret(): Uint8Array {
@@ -12,7 +13,7 @@ function getSecret(): Uint8Array {
         "Generate a strong secret with: openssl rand -base64 64"
       );
     }
-    console.warn("[SECURITY WARNING] Using weak default APP_SECRET. Set a strong secret before production.");
+    logger.warn("[SECURITY WARNING] Using weak default APP_SECRET. Set a strong secret before production.");
   }
 
   const finalSecret = secret || "dev-only-secret-not-for-production-minimum-32-chars-long";
@@ -61,7 +62,7 @@ export async function verifyToken(token: string, expectedFingerprint?: string): 
     
     // 🛡️ Elite Security: Verify device fingerprint if provided
     if (tokenPayload.fpt && expectedFingerprint && tokenPayload.fpt !== expectedFingerprint) {
-      console.warn(`[Security][JWT] Fingerprint mismatch for user ${tokenPayload.userId}. Hijack attempt?`);
+      logger.warn(`[Security][JWT] Fingerprint mismatch`, { userId: tokenPayload.userId });
       return null;
     }
     

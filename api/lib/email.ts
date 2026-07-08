@@ -18,6 +18,7 @@ import { eq, sql } from "drizzle-orm";
 import { getDb } from "../queries/connection";
 import { users } from "@db/schema";
 import { env, getActiveFrontendUrl } from "./env";
+import { logger } from "./logger.js";
 
 // ─── Configuration ───
 const RESET_TOKEN_EXPIRY_MINUTES = 15;
@@ -65,20 +66,17 @@ export async function sendEmail(message: EmailMessage): Promise<boolean> {
 export async function sendEmailWithDiagnostics(message: EmailMessage): Promise<SendEmailResult> {
   if (!env.isProduction) {
     // Development: Log email to console
-    console.log(JSON.stringify({
-      level: "info",
-      timestamp: new Date().toISOString(),
-      message: "📧 Email (dev mode — not sent)",
+    logger.info("📧 Email (dev mode — not sent)", {
       to: message.to,
       subject: message.subject,
       textPreview: message.text.substring(0, 200),
-    }));
+    });
     return { ok: true };
   }
 
   // Production: Use configured email provider
   if (!env.RESEND_API_KEY) {
-    console.error("No email provider configured (RESEND_API_KEY not set)");
+    logger.error("No email provider configured (RESEND_API_KEY not set)");
     return { ok: false, reason: "Email service not configured" };
   }
 
@@ -99,7 +97,7 @@ export async function sendEmailWithDiagnostics(message: EmailMessage): Promise<S
 
   if (!response.ok) {
     const errBody = await response.text().catch(() => "");
-    console.error(`[Email/Resend] Error ${response.status}: ${errBody}`);
+    logger.error("[Email/Resend] Error", { status: response.status, body: errBody });
 
     // Detect Resend's "sandbox / unverified domain" 403 error so the caller
     // can tell the user the actual reason instead of a generic "email sent".
@@ -216,7 +214,7 @@ export async function initiatePasswordReset(email: string, headers?: Headers): P
   });
 
   if (!sendResult.ok) {
-    console.error("[Email] Failed to send password reset email to:", user.email, "-", sendResult.reason);
+    logger.error("[Email] Failed to send password reset email", { to: user.email, reason: sendResult.reason });
     // 🔒 SECURITY FIX (Task ID 3): NEVER surface the reset URL in the API response.
     // Previously this returned `recoveryLink: resetUrl` which allowed anyone who
     // knows a user's email to trigger a reset and immediately receive the live
@@ -224,11 +222,7 @@ export async function initiatePasswordReset(email: string, headers?: Headers): P
     // The reset link is now ONLY delivered via email. If email delivery is broken,
     // the operator must investigate server logs (which still print the link for
     // recovery purposes) or use the admin password-reset tool.
-    console.warn(
-      "[Email/Recovery] Password reset link for " + user.email +
-      " (email delivery failed — operator must investigate):\n" +
-      resetUrl
-    );
+    logger.warn("[Email/Recovery] Password reset link (email delivery failed — operator must investigate)", { to: user.email, resetUrl });
     return {
       success: true,
       message: genericMessage,
@@ -390,14 +384,10 @@ export async function initiateEmailVerification(userId: number, newEmail?: strin
   });
 
   if (!sendResult.ok) {
-    console.error("[Email] Failed to send verification email to:", targetEmail, "-", sendResult.reason);
+    logger.error("[Email] Failed to send verification email", { to: targetEmail, reason: sendResult.reason });
     // Same recovery pattern as password reset: log the verification link so
     // the operator can recover the flow when email delivery is broken.
-    console.warn(
-      "[Email/Recovery] Verification link for " + targetEmail +
-      " (email delivery failed — use this link to verify manually):\n" +
-      verificationUrl
-    );
+    logger.warn("[Email/Recovery] Verification link (email delivery failed — use this link to verify manually)", { to: targetEmail, verificationUrl });
     return { success: false, message: "Could not send verification email. Please try again later." };
   }
 

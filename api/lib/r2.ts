@@ -13,6 +13,7 @@
 import { S3Client, GetObjectCommand, HeadObjectCommand, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "./env";
+import { logger } from "./logger.js";
 
 // ─── File Size Validation Constants ──────────────────────────────────────────
 
@@ -300,7 +301,7 @@ export async function deleteR2Object(objectKey: string): Promise<void> {
     });
     await client.send(command);
   } catch (error) {
-    console.warn("[R2] Failed to delete object:", objectKey, error);
+    logger.warn("[R2] Failed to delete object", { objectKey, error: String(error) });
     throw error;
   }
 }

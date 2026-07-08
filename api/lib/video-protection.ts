@@ -12,6 +12,7 @@
 import crypto from "node:crypto";
 import { generateR2PresignedUrl } from "./r2";
 import { env } from "./env";
+import { logger } from "./logger.js";
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 const VIDEO_URL_EXPIRY_SECONDS = 1800; // 30 minutes
@@ -21,7 +22,7 @@ const VIDEO_URL_EXPIRY_SECONDS = 1800; // 30 minutes
 // WATERMARK_SECRET is optional in env.ts, so missing it should not be fatal.
 const WATERMARK_SECRET = env.WATERMARK_SECRET;
 if (!WATERMARK_SECRET) {
-  console.warn("[SECURITY WARNING] WATERMARK_SECRET is not set. Video watermark/HMAC tokens will be disabled. Set this env var in production for full video protection.");
+  logger.warn("[SECURITY WARNING] WATERMARK_SECRET is not set. Video watermark/HMAC tokens will be disabled. Set this env var in production for full video protection.");
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────

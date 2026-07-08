@@ -164,19 +164,34 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   const [streamingContent, setStreamingContent] = useState<string>("");
   const [copiedId, setCopiedId] = useState<string>("");
   const [chatMode, setChatMode] = useState<ChatMode>(loadChatMode);
+  const [chunkIndex, setChunkIndex] = useState(0);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const chatIdRef = useRef<string>(crypto.randomUUID());
   const abortControllerRef = useRef<AbortController | null>(null);
   const fabRef = useChatFabAnimation();
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typingExitStartedRef = useRef(false);
 
-  // ─── Scroll to bottom when new messages arrive ───
+  // ─── Typing indicator visibility (handles enter/exit animations) ───
+  const [typingVisible, setTypingVisible] = useState(false);
+  const [typingExiting, setTypingExiting] = useState(false);
+
+  // ─── Auto-scroll during streaming (instant scroll, responsive) ───
   useEffect(() => {
-    if (messagesEndRef.current) {
+    if (chatContainerRef.current && streamingContent) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [streamingContent]);
+
+  // ─── Smooth auto-scroll when new messages arrive ───
+  useEffect(() => {
+    if (messagesEndRef.current && !isLoading) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, []);
+  }, [messages.length, isLoading]);
 
   // ─── Focus input when chat opens ───
   useEffect(() => {
@@ -184,6 +199,48 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
       setTimeout(() => inputRef.current?.focus(), 300);
     }
   }, [isOpen, isMinimized]);
+
+  // ─── Typing indicator: show with enter animation / hide with exit animation ───
+  useEffect(() => {
+    if (isLoading && !streamingContent) {
+      // Cancel any pending exit timer & reset guard
+      if (typingTimerRef.current) {
+        clearTimeout(typingTimerRef.current);
+        typingTimerRef.current = null;
+      }
+      typingExitStartedRef.current = false;
+      setTypingExiting(false);
+      // Small RAF delay ensures DOM is ready for the enter animation to play
+      requestAnimationFrame(() => {
+        setTypingVisible(true);
+      });
+    } else if (streamingContent && typingVisible && !typingExitStartedRef.current) {
+      // First chunk arrived — start exit animation (only ONCE)
+      typingExitStartedRef.current = true;
+      setTypingExiting(true);
+      typingTimerRef.current = setTimeout(() => {
+        setTypingVisible(false);
+        setTypingExiting(false);
+      }, 250); // match exit animation duration
+    } else if (!isLoading) {
+      setTypingVisible(false);
+      setTypingExiting(false);
+    }
+
+    return () => {
+      if (typingTimerRef.current) {
+        clearTimeout(typingTimerRef.current);
+        typingTimerRef.current = null;
+      }
+    };
+  }, [isLoading, streamingContent, typingVisible]);
+
+  // ─── Increment chunk index on each streaming update (for fade animation) ───
+  useEffect(() => {
+    if (streamingContent) {
+      setChunkIndex((i) => i + 1);
+    }
+  }, [streamingContent]);
 
   // ─── Clear copied tooltip after 2s ───
   useEffect(() => {
@@ -728,7 +785,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                 </div>
 
                 {/* ─── Messages Area ─── */}
-                <div role="log" aria-label={lang === "ar" ? "\u0631\u0633\u0627\u0626\u0644 \u0627\u0644\u0645\u062d\u0627\u062f\u062b\u0629" : "Chat messages"} aria-live="polite" className="flex-1 overflow-y-auto px-4 py-3 space-y-4 chatbot-messages">
+                <div ref={chatContainerRef} role="log" aria-label={lang === "ar" ? "\u0631\u0633\u0627\u0626\u0644 \u0627\u0644\u0645\u062d\u0627\u062f\u062b\u0629" : "Chat messages"} aria-live="polite" className="flex-1 overflow-y-auto px-4 py-3 space-y-4 chatbot-messages">
                   {messages.map((msg) => {
                     const errorBubbleClass = msg.isError
                       ? "bg-red-500/10 border border-red-500/30 text-red-300 rounded-ss-md"
@@ -820,17 +877,17 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                       <div className="flex flex-col max-w-[85%] min-w-0">
                         <div className="px-3.5 py-2.5 rounded-2xl rounded-ss-md bg-[#111827] border border-[#1e2d3d] text-[#e8f0fe] text-[13.5px] leading-relaxed break-words overflow-wrap-anywhere whitespace-pre-wrap word-break-break-word">
                           {/* biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown() escapes all HTML entities first; only safe markdown tags are re-added */}
-                          <span dangerouslySetInnerHTML={{ __html: renderMarkdown(streamingContent) }} />
+                          <span key={chunkIndex} className="animate-stream-fade" dangerouslySetInnerHTML={{ __html: renderMarkdown(streamingContent) }} />
                           {/* Blinking caret */}
-                          <span className="inline-block w-1.5 h-4 ms-0.5 bg-cyan-400 animate-pulse align-text-bottom" />
+                          <span className="inline-block w-[2px] h-[1.1em] ms-0.5 bg-cyan-400/90 rounded-sm animate-typing-cursor align-text-bottom shadow-[0_0_6px_rgba(6,182,212,0.5)]" />
                         </div>
                       </div>
                     </div>
                   )}
 
-                  {/* Typing indicator (only show when NOT streaming content yet) */}
-                  {isLoading && !streamingContent && (
-                    <div className="flex gap-2.5">
+                  {/* Typing indicator (with enter/exit animations) */}
+                  {typingVisible && (
+                    <div className={`flex gap-2.5 ${typingExiting ? "animate-typing-exit" : "animate-typing-enter"}`}>
                       <div className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30">
                         <Zap className="w-3.5 h-3.5 text-cyan-400" />
                       </div>

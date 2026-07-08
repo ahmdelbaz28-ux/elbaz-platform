@@ -17,6 +17,7 @@ import crypto from "node:crypto";
 import { getRawConnection } from "../queries/connection.js";
 import { hashPassword } from "./password.js";
 import { env } from "./env.js";
+import { logger } from "./logger.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -46,16 +47,16 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
       const acquired = (lockResult as { acquired: number }[])[0]?.acquired;
       if (acquired === 1) {
         acquiredLock = true;
-        console.log("[DB] 🔒 Acquired migration lock 'elbaz_db_migration'");
+        logger.info("[DB] Acquired migration lock 'elbaz_db_migration'");
       } else if (acquired === 0) {
-        console.warn("[DB] ⚠️ Migration lock timeout — proceeding anyway (idempotent migrations will no-op)");
+        logger.warn("[DB] Migration lock timeout — proceeding anyway (idempotent migrations will no-op)");
       } else {
-        console.warn("[DB] ⚠️ Migration lock error — proceeding anyway (idempotent migrations will no-op)");
+        logger.warn("[DB] Migration lock error — proceeding anyway (idempotent migrations will no-op)");
       }
     } catch (lockErr) {
       // GET_LOCK may not be available on all MySQL-compatible engines (e.g.,
       // PlanetScale). Fall through to unlocked migration — relies on IF NOT EXISTS.
-      console.warn("[DB] GET_LOCK unavailable, proceeding without migration lock:", (lockErr as Error).message);
+      logger.warn("[DB] GET_LOCK unavailable, proceeding without migration lock", { error: (lockErr as Error).message });
     }
 
     try {
@@ -66,7 +67,7 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
     const tableExists = (rows as { cnt: number }[])[0]?.cnt > 0;
 
     if (tableExists) {
-      console.log("[DB] Schema already initialized — checking for incremental migrations...");
+      logger.info("[DB] Schema already initialized — checking for incremental migrations...");
 
       // ── Helper: check if a column exists before adding it ──────────────
       // MySQL does NOT support `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
@@ -90,7 +91,7 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
 
       // ── Incremental migrations for existing databases ──
       // Each migration checks existence first → no syntax errors, no warnings.
-      console.log("[DB] Running incremental migrations...");
+      logger.info("[DB] Running incremental migrations...");
 
       // Migration 1: make passwordHash nullable (for Google OAuth users)
       try {
@@ -98,7 +99,7 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (!message.includes("Duplicate") && !message.includes("already exists")) {
-          console.warn("[DB] Migration warning (passwordHash):", message);
+          logger.warn("[DB] Migration warning (passwordHash)", { error: message });
         }
       }
 
@@ -106,11 +107,11 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
       if (!(await columnExists("users", "googleId"))) {
         try {
           await conn.execute(`ALTER TABLE users ADD COLUMN googleId VARCHAR(255) NULL`);
-          console.log("[DB]   + Added column users.googleId");
+          logger.info("[DB]   + Added column users.googleId");
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           if (!message.includes("Duplicate") && !message.includes("already exists")) {
-            console.warn("[DB] Migration warning (googleId):", message);
+            logger.warn("[DB] Migration warning (googleId)", { error: message });
           }
         }
       }
@@ -119,11 +120,11 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
       if (!(await columnExists("users", "passwordResetToken"))) {
         try {
           await conn.execute(`ALTER TABLE users ADD COLUMN passwordResetToken VARCHAR(255) NULL`);
-          console.log("[DB]   + Added column users.passwordResetToken");
+          logger.info("[DB]   + Added column users.passwordResetToken");
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           if (!message.includes("Duplicate") && !message.includes("already exists")) {
-            console.warn("[DB] Migration warning (passwordResetToken):", message);
+            logger.warn("[DB] Migration warning (passwordResetToken)", { error: message });
           }
         }
       }
@@ -132,11 +133,11 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
       if (!(await columnExists("users", "passwordResetExpiresAt"))) {
         try {
           await conn.execute(`ALTER TABLE users ADD COLUMN passwordResetExpiresAt TIMESTAMP NULL`);
-          console.log("[DB]   + Added column users.passwordResetExpiresAt");
+          logger.info("[DB]   + Added column users.passwordResetExpiresAt");
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           if (!message.includes("Duplicate") && !message.includes("already exists")) {
-            console.warn("[DB] Migration warning (passwordResetExpiresAt):", message);
+            logger.warn("[DB] Migration warning (passwordResetExpiresAt)", { error: message });
           }
         }
       }
@@ -145,11 +146,11 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
       if (!(await columnExists("users", "emailVerificationToken"))) {
         try {
           await conn.execute(`ALTER TABLE users ADD COLUMN emailVerificationToken VARCHAR(255) NULL`);
-          console.log("[DB]   + Added column users.emailVerificationToken");
+          logger.info("[DB]   + Added column users.emailVerificationToken");
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           if (!message.includes("Duplicate") && !message.includes("already exists")) {
-            console.warn("[DB] Migration warning (emailVerificationToken):", message);
+            logger.warn("[DB] Migration warning (emailVerificationToken)", { error: message });
           }
         }
       }
@@ -158,11 +159,11 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
       if (!(await columnExists("users", "emailVerificationExpiry"))) {
         try {
           await conn.execute(`ALTER TABLE users ADD COLUMN emailVerificationExpiry TIMESTAMP NULL`);
-          console.log("[DB]   + Added column users.emailVerificationExpiry");
+          logger.info("[DB]   + Added column users.emailVerificationExpiry");
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           if (!message.includes("Duplicate") && !message.includes("already exists")) {
-            console.warn("[DB] Migration warning (emailVerificationExpiry):", message);
+            logger.warn("[DB] Migration warning (emailVerificationExpiry)", { error: message });
           }
         }
       }
@@ -171,11 +172,11 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
       if (!(await columnExists("users", "emailVerifiedAt"))) {
         try {
           await conn.execute(`ALTER TABLE users ADD COLUMN emailVerifiedAt TIMESTAMP NULL`);
-          console.log("[DB]   + Added column users.emailVerifiedAt");
+          logger.info("[DB]   + Added column users.emailVerifiedAt");
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           if (!message.includes("Duplicate") && !message.includes("already exists")) {
-            console.warn("[DB] Migration warning (emailVerifiedAt):", message);
+            logger.warn("[DB] Migration warning (emailVerifiedAt)", { error: message });
           }
         }
       }
@@ -184,11 +185,11 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
       if (!(await columnExists("users", "pendingEmail"))) {
         try {
           await conn.execute(`ALTER TABLE users ADD COLUMN pendingEmail VARCHAR(255) NULL`);
-          console.log("[DB]   + Added column users.pendingEmail");
+          logger.info("[DB]   + Added column users.pendingEmail");
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           if (!message.includes("Duplicate") && !message.includes("already exists")) {
-            console.warn("[DB] Migration warning (pendingEmail):", message);
+            logger.warn("[DB] Migration warning (pendingEmail)", { error: message });
           }
         }
       }
@@ -197,16 +198,16 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
       if (!(await indexExists("users", "users_google_id_unique"))) {
         try {
           await conn.execute(`ALTER TABLE users ADD UNIQUE INDEX users_google_id_unique (googleId)`);
-          console.log("[DB]   + Added index users_google_id_unique");
+          logger.info("[DB]   + Added index users_google_id_unique");
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           if (!message.includes("Duplicate") && !message.includes("already exists")) {
-            console.warn("[DB] Migration warning (users_google_id_unique):", message);
+            logger.warn("[DB] Migration warning (users_google_id_unique)", { error: message });
           }
         }
       }
 
-      console.log("[DB] ✅ Incremental migrations complete");
+      logger.info("[DB] Incremental migrations complete");
 
       // ── Testimonial refresh ──────────────────────────────────────────────
       // Replace ALL old generic/AI-sounding seed testimonials with 6 realistic,
@@ -219,7 +220,7 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
       //   - Mohamed Khaled / Sara El-Naggar / Ahmed Hassan (English-named seed)
       // All read as AI-generated (generic names, marketing-speak, no specifics).
       try {
-        console.log("[DB] Refreshing testimonials...");
+        logger.info("[DB] Refreshing testimonials...");
 
         // Step 1: Delete ALL old AI-sounding testimonials
         await conn.execute(
@@ -272,13 +273,13 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
               'مش هكدب، أول أسبوعين كانوا صعبين عليّ لأن مستواي في الأساسيات كان ضعيف. بس طريقة الشرح من الصفر خلّتني أكمّل. لو حد يسألني أنصحه يبدأ من الـ power systems basics الأول قبل ما يروح على ETAP مباشرة.',
               4, 1, NOW())`
           );
-          console.log("[DB] ✅ 6 realistic testimonials inserted");
+          logger.info("[DB] 6 realistic testimonials inserted");
         } else {
-          console.log("[DB] ✅ Realistic testimonials already present (skipped insert)");
+          logger.info("[DB] Realistic testimonials already present (skipped insert)");
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.warn("[DB] Testimonial refresh warning:", message);
+        logger.warn("[DB] Testimonial refresh warning", { error: message });
       }
 
       // ── Course thumbnail fix ─────────────────────────────────────────────
@@ -287,7 +288,7 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
       // This UPDATE runs on every boot to keep thumbnails in sync with
       // the professional AI-generated images in /public/course-*.jpg
       try {
-        console.log("[DB] Fixing course thumbnails...");
+        logger.info("[DB] Fixing course thumbnails...");
         await conn.execute(
           `UPDATE courses SET thumbnail = '/course-cable.jpg' WHERE slug = 'power-systems-basics'`
         );
@@ -311,31 +312,31 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         await conn.execute(
           `UPDATE courses SET thumbnail = REPLACE(thumbnail, '/images/courses/power-basics-thumb.jpg', '/course-cable.jpg') WHERE thumbnail LIKE '%power-basics-thumb%'`
         );
-        console.log("[DB] ✅ Course thumbnails fixed");
+        logger.info("[DB] Course thumbnails fixed");
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.warn("[DB] Course thumbnail fix warning:", message);
+        logger.warn("[DB] Course thumbnail fix warning", { error: message });
       }
 
       // ── Course deduplication migration ──────────────────────────────────
       // The courses table has UNIQUE INDEX on slug but it wasn't enforced,
       // causing duplicate courses to accumulate. This cleans up duplicates.
       try {
-        console.log("[DB] Checking for duplicate courses...");
+        logger.info("[DB] Checking for duplicate courses...");
 
         // Step 1: Add unique index if not exists (ignore errors)
         try {
           await conn.execute(
             `ALTER TABLE courses ADD UNIQUE INDEX courses_slug_unique (slug)`
           );
-          console.log("[DB]   + Added UNIQUE INDEX on courses.slug");
+          logger.info("[DB]   + Added UNIQUE INDEX on courses.slug");
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           if (msg.includes("Duplicate")) {
-            console.log("[DB]   ✅ UNIQUE INDEX on courses.slug already exists");
+            logger.info("[DB]   UNIQUE INDEX on courses.slug already exists");
           } else {
             // Index might exist with different name, check
-            console.log("[DB]   Index add skipped:", msg.substring(0, 80));
+            logger.warn("[DB]   Index add skipped", { error: msg.substring(0, 80) });
           }
         }
 
@@ -348,7 +349,7 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         `) as unknown as [{ slug: string; all_ids: string }[]];
 
         if (dupRows.length > 0) {
-          console.log(`[DB]   Found ${dupRows.length} duplicate slugs, cleaning up...`);
+          logger.info(`[DB]   Found ${dupRows.length} duplicate slugs, cleaning up...`);
           for (const row of dupRows) {
             const ids = row.all_ids.split(",");
             // Keep the first (newest), delete the rest
@@ -357,48 +358,47 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
             await conn.execute(
               `DELETE FROM courses WHERE id IN (${deleteIds})`
             );
-            console.log(`[DB]   Kept id=${keepId}, deleted ${ids.length - 1} duplicate(s) for slug: ${row.slug}`);
+            logger.info(`[DB]   Kept id=${keepId}, deleted ${ids.length - 1} duplicate(s) for slug: ${row.slug}`);
           }
         } else {
-          console.log("[DB]   ✅ No duplicate courses found");
+          logger.info("[DB]   No duplicate courses found");
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.warn("[DB] Course deduplication warning:", message);
+        logger.warn("[DB] Course deduplication warning", { error: message });
       }
 
       // ── v4 features: 2FA columns + userSessions + userNotes + licenses tables ──
       // Previously these were only created by migration-v4-features.sql which
       // db-init.ts never ran → existing databases had broken 2FA / notes / licenses.
       // We now add them inline so existing DBs get upgraded on next boot.
-      console.log("[DB] Running v4 features migration (2FA columns + sessions/notes/licenses)...");
+      logger.info("[DB] Running v4 features migration (2FA + sessions/notes/licenses)...");
 
-      // 2FA columns on users table
-      if (!(await columnExists("users", "totpSecret"))) {
-        try { await conn.execute(`ALTER TABLE users ADD COLUMN totpSecret VARCHAR(255) NULL`); console.log("[DB]   + users.totpSecret"); } catch (e) { console.warn("[DB] totpSecret:", (e as Error).message); }
+      // 2FA columns on users table        if (!(await columnExists("users", "totpSecret"))) {
+        try { await conn.execute(`ALTER TABLE users ADD COLUMN totpSecret VARCHAR(255) NULL`); logger.info("[DB]   + users.totpSecret"); } catch (e) { logger.warn("[DB] totpSecret", { error: (e as Error).message }); }
       }
       if (!(await columnExists("users", "totpEnabled"))) {
-        try { await conn.execute(`ALTER TABLE users ADD COLUMN totpEnabled BOOLEAN NOT NULL DEFAULT FALSE`); console.log("[DB]   + users.totpEnabled"); } catch (e) { console.warn("[DB] totpEnabled:", (e as Error).message); }
+        try { await conn.execute(`ALTER TABLE users ADD COLUMN totpEnabled BOOLEAN NOT NULL DEFAULT FALSE`); logger.info("[DB]   + users.totpEnabled"); } catch (e) { logger.warn("[DB] totpEnabled", { error: (e as Error).message }); }
       }
       if (!(await columnExists("users", "totpBackupCodes"))) {
-        try { await conn.execute(`ALTER TABLE users ADD COLUMN totpBackupCodes JSON NULL`); console.log("[DB]   + users.totpBackupCodes"); } catch (e) { console.warn("[DB] totpBackupCodes:", (e as Error).message); }
+        try { await conn.execute(`ALTER TABLE users ADD COLUMN totpBackupCodes JSON NULL`); logger.info("[DB]   + users.totpBackupCodes"); } catch (e) { logger.warn("[DB] totpBackupCodes", { error: (e as Error).message }); }
       }
       if (!(await columnExists("users", "deviceFingerprint"))) {
-        try { await conn.execute(`ALTER TABLE users ADD COLUMN deviceFingerprint VARCHAR(255) NULL`); console.log("[DB]   + users.deviceFingerprint"); } catch (e) { console.warn("[DB] deviceFingerprint:", (e as Error).message); }
+        try { await conn.execute(`ALTER TABLE users ADD COLUMN deviceFingerprint VARCHAR(255) NULL`); logger.info("[DB]   + users.deviceFingerprint"); } catch (e) { logger.warn("[DB] deviceFingerprint", { error: (e as Error).message }); }
       }
       // Email verification columns (restored by migration_restore_email_verification.sql,
       // now applied inline so existing DBs that ran v2_cleanup get them back)
       if (!(await columnExists("users", "emailVerificationToken"))) {
-        try { await conn.execute(`ALTER TABLE users ADD COLUMN emailVerificationToken VARCHAR(255) NULL`); console.log("[DB]   + users.emailVerificationToken"); } catch (e) { console.warn("[DB] emailVerificationToken:", (e as Error).message); }
+        try { await conn.execute(`ALTER TABLE users ADD COLUMN emailVerificationToken VARCHAR(255) NULL`); logger.info("[DB]   + users.emailVerificationToken"); } catch (e) { logger.warn("[DB] emailVerificationToken", { error: (e as Error).message }); }
       }
       if (!(await columnExists("users", "emailVerificationExpiry"))) {
-        try { await conn.execute(`ALTER TABLE users ADD COLUMN emailVerificationExpiry TIMESTAMP NULL`); console.log("[DB]   + users.emailVerificationExpiry"); } catch (e) { console.warn("[DB] emailVerificationExpiry:", (e as Error).message); }
+        try { await conn.execute(`ALTER TABLE users ADD COLUMN emailVerificationExpiry TIMESTAMP NULL`); logger.info("[DB]   + users.emailVerificationExpiry"); } catch (e) { logger.warn("[DB] emailVerificationExpiry", { error: (e as Error).message }); }
       }
       if (!(await columnExists("users", "emailVerifiedAt"))) {
-        try { await conn.execute(`ALTER TABLE users ADD COLUMN emailVerifiedAt TIMESTAMP NULL`); console.log("[DB]   + users.emailVerifiedAt"); } catch (e) { console.warn("[DB] emailVerifiedAt:", (e as Error).message); }
+        try { await conn.execute(`ALTER TABLE users ADD COLUMN emailVerifiedAt TIMESTAMP NULL`); logger.info("[DB]   + users.emailVerifiedAt"); } catch (e) { logger.warn("[DB] emailVerifiedAt", { error: (e as Error).message }); }
       }
       if (!(await columnExists("users", "pendingEmail"))) {
-        try { await conn.execute(`ALTER TABLE users ADD COLUMN pendingEmail VARCHAR(320) NULL`); console.log("[DB]   + users.pendingEmail"); } catch (e) { console.warn("[DB] pendingEmail:", (e as Error).message); }
+        try { await conn.execute(`ALTER TABLE users ADD COLUMN pendingEmail VARCHAR(320) NULL`); logger.info("[DB]   + users.pendingEmail"); } catch (e) { logger.warn("[DB] pendingEmail", { error: (e as Error).message }); }
       }
 
       // v4 tables (CREATE TABLE IF NOT EXISTS — safe to re-run)
@@ -463,14 +463,14 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
             CONSTRAINT \`fk_licenses_course\` FOREIGN KEY (\`courseId\`) REFERENCES \`courses\` (\`id\`) ON DELETE SET NULL ON UPDATE CASCADE
           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         `);
-        console.log("[DB] ✅ v4 tables verified (userSessions, userNotes, licenses)");
+        logger.info("[DB] v4 tables verified (userSessions, userNotes, licenses)");
       } catch (err) {
-        console.warn("[DB] v4 tables migration warning:", (err as Error).message);
+        logger.warn("[DB] v4 tables migration warning", { error: (err as Error).message });
       }
 
       // ── v5 features: referenceFiles table (engineering reference library) ──
       try {
-        console.log("[DB] Running v5 features migration (referenceFiles table)...");
+        logger.info("[DB] Running v5 features migration (referenceFiles table)...");
         await conn.query(`
           CREATE TABLE IF NOT EXISTS \`referenceFiles\` (
             \`id\`            BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
@@ -496,14 +496,14 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
             CONSTRAINT \`fk_reference_files_uploader\` FOREIGN KEY (\`uploadedById\`) REFERENCES \`users\` (\`id\`) ON DELETE SET NULL ON UPDATE CASCADE
           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         `);
-        console.log("[DB] ✅ v5 referenceFiles table verified");
+        logger.info("[DB] v5 referenceFiles table verified");
       } catch (err) {
-        console.warn("[DB] v5 referenceFiles migration warning:", (err as Error).message);
+        logger.warn("[DB] v5 referenceFiles migration warning", { error: (err as Error).message });
       }
 
       // ── v6 features: FAQ, Wishlists, LessonComments, CommentLikes, NotificationPreferences ──
       try {
-        console.log("[DB] Running v6 features migration (FAQ, wishlists, comments, notif prefs)...");
+        logger.info("[DB] Running v6 features migration (FAQ, wishlists, comments, notif prefs)...");
         await conn.query(`CREATE TABLE IF NOT EXISTS \`faqEntries\` (
           \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
           \`questionEn\` VARCHAR(500) NOT NULL,
@@ -593,25 +593,25 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
             ('Can I access courses on mobile?', 'هل يمكنني الوصول للكورسات على الهاتف؟', 'Yes! The platform is fully responsive and also available as an Android app. Download from the Google Play Store or access via your mobile browser.', 'نعم! المنصة متجاوبة بالكامل ومتاحة أيضاً كتطبيق أندرويد. حملها من Google Play أو ادخل من متصفح هاتفك.', 'technical', 4),
             ('How do I reset my password?', 'كيف أعيد تعيين كلمة المرور؟', 'Click "Forgot Password" on the login page. Enter your email, and we will send a reset link valid for 30 minutes.', 'اضغط "نسيت كلمة المرور" في صفحة تسجيل الدخول. أدخل بريدك الإلكتروني وسنرسل رابط إعادة التعيين صالح لمدة 30 دقيقة.', 'account', 5)
           `);
-          console.log("[DB] ✅ Default FAQ entries seeded");
+          logger.info("[DB] Default FAQ entries seeded");
         }
 
-        console.log("[DB] ✅ v6 tables verified (faqEntries, wishlists, lessonComments, commentLikes, notificationPreferences)");
+        logger.info("[DB] v6 tables verified (faqEntries, wishlists, lessonComments, commentLikes, notificationPreferences)");
       } catch (err) {
-        console.warn("[DB] v6 migration warning:", (err as Error).message);
+        logger.warn("[DB] v6 migration warning", { error: (err as Error).message });
       }
 
       migrationDone = true;
       return;
     }
 
-    console.log("[DB] First run detected — initializing schema...");
+    logger.info("[DB] First run detected — initializing schema...");
 
     // ── Step 2: Create all tables ──
     const schemaPath = join(__dirname, "..", "..", "db", "init-schema.sql");
     const schemaSql = readFileSync(schemaPath, "utf-8");
     await conn.query(schemaSql);
-    console.log("[DB] ✅ All 24 tables created (incl. userSessions, userNotes, licenses)");
+    logger.info("[DB] All 24 tables created (incl. userSessions, userNotes, licenses)");
 
     // ── Step 3: Seed admin user + categories + courses + testimonials ──
     // ✅ SECURITY: Generate a random admin password if ADMIN_PASSWORD not set
@@ -727,12 +727,9 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
 
     // Log the generated admin password in development
     if (!env.isProduction) { // NOSONAR — error-first logging convention for dev/prod split
-      console.log("\n[DB] 🔐 Admin account created:");
-      console.log("    Username: admin");
-      console.log(`    Password: ${adminPassword}`);
-      console.log("    ⚠️  Save this — you won't see it again!\n");
+      logger.info("[DB] Admin account created", { username: "admin", password: adminPassword });
     } else {
-      console.log("[DB] Admin account created (password from ADMIN_PASSWORD env variable)");
+      logger.info("[DB] Admin account created (password from ADMIN_PASSWORD env variable)");
     }
 
     for (const sql of seedSql) {
@@ -742,12 +739,12 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         // Ignore SET variable errors or duplicate key warnings
         const message = err instanceof Error ? err.message : String(err);
         if (!message.includes("INSERT IGNORE") && !message.includes("Duplicate") && !sql.startsWith("SET ")) {
-          console.warn("[DB] Seed warning:", message);
+          logger.warn("[DB] Seed warning", { error: message });
         }
       }
     }
 
-    console.log("[DB] ✅ Seed data inserted (admin user, 4 categories, 4 courses, 3 testimonials, contact settings)");
+    logger.info("[DB] Seed data inserted (admin user, 4 categories, 4 courses, testimonials, contact settings)");
     migrationDone = true;
     } finally {
       // 🔒 Release the migration lock so other pods can proceed.
@@ -755,7 +752,7 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
       if (acquiredLock) {
         try {
           await conn.execute("SELECT RELEASE_LOCK('elbaz_db_migration')");
-          console.log("[DB] 🔓 Released migration lock");
+          logger.info("[DB] Released migration lock");
         } catch {
           // Connection may already be closing — release happens automatically on conn close.
         }
@@ -763,7 +760,7 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
       conn.release();
     }
   } catch (err) {
-    console.error("[DB] ❌ Migration failed:", err);
+    logger.error("[DB] Migration failed", { error: String(err) });
     // Don't crash — let the app start anyway and queries will fail with proper 500 errors
     migrationDone = true;
   }

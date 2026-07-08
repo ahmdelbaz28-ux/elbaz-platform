@@ -15,6 +15,7 @@
  */
 
 import { env } from "./env";
+import { logger } from "./logger.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -107,13 +108,13 @@ class RedisCache {
       });
 
       this.client.on("error", (err: Error) => {
-        console.warn("[Cache] Redis error:", err.message);
+        logger.warn("[Cache] Redis error", { error: err.message });
         this.connected = false;
       });
 
       this.client.on("connect", () => {
         this.connected = true;
-        console.log("[Cache] Redis connected");
+        logger.info("[Cache] Redis connected");
       });
 
       this.client.on("close", () => {
@@ -123,7 +124,7 @@ class RedisCache {
       await this.client.connect();
       return this.client;
     } catch (e) {
-      console.warn("[Cache] Redis connection failed, using memory fallback:", String(e));
+      logger.warn("[Cache] Redis connection failed, using memory fallback", { error: String(e) });
       this.connected = false;
       return null;
     }
@@ -187,10 +188,10 @@ export function getCache(): MemoryLRUCache | RedisCache {
   if (cacheInstance) return cacheInstance;
 
   if (env.REDIS_URL && env.REDIS_URL !== "redis://localhost:6379" && env.REDIS_URL.length > 20) {
-    console.log("[Cache] Using Redis: redis://****");
+    logger.info("[Cache] Using Redis");
     cacheInstance = new RedisCache();
   } else {
-    console.log("[Cache] Using in-memory LRU cache (no Redis configured)");
+    logger.info("[Cache] Using in-memory LRU cache (no Redis configured)");
     cacheInstance = new MemoryLRUCache(500);
   }
 
@@ -222,7 +223,7 @@ export async function fetchWithSWR<T>(
   // 2. Thundering Herd Protection (In-flight request deduplication)
   const existingPromise = inflightRequests.get(key);
   if (existingPromise) {
-    console.log(`[Cache][SWR] Deduplicating request for key: ${key}`);
+    logger.info(`[Cache][SWR] Deduplicating request`, { key });
     return existingPromise;
   }
 

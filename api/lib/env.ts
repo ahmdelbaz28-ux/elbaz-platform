@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { z } from "zod";
+import { logger } from "./logger.js";
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
@@ -107,19 +108,11 @@ function validateEnv(): EnvWithMeta {
   if (raw.NODE_ENV === "production") {
     const result = envSchema.safeParse(raw);
     if (!result.success) {
-      console.error(`\n${"=".repeat(60)}`);
-      console.error("❌ [FATAL] Environment validation failed in production");
-      console.error("The following required variables are missing or invalid:");
+      logger.error("FATAL: Environment validation failed in production — missing or invalid variables");
       for (const issue of result.error.issues) {
-        console.error(`  - ${issue.path.join(".")}: ${issue.message}`);
+        logger.error(`  - ${issue.path.join(".")}: ${issue.message}`);
       }
-      console.error("\n💡 [ACTION REQUIRED]");
-      console.error("1. Open your hosting platform (e.g. HuggingFace Space Settings).");
-      console.error("2. Go to 'Variables and Secrets' section.");
-      console.error("3. Add the missing keys above as 'Secrets'.");
-      console.error("4. Re-run or Re-deploy the application.");
-      console.error("Refer to README.md for the full list of required environment variables.");
-      console.error(`${"=".repeat(60)}\n`);
+      logger.error("Action required: Add the missing keys as Secrets in your hosting platform.");
       process.exit(1);
     }
     return { ...result.data, isProduction: true } as EnvWithMeta;

@@ -10,15 +10,18 @@ import {
   Menu, X, LayoutDashboard, Headphones,
   Shield, LogOut, BookOpen, ChevronDown,
   UserCog, FileBox, HelpCircle, Heart, TrendingUp,
+  SunDim,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { EngineeringModeToggle } from "@/components/ui/EngineeringMode";
 import ThemeToggle from "@/components/ThemeToggle";
+import { useEyeProtection } from "@/hooks/useEyeProtection";
 
 export default function Navbar() { // NOSONAR — large navigation component with intertwined auth/admin/RTL logic and many JSX conditionals; extraction would require prop-drilling many hooks
   const { lang, setLang } = useTranslation();
   const { user, isAuthenticated, isAdmin, logout } = useAuth();
+  const { isEyeProtectionActive, toggleEyeProtection } = useEyeProtection();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -180,6 +183,20 @@ export default function Navbar() { // NOSONAR — large navigation component wit
 
             {/* Theme toggle (dark/light) */}
             <ThemeToggle variant="compact" />
+
+            {/* Eye Protection toggle (blue light filter) */}
+            <button
+              onClick={toggleEyeProtection}
+              aria-label={lang === "ar" ? "حماية العين" : "Eye protection"}
+              className={`eye-protection-btn rounded-lg p-2 text-[13px] transition-all ${
+                isEyeProtectionActive
+                  ? "active text-amber-400"
+                  : "text-[#64748b] hover:text-[#e8f0fe]"
+              }`}
+              title={lang === "ar" ? "فلتر حماية العين من الضوء الأزرق" : "Blue light filter"}
+            >
+              <SunDim className="h-4 w-4" />
+            </button>
 
             {/* Language toggle */}
             <button

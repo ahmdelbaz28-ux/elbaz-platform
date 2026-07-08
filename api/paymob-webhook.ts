@@ -25,6 +25,7 @@ import { payments, enrollments, courses } from "@db/schema";
 import { verifyPaymobWebhook, type PaymobWebhookPayload } from "./lib/paymob.js";
 import { invalidateCourseCache, invalidateStatsCache } from "./lib/cache.js";
 import { invalidateSitemapCache } from "./boot.js";
+import { logger } from "./lib/logger.js";
 
 const paymobWebhook = new Hono();
 
@@ -47,7 +48,7 @@ async function verifyWebhookAmount(tx: Parameters<Parameters<typeof db.transacti
   const amountValid = Math.abs(webhookAmount - expectedAmount) < 0.01;
   if (amountValid) return null;
 
-  console.error(`[Paymob Webhook] AMOUNT MISMATCH! Expected: ${expectedAmount}, Got: ${webhookAmount}, txn: ${merchantOrderId}`);
+  logger.error(`[Paymob Webhook] Amount mismatch`, { expectedAmount, webhookAmount, merchantOrderId });
   // Block payment — mark as failed to prevent partial-payment attacks
   await tx
     .update(payments)
@@ -96,7 +97,7 @@ async function createEnrollmentIfMissing(
     })
     .where(eq(courses.id, Number(paymentRecord.courseId)));
 
-  console.log(`[Paymob Webhook] Enrollment created: userId=${paymentRecord.userId}, courseId=${paymentRecord.courseId}`);
+  logger.info(`[Paymob Webhook] Enrollment created`, { userId: paymentRecord.userId, courseId: paymentRecord.courseId });
 }
 
 /**
@@ -122,13 +123,13 @@ async function processWebhookInTransaction(
   const paymentRecord = paymentRows[0];
 
   if (!paymentRecord) {
-    console.warn(`[Paymob Webhook] Payment not found for transactionId: ${merchantOrderId}`);
+    logger.warn(`[Paymob Webhook] Payment not found`, { merchantOrderId });
     return c.json({ ok: true, message: "Transaction not found" }, 200);
   }
 
   // ── Step 3: Skip if already processed (idempotency) ──
   if (paymentRecord.status === "completed" && !isRefunded && !isVoided) {
-    console.log(`[Paymob Webhook] Payment ${merchantOrderId} already completed, skipping`);
+    logger.info(`[Paymob Webhook] Payment already completed, skipping`, { merchantOrderId });
     return c.json({ ok: true, message: "Already processed" }, 200);
   }
 
@@ -150,7 +151,7 @@ async function processWebhookInTransaction(
     })
     .where(eq(payments.transactionId, merchantOrderId));
 
-  console.log(`[Paymob Webhook] Payment ${merchantOrderId} status updated to: ${newStatus}`);
+  logger.info(`[Paymob Webhook] Payment status updated`, { merchantOrderId, newStatus });
 
   // ── Step 6: Create enrollment if payment successful ──
   if (isSuccess && newStatus === "completed") {
@@ -170,7 +171,7 @@ paymobWebhook.post("/webhook", async (c) => {
 
   // Paymob sends JSON
   if (!contentType.includes("application/json")) {
-    console.warn("[Paymob Webhook] Invalid content-type:", contentType);
+    logger.warn("[Paymob Webhook] Invalid content-type", { contentType });
     return c.json({ error: "Invalid content type" }, 400);
   }
 
@@ -178,13 +179,13 @@ paymobWebhook.post("/webhook", async (c) => {
   try {
     payload = await c.req.json();
   } catch {
-    console.warn("[Paymob Webhook] Failed to parse JSON body");
+    logger.warn("[Paymob Webhook] Failed to parse JSON body");
     return c.json({ error: "Invalid JSON" }, 400);
   }
 
   // ── Step 1: Verify HMAC signature ──
   if (!verifyPaymobWebhook(payload)) {
-    console.warn("[Paymob Webhook] HMAC verification failed — possible tampering or wrong secret");
+    logger.warn("[Paymob Webhook] HMAC verification failed — possible tampering or wrong secret");
     return c.json({ error: "Invalid signature" }, 401);
   }
 
@@ -195,18 +196,18 @@ paymobWebhook.post("/webhook", async (c) => {
   const isVoided = obj.is_voided === true;
 
   if (!merchantOrderId) {
-    console.warn("[Paymob Webhook] Missing merchant_order_id");
+    logger.warn("[Paymob Webhook] Missing merchant_order_id");
     return c.json({ error: "Missing order ID" }, 400);
   }
 
-  console.log(`[Paymob Webhook] Received: txn=${obj.id}, order=${obj.order?.id}, success=${isSuccess}, amount=${obj.amount}, merchantOrderId=${merchantOrderId}`);
+  logger.info(`[Paymob Webhook] Received`, { txnId: obj.id, orderId: obj.order?.id, success: isSuccess, amount: obj.amount, merchantOrderId });
 
   try {
     return await db.transaction(async (tx) =>
       processWebhookInTransaction(c, tx, obj, merchantOrderId, isSuccess, isRefunded, isVoided),
     );
   } catch (err) {
-    console.error("[Paymob Webhook] Database Error — Triggering Retry:", err);
+    logger.error("[Paymob Webhook] Database error — triggering retry", { error: err instanceof Error ? err.message : String(err) });
     // ⚠️ Return 503 to make Paymob retry later if DB is locked/down
     return c.json({ error: "Service Unavailable", detail: "Database busy" }, 503);
   }
