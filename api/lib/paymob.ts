@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "../lib/env.js";
+import { logger } from "./logger.js";
 
 /**
  * Paymob integration ID mapping per payment method.
@@ -181,7 +182,7 @@ async function verifyPaymobTransaction(transactionId: number): Promise<PaymobTra
       is_voided: (txn.is_voided as boolean) ?? false,
     };
   } catch (error) {
-    console.error("[Paymob] Transaction verification failed:", error);
+    logger.error("[Paymob] Transaction verification failed", { error: String(error) });
     return null;
   }
 }

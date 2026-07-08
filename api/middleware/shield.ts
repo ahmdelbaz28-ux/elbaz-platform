@@ -1,5 +1,6 @@
 import { createMiddleware } from "hono/factory";
 import { getClientIpFromHono as getClientIp } from "../lib/client-ip.js";
+import { logger } from "../lib/logger.js";
 
 /**
  * 🛡️ Elite Shield Middleware v1
@@ -29,7 +30,7 @@ function checkRateLimit(c: any, ip: string, path: string): Response | null {
   rateLimitMap.set(ip, record);
 
   if (record.count > RATE_LIMIT_MAX_REQUESTS) {
-    console.warn(`[Shield] Rate limit exceeded for IP: ${ip} on path: ${path}`);
+    logger.warn(`[Shield] Rate limit exceeded`, { ip, path });
     c.header("Retry-After", "10");
     return c.json({
       error: "Too Many Requests",
@@ -48,7 +49,7 @@ function checkPayloadSize(c: any, path: string): Response | null {
   const maxPayload = isFileUpload ? 100 * 1024 * 1024 : 1024 * 1024;
 
   if (contentLength > maxPayload) {
-    console.error(`[Shield] Payload too large from IP. Size: ${contentLength}`);
+    logger.error(`[Shield] Payload too large`, { ip, contentLength });
     return c.json({ error: "Payload Too Large" }, 413);
   }
   return null;
@@ -68,7 +69,7 @@ function checkMemoryPressure(c: any, path: string): Response | null {
   const memoryUsageMB = mem.heapUsed / 1024 / 1024;
   if (memoryUsageMB <= MEMORY_PRESSURE_LIMIT_MB) return null;
 
-  console.warn(`[Shield] High Memory Pressure Detected (${Math.round(memoryUsageMB)}MB). Throttling traffic.`);
+  logger.warn(`[Shield] High memory pressure detected`, { memoryUsageMB: Math.round(memoryUsageMB) });
   if (path.startsWith("/api/") && !path.includes("/auth") && !path.includes("/health")) {
     return c.json({ error: "Service Under Pressure" }, 503);
   }
@@ -95,7 +96,7 @@ export const shieldMiddleware = createMiddleware(async (c, next) => {
 
   const ua = c.req.header("User-Agent") || "";
   if (isSuspiciousBotRequest(ua, path)) {
-    console.warn(`[Shield] Suspicious agent on sensitive path: ${ua} -> ${path}`);
+    logger.warn(`[Shield] Suspicious agent on sensitive path`, { userAgent: ua, path });
     return c.json({ error: "Access Denied" }, 403);
   }
 

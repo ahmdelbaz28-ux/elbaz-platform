@@ -14,6 +14,7 @@ import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { desc, eq, sql, and, or, like } from "drizzle-orm";
 import { createRouter, publicQuery, publicMutation, adminMutation } from "./middleware";
+import { logger } from "./lib/logger.js";
 import { getDb } from "./queries/connection";
 import { referenceFiles } from "@db/schema";
 import {
@@ -209,7 +210,7 @@ export const referencesRouter = createRouter({
       try {
         await deleteR2Object(file.fileKey);
       } catch (err) {
-        console.warn("[References] R2 delete failed for", file.fileKey, err);
+        logger.warn("[References] R2 delete failed", { fileKey: file.fileKey, error: String(err) });
       }
 
       // Delete DB record

@@ -55,7 +55,7 @@ interface AuthResponse {
 function toRegistrationTRPCError(err: unknown): TRPCError {
   if (err instanceof TRPCError) return err;
   const errMsg = (err as Error).message || String(err);
-  console.error("[Auth] DB insert error during registration:", errMsg);
+  logger.error("[Auth] DB insert error during registration", { error: errMsg });
   if (errMsg.includes("Duplicate") || errMsg.includes("UNIQUE") || errMsg.includes("unique")) {
     return new TRPCError({
       code: "CONFLICT",
@@ -88,7 +88,7 @@ async function assertEmailUnique(db: ReturnType<typeof getDb>, safeEmail: string
     }
   } catch (err) {
     if (err instanceof TRPCError) throw err;
-    console.error("[Auth] DB error checking email uniqueness:", (err as Error).message);
+    logger.error("[Auth] DB error checking email uniqueness", { error: (err as Error).message });
     throw new TRPCError({
       code: "INTERNAL_SERVER_ERROR",
       message: "Could not verify email. Please try again.",
@@ -178,7 +178,7 @@ export const localAuthRouter = createRouter({
           const resultArr = Array.isArray(insertResult) ? insertResult : [insertResult];
           userId = Number(resultArr[0]?.insertId);
           if (!userId || userId === 0 || !Number.isFinite(userId)) {
-            console.error("[Auth] Insert succeeded but insertId is invalid:", JSON.stringify(resultArr[0]));
+            logger.error("[Auth] Insert succeeded but insertId is invalid", { result: resultArr[0] });
             throw new TRPCError({
               code: "INTERNAL_SERVER_ERROR",
               message: "Registration failed. User was created but session could not be started. Please try logging in.",
@@ -219,7 +219,7 @@ export const localAuthRouter = createRouter({
       } catch (err) {
 
         if (err instanceof TRPCError) throw err;
-        console.error("[Auth] Unexpected registration error:", err);
+        logger.error("[Auth] Unexpected registration error", { error: err instanceof Error ? err.message : String(err) });
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "An unexpected error occurred during registration. Please try again.",
@@ -264,7 +264,7 @@ export const localAuthRouter = createRouter({
           .limit(1);
         user = results[0];
       } catch (err) {
-        console.error("[Auth] DB error during login lookup:", (err as Error).message);
+        logger.error("[Auth] DB error during login lookup", { error: (err as Error).message });
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Could not verify credentials. Please try again.",
@@ -283,7 +283,7 @@ export const localAuthRouter = createRouter({
           ? await verifyPassword(input.password, user.passwordHash ?? "")
           : await verifyPassword(input.password, dummyHash).then(() => false);
       } catch (err) {
-        console.error("[Auth] Password verification error:", (err as Error).message);
+        logger.error("[Auth] Password verification error", { error: (err as Error).message });
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Could not verify password. Please try again.",

@@ -9,6 +9,8 @@
 import { Hono } from "hono";
 import { getChatResponse, getStreamResponse } from "./lib/chatbot.js";
 import { getClientIpFromHono as getChatbotIp } from "./lib/client-ip";
+import { logger } from "./lib/logger.js";
+import { logger } from "./lib/logger.js";
 // Removed checkRateLimit
 
 const chatbotRouter = new Hono();
@@ -77,7 +79,7 @@ chatbotRouter.post("/", async (c) => {
       chatId: body.chatId,
     }, 503);
   } catch (err) {
-    console.error("[Chatbot] Error in /api/chatbot:", err);
+    logger.error("[Chatbot] Error in /api/chatbot", { error: err instanceof Error ? err.message : String(err) });
     return c.json({ success: false, error: "Internal server error" }, 500);
   }
 });
@@ -121,14 +123,14 @@ async function pipeStreamToController( // NOSONAR — complex function, refactor
         }
       } catch (readErr: any) {
         if (readErr.name === "AbortError") break;
-        console.warn("[Chatbot] Stream read error:", readErr.message);
+        logger.warn("[Chatbot] Stream read error", { error: readErr.message });
         break;
       }
     }
     clearTimeout(state.timeoutId);
     closeControllerIfOpen(state);
   } catch (pipeErr: any) {
-    console.warn("[Chatbot] Stream pipe error:", pipeErr.message);
+    logger.warn("[Chatbot] Stream pipe error", { error: pipeErr.message });
     clearTimeout(state.timeoutId);
     closeControllerIfOpen(state);
   }
@@ -168,7 +170,7 @@ chatbotRouter.post("/stream", async (c) => {
   const timeoutMs = 180_000; // 3 minutes - give GLM time to think
   const timeoutController = new AbortController();
   const timeoutId = setTimeout(() => {
-    console.warn("[Chatbot] Stream timeout (180s) - aborting request");
+    logger.warn("[Chatbot] Stream timeout (180s) - aborting request");
     timeoutController.abort();
   }, timeoutMs);
 
@@ -208,7 +210,7 @@ chatbotRouter.post("/stream", async (c) => {
       ]);
     } catch (raceErr: any) {
       clearTimeout(timeoutId);
-      console.warn("[Chatbot] Stream race failed:", raceErr.message);
+      logger.warn("[Chatbot] Stream race failed", { error: raceErr.message });
       return c.json({ success: false, error: "Request timeout. GLM is thinking, please try again.", chatId: body.chatId }, 504);
     }
 
@@ -245,7 +247,7 @@ chatbotRouter.post("/stream", async (c) => {
     });
   } catch (err) {
     clearTimeout(timeoutId);
-    console.error("[Chatbot] Error in /api/chatbot/stream:", err);
+    logger.error("[Chatbot] Error in /api/chatbot/stream", { error: err instanceof Error ? err.message : String(err) });
     return c.json({ success: false, error: "Internal server error" }, 500);
   }
 });

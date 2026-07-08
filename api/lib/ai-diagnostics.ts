@@ -1,4 +1,5 @@
 import { env } from "./env.js";
+import { logger } from "./logger.js";
 
 /**
  * 🧠 Elite AI Diagnostics v1
@@ -8,7 +9,7 @@ import { env } from "./env.js";
  */
 export async function diagnoseError(error: Error | string, context: string = "Server Runtime") {
   if (!env.OPENROUTER_API_KEY || env.NODE_ENV !== "production") {
-    console.log("[AI-Diagnostics] Skipped (API Key missing or Dev mode)");
+    logger.info("[AI-Diagnostics] Skipped (API Key missing or Dev mode)");
     return null;
   }
 
@@ -42,14 +43,11 @@ export async function diagnoseError(error: Error | string, context: string = "Se
     const data: any = await response.json();
     const diagnosis = data.choices?.[0]?.message?.content || "Could not generate AI diagnosis.";
     
-    console.log(`\n${"═".repeat(60)}`);
-    console.log("🧠 [AI REPAIR ADVISOR] Analysis Complete:");
-    console.log(diagnosis);
-    console.log(`${"═".repeat(60)}\n`);
+    logger.info("AI REPAIR ADVISOR — Analysis Complete", { diagnosis });
 
     return diagnosis;
   } catch (err) {
-    console.warn("[AI-Diagnostics] Failed to communicate with OpenRouter:", err);
+    logger.warn("[AI-Diagnostics] Failed to communicate with OpenRouter", { error: String(err) });
     return null;
   }
 }

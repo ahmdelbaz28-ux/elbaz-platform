@@ -326,7 +326,7 @@ googleAuthRouter.get("/callback", async (c) => { // NOSONAR — complex function
 
     const tokens = tokenResult;
     if (!tokens.id_token) {
-      console.error("[GoogleAuth] No id_token in token response");
+      logger.error("[GoogleAuth] No id_token in token response");
       return c.redirect("/?google_error=no_id_token");
     }
 
@@ -335,7 +335,7 @@ googleAuthRouter.get("/callback", async (c) => { // NOSONAR — complex function
     try {
       googleUser = await verifyGoogleToken(tokens.id_token);
     } catch (err) {
-      console.error("[GoogleAuth] Token verification failed:", (err as Error).message);
+      logger.error("[GoogleAuth] Token verification failed", { error: (err as Error).message });
       return c.redirect("/?google_error=invalid_token");
     }
 
@@ -404,12 +404,12 @@ googleAuthRouter.get("/callback", async (c) => { // NOSONAR — complex function
     const token = await createToken({ userId, username, role: userRole, tokenVersion: 0 });
     setAuthCookies(c, token);
 
-    console.log(`[GoogleAuth/OAuth] User signed in: ${username} (id=${userId})`);
+    logger.info(`[GoogleAuth/OAuth] User signed in: ${username} (id=${userId})`);
 
     // Redirect to home page — cookies are set, user is logged in
     return c.redirect("/");
   } catch (err) {
-    console.error("[GoogleAuth/OAuth] Callback error:", err);
+    logger.error("[GoogleAuth/OAuth] Callback error", { error: err instanceof Error ? err.message : String(err) });
     return c.redirect("/?google_error=callback_error");
   }
 });

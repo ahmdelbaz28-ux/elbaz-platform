@@ -651,6 +651,31 @@ img[loading="lazy"] {
   animation: blink 0.8s ease-in-out infinite;
 }
 
+/* ── Streaming text fade-in (smooth appearance of each chunk) ── */
+@keyframes streamFadeIn {
+  from { opacity: 0.75; transform: translateY(3px); }
+  to   { opacity: 1;    transform: translateY(0); }
+}
+.animate-stream-fade {
+  animation: streamFadeIn 0.2s ease-out;
+}
+
+/* ── Typing indicator enter/exit (bouncing dots) ── */
+@keyframes typingEnter {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes typingExit {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(8px) scale(0.96); }
+}
+.animate-typing-enter {
+  animation: typingEnter 0.25s ease-out both;
+}
+.animate-typing-exit {
+  animation: typingExit 0.2s ease-in both;
+}
+
 /* ── Staggered entrance for testimonial cards ── */
 @keyframes slideInRight {
   from { opacity: 0; transform: translateX(-20px); }
@@ -1104,13 +1129,316 @@ img[loading="lazy"] {
   background: #94a3b8;
 }
 
-/* ── Selection highlight in light mode ── */
+/* ── Tailwind semantic color overrides for light mode ─────────────── */
+/* FAQ, References, and other pages use Tailwind semantic classes like
+   text-slate-400, text-cyan-400, bg-[#0d1521] etc. These DON'T match
+   the arbitrary-value selectors (text-[#94a3b8]) used above, so we need
+   explicit overrides for the Tailwind utility colors. */
+
+/* Slate tones */
+[data-theme="light"] .text-slate-300 { color: #475569 !important; }
+[data-theme="light"] .text-slate-400 { color: #64748b !important; }
+[data-theme="light"] .text-slate-500 { color: #64748b !important; }
+[data-theme="light"] .text-slate-600 { color: #94a3b8 !important; }
+
+/* Cyan accent tones */
+[data-theme="light"] .text-cyan-400 { color: #0891b2 !important; }
+[data-theme="light"] .text-cyan-500 { color: #0e7490 !important; }
+[data-theme="light"] .border-cyan-500\/20 { border-color: rgba(8, 145, 178, 0.2) !important; }
+[data-theme="light"] .border-cyan-500\/30 { border-color: rgba(8, 145, 178, 0.25) !important; }
+[data-theme="light"] .bg-cyan-500\/10 { background-color: rgba(8, 145, 178, 0.08) !important; }
+[data-theme="light"] .bg-cyan-500\/20 { background-color: rgba(8, 145, 178, 0.12) !important; }
+[data-theme="light"] .hover\:border-cyan-500\/30:hover { border-color: rgba(8, 145, 178, 0.25) !important; }
+[data-theme="light"] .hover\:shadow-cyan-500\/20:hover { box-shadow: 0 4px 14px rgba(8, 145, 178, 0.15) !important; }
+[data-theme="light"] .shadow-cyan-500\/25 { box-shadow: 0 4px 14px rgba(8, 145, 178, 0.2) !important; }
+[data-theme="light"] .hover\:shadow-cyan-500\/25:hover { box-shadow: 0 6px 20px rgba(8, 145, 178, 0.25) !important; }
+
+/* Colored icon tones (file types — References page, stats, badges) */
+[data-theme="light"] .text-red-400 { color: #dc2626 !important; }
+[data-theme="light"] .text-green-400 { color: #16a34a !important; }
+[data-theme="light"] .text-blue-400 { color: #2563eb !important; }
+[data-theme="light"] .text-orange-400 { color: #ea580c !important; }
+[data-theme="light"] .text-yellow-400 { color: #ca8a04 !important; }
+[data-theme="light"] .text-purple-400 { color: #9333ea !important; }
+[data-theme="light"] .text-violet-400 { color: #7c3aed !important; }
+[data-theme="light"] .text-emerald-400 { color: #059669 !important; }
+[data-theme="light"] .text-rose-400 { color: #e11d48 !important; }
+
+/* ── Fill colors for inline SVG icons (stars, etc.) ─────────────── */
+[data-theme="light"] .fill-yellow-400 { fill: #ca8a04 !important; }
+
+/* ── Placeholder text colors — darker for readability on white bg ── */
+[data-theme="light"] .placeholder\:text-slate-500::placeholder { color: #94a3b8 !important; }
+[data-theme="light"] .placeholder\:text-\[\#475569\]::placeholder { color: #94a3b8 !important; }
+
+/* ── Tailwind opacity-modifier classes (from FAQ, References, Admin) ── */
+/* These use Tailwind's opacity modifier syntax (e.g. border-[#1e2d3d]/50),
+   which produces a different CSS class than the plain border-[#1e2d3d] */
+[data-theme="light"] .border-\[\#1e2d3d\]\/50 {
+  border-color: rgba(226, 232, 240, 0.5) !important;
+}
+[data-theme="light"] .border-\[\#1f2d44\]\/50 {
+  border-color: rgba(226, 232, 240, 0.5) !important;
+}
+[data-theme="light"] .hover\:bg-white\/5:hover {
+  background-color: rgba(15, 23, 42, 0.05) !important;
+}
+[data-theme="light"] .hover\:text-white:hover {
+  color: #0f172a !important;
+}
+[data-theme="light"] .hover\:text-slate-300:hover {
+  color: #475569 !important;
+}
+[data-theme="light"] .focus\:border-cyan-500\/50:focus {
+  border-color: rgba(8, 145, 178, 0.3) !important;
+}
+[data-theme="light"] .border-red-500\/30 {
+  border-color: rgba(220, 38, 38, 0.25) !important;
+}
+[data-theme="light"] .hover\:bg-red-500\/10:hover {
+  background-color: rgba(220, 38, 38, 0.08) !important;
+}
+[data-theme="light"] .hover\:text-red-300:hover {
+  color: #dc2626 !important;
+}
+
+/* ── Hover text colors for links, buttons, and icons ────────────────── */
+[data-theme="light"] .hover\:text-\[\#22d3ee\]:hover {
+  color: #0e7490 !important;
+}
+[data-theme="light"] .hover\:text-\[\#f0f4f8\]:hover {
+  color: #0f172a !important;
+}
+[data-theme="light"] .hover\:text-\[\#e8f0fe\]:hover {
+  color: #0f172a !important;
+}
+
+/* ── Hover backgrounds for icons, chips, and menu items ───────────── */
+[data-theme="light"] .hover\:bg-cyan-400\/10:hover {
+  background-color: rgba(8, 145, 178, 0.08) !important;
+}
+[data-theme="light"] .hover\:bg-\[rgba\(6\,182\,212\,0\.08\)\]:hover {
+  background-color: rgba(8, 145, 178, 0.06) !important;
+}
+[data-theme="light"] .hover\:bg-\[\#1f2d44\]:hover {
+  background-color: rgba(226, 232, 240, 0.5) !important;
+}
+
+/* ── Outline button hover border (ForgotPassword resend button) ──────── */
+[data-theme="light"] .hover\:border-\[\#06b6d4\]:hover {
+  border-color: #0891b2 !important;
+}
+
+/* ── File card shadow on hover (References page) ─────────────────────── */
+[data-theme="light"] .hover\:shadow-cyan-500\/5:hover {
+  --tw-shadow-color: rgba(8, 145, 178, 0.05) !important;
+}
+
+/* ── Dropzone hover border and focus ring (References upload modal) ──── */
+[data-theme="light"] .hover\:border-cyan-500\/40:hover {
+  border-color: rgba(8, 145, 178, 0.25) !important;
+}
+[data-theme="light"] .focus\:ring-cyan-500\/40:focus {
+  --tw-ring-color: rgba(8, 145, 178, 0.2) !important;
+}
+[data-theme="light"] .focus\:ring-cyan-500\/20:focus {
+  --tw-ring-color: rgba(8, 145, 178, 0.12) !important;
+}
+
+/* ── Amber accent (eye protection toggle, star ratings) ──────────────── */
+[data-theme="light"] .text-amber-400 {
+  color: #d97706;
+}
+
+/* ── Admin panel status badges — tinted backgrounds ───────────────── */
+[data-theme="light"] .bg-\[rgba\(16\,185\,129\,0\.15\)\] {
+  background-color: rgba(5, 150, 105, 0.12) !important;
+}
+[data-theme="light"] .bg-\[rgba\(16\,185\,129\,0\.12\)\] {
+  background-color: rgba(5, 150, 105, 0.1) !important;
+}
+[data-theme="light"] .bg-\[rgba\(248\,113\,113\,0\.12\)\] {
+  background-color: rgba(220, 38, 38, 0.1) !important;
+}
+[data-theme="light"] .bg-\[rgba\(245\,158\,11\,0\.12\)\] {
+  background-color: rgba(217, 119, 6, 0.1) !important;
+}
+
+/* ── Admin tab active state — data-[state=active] ─────────────────── */
+[data-theme="light"] [data-state="active"].bg-\[\#06b6d4\] {
+  background-color: #0891b2 !important;
+}
+[data-theme="light"] [data-state="active"].text-\[\#070b12\] {
+  color: #ffffff !important;
+}
+
+/* ── Admin table header bg ────────────────────────────────────────── */
+[data-theme="light"] .bg-\[\#0d1117\] {
+  background-color: #f1f5f9 !important;
+}
+
+/* ── Google Sign-In button hover (Login & Register) ──────────────────── */
+[data-theme="light"] .hover\:bg-\[\#1a1a2e\]:hover {
+  background-color: rgba(15, 23, 42, 0.05) !important;
+}
+[data-theme="light"] .hover\:border-\[\#4285f4\]\/50:hover {
+  border-color: rgba(66, 133, 244, 0.3) !important;
+}
+
+/* ── Hero radial gradient — override the cyan color inside the gradient ── */
+[data-theme="light"] .bg-\[radial-gradient\(circle_at_50%_120%\,rgba\(6\,182\,212\,0\.15\)\,transparent_60%\)\] {
+  background-image: radial-gradient(circle at 50% 120%, rgba(8, 145, 178, 0.08), transparent 60%) !important;
+}
+
+/* ── Common arbitrary-value text colors (from ALL pages) ─────────────── */
+/* Success / Premium / Checkmarks — green */
+[data-theme="light"] .text-\[\#10b981\] {
+  color: #059669 !important;
+}
+/* Stars / Gold accents — amber */
+[data-theme="light"] .text-\[\#f59e0b\],
+[data-theme="light"] .fill-\[\#f59e0b\] {
+  color: #d97706 !important;
+}
+[data-theme="light"] .fill-\[\#f59e0b\] {
+  fill: #d97706 !important;
+}
+/* Error / Danger — red */
+[data-theme="light"] .text-\[\#ef4444\],
+[data-theme="light"] .text-\[\#f43f5e\] {
+  color: #dc2626 !important;
+}
+/* Lighter red (sign out hover) */
+[data-theme="light"] .text-\[\#f87171\] {
+  color: #ef4444 !important;
+}
+/* Lighter cyan accent */
+[data-theme="light"] .text-\[\#22d3ee\] {
+  color: #0891b2 !important;
+}
+/* Darker blue */
+[data-theme="light"] .text-\[\#0284c7\] {
+  color: #0369a1 !important;
+}
+/* Dark icon color */
+[data-theme="light"] .text-\[\#1f2d44\] {
+  color: #94a3b8 !important;
+}
+
+/* ── Common rgba accent backgrounds (from ALL pages) ──────────────── */
+/* Cyan accent tints */
+[data-theme="light"] .bg-\[rgba\(6\,182\,212\,0\.08\)\] {
+  background-color: rgba(8, 145, 178, 0.06) !important;
+}
+[data-theme="light"] .bg-\[rgba\(6\,182\,212\,0\.1\)\],
+[data-theme="light"] .bg-\[rgba\(6\,182\,212\,0\.15\)\] {
+  background-color: rgba(8, 145, 178, 0.1) !important;
+}
+/* Green accent tints */
+[data-theme="light"] .bg-\[rgba\(16\,185\,129\,0\.1\)\],
+[data-theme="light"] .bg-\[rgba\(16\,185\,129\,0\.15\)\] {
+  background-color: rgba(5, 150, 105, 0.1) !important;
+}
+/* Amber accent tints */
+[data-theme="light"] .bg-\[rgba\(245\,158\,11\,0\.05\)\],
+[data-theme="light"] .bg-\[rgba\(245\,158\,11\,0\.08\)\],
+[data-theme="light"] .bg-\[rgba\(245\,158\,11\,0\.1\)\] {
+  background-color: rgba(217, 119, 6, 0.08) !important;
+}
+/* Red error tints */
+[data-theme="light"] .bg-\[rgba\(244\,63\,94\,0\.1\)\],
+[data-theme="light"] .bg-\[rgba\(239\,68\,68\,0\.1\)\] {
+  background-color: rgba(220, 38, 38, 0.08) !important;
+}
+/* Purple accent tint */
+[data-theme="light"] .bg-\[rgba\(139\,92\,246\,0\.1\)\] {
+  background-color: rgba(124, 58, 237, 0.08) !important;
+}
+
+/* ── Common rgba accent borders (from ALL pages) ───────────────────── */
+[data-theme="light"] .border-\[rgba\(6\,182\,212\,0\.2\)\],
+[data-theme="light"] .border-\[rgba\(6\,182\,212\,0\.3\)\] {
+  border-color: rgba(8, 145, 178, 0.25) !important;
+}
+[data-theme="light"] .border-\[rgba\(16\,185\,129\,0\.2\)\],
+[data-theme="light"] .border-\[rgba\(16\,185\,129\,0\.3\)\] {
+  border-color: rgba(5, 150, 105, 0.25) !important;
+}
+[data-theme="light"] .border-\[rgba\(245\,158\,11\,0\.2\)\],
+[data-theme="light"] .border-\[rgba\(245\,158\,11\,0\.3\)\] {
+  border-color: rgba(217, 119, 6, 0.25) !important;
+}
+[data-theme="light"] .border-\[rgba\(239\,68\,68\,0\.3\)\] {
+  border-color: rgba(220, 38, 38, 0.25) !important;
+}
+
+/* Dark card backgrounds used in FAQ & References */
+[data-theme="light"] .bg-\[\#0d1521\] {
+  background-color: #ffffff !important;
+}
+[data-theme="light"] .bg-\[\#1a2434\] {
+  background-color: #f1f5f9 !important;
+}
+[data-theme="light"] .hover\:bg-\[\#111827\]:hover {
+  background-color: #f8fafc !important;
+}
+
+/* Gradient-to-br hero sections (FAQ & References) */
+[data-theme="light"] .from-cyan-600\/10 {
+  --tw-gradient-from: rgba(8, 145, 178, 0.06) var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgba(8, 145, 178, 0) var(--tw-gradient-to-position) !important;
+}
+[data-theme="light"] .to-blue-600\/10 {
+  --tw-gradient-to: rgba(37, 99, 235, 0.04) var(--tw-gradient-to-position) !important;
+}
+
+/* Gradient-to-br hero content from-cyan-500 to-blue-600 (icon containers) */
+[data-theme="light"] .from-cyan-500 {
+  --tw-gradient-from: #0891b2 var(--tw-gradient-from-position) !important;
+}
+[data-theme="light"] .to-blue-600 {
+  --tw-gradient-to: #2563eb var(--tw-gradient-to-position) !important;
+}
+
+/* Selection highlight in light mode */
 [data-theme="light"] ::selection {
   background: rgba(8, 145, 178, 0.2);
   color: #0f172a;
 }
 
-/* ── Focus visible: cyan ring in light mode ── */
+/* ════════════════════════════════════════════════════════════════════
+   EYE PROTECTION MODE — Blue Light Filter
+   ────────────────────────────────────────────────────────────────────
+   Activated via <html data-eye-protection="true">.
+   Adds a warm-toned overlay to reduce blue light and eye strain.
+   Works in both dark and light themes.
+   ════════════════════════════════════════════════════════════════════ */
+
+[data-eye-protection="true"] #root::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  /* Warm amber overlay at very low opacity — reduces blue light
+     without noticeably altering the visual design.
+     No mix-blend-mode needed: the warm rgba() alone creates a
+     subtle warm shift without causing artifacts on elements with
+     their own blend modes (e.g. backdrop-filter modals). */
+  background: rgba(255, 170, 80, 0.06);
+  pointer-events: none;
+  z-index: 999999;
+}
+
+/* Slightly stronger effect in dark mode (blue light is more intense
+   against dark backgrounds) */
+[data-theme="dark"][data-eye-protection="true"] #root::after {
+  background: rgba(255, 170, 80, 0.08);
+}
+
+/* Eye protection toggle button styling — Tailwind's text-amber-400
+   handles the active color, so this is minimal. The transition is
+   also handled by the transition-all class on the button element. */
+
+/* Focus visible: cyan ring in light mode ── */
 [data-theme="light"] *:focus-visible {
   outline: 2px solid #0891b2 !important;
   outline-offset: 2px !important;
@@ -1163,6 +1491,11 @@ img[loading="lazy"] {
 [data-theme="light"] .rounded-xl.border,
 [data-theme="light"] .rounded-2xl.border {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03) !important;
+}
+
+/* ── Modal overlay: ensure dark overlay in light mode too ───────────── */
+[data-theme="light"] .fixed.inset-0.z-\[200\] {
+  background-color: rgba(15, 23, 42, 0.5) !important;
 }
 
 /* ── Button text on cyan gradient buttons ──────────────────────────── */

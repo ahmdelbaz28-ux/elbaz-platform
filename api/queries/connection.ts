@@ -2,6 +2,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { randomInt } from "node:crypto";
 import { env } from "../lib/env.js";
+import { logger } from "../lib/logger.js";
 
 function sanitizeDbUri(raw: string): string {
   // mysql2 does not recognize ssl-mode — strip it from the URI
@@ -26,7 +27,7 @@ function createPoolConfig(): mysql.PoolOptions {
   if (env.NODE_ENV === "production" || env.DATABASE_URL?.includes("aivencloud.com")) {
     if (env.DATABASE_SSL_CA) {
       baseConfig.ssl = { ca: env.DATABASE_SSL_CA, rejectUnauthorized: true };
-      console.log("[DB] ✅ SSL connection with CA verification enabled (rejectUnauthorized: true)");
+      logger.info("[DB] SSL connection with CA verification enabled (rejectUnauthorized: true)");
       if (env.DATABASE_SSL_CERT && env.DATABASE_SSL_KEY) {
         baseConfig.ssl.cert = env.DATABASE_SSL_CERT;
         baseConfig.ssl.key = env.DATABASE_SSL_KEY;
@@ -37,23 +38,10 @@ function createPoolConfig(): mysql.PoolOptions {
       // NEXT STEP: Download CA cert from Aiven dashboard → add as DATABASE_SSL_CA in HF Secrets.
       // Once set, this code automatically uses proper CA verification.
       if (env.NODE_ENV === "production") {
-        console.error(
-          "\n" +
-          "╔══════════════════════════════════════════════════════════════╗\n" +
-          "║  🛑 SECURITY WARNING: Database SSL without CA verification ║\n" +
-          "║                                                            ║\n" +
-          "║  The connection to Aiven MySQL uses rejectUnauthorized:false ║\n" +
-          "║  which exposes data to Man-in-the-Middle attacks.           ║\n" +
-          "║                                                            ║\n" +
-          "║  ACTION REQUIRED:                                          ║\n" +
-          "║  1. Open Aiven Console → your service → Overview           ║\n" +
-          "║  2. Download CA Certificate                                ║\n" +
-          "║  3. Add it as DATABASE_SSL_CA in HF Space Secrets          ║\n" +
-          "║  4. Redeploy — connection will auto-use the CA cert        ║\n" +
-          "╚══════════════════════════════════════════════════════════════╝\n"
-        );
+      logger.error(
+        "Security warning: Database SSL without CA verification. Action required — add DATABASE_SSL_CA secret.");
       } else {
-        console.warn("[DB] ⚠️ DATABASE_SSL_CA not set — using rejectUnauthorized: false (development only)");
+        logger.warn("[DB] DATABASE_SSL_CA not set — using rejectUnauthorized: false (development only)");
       }
       baseConfig.ssl = { rejectUnauthorized: false };
     }
@@ -75,11 +63,11 @@ async function testConnection(retries = 3, delay = 1000): Promise<void> {
   for (let i = 0; i < retries; i++) {
     try {
       await pool.execute("SELECT 1");
-      console.log(`[DB] ✅ Connection pool verified (Attempt ${i + 1}/${retries})`);
+      logger.info(`[DB] Connection pool verified (Attempt ${i + 1}/${retries})`);
       return;
     } catch (err) {
       lastErr = err as Error;
-      console.warn(`[DB] Connection attempt ${i + 1}/${retries} failed:`, (err as Error).message);
+      logger.warn(`[DB] Connection attempt ${i + 1}/${retries} failed`, { error: (err as Error).message });
       if (i < retries - 1) {
         await new Promise(res => setTimeout(res, delay));
       }
@@ -87,10 +75,9 @@ async function testConnection(retries = 3, delay = 1000): Promise<void> {
   }
   // SECURITY: In production, never fall back to mock mode — fail loudly
   if (env.NODE_ENV === "production") {
-    console.error("[DB] 🛑 FATAL: Cannot connect to database in production. Exiting.", lastErr?.message);
+    logger.error("[DB] FATAL: Cannot connect to database in production. Exiting.", { error: lastErr?.message });
     process.exit(1);
-  }
-  console.error('[DB] ⚠️ Could not connect to MySQL. Enabling "Elite Sandbox Mode" (In-Memory Data).');
+  }    logger.error('[DB] Could not connect to MySQL. Enabling "Elite Sandbox Mode" (In-Memory Data).');
   isMockMode = true;
 }
 
@@ -127,7 +114,7 @@ const db = new Proxy(drizzleDb, {
   get(target, prop, receiver) {
     if (isMockMode) {
       return (..._args: any[]) => {
-        console.log(`[Sandbox] Intercepted DB call: ${String(prop)}`);
+        logger.info(`[Sandbox] Intercepted DB call: ${String(prop)}`);
         return buildMockQueryResult();
       };
     }

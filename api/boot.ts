@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
+import { logger as appLogger } from "./lib/logger.js";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { env } from "./lib/env.js";
 import { initRedis } from "./lib/rate-limiter.js";
@@ -29,86 +30,16 @@ async function loadBuildId() {
     const content = await readFile("./dist/public/build-id.json", "utf-8");
     const data = JSON.parse(content);
     buildId = data.buildId;
-    console.log(`[Server] Build ID loaded: ${buildId}`);
+    appLogger.info(`[Server] Build ID loaded: ${buildId}`);
   } catch {
     // Fallback for dev mode or if build-id.json is missing
     buildId = `runtime-${randomBytes(4).toString("hex")}`;
-    console.log(`[Server] No build-id.json found, using runtime ID: ${buildId}`);
+    appLogger.info(`[Server] No build-id.json found, using runtime ID: ${buildId}`);
   }
 }
 
-/**
- * Critical file names that must never be cached by the browser.
- * These files are always served with Cache-Control: no-cache.
- * - sw.js: Service Worker itself — must be fresh for update checks
- * - cache-nuke.js: version detector — must be fresh to detect new deploys
- * - clarity.js / pii-mask.js: analytics — should always be latest
- * - rtl-detect.js: early detection — must be fresh
- * - build-id.json: build identifier — cache-nuke reads this via /api/version
- */
-
-/**
- * Middleware: Set Cache-Control headers based on file type.
- * Placed BEFORE serveStatic so it runs for matching requests.
- *
- * 🚀 PERFORMANCE FIX:
- * - Hashed assets (assets/*.js, *.css) → 1 year cache (immutable)
- * - Images (png, jpg, webp, svg, etc.) → 1 year cache
- * - Fonts (woff2, ttf, etc.) → 1 year cache
- * - Critical files (sw.js, cache-nuke.js, etc.) → no-cache (must be fresh)
- * - HTML pages → no-cache (handled by HTML route handler)
- */
-import { createMiddleware } from "hono/factory";
-
-// Files that must NEVER be cached (always fetch fresh)
-const NO_CACHE_FILES = new Set([
-  "sw.js",
-  "sw.js.map",
-  "workbox-*.js",
-  "workbox-*.js.map",
-  "cache-nuke.js",
-  "clarity.js",
-  "pii-mask.js",
-  "rtl-detect.js",
-  "build-id.json",
-]);
-
-// File extensions that get 1-year cache (immutable, content-hashed)
-const LONG_CACHE_EXTENSIONS = new Set([
-  // JS/CSS with content hashes
-  "js", "css", "mjs",
-  // Images
-  "png", "jpg", "jpeg", "gif", "svg", "webp", "avif", "ico",
-  // Fonts
-  "woff", "woff2", "ttf", "eot", "otf",
-  // Other static
-  "json", "xml", "txt", "webmanifest", "map",
-]);
-
-const cacheMiddleware = createMiddleware(async (c, next) => {
-  const url = new URL(c.req.url);
-  const pathname = url.pathname;
-  const filename = pathname.split("/").pop() || "";
-  const ext = filename.split(".").pop()?.toLowerCase() || "";
-
-  // Critical files: no-cache (must always be fresh)
-  const isNoCache = NO_CACHE_FILES.has(filename) ||
-    filename.startsWith("workbox-");
-
-  if (isNoCache) {
-    c.header("Cache-Control", "no-cache, no-store, must-revalidate, proxy-revalidate");
-    c.header("Pragma", "no-cache");
-    c.header("Expires", "0");
-  } else if (LONG_CACHE_EXTENSIONS.has(ext) && pathname.startsWith("/assets/")) {
-    // 🚀 Hashed assets in /assets/ → 1 year cache (immutable)
-    c.header("Cache-Control", "public, max-age=31536000, immutable");
-  } else if (LONG_CACHE_EXTENSIONS.has(ext)) {
-    // 🚀 Other static files (images, fonts in /public/) → 1 year cache
-    c.header("Cache-Control", "public, max-age=31536000, immutable");
-  }
-
-  await next();
-});
+import { cacheMiddleware } from "./middleware/cache.js";
+import { createSpaHandler } from "./lib/spa-handler.js";
 
 declare const Bun: { serve: (opts: { fetch: (r: Request) => Response | Promise<Response>; port?: number; hostname?: string }) => { close: (cb?: () => void) => void } } | undefined;
 
@@ -257,7 +188,7 @@ app.get("/sitemap.xml", async (c) => {
     c.header("Cache-Control", "public, max-age=3600");
     return c.body(xml);
   } catch (err) {
-    console.error("[Sitemap] Error generating sitemap:", err);
+    appLogger.error("[Sitemap] Error generating sitemap", { error: err instanceof Error ? err.message : String(err) });
     // Fallback: serve static file
     try {
       const { readFile } = await import("node:fs/promises");
@@ -323,7 +254,7 @@ app.post("/api/csp-report", async (c) => {
 
   if (env.NODE_ENV === "production") {
     const requestId = c.get("requestId") ?? crypto.randomUUID();
-    console.warn("[CSP][%s] Violation:", requestId, JSON.stringify(report));
+    appLogger.warn("[CSP] Violation", { requestId, report });
   }
 
   // 204 No Content — no body allowed per RFC 7231
@@ -339,126 +270,8 @@ app.use("/*", cacheMiddleware);
 // serveStatic, browser navigations (Accept: text/html) are caught here and
 // served with the nonce. Non-HTML requests (assets, API) fall through to
 // serveStatic / API routes below.
-// Caches the HTML template + course count to avoid disk/DB reads on every page load
-let cachedHtmlTemplate: string | null = null;
-let cachedHtmlTemplateMtime = 0;
-let cachedCourseCount = 0;
-let courseCountExpiry = 0;
-
-async function getHtmlTemplate(): Promise<string> {
-  try {
-    const { stat, readFile } = await import("node:fs/promises");
-    const filePath = "./dist/public/index.html";
-    const fileStat = await stat(filePath);
-    if (fileStat.mtimeMs !== cachedHtmlTemplateMtime) {
-      cachedHtmlTemplate = await readFile(filePath, "utf-8");
-      cachedHtmlTemplateMtime = fileStat.mtimeMs;
-    }
-  } catch {
-    if (!cachedHtmlTemplate) {
-      throw new Error("index.html not found");
-    }
-  }
-  return cachedHtmlTemplate!;
-}
-
-async function getCourseCount(): Promise<number> {
-  if (Date.now() > courseCountExpiry) {
-    try {
-      const { db } = await import("./queries/connection.js");
-      const { courses } = await import("@db/schema");
-      const { count, eq } = await import("drizzle-orm");
-      const result = await db
-        .select({ count: count() })
-        .from(courses)
-        .where(eq(courses.isPublished, true));
-      cachedCourseCount = Number(result[0]?.count ?? 0);
-    } catch {
-      // Keep previous value on error
-    }
-    courseCountExpiry = Date.now() + 5 * 60 * 1000; // Refresh every 5 minutes
-  }
-  return cachedCourseCount;
-}
-
-// HTML route handler — registered BEFORE serveStatic so it wins for "/"
-// and all SPA routes. Implemented as a MIDDLEWARE (not a route handler)
-// because we need to call next() to fall through to serveStatic for
-// non-HTML requests (static assets, API calls). Route handlers in Hono
-// can only respond or 404 — they can't fall through.
-app.use("*", async (c, next) => {
-  const accept = c.req.header("accept") ?? "";
-  const wantsHtml = accept.includes("text/html");
-  const path = c.req.path;
-
-  // Skip if this isn't a browser navigation request
-  if (!wantsHtml) {
-    return next(); // → serveStatic handles static assets
-  }
-
-  // Skip API routes
-  if (path.startsWith("/api/")) {
-    return next();
-  }
-
-  // Skip requests that look like static assets (even if Accept: text/html
-  // is present, which can happen with some browsers/prefetchers)
-  if (path.match(/\.(js|css|png|jpg|jpeg|svg|ico|woff2?|ttf|eot|webmanifest|webp|avif|gif|map|txt|xml|json)$/)) {
-    return next();
-  }
-
-  try {
-    let html = await getHtmlTemplate();
-    const nonce = c.get("cspNonce") as string | undefined;
-
-    const courseCount = await getCourseCount();
-    html = html.replaceAll('"%%OFFER_COUNT%%"', `"${courseCount}"`);
-    html = html.replaceAll('%%CACHE_BUST%%', process.env.BUILD_ID || "dev");
-
-    if (nonce) {
-      // Inject the nonce meta tag into <head>
-      html = html.replace(
-        /<head([^>]*)>/,
-        `<head$1><meta name="csp-nonce" content="${nonce}">`
-      );
-      // Add nonce attribute to ALL inline <script> tags (those without src).
-      // This prevents CSP "script-src-elem" violations for inline scripts.
-      // External scripts (with src=) are unaffected — allowed via 'self'.
-      html = html.replaceAll(/<script(?![^>]*\ssrc=)([^>]*)>/g,
-        `<script nonce="${nonce}"$1>`
-      );
-
-      // 🔧 ROOT CAUSE FIX: Inject public env vars directly into HTML.
-      // This eliminates the need for the frontend to fetch /api/env, which
-      // was being blocked by Cloudflare Bot Management on some browsers
-      // (returning a "Just a moment..." challenge page instead of JSON).
-      // The frontend now reads globalThis.__ENV__ synchronously — no fetch, no
-      // race condition, no broken Google Sign-In button when /api/env fails.
-      const { getPublicEnvKeys } = await import("./lib/env.js");
-      const publicEnv = getPublicEnvKeys();
-      // Also inject the build ID so cache-nuke.js can detect version changes
-      // without fetching /api/version (which is also blocked by Cloudflare
-      // Bot Management on some browsers, causing stale CSS/JS to persist).
-      const envWithBuild = { ...publicEnv, buildId: buildId || process.env.BUILD_ID || "dev" };
-      const envScript = `<script nonce="${nonce}">globalThis.__ENV__=${JSON.stringify(envWithBuild)};</script>`;
-      // Insert right after the CSP nonce meta tag (before any other scripts)
-      html = html.replace(
-        /<meta name="csp-nonce"[^>]*>/,
-        `$&${envScript}`
-      );
-
-      return c.html(html);
-    }
-    return c.html(html);
-  } catch {
-    // Aggressive cache-busting on this 404 — prevents CDN from caching it
-    c.header("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-    c.header("Surrogate-Control", "no-store");
-    c.header("Pragma", "no-cache");
-    c.header("Expires", "0");
-    return c.json({ error: "Not Found" }, 404);
-  }
-});
+// Pass a getter function so buildId is read at request time (after loadBuildId sets it), not at module eval time
+app.use("*", createSpaHandler(() => buildId));
 
 // ── Static frontend files from dist/public ──
 // Serves JS/CSS/image assets. index.html is already handled by the wildcard
@@ -514,7 +327,7 @@ app.notFound((c) => {
 
 app.onError(async (err, c) => {
   const requestId = c.get("requestId") ?? crypto.randomUUID();
-  console.error(`[${requestId}] Unhandled error:`, err);
+  appLogger.error(`Unhandled error [${requestId}]`, { error: err instanceof Error ? err.message : String(err) });
 
   // 🧠 Elite AI Diagnosis: Analyze the crash in background
   if (env.NODE_ENV === "production") {
@@ -553,13 +366,13 @@ async function start() {
   try {
     await ensureDatabase();
   } catch (err) {
-    console.warn("[Server] DB migration warning:", (err as Error).message);
+    appLogger.warn("[Server] DB migration warning", { error: (err as Error).message });
   }
 
   try {
     await initRedis();
   } catch (err) {
-    console.warn("[Server] Redis unavailable, rate limiting disabled:", (err as Error).message);
+    appLogger.warn("[Server] Redis unavailable, rate limiting disabled", { error: (err as Error).message });
   }
 
   // Detect Bun runtime. CRITICAL: must use `typeof Bun !== "undefined"`,
@@ -584,12 +397,12 @@ async function start() {
     server = serve({ fetch: app.fetch, port: env.PORT, hostname: env.HOST });
   }
 
-  console.log(`[Server] Running on http://${env.HOST}:${env.PORT}`);
-  console.log(`[Server] Environment: ${env.NODE_ENV}`);
-  console.log(`[Server] Frontend: ${env.FRONTEND_URL}`);
+  appLogger.info(`[Server] Running on http://${env.HOST}:${env.PORT}`);
+  appLogger.info(`[Server] Environment: ${env.NODE_ENV}`);
+  appLogger.info(`[Server] Frontend: ${env.FRONTEND_URL}`);
 
   const shutdownHandler = async (signal: string) => {
-    console.log(`[Server] ${signal} received, shutting down...`);
+    appLogger.info(`[Server] ${signal} received, shutting down...`);
     try {
       const { default: ElbazCache } = await import("../cache/index.js");
       ElbazCache.engine.destroy();
@@ -609,7 +422,7 @@ async function start() {
 try {
   await start();
 } catch (err) {
-  console.error("[Server] Fatal startup error:", err);
+  appLogger.error("[Server] Fatal startup error", { error: err instanceof Error ? err.message : String(err) });
   process.exit(1);
 }
 

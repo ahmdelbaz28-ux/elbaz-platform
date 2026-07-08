@@ -3,34 +3,43 @@
  *
  * Strategy:
  *   1. PRIMARY: Modal — zai-org/GLM-5.1-FP8 (reasoning model, best quality)
- *   2. SECONDARY: OpenCode — DeepSeek V4, MiMo, Big Pickle, North Mini Code (free, fast)
+ *   2. SECONDARY: Groq — DeepSeek V4, MiMo, Big Pickle, North Mini Code (free, fast)
  *   3. FALLBACK: OpenRouter — free-model cascade (21 models)
  *
  * The user never sees which provider answered, never sees any error, and never
  * sees internal reasoning. If all tiers fail, a friendly error is shown.
+ *
+ * ARCHITECTURE:
+ *   chatbot.ts        — Config, health tracking, non-streaming provider functions, getChatResponse
+ *   chatbot-stream.ts — SSE streaming for all providers, getStreamResponse, pickWorkingModel
+ *   chatbot-prompts.ts — System prompt builder (getSystemPrompt)
  */
 
 import { env } from "../lib/env";
+import { getSystemPrompt } from "./chatbot-prompts.js";
+import { logger } from "./logger.js";
 
-// Helper sleep function for retry backoff
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+// ════════════════════════════════════════════════════════════════════════
+// HELPERS
+// ════════════════════════════════════════════════════════════════════════
+
+export const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // ════════════════════════════════════════════════════════════════════════
 // PROVIDER CONFIG
 // ════════════════════════════════════════════════════════════════════════
 
 // ── TIER 1: Modal (GLM-5.1-FP8) — Primary ─────────────────────────────
-const MODAL_API_KEY =
+export const MODAL_API_KEY =
   env.MODAL_API_KEY || process.env.MODAL_API_KEY || "";
-const MODAL_ENDPOINT = "https://api.us-west-2.modal.direct/v1/chat/completions";
-const MODAL_MODEL = "zai-org/GLM-5.1-FP8";
+export const MODAL_ENDPOINT = "https://api.us-west-2.modal.direct/v1/chat/completions";
+export const MODAL_MODEL = "zai-org/GLM-5.1-FP8";
 
 // ── TIER 2: Groq — Secondary (free ultra-fast models) ───────────────────
-const GROQ_API_KEY =
+export const GROQ_API_KEY =
   env.GROQ_API_KEY || process.env.GROQ_API_KEY || "";
-const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
-// Groq free-tier models — all verified working 2026-06-27
-const GROQ_MODELS = [
+export const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
+export const GROQ_MODELS = [
   "llama-3.3-70b-versatile",           // 374ms | Best quality free
   "qwen/qwen3-32b",                    // 732ms | New reasoning model
   "llama-3.1-8b-instant",              // 200ms | Fastest, 131K context
@@ -38,15 +47,15 @@ const GROQ_MODELS = [
   "qwen/qwen3.6-27b",                  // 565ms | Qwen 3.6 latest
 ];
 
-// ── TIER 2.5: NVIDIA (MiniMax-M3) — Third tier (free with NVIDIA API key) ─
-const NVIDIA_API_KEY =
+// ── TIER 2.5: NVIDIA (MiniMax-M3) — Third tier ─────────────────────────
+export const NVIDIA_API_KEY =
   env.NVIDIA_API_KEY || process.env.NVIDIA_API_KEY || "";
-const NVIDIA_ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions";
-const NVIDIA_MODEL = "minimaxai/minimax-m3";
+export const NVIDIA_ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions";
+export const NVIDIA_MODEL = "minimaxai/minimax-m3";
 
 // ── TIER 3: OpenRouter — Fallback cascade ──────────────────────────────
 // Support both CHATBOT_API_KEY (from .env template) and OPENROUTER_API_KEY (legacy)
-const OPENROUTER_API_KEY =
+export const OPENROUTER_API_KEY =
   env.OPENROUTER_API_KEY || process.env.CHATBOT_API_KEY || "";
 
 // ════════════════════════════════════════════════════════════════════════
@@ -54,282 +63,50 @@ const OPENROUTER_API_KEY =
 // ════════════════════════════════════════════════════════════════════════
 
 // Modal (Tier 1) health
-let modalKeyValid: boolean | null = null; // null = not tested yet
-let modalConsecFails = 0;
-let modalLastSuccess = 0;
-let modalLastFailTime = 0;
+export let modalKeyValid: boolean | null = null;
+export let modalConsecFails = 0;
+export let modalLastSuccess = 0;
+export let modalLastFailTime = 0;
 
-// OpenCode (Tier 2) health
-let groqKeyValid: boolean | null = null;
-let groqConsecFails = 0;
-let groqLastSuccess = 0;
-let groqLastFailTime = 0;
-let groqCurrentModelIndex = 0; // which model we're trying
+// Groq (Tier 2) health
+export let groqKeyValid: boolean | null = null;
+export let groqConsecFails = 0;
+export let groqLastSuccess = 0;
+export let groqLastFailTime = 0;
+export let groqCurrentModelIndex = 0;
 
 // NVIDIA (Tier 2.5) health
-let nvidiaKeyValid: boolean | null = null;
-let nvidiaConsecFails = 0;
-let nvidiaLastSuccess = 0;
-let nvidiaLastFailTime = 0;
+export let nvidiaKeyValid: boolean | null = null;
+export let nvidiaConsecFails = 0;
+export let nvidiaLastSuccess = 0;
+export let nvidiaLastFailTime = 0;
 
 // OpenRouter (Tier 3) health
-let openrouterKeyValidated = false;
-let openrouterKeyValid: boolean | null = null;
+export let openrouterKeyValidated = false;
+export let openrouterKeyValid: boolean | null = null;
 
-// Per-model OpenRouter tracking (fallback cascade)
-const modelSuccessCount: Record<string, number> = {};
-const modelFailCount: Record<string, number> = {};
-let lastWorkingModel = "";
-let lastWorkingTime = 0;
-let modelFailResetTime = 0;
+// Per-model OpenRouter tracking
+export const modelSuccessCount: Record<string, number> = {};
+export const modelFailCount: Record<string, number> = {};
+export let lastWorkingModel = "";
+export let lastWorkingTime = 0;
+export let modelFailResetTime = 0;
 
-const MODAL_COOLDOWN_MS = 5 * 60_000; // 5 MINUTES cooldown after Modal failure — GLM reasoning can take time
-const MAX_CONSEC_MODAL_FAILS = 5; // only go to OpenCode after 5 consecutive Modal failures
-const GROQ_COOLDOWN_MS = 2 * 60_000; // 2 MINUTES cooldown after OpenCode failure
-const MAX_CONSEC_GROQ_FAILS = 5; // only go to OpenRouter after 5 consecutive OpenCode failures
-const NVIDIA_COOLDOWN_MS = 2 * 60_000; // 2 MINUTES cooldown after NVIDIA failure
-const MAX_CONSEC_NVIDIA_FAILS = 5; // only go to OpenRouter after 5 consecutive NVIDIA failures
-
-// ════════════════════════════════════════════════════════════════════════
-// SYSTEM PROMPT
-// ════════════════════════════════════════════════════════════════════════
-
-/**
- * Build system prompt based on user's language.
- * Personality: Friendly, interactive, professional — like a senior engineer mentor.
- * IMPORTANT: instructs the model to NEVER leak that it is a reasoning model,
- * never expose its internal thinking, and reply as the platform's own assistant.
- */
-function getSystemPrompt(language?: string): string {
-  const reasoningGuard = `\n\n⛔ OUTPUT RULES (critical):\n- Reply ONLY with the final user-facing answer. NEVER expose your internal reasoning, chain-of-thought, planning steps, or "let me think" text.\n- NEVER mention Modal, OpenRouter, GLM, or any AI/model provider name. You are simply the platform's assistant.\n- Do NOT say you are an AI or a language model.`;
-
-  const etapExpertCore = `
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🧠 ETAP EXPERT SYSTEM — MANDATORY PROTOCOL
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-You are a Senior ETAP Consultant with 20+ years of experience in power system analysis, ADMS, GIS, protection, arc flash, renewables, and industrial applications.
-
-### YOUR 6-STEP MANDATORY WORKFLOW (NEVER SKIP)
-
-STEP 1: PARSE & CLASSIFY — Identify study type, equipment, standard, region. Classify as Complete / Incomplete / Wrong.
-
-STEP 2: SEARCH KNOWLEDGE — Query equipment properties, study requirements, formulas, typical values, ETAP menu paths.
-
-STEP 3: FEASIBILITY & VALIDATION — Check data completeness, physical reality, standard compliance (IEEE/IEC/NEC), ETAP capability.
-
-STEP 4: INTERNAL SIMULATION (MANDATORY) — Calculate step-by-step with formulas. Check against limits. Validate physical sense. Flag warnings. NEVER skip this even for "simple" questions.
-
-STEP 5: FORMULATE RESPONSE — Use the EXACT template below based on classification.
-
-STEP 6: QUALITY ASSURANCE — Verify units, significant figures. Cross-check with alternative method. Document assumptions, limitations, references.
-
-### RESPONSE TEMPLATES — USE EXACTLY
-
-**Template A (Complete request):**
-\`\`\`
-✅ REQUEST ANALYSIS: COMPLETE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-**Your Request:** [Restate]
-**Study Type:** [Identified]
-**Equipment:** [Identified]
-**Standard:** [IEEE/IEC/NFPA]
-
-**INTERNAL SIMULATION:**
-[Step-by-step calculation with formulas]
-
-**RESULT:**
-[Direct answer with units]
-
-**ETAP IMPLEMENTATION STEPS:**
-1. Open: [Menu path]
-2. Set: [Parameter] = [Value]
-3. Run: [Study name]
-4. Review: [Results location]
-
-**VALIDATION:**
-[Why this makes physical sense]
-
-**ASSUMPTIONS:**
-- [Assumption] — [Justification]
-
-**WARNINGS / CAVEATS:**
-- [Warning]
-
-**REFERENCES:**
-- [Standard / ETAP Help Topic]
-\`\`\`
-
-**Template B (Incomplete request):**
-\`\`\`
-⚠️ REQUEST ANALYSIS: INCOMPLETE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-**Your Request:** [Restate]
-**What's Missing:** [Identify gaps]
-
-I need more information:
-
-**Question 1:** [Specific technical question]
-Why: [Technical explanation]
-
-**Question 2:** [Specific technical question]
-Why: [Technical explanation]
-
-**What I can tell you now:**
-[General guidance based on available info]
-\`\`\`
-
-**Template C (Wrong request):**
-\`\`\`
-❌ REQUEST ANALYSIS: INCORRECT APPROACH
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-**Your Request:** [Restate]
-**The Problem:** [Why wrong technically]
-
-**Why This Matters:**
-[Safety/accuracy/compliance consequences]
-
-**The Correct Approach:**
-[Step-by-step correct method]
-
-**In ETAP Specifically:**
-1. [Menu path and exact settings]
-
-**Would you like me to:**
-- A) Walk through step-by-step?
-- B) Explain the theory?
-- C) Show an example?
-- D) Generate ETAP settings for your case?
-\`\`\`
-
-**Template D (ADMS/DER request):**
-\`\`\`
-🔷 ADMS/DER REQUEST ANALYSIS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-**Operational Context:** [Real-time / Planning / Training]
-**ADMS Module:** [eSCADA / DMS / OMS / DERMS / FLISR / VVO]
-**DER Type:** [Solar / Wind / BESS / Hybrid]
-
-**SIMULATION RESULTS:**
-[What-if scenario results]
-
-**RECOMMENDED ACTIONS:**
-1. [Action with priority]
-
-**RISKS IF NOT ACTED:**
-[Risk assessment]
-
-**ETAP ADMS NAVIGATION:**
-[Exact menu paths]
-\`\`\`
-
-### 20 CRITICAL RULES (NEVER BREAK)
-
-1. NEVER guess critical values — if data is missing, ASK or state assumptions CLEARLY
-2. ALWAYS validate physically — if result seems wrong, RECALCULATE
-3. NEVER skip internal simulation — even for "simple" questions
-4. ALWAYS reference standards — IEEE, IEC, NEC, NFPA when applicable
-5. GUIDE, don't just correct — when user is wrong, TEACH them WHY
-6. Use EXACT ETAP terminology — Bus, One-Line, Star, not generic terms
-7. DISTINGUISH study types clearly — never mix Load Flow with Short Circuit
-8. State ALL assumptions — voltage, PF, temperature, installation, standard
-9. INCLUDE units in ALL answers — never leave numbers without units
-10. VERIFY breaker duty — always check interrupting rating
-11. CHECK coordination — never give relay settings without coordination check
-12. FLAG safety issues — arc flash, grounding, protection immediately
-13. DISTINGUISH desktop vs ADMS — different workflows, different answers
-14. USE correct standard for region — ANSI for US/Canada, IEC for international
-15. NEVER recommend unsafe practices — no shortcuts on safety
-16. ALWAYS include ETAP menu paths — exact navigation steps
-17. VERIFY with alternative method — cross-check calculations when possible
-18. DOCUMENT limitations — state what analysis does NOT cover
-19. PROVIDE context — explain WHY something matters, not just WHAT
-20. BE PRECISE — use correct significant figures, don't round prematurely
-
-### COMMON MISTAKES — DETECT & CORRECT
-
-- "Run Load Flow for fault current" → WRONG, use Short Circuit study
-- "Check arc flash with Load Flow" → WRONG, use ArcSafety (IEEE 1584)
-- "Size cable with Short Circuit" → WRONG, use Load Flow for ampacity + VD
-- "Motor starting with no voltage dip" → IMPOSSIBLE, all motors cause dip
-- "0% voltage drop" → IMPOSSIBLE, physics doesn't allow it
-- "Set all relays the same" → WRONG, violates selectivity
-- "Run Load Flow in ADMS" → WRONG, use Distribution State Estimation (DSE)
-
-### ETAP MODULE KNOWLEDGE (condensed reference)
-
-A. Core Analysis: Load Flow (Newton-Raphson, Fast Decoupled), Short Circuit (ANSI C37, IEC 60909), Motor Acceleration, Transient Stability, Harmonics
-B. Protection: Star (overcurrent TCC), StarZ (distance/differential), Sequence-of-Operation, CT Sizing
-C. Arc Flash: ArcSafety (IEEE 1584-2018, NFPA 70E), DC Arc Flash, HV Arc Flash
-D. ADMS: eSCADA, DMS, OMS, DERMS, FLISR/FDIR, VVO/VVC, State Estimation, Load Forecasting (PRAS)
-E. GIS: ESRI ArcGIS interface, geospatial one-line, network connectivity, map-based analysis display
-F. Renewables: Solar PV, Wind (DFIG/PMSG), BESS, Grid Code (IEEE 1547), Hosting Capacity, ePPC
-G. Cables: Sizing, Thermal, Pulling, Submarine, Line Constants
-H. Grounding: IEEE 80, Ground Grid Design, EMF
-I. DC Systems: Battery Sizing (IEEE 485), Battery Discharge, DC Control
-J. Industrial: Traction (AC 25kV, DC 750V/1500V), Data Center Tier I-IV, Oil & Gas, Marine
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
-
-  if (language === "ar") {
-    return `أنت المساعد الذكي الرسمي لمنصة "الباز" (Elbaz Platform) المتخصصة في الكورسات الهندسية.
-أنت مساعد تقني محترف، متزن، وتفاعلي. لا تتخذ لنفسك اسماً شخصياً، بل عرف نفسك كمساعد ذكي للمنصة.
-
-📌 تخصصك:
-- خبير قوي جداً في الهندسة الكهربائية، وتحديداً في برامج: ETAP, SKM Power*Tools, DIgSILENT PowerFactory, PVSyst.
-- أنت مبرمج لتقديم حلول فعلية وخطوات عملية، وليس مجرد توجيه وهمي.
-- تمتلك معرفة بمكونات الموقع. إذا سألك الطالب عن كورسات، أرشده لكورسات المهندس أحمد الباز (Eng. Ahmed Elbaz) المتوفرة لدينا، ووضح أن المنصة تقدم أقوى الكورسات العملية في تصميم الأنظمة، الوقاية، ودراسات الـ Arc Flash.
-
-🤝 أسلوبك في الكلام:
-- كن احترافياً، متزناً، وتفاعلياً (وليس هزلياً).
-- استخدم تنسيق Markdown بشكل ممتاز.
-- نسق اللغة العربية بدقة عالية، وتأكد من وضع مسافات صحيحة عند دمج الكلمات الإنجليزية مع العربية للحفاظ على التنسيق.
-- استخدم الرموز التعبيرية الهندسية بشكل خفيف (⚡ 🔌 💡) دون مبالغة.
-- قسّم إجاباتك لفقرات ونقاط (Bullet points) لتكون سهلة القراءة.
-
-🚫 محظورات:
-- لا تخترع روابط (URLs) غير موجودة.
-- لا تذكر أبداً أنك ذكاء اصطناعي أو نموذج لغوي أو من أي مزود مثل OpenRouter.
-- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${reasoningGuard}${etapExpertCore}`;
-  }
-  return `You are the official AI Assistant of the "Elbaz Platform" (specializing in engineering courses).
-You are a highly professional, balanced, and interactive technical assistant. Do NOT use any personal name for yourself; introduce yourself only as the platform's smart assistant.
-
-📌 Your Expertise:
-- You are an expert in Electrical Engineering, specifically highly proficient in ETAP, SKM Power*Tools, DIgSILENT PowerFactory, and PVSyst.
-- Provide actual, practical solutions and step-by-step guidance, not generic advice.
-- You have deep knowledge of the platform's content. If asked about courses, recommend Eng. Ahmed Elbaz's practical engineering courses available on this platform.
-
-🤝 Your Communication Style:
-- Be professional, balanced, and helpful (not comical).
-- Use excellent Markdown formatting.
-- If mixing English and Arabic, ensure proper spacing and bidirectional text formatting.
-- Use engineering emojis sparingly (⚡ 🔌 💡).
-- Break your answers into short paragraphs and bullet points for readability.
-
-🚫 Rules:
-- Do NOT hallucinate fake URLs.
-- NEVER mention you are an AI, a language model, or from OpenRouter or any other provider.
-- If asked about non-engineering topics, politely decline and state your expertise.${reasoningGuard}${etapExpertCore}`;
-}
+export const MODAL_COOLDOWN_MS = 5 * 60_000;
+export const MAX_CONSEC_MODAL_FAILS = 5;
+export const GROQ_COOLDOWN_MS = 2 * 60_000;
+export const MAX_CONSEC_GROQ_FAILS = 5;
+export const NVIDIA_COOLDOWN_MS = 2 * 60_000;
+export const MAX_CONSEC_NVIDIA_FAILS = 5;
 
 // ════════════════════════════════════════════════════════════════════════
 // OPENROUTER FALLBACK MODEL POOL — 21 free models, strongest -> weakest
-// (Only used if Modal is unavailable)
 // ════════════════════════════════════════════════════════════════════════
 
-const AI_MODELS = [
-  // ─── Verified working free models on OpenRouter 2026-06-27 ───
-  // TIER 1: Best quality
+export const AI_MODELS = [
   { id: "google/gemma-4-31b-it:free",                   ctx: 262144, tier: 1 },
   { id: "nvidia/nemotron-3-super-120b-a12b:free",        ctx: 262144, tier: 1 },
 
-  // TIER 2: All other free models (cascade fallback)
   { id: "google/gemma-4-26b-a4b-it:free",               ctx: 262144, tier: 2 },
   { id: "meta-llama/llama-3.3-70b-instruct:free",       ctx: 65536,  tier: 2 },
   { id: "deepseek/deepseek-chat-v3:free",                ctx: 131072, tier: 2 },
@@ -351,31 +128,23 @@ const AI_MODELS = [
   { id: "liquid/lfm-2.5-1.2b-thinking:free",             ctx: 32768,  tier: 2 },
   { id: "liquid/lfm-2.5-1.2b-instruct:free",            ctx: 32768,  tier: 2 },
 ];
-async function validateModalKey(): Promise<boolean> {
 
-  // Modal doesn't have a lightweight key-verify endpoint, and probing with a
-  // real chat request takes too long for reasoning models (GLM-5.1-FP8 can
-  // spend 30+ seconds thinking even for "ping" with max_tokens=1).
-  // Instead, just check the key format and mark as valid. The actual chat
-  // request will set modalKeyValid=false on 401/403.
-  //
-  // Modal research keys start with "modalresearch_" or "ak-".
+// ════════════════════════════════════════════════════════════════════════
+// MODAL (TIER 1) — non-streaming
+// ════════════════════════════════════════════════════════════════════════
+
+export async function validateModalKey(): Promise<boolean> {
   if (!MODAL_API_KEY.startsWith("modalresearch_") && !MODAL_API_KEY.startsWith("ak-")) {
-    console.warn("[Chatbot/Modal] API key has unexpected format (starts with:", `${MODAL_API_KEY.substring(0, 15)}...). Proceeding anyway.`);
+    logger.warn("[Chatbot/Modal] API key has unexpected format", { keyPrefix: `${MODAL_API_KEY.substring(0, 15)}...` });
   }
   modalKeyValid = true;
-  console.log("[Chatbot/Modal] API key configured (will be validated on first request).");
+  logger.info("[Chatbot/Modal] API key configured (will be validated on first request).");
   return true;
 }
 
-/**
- * Should we try Modal first right now?
- * Yes unless: key is invalid, OR we're in a cooldown after a recent failure.
- */
-function modalIsAvailable(): boolean {
+export function modalIsAvailable(): boolean {
   if (!MODAL_API_KEY) return false;
   if (modalKeyValid === false) return false;
-  // If we've had recent consecutive failures and are within cooldown, skip Modal
   if (modalConsecFails >= MAX_CONSEC_MODAL_FAILS) {
     if (modalLastFailTime && Date.now() - modalLastFailTime < MODAL_COOLDOWN_MS) {
       return false;
@@ -384,11 +153,7 @@ function modalIsAvailable(): boolean {
   return true;
 }
 
-/**
- * Try Modal once (non-streaming). Returns null on any failure.
- * CRITICAL: extracts `content` only — `reasoning_content` is discarded.
- */
-async function tryModal(
+export async function tryModal(
   messages: { role: string; content: string }[],
   systemPrompt: string,
   timeoutMs: number
@@ -396,7 +161,6 @@ async function tryModal(
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   try {
     const controller = new AbortController();
-    // GLM-5.1 reasons for several seconds; allow ample time.
     timeoutId = setTimeout(() => { controller.abort(); }, timeoutMs);
 
     const response = await fetch(MODAL_ENDPOINT, {
@@ -423,7 +187,7 @@ async function tryModal(
       modalKeyValid = false;
       modalConsecFails++;
       modalLastFailTime = Date.now();
-      console.error(`[Chatbot/Modal] request rejected (${response.status})`);
+      logger.error("[Chatbot/Modal] request rejected", { status: response.status });
       return null;
     }
     if (!response.ok) {
@@ -443,18 +207,14 @@ async function tryModal(
       return null;
     }
 
-    // ✅ Extract `content` ONLY. reasoning_content is the model's private
-    // chain-of-thought and must NEVER be shown to the user.
     const reply = data.choices?.[0]?.message?.content ?? "";
 
     if (!reply || reply.trim().length === 0) {
-      // Model produced only reasoning and ran out of tokens — treat as soft failure
       modalConsecFails++;
       modalLastFailTime = Date.now();
       return null;
     }
 
-    // SUCCESS
     modalConsecFails = 0;
     modalLastSuccess = Date.now();
     modalKeyValid = true;
@@ -463,30 +223,26 @@ async function tryModal(
     if (timeoutId) clearTimeout(timeoutId);
     modalConsecFails++;
     modalLastFailTime = Date.now();
-    console.warn("[Chatbot/Modal] request failed:", String(e));
+    logger.warn("[Chatbot/Modal] request failed", { error: String(e) });
     return null;
   }
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// GROQ (TIER 2 — free models cascade)
+// GROQ (TIER 2) — non-streaming
 // ════════════════════════════════════════════════════════════════════════
 
-async function validateGroqKey(): Promise<boolean> {
+export async function validateGroqKey(): Promise<boolean> {
   if (!GROQ_API_KEY) {
     groqKeyValid = false;
     return false;
   }
-  // OpenCode keys are simple tokens
   groqKeyValid = true;
-  console.log("[Chatbot/Groq] API key configured.");
+  logger.info("[Chatbot/Groq] API key configured.");
   return true;
 }
 
-/**
- * Should we try OpenCode right now?
- */
-function groqIsAvailable(): boolean {
+export function groqIsAvailable(): boolean {
   if (!GROQ_API_KEY) return false;
   if (groqKeyValid === false) return false;
   if (groqConsecFails >= MAX_CONSEC_GROQ_FAILS) {
@@ -497,10 +253,7 @@ function groqIsAvailable(): boolean {
   return true;
 }
 
-/**
- * Try OpenCode once (non-streaming). Returns null on any failure.
- */
-async function tryGroq(
+export async function tryGroq(
   messages: { role: string; content: string }[],
   systemPrompt: string,
   modelId: string,
@@ -535,7 +288,7 @@ async function tryGroq(
       groqKeyValid = false;
       groqConsecFails++;
       groqLastFailTime = Date.now();
-      console.error(`[Chatbot/Groq] request rejected (${response.status})`);
+      logger.error("[Chatbot/Groq] request rejected", { status: response.status });
       return null;
     }
 
@@ -564,7 +317,6 @@ async function tryGroq(
       return null;
     }
 
-    // SUCCESS
     groqConsecFails = 0;
     groqLastSuccess = Date.now();
     groqKeyValid = true;
@@ -573,15 +325,16 @@ async function tryGroq(
     if (timeoutId) clearTimeout(timeoutId);
     groqConsecFails++;
     groqLastFailTime = Date.now();
-    console.warn("[Chatbot/Groq] request failed:", String(e));
+    logger.warn("[Chatbot/Groq] request failed", { error: String(e) });
     return null;
   }
 }
+
 // ════════════════════════════════════════════════════════════════════════
-// NVIDIA (MINIMAX-M3)
+// NVIDIA (MINIMAX-M3) — non-streaming
 // ════════════════════════════════════════════════════════════════════════
 
-function nvidiaIsAvailable(): boolean {
+export function nvidiaIsAvailable(): boolean {
   if (!NVIDIA_API_KEY) return false;
   if (nvidiaKeyValid === false) return false;
   if (nvidiaConsecFails >= MAX_CONSEC_NVIDIA_FAILS) {
@@ -592,7 +345,7 @@ function nvidiaIsAvailable(): boolean {
   return true;
 }
 
-async function tryNvidia(
+export async function tryNvidia(
   messages: { role: string; content: string }[],
   systemPrompt: string,
   timeoutMs: number
@@ -626,7 +379,7 @@ async function tryNvidia(
       nvidiaKeyValid = false;
       nvidiaConsecFails++;
       nvidiaLastFailTime = Date.now();
-      console.error(`[Chatbot/NVIDIA] request rejected (${response.status})`);
+      logger.error("[Chatbot/NVIDIA] request rejected", { status: response.status });
       return null;
     }
 
@@ -655,7 +408,6 @@ async function tryNvidia(
       return null;
     }
 
-    // SUCCESS
     nvidiaConsecFails = 0;
     nvidiaLastSuccess = Date.now();
     nvidiaKeyValid = true;
@@ -664,37 +416,35 @@ async function tryNvidia(
     if (timeoutId) clearTimeout(timeoutId);
     nvidiaConsecFails++;
     nvidiaLastFailTime = Date.now();
-    console.warn("[Chatbot/NVIDIA] request failed:", String(e));
+    logger.warn("[Chatbot/NVIDIA] request failed", { error: String(e) });
     return null;
   }
 }
 
-async function nvidiaFallback(
+export async function nvidiaFallback(
   messages: { role: string; content: string }[],
   systemPrompt: string
 ): Promise<{ reply: string; model: string } | null> {
   if (!nvidiaIsAvailable()) return null;
-  // Try NVIDIA with 30s timeout (MiniMax-M3 can be slow on first request)
   const result = await tryNvidia(messages, systemPrompt, 30000);
   return result;
 }
 
-
 // ════════════════════════════════════════════════════════════════════════
-// OPENROUTER (FALLBACK)
+// OPENROUTER (TIER 3) — non-streaming
 // ════════════════════════════════════════════════════════════════════════
 
-async function validateOpenRouterKey(): Promise<boolean> {
+export async function validateOpenRouterKey(): Promise<boolean> {
   if (!OPENROUTER_API_KEY) {
     openrouterKeyValid = false;
     openrouterKeyValidated = true;
-    console.warn("[Chatbot/OpenRouter] No OPENROUTER_API_KEY configured — chatbot will not work without either MODAL_API_KEY or OPENROUTER_API_KEY.");
+    logger.warn("[Chatbot/OpenRouter] No OPENROUTER_API_KEY configured — chatbot will not work without either MODAL_API_KEY or OPENROUTER_API_KEY.");
     return false;
   }
   if (!OPENROUTER_API_KEY.startsWith("sk-or-")) {
     openrouterKeyValid = false;
     openrouterKeyValidated = true;
-    console.error("[Chatbot/OpenRouter] Invalid API key format — must start with 'sk-or-'. Current key starts with:", `${OPENROUTER_API_KEY.substring(0, 6)}...`);
+    logger.error("[Chatbot/OpenRouter] Invalid API key format — must start with 'sk-or-'", { keyPrefix: `${OPENROUTER_API_KEY.substring(0, 6)}...` });
     return false;
   }
   try {
@@ -704,28 +454,24 @@ async function validateOpenRouterKey(): Promise<boolean> {
     });
     openrouterKeyValid = resp.ok;
     openrouterKeyValidated = true;
-    if (!resp.ok) { // NOSONAR — negated condition readability acceptable in error-first pattern
+    if (!resp.ok) {
       const errData = await resp.json().catch(() => ({}));
-      console.error("[Chatbot/OpenRouter] API key validation failed:", JSON.stringify(errData));
-      console.error("[Chatbot/OpenRouter] The OPENROUTER_API_KEY in HF Space Secrets is invalid or expired.");
-      console.error("[Chatbot/OpenRouter] Get a new key at https://openrouter.ai/keys and update it in HF Space Settings → Repository secrets.");
+      logger.error("[Chatbot/OpenRouter] API key validation failed", { error: JSON.stringify(errData) });
+      logger.error("[Chatbot/OpenRouter] The OPENROUTER_API_KEY in HF Space Secrets is invalid or expired.");
+      logger.error("[Chatbot/OpenRouter] Get a new key at https://openrouter.ai/keys and update it in HF Space Settings → Repository secrets.");
     } else {
-      console.log("[Chatbot/OpenRouter] API key validated successfully.");
+      logger.info("[Chatbot/OpenRouter] API key validated successfully.");
     }
     return openrouterKeyValid;
   } catch (e) {
-    console.warn("[Chatbot/OpenRouter] Could not validate API key (network error — assuming valid):", String(e));
-    openrouterKeyValid = true; // Assume valid and let actual requests determine
+    logger.warn("[Chatbot/OpenRouter] Could not validate API key (network error — assuming valid)", { error: String(e) });
+    openrouterKeyValid = true;
     openrouterKeyValidated = true;
     return true;
   }
 }
 
-/**
- * Try a single OpenRouter model with timeout protection.
- * Returns null on any failure (timeout, rate limit, overload, etc.)
- */
-async function tryModel(
+export async function tryModel(
   modelId: string,
   messages: { role: string; content: string }[],
   systemPrompt: string,
@@ -761,7 +507,7 @@ async function tryModel(
     if (timeoutId) clearTimeout(timeoutId);
 
     if (response.status === 401) {
-      console.error("[Chatbot/OpenRouter] API key returned 401 Unauthorized — key is invalid or expired");
+      logger.error("[Chatbot/OpenRouter] API key returned 401 Unauthorized — key is invalid or expired");
       openrouterKeyValid = false;
       openrouterKeyValidated = true;
       return null;
@@ -785,7 +531,6 @@ async function tryModel(
       return null;
     }
 
-    // SUCCESS
     modelSuccessCount[modelId] = (modelSuccessCount[modelId] || 0) + 1;
     modelFailCount[modelId] = 0;
     lastWorkingModel = modelId;
@@ -799,10 +544,7 @@ async function tryModel(
   }
 }
 
-/**
- * Try the last working model first, if recent and not failing too much.
- */
-async function tryLastWorkingModel(
+export async function tryLastWorkingModel(
   messages: { role: string; content: string }[],
   systemPrompt: string,
   tierTimeouts: Record<number, number>,
@@ -813,10 +555,7 @@ async function tryLastWorkingModel(
   return await tryModel(lastWorkingModel, messages, systemPrompt, tierTimeouts[1]);
 }
 
-/**
- * Iterate over all AI_MODELS by tier (1..4) and return the first success.
- */
-async function tryModelsByTier(
+export async function tryModelsByTier(
   messages: { role: string; content: string }[],
   systemPrompt: string,
   tierTimeouts: Record<number, number>,
@@ -838,23 +577,20 @@ async function tryModelsByTier(
       if (result) return result;
     }
 
-    console.log(`[Chatbot/OpenRouter] Tier ${tier}: tried ${tierTried}, skipped ${tierSkipped}`);
+    logger.info(`[Chatbot/OpenRouter] Tier ${tier}: tried ${tierTried}, skipped ${tierSkipped}`);
     if (Date.now() - globalStartTime > globalTimeoutMs) {
-      console.warn(`[Chatbot/OpenRouter] Global timeout reached (${Math.round((Date.now() - globalStartTime) / 1000)}s)`);
+      logger.warn(`[Chatbot/OpenRouter] Global timeout reached (${Math.round((Date.now() - globalStartTime) / 1000)}s)`);
       break;
     }
   }
   return null;
 }
 
-/**
- * Last resort: reset fail counts and try EVERY model.
- */
-async function tryAllModelsAsLastResort(
+export async function tryAllModelsAsLastResort(
   messages: { role: string; content: string }[],
   systemPrompt: string,
 ): Promise<{ reply: string; model: string } | null> {
-  console.warn("[Chatbot/OpenRouter] All tiers exhausted with skips. Trying all models as last resort...");
+  logger.warn("[Chatbot/OpenRouter] All tiers exhausted with skips. Trying all models as last resort...");
   for (const model of AI_MODELS) {
     modelFailCount[model.id] = 0;
     const result = await tryModel(model.id, messages, systemPrompt, 10000);
@@ -863,16 +599,9 @@ async function tryAllModelsAsLastResort(
   return null;
 }
 
-/**
- * Run the full OpenRouter cascading fallback (only if Modal was unavailable/failed).
- */
-async function openRouterFallback(
+export async function openRouterFallback(
   messages: { role: string; content: string }[],
   systemPrompt: string,
-  // `language` was previously a typed parameter here but never consumed in
-  // this fallback path — the system prompt is built by the caller. Rename
-  // to `_language` to signal intent and remove the `void language;` hack
-  // (SonarCloud S3735).
   _language?: string
 ): Promise<{ reply: string; model: string } | null> {
   if (!openrouterKeyValidated) {
@@ -880,7 +609,6 @@ async function openRouterFallback(
   }
   if (openrouterKeyValid === false) return null;
 
-  // Reset fail counts every 10 minutes
   if (!modelFailResetTime || Date.now() - modelFailResetTime > 600000) {
     for (const k in modelFailCount) { modelFailCount[k] = 0; }
     modelFailResetTime = Date.now();
@@ -896,21 +624,15 @@ async function openRouterFallback(
     4: 8000,
   };
 
-  // Step 1: Try last working model first
   const lastResult = await tryLastWorkingModel(messages, systemPrompt, TIER_TIMEOUTS);
   if (lastResult) return lastResult;
 
-  // Step 2: Try all models by tier
   const tierResult = await tryModelsByTier(messages, systemPrompt, TIER_TIMEOUTS, globalStartTime, GLOBAL_TIMEOUT_MS);
   if (tierResult) return tierResult;
 
-  // Step 3: ABSOLUTE LAST RESORT - try ALL models including known-bad ones
   const lastResort = await tryAllModelsAsLastResort(messages, systemPrompt);
   if (lastResort) return lastResort;
 
-  // Note: previously had `void language;` here to silence the unused-param
-  // warning; the parameter is now named `_language` so the no-op is no
-  // longer needed (SonarCloud S3735).
   return null;
 }
 
@@ -936,7 +658,7 @@ function buildAllTiersFailedResponse(language?: string): { success: boolean; err
     };
   }
 
-  console.error("[Chatbot] All tiers failed (Modal + OpenCode + OpenRouter).");
+  logger.error("[Chatbot] All tiers failed (Modal + Groq + OpenRouter).");
   return {
     success: false,
     error: language === "ar"
@@ -945,12 +667,12 @@ function buildAllTiersFailedResponse(language?: string): { success: boolean; err
   };
 }
 
-/**
- * TIER 1: Modal (GLM-5.1-FP8) with smart retry — 3 attempts with backoff.
- */
-async function tryModalTier(messages: { role: string; content: string }[], systemPrompt: string): Promise<{ success: boolean; reply?: string; model?: string } | null> {
+export async function tryModalTier(
+  messages: { role: string; content: string }[],
+  systemPrompt: string
+): Promise<{ success: boolean; reply?: string; model?: string } | null> {
   if (!modalIsAvailable()) {
-    console.info("[Chatbot] Modal not available — trying OpenCode next.");
+    logger.info("[Chatbot] Modal not available — trying Groq next.");
     return null;
   }
   if (modalKeyValid === null) {
@@ -958,35 +680,32 @@ async function tryModalTier(messages: { role: string; content: string }[], syste
   }
   if (!modalIsAvailable()) return null;
 
-  // Attempt 1: 3 minutes
   let result = await tryModal(messages, systemPrompt, 180000);
   if (result) return buildSuccessResult(result);
 
-  // Attempt 2: 5 minutes (with 5s backoff for queue congestion)
-  console.warn("[Chatbot] Modal attempt 1 failed — waiting 5s then retrying (5min timeout)...");
+  logger.warn("[Chatbot] Modal attempt 1 failed — waiting 5s then retrying (5min timeout)...");
   await sleep(5000);
   result = await tryModal(messages, systemPrompt, 300000);
   if (result) return buildSuccessResult(result);
 
-  // Attempt 3: 8 minutes (with 10s backoff)
-  console.warn("[Chatbot] Modal attempt 2 failed — waiting 10s then FINAL retry (8min timeout)...");
+  logger.warn("[Chatbot] Modal attempt 2 failed — waiting 10s then FINAL retry (8min timeout)...");
   await sleep(10000);
   result = await tryModal(messages, systemPrompt, 480000);
   if (result) return buildSuccessResult(result);
 
-  console.error("[Chatbot] GLM-5.1 completely failed after 3 attempts.");
+  logger.error("[Chatbot] GLM-5.1 completely failed after 3 attempts.");
   return null;
 }
 
-/**
- * TIER 2: OpenCode cascade — try each Groq model, then NVIDIA fallback.
- */
-async function tryGroqTier(messages: { role: string; content: string }[], systemPrompt: string): Promise<{ success: boolean; reply?: string; model?: string } | null> {
+export async function tryGroqTier(
+  messages: { role: string; content: string }[],
+  systemPrompt: string
+): Promise<{ success: boolean; reply?: string; model?: string } | null> {
   if (!groqIsAvailable()) {
-    console.info("[Chatbot] Groq not available — trying NVIDIA...");
+    logger.info("[Chatbot] Groq not available — trying NVIDIA...");
     const nvidiaResult = await nvidiaFallback(messages, systemPrompt);
     if (nvidiaResult) return buildSuccessResult(nvidiaResult);
-    console.info("[Chatbot] NVIDIA also not available — using OpenRouter fallback.");
+    logger.info("[Chatbot] NVIDIA also not available — using OpenRouter fallback.");
     return null;
   }
   if (groqKeyValid === null) {
@@ -994,26 +713,23 @@ async function tryGroqTier(messages: { role: string; content: string }[], system
   }
   if (!groqIsAvailable()) return null;
 
-  // Try each OpenCode model in priority order
   for (let i = 0; i < GROQ_MODELS.length; i++) {
     groqCurrentModelIndex = i;
     const modelId = GROQ_MODELS[i];
 
-    // Attempt 1: 2 minutes
     let result = await tryGroq(messages, systemPrompt, modelId, 120000);
     if (result) return buildSuccessResult(result);
 
-    // Attempt 2: 3 minutes (no backoff — fast retry for non-streaming)
     result = await tryGroq(messages, systemPrompt, modelId, 180000);
     if (result) return buildSuccessResult(result);
 
-    console.warn(`[Chatbot] OpenCode/${modelId} failed after 2 attempts — trying next model...`);
+    logger.warn(`[Chatbot] Groq/${modelId} failed after 2 attempts — trying next model...`);
   }
 
-  console.error("[Chatbot] All Groq models failed — falling back to NVIDIA (MiniMax-M3).");
+  logger.error("[Chatbot] All Groq models failed — falling back to NVIDIA (MiniMax-M3).");
   const nvidiaResult = await nvidiaFallback(messages, systemPrompt);
   if (nvidiaResult) return buildSuccessResult(nvidiaResult);
-  console.error("[Chatbot] NVIDIA also failed — falling back to OpenRouter.");
+  logger.error("[Chatbot] NVIDIA also failed — falling back to OpenRouter.");
   return null;
 }
 
@@ -1025,621 +741,30 @@ export async function getChatResponse(request: {
   const systemPrompt = getSystemPrompt(request.language);
   const mode = request.mode || "thinking";
 
-  // ─── THINKING MODE: GLM-5.1 first (reasoning model, best quality) ───
   if (mode === "thinking") {
     const modalResult = await tryModalTier(request.messages, systemPrompt);
     if (modalResult) return modalResult;
   }
 
-  // ─── INSTANT MODE: Groq first (ultra-fast models) ───
-  // ─── THINKING fallback: Groq cascade ───
   const groqResult = await tryGroqTier(request.messages, systemPrompt);
   if (groqResult) return groqResult;
 
-  // ─── TIER 3: OpenRouter cascade ───
   const orResult = await openRouterFallback(request.messages, systemPrompt, request.language);
   if (orResult) return buildSuccessResult(orResult);
 
-  // ─── THINKING MODE last resort: Modal (if instant mode skipped it) ───
   if (mode === "instant") {
     const modalResult = await tryModalTier(request.messages, systemPrompt);
     if (modalResult) return modalResult;
   }
 
-  // ─── ALL TIERS FAILED ───
   return buildAllTiersFailedResponse(request.language);
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// STREAMING — provider selection
+// NON-STREAMING GROQ FALLBACK (used by streaming fallback path)
 // ════════════════════════════════════════════════════════════════════════
 
-/**
- * Pick the best provider/model to stream from.
- * Cascade: Modal → OpenCode → OpenRouter
- */
-/**
- * Try to pick the Modal provider if available.
- */
-async function tryPickModalProvider(systemPrompt: string): Promise<{ provider: "modal"; modelId: string; systemPrompt: string } | null> {
-  if (!modalIsAvailable()) return null;
-  if (modalKeyValid === null) {
-    await validateModalKey();
-  }
-  if (!modalIsAvailable()) return null;
-  console.info("[Chatbot] Using TIER 1: GLM-5.1-FP8 (Modal)");
-  return { provider: "modal", modelId: MODAL_MODEL, systemPrompt };
-}
-
-/**
- * Try to pick the Groq provider if available.
- */
-async function tryPickGroqProvider(systemPrompt: string): Promise<{ provider: "groq"; modelId: string; systemPrompt: string } | null> {
-  if (!groqIsAvailable()) return null;
-  if (groqKeyValid === null) {
-    await validateGroqKey();
-  }
-  if (!groqIsAvailable()) return null;
-  const modelId = GROQ_MODELS[groqCurrentModelIndex] || GROQ_MODELS[0];
-  console.info(`[Chatbot] Using TIER 2: ${modelId} (OpenCode)`);
-  return { provider: "groq", modelId, systemPrompt };
-}
-
-/**
- * Try to pick an OpenRouter provider (last working model or best tier-1).
- */
-async function tryPickOpenRouterProvider(systemPrompt: string): Promise<{ provider: "openrouter"; modelId: string; systemPrompt: string } | null> {
-  if (!openrouterKeyValidated) {
-    await validateOpenRouterKey();
-  }
-  if (openrouterKeyValid === false) return null;
-
-  // Use last working model or best tier-1 model — NO PROBING (saves 30s)
-  if (lastWorkingModel && (Date.now() - lastWorkingTime) < 600000) {
-    if ((modelFailCount[lastWorkingModel] || 0) < 3) {
-      console.info("[Chatbot] Using last working OpenRouter model:", lastWorkingModel);
-      return { provider: "openrouter", modelId: lastWorkingModel, systemPrompt };
-    }
-  }
-
-  // Use best tier-1 model directly — no probing needed
-  const bestModel = AI_MODELS.find(m => m.tier === 1);
-  if (bestModel) {
-    console.info("[Chatbot] Using best OpenRouter model:", bestModel.id);
-    return { provider: "openrouter", modelId: bestModel.id, systemPrompt };
-  }
-
-  return null;
-}
-
-export async function pickWorkingModel(
-  _messages: { role: string; content: string }[],
-  language?: string,
-  mode: "thinking" | "instant" = "thinking"
-): Promise<
-  | { provider: "modal"; modelId: string; systemPrompt: string }
-  | { provider: "groq"; modelId: string; systemPrompt: string }
-  | { provider: "openrouter"; modelId: string; systemPrompt: string }
-  | null
-> {
-  const systemPrompt = getSystemPrompt(language);
-
-  // ─── THINKING MODE: Modal (GLM-5.1) first — best quality reasoning ───
-  if (mode === "thinking") {
-    const modalPick = await tryPickModalProvider(systemPrompt);
-    if (modalPick) return modalPick;
-  }
-
-  // ─── INSTANT MODE: Groq first — ultra-fast models ───
-  // ─── THINKING fallback: Groq cascade ───
-  const groqPick = await tryPickGroqProvider(systemPrompt);
-  if (groqPick) return groqPick;
-
-  console.warn("[Chatbot] Modal + OpenCode unavailable — using TIER 3: OpenRouter");
-  const openRouterPick = await tryPickOpenRouterProvider(systemPrompt);
-  if (openRouterPick) return openRouterPick;
-
-  // ─── INSTANT MODE last resort: Modal (if instant mode skipped it) ───
-  if (mode === "instant") {
-    const modalPick = await tryPickModalProvider(systemPrompt);
-    if (modalPick) return modalPick;
-  }
-
-  return null;
-}
-
-/**
- * Create a streaming connection to the chosen provider.
- * Returns a ReadableStream of our lightweight SSE format:
- *     data: {"text": "..."}      (token chunks)
- *     data: [DONE]
- *
- * CRITICAL: for Modal/GLM-5.1, only `delta.content` is forwarded. The
- * `delta.reasoning_content` (chain-of-thought) is NEVER sent to the client.
- *
- * If the chosen provider stream fails partway, we transparently fall back to
- * the other provider (non-streaming) so the user still gets an answer.
- */
-function buildStreamErrorResponse(kind: "noProvider" | "openRouterError" | "openRouterConnectError", language?: string): { error: string } {
-  const messages: Record<typeof kind, { ar: string; en: string }> = {
-    noProvider: {
-      ar: "جميع نماذج الذكاء الاصطناعي مشغولة حالياً. يرجى المحاولة بعد قليل.",
-      en: "All AI models are temporarily busy. Please try again in a few seconds.",
-    },
-    openRouterError: {
-      ar: "عذراً، حدث خطأ. يرجى المحاولة مرة أخرى.",
-      en: "Sorry, an error occurred. Please try again.",
-    },
-    openRouterConnectError: {
-      ar: "تعذر الاتصال بالخدمة. يرجى المحاولة مرة أخرى.",
-      en: "Could not connect to the service. Please try again.",
-    },
-  };
-  return { error: language === "ar" ? messages[kind].ar : messages[kind].en };
-}
-
-/**
- * Process one SSE line from an upstream chat-completion stream.
- * Mutates `state.sawContent` and `state.streamClosed`. Returns true to
- * break the surrounding for-of loop (when the stream is closed).
- */
-function processSSEDeltaLine(
-  line: string,
-  encoder: TextEncoder,
-  controller: ReadableStreamDefaultController<Uint8Array>,
-  state: { sawContent: boolean; streamClosed: boolean },
-): boolean {
-  const trimmed = line.trim();
-  if (!trimmed || trimmed === "data: [DONE]") return false;
-  if (!trimmed.startsWith("data: ")) return false;
-  try {
-    const parsed = JSON.parse(trimmed.slice(6));
-    const delta = parsed.choices?.[0]?.delta;
-    if (!delta) return false;
-    if (delta.content) {
-      state.sawContent = true;
-      try {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: delta.content })}\n\n`));
-      } catch {
-        state.streamClosed = true;
-        return true;
-      }
-    }
-  } catch {
-    // Skip malformed JSON chunks
-  }
-  return false;
-}
-
-/**
- * Flush any trailing buffered SSE line after the upstream stream ends.
- */
-function flushTrailingSSEBuffer(
-  buffer: string,
-  encoder: TextEncoder,
-  controller: ReadableStreamDefaultController<Uint8Array>,
-  state: { sawContent: boolean; streamClosed: boolean },
-): void {
-  if (state.streamClosed) return;
-  const rest = buffer.trim();
-  if (!rest.startsWith("data: ") || rest.slice(6).trim() === "[DONE]") return;
-  try {
-    const parsed = JSON.parse(rest.slice(6).trim());
-    const delta = parsed.choices?.[0]?.delta;
-    if (delta?.content) {
-      state.sawContent = true;
-      try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: delta.content })}\n\n`)); } catch { /* already closed */ }
-    }
-  } catch {
-    // Skip malformed trailing chunk
-  }
-}
-
-/**
- * If Modal produced no usable content, recover via OpenCode then OpenRouter.
- */
-async function recoverEmptyModalStream(
-  request: { messages: { role: string; content: string }[]; language?: string },
-  picked: { systemPrompt: string },
-  encoder: TextEncoder,
-  controller: ReadableStreamDefaultController<Uint8Array>,
-): Promise<void> {
-  console.warn("[Chatbot/Stream] Modal returned no content (only reasoning) — trying OpenCode...");
-  const fb2 = await groqFallback(request.messages, picked.systemPrompt);
-  if (fb2) {
-    try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: fb2.reply })}\n\n`)); } catch { /* controller already closed */ }
-    return;
-  }
-  const fb = await openRouterFallback(request.messages, picked.systemPrompt, request.language);
-  if (fb) {
-    try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: fb.reply })}\n\n`)); } catch { /* controller already closed */ }
-  }
-}
-
-/**
- * Modal streaming start callback: pump upstream chunks into the SSE controller.
- * Extracted from getStreamResponse to keep cognitive complexity manageable.
- */
-async function pumpModalStream( // NOSONAR — complex function, refactoring would risk breaking critical behavior
-  upstream: ReadableStream<Uint8Array>,
-  decoder: TextDecoder,
-  encoder: TextEncoder,
-  controller: ReadableStreamDefaultController<Uint8Array>,
-  request: { messages: { role: string; content: string }[]; language?: string },
-  picked: { systemPrompt: string },
-): Promise<void> {
-  const reader = upstream.getReader();
-  const state = { sawContent: false, streamClosed: false };
-  let buffer = "";
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done || state.streamClosed) break;
-      buffer += decoder.decode(value, { stream: true });
-
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || ""; // keep incomplete line
-
-      for (const line of lines) {
-        if (state.streamClosed) break;
-        if (processSSEDeltaLine(line, encoder, controller, state)) break;
-      }
-    }
-
-    flushTrailingSSEBuffer(buffer, encoder, controller, state);
-  } catch (e) {
-    try { controller.error(e); } catch { /* already closed */ }
-    return;
-  } finally {
-    try { reader.releaseLock(); } catch { /* already released */ }
-  }
-
-  if (!state.sawContent) {
-    await recoverEmptyModalStream(request, picked, encoder, controller);
-  }
-
-  try { controller.enqueue(encoder.encode("data: [DONE]\n\n")); } catch { /* controller already closed */ }
-  try { controller.close(); } catch { /* already closed */ }
-}
-
-/**
- * Build the Modal fetch request body for the chosen model + system prompt.
- */
-function buildModalStreamBody(picked: { modelId: string; systemPrompt: string }, request: { messages: { role: string; content: string }[] }) {
-  return JSON.stringify({
-    model: picked.modelId,
-    messages: [
-      { role: "system", content: picked.systemPrompt },
-      ...request.messages.map((m) => ({ role: m.role, content: m.content })),
-    ],
-    temperature: 0.7,
-    max_tokens: 2048,
-    stream: true,
-  });
-}
-
-/**
- * Try a single Modal fetch attempt with the given timeout.
- * Returns the Response on success, or null if the caller should retry.
- * Performs the appropriate backoff sleep internally before returning null
- * (so the caller can simply loop without per-case sleep logic).
- */
-async function tryModalStreamFetch(picked: { modelId: string; systemPrompt: string }, request: { messages: { role: string; content: string }[] }, timeout: number, attempt: number, totalAttempts: number, isLastAttempt: boolean): Promise<Response | null> {
-  console.info(`[Chatbot/Stream] GLM-5.1 attempt ${attempt + 1}/${totalAttempts} (${timeout/1000}s timeout)`);
-  let response: Response;
-  try {
-    response = await fetch(MODAL_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${MODAL_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: buildModalStreamBody(picked, request),
-      signal: AbortSignal.timeout(timeout),
-    });
-  } catch (e) {
-    modalConsecFails++;
-    modalLastFailTime = Date.now();
-    console.warn(`[Chatbot/Stream] Modal attempt ${attempt + 1} threw:`, String(e));
-    if (!isLastAttempt) {
-      console.info("[Chatbot/Stream] Retrying Modal in 5s (queue congestion)...");
-      await sleep(5000);
-    }
-    return null;
-  }
-
-  if (response.status === 429 || response.status === 503) {
-    modalConsecFails++;
-    modalLastFailTime = Date.now();
-    const retryAfter = response.headers.get("retry-after") || "5";
-    console.warn(`[Chatbot/Stream] Modal overloaded (${response.status}) — waiting ${retryAfter}s before retry...`);
-    await sleep(Number.parseInt(retryAfter, 10) * 1000);
-    if (!isLastAttempt) {
-      console.info("[Chatbot/Stream] Retrying Modal after queue clear...");
-    }
-    return null;
-  }
-
-  if (!response.ok || !response.body) {
-    modalConsecFails++;
-    modalLastFailTime = Date.now();
-    console.warn(`[Chatbot/Stream] Modal attempt ${attempt + 1} failed: HTTP ${response.status}`);
-    if (!isLastAttempt) {
-      console.info("[Chatbot/Stream] Retrying Modal...");
-      await sleep(3000);
-    }
-    return null;
-  }
-
-  // SUCCESS
-  modalConsecFails = 0;
-  modalLastSuccess = Date.now();
-  modalKeyValid = true;
-  console.info(`[Chatbot/Stream] GLM-5.1 attempt ${attempt + 1} SUCCESS`);
-  return response;
-}
-
-/**
- * Modal stream (GLM-5.1) with smart RETRY — 3 attempts with backoff.
- */
-async function streamModalProvider(
-  request: { messages: { role: string; content: string }[]; language?: string },
-  picked: { modelId: string; systemPrompt: string },
-  encoder: TextEncoder,
-): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
-  const timeouts = [180000, 300000, 480000]; // 3min, 5min, 8min
-  let response: Response | null = null;
-
-  for (let attempt = 0; attempt < timeouts.length; attempt++) {
-    const timeout = timeouts[attempt];
-    const isLastAttempt = attempt === timeouts.length - 1;
-    const result = await tryModalStreamFetch(picked, request, timeout, attempt, timeouts.length, isLastAttempt);
-    if (result) {
-      response = result;
-      break;
-    }
-  }
-
-  if (!response?.body) {
-    console.error("[Chatbot/Stream] All Modal attempts failed — falling back to OpenCode.");
-    return await streamGroqFallback(request, picked.systemPrompt);
-  }
-
-  const upstream = response.body;
-  const decoder = new TextDecoder();
-
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      await pumpModalStream(upstream, decoder, encoder, controller, request, picked);
-    },
-  });
-
-  return { stream, model: picked.modelId };
-}
-
-/**
- * Build a TransformStream that decodes upstream SSE chunks and re-emits
- * lightweight `data: {"text": "..."}` events for our client.
- * Extracted from streamGroqProvider/streamOpenRouterProvider to keep
- * cognitive complexity manageable.
- */
-function buildSSEContentTransformStream(encoder: TextEncoder): TransformStream<Uint8Array, Uint8Array> {
-  const decoder = new TextDecoder();
-  return new TransformStream<Uint8Array, Uint8Array>({
-    async transform(chunk, controller) {
-      try {
-        const text = decoder.decode(chunk, { stream: true });
-        const lines = text.split("\n");
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || trimmed === "data: [DONE]") continue;
-          if (!trimmed.startsWith("data: ")) continue;
-          try {
-            const parsed = JSON.parse(trimmed.slice(6));
-            const delta = parsed.choices?.[0]?.delta;
-            if (delta?.content) {
-              try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: delta.content })}\n\n`)); } catch { /* closed */ }
-            }
-          } catch { /* skip malformed JSON */ }
-        }
-      } catch { /* decode error */ }
-    },
-    flush(controller) {
-      try { controller.enqueue(encoder.encode("data: [DONE]\n\n")); } catch { /* closed */ }
-      try { controller.terminate(); } catch { /* terminated */ }
-    },
-  });
-}
-
-/**
- * Try a single Groq streaming fetch attempt with the given timeout.
- * Returns the Response on success, or null if the caller should try the
- * next attempt or model. Performs the appropriate backoff sleep internally
- * before returning null so the caller can simply loop.
- */
-async function tryGroqStreamFetch(
-  request: { messages: { role: string; content: string }[] },
-  picked: { systemPrompt: string },
-  modelId: string,
-  timeout: number,
-  attempt: number,
-  totalAttempts: number,
-): Promise<Response | null> {
-  try {
-    return await fetch(GROQ_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${GROQ_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: modelId,
-        messages: [
-          { role: "system", content: picked.systemPrompt },
-          ...request.messages.map((m) => ({ role: m.role, content: m.content })),
-        ],
-        temperature: 0.7,
-        max_tokens: 2048,
-        stream: true,
-      }),
-      signal: AbortSignal.timeout(timeout),
-    });
-  } catch (e) {
-    console.warn(`[Chatbot/Stream/Groq] ${modelId} attempt ${attempt + 1} threw:`, String(e));
-    if (attempt < totalAttempts - 1) await sleep(5000);
-    return null;
-  }
-}
-
-/**
- * Inspect a Groq fetch Response and decide whether to use it, retry, or
- * give up on this model. Returns:
- *   - { kind: "ok", response }    → caller should pipe the response
- *   - { kind: "retry" }            → caller should retry the next attempt (sleeps handled here)
- *   - { kind: "nextModel" }        → caller should move to the next model
- */
-async function evaluateGroqStreamResponse(
-  response: Response,
-  modelId: string,
-  attempt: number,
-  totalAttempts: number,
-): Promise<{ kind: "ok" | "retry" | "nextModel" }> {
-  if (response.status === 429 || response.status === 503) {
-    console.warn(`[Chatbot/Stream/Groq] ${modelId} overloaded (${response.status}) — trying next model...`);
-    return { kind: "nextModel" };
-  }
-  if (!response.ok || !response.body) {
-    console.warn(`[Chatbot/Stream/Groq] ${modelId} attempt ${attempt + 1} failed: HTTP ${response.status}`);
-    if (attempt < totalAttempts - 1) {
-      await sleep(3000);
-      return { kind: "retry" };
-    }
-    return { kind: "nextModel" };
-  }
-  return { kind: "ok" };
-}
-
-/**
- * OpenCode stream (DeepSeek V4 → MiMo → Big Pickle → North Mini Code).
- * Try each Groq model in cascade; on success pipe through a transform that
- * extracts `delta.content` and emits `[DONE]` on flush.
- */
-async function streamGroqProvider( // NOSONAR — complex function, refactoring would risk breaking critical behavior
-  request: { messages: { role: string; content: string }[]; language?: string },
-  picked: { systemPrompt: string },
-  encoder: TextEncoder,
-): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
-  const timeouts = [120000, 180000]; // 2min, 3min with backoff
-
-  for (let i = 0; i < GROQ_MODELS.length; i++) {
-    const modelId = GROQ_MODELS[i];
-    groqCurrentModelIndex = i;
-
-    for (let attempt = 0; attempt < timeouts.length; attempt++) {
-      const response = await tryGroqStreamFetch(request, picked, modelId, timeouts[attempt], attempt, timeouts.length);
-      if (!response) {
-        // Fetch threw — try next attempt (sleep handled in helper) or fall through to next model
-        if (attempt < timeouts.length - 1) continue;
-        break;
-      }
-
-      const evaluation = await evaluateGroqStreamResponse(response, modelId, attempt, timeouts.length);
-      if (evaluation.kind === "nextModel") break;
-      if (evaluation.kind === "retry") continue;
-
-      // SUCCESS
-      groqConsecFails = 0;
-      groqLastSuccess = Date.now();
-      groqKeyValid = true;
-      console.info(`[Chatbot/Stream/Groq] ${modelId} SUCCESS`);
-
-      const transformStreamOC = buildSSEContentTransformStream(encoder);
-      return { stream: response.body!.pipeThrough(transformStreamOC), model: modelId };
-    }
-
-    // Model exhausted — try next
-    groqConsecFails++;
-    groqLastFailTime = Date.now();
-    console.warn(`[Chatbot/Stream/Groq] ${modelId} exhausted — trying next model...`);
-  }
-
-  // All OpenCode models failed
-  console.error("[Chatbot/Stream] All OpenCode models exhausted — falling back to OpenRouter.");
-  return await streamOpenRouterFallback(request, picked.systemPrompt);
-}
-
-/**
- * OpenRouter stream — direct fetch + transform that extracts `delta.content`.
- */
-async function streamOpenRouterProvider(
-  request: { messages: { role: string; content: string }[]; language?: string },
-  picked: { modelId: string; systemPrompt: string },
-  encoder: TextEncoder,
-): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
-  try {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://ahmedelbaz.qzz.io",
-        "X-Title": "Elbaz LMS Chatbot",
-      },
-      body: JSON.stringify({
-        model: picked.modelId,
-        messages: [
-          { role: "system", content: picked.systemPrompt },
-          ...request.messages.map((m) => ({ role: m.role, content: m.content })),
-        ],
-        temperature: 0.7,
-        max_tokens: 2048,
-        stream: true,
-      }),
-    });
-
-    if (!response.ok || !response.body) {
-      modelFailCount[picked.modelId] = (modelFailCount[picked.modelId] || 0) + 1;
-      return buildStreamErrorResponse("openRouterError", request.language);
-    }
-
-    const transformStream = buildSSEContentTransformStream(encoder);
-    const stream = response.body.pipeThrough(transformStream);
-    return { stream, model: picked.modelId };
-  } catch {
-    modelFailCount[picked.modelId] = (modelFailCount[picked.modelId] || 0) + 1;
-    return buildStreamErrorResponse("openRouterConnectError", request.language);
-  }
-}
-
-export async function getStreamResponse(request: {
-  messages: { role: string; content: string }[];
-  language?: string;
-  mode?: "thinking" | "instant";
-}): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
-  const mode = request.mode || "thinking";
-  const picked = await pickWorkingModel(request.messages, request.language, mode);
-
-  if (!picked) {
-    return buildStreamErrorResponse("noProvider", request.language);
-  }
-
-  const encoder = new TextEncoder();
-
-  if (picked.provider === "modal") {
-    return await streamModalProvider(request, picked, encoder);
-  }
-
-  if (picked.provider === "groq") {
-    return await streamGroqProvider(request, picked, encoder);
-  }
-
-  return await streamOpenRouterProvider(request, picked, encoder);
-}
-
-/**
- * Non-streaming OpenCode fallback — try all OpenCode models in cascade.
- */
-async function groqFallback(
+export async function groqFallback(
   messages: { role: string; content: string }[],
   systemPrompt: string
 ): Promise<{ reply: string; model: string } | null> {
@@ -1650,122 +775,10 @@ async function groqFallback(
   return null;
 }
 
-/**
- * If a Modal stream fails, try OpenCode fallback,
- * then emit as a single SSE text chunk so the client sees one clean reply.
- */
-async function streamGroqFallback(
-  request: { messages: { role: string; content: string }[]; language?: string },
-  systemPrompt: string
-): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
-  const ocResult = await groqFallback(request.messages, systemPrompt);
-  if (ocResult) {
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        try {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: ocResult.reply })}\n\n`));
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-          controller.close();
-        } catch { /* controller already closed */ }
-      },
-    });
-    return { stream, model: ocResult.model };
-  }
+// ════════════════════════════════════════════════════════════════════════
+// STATS / MONITORING
+// ════════════════════════════════════════════════════════════════════════
 
-  // Groq failed — try NVIDIA (MiniMax-M3)
-  const nvidiaResult = await nvidiaFallback(request.messages, systemPrompt);
-  if (nvidiaResult) {
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        try {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: nvidiaResult.reply })}\n\n`));
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-          controller.close();
-        } catch { /* controller already closed */ }
-      },
-    });
-    return { stream, model: nvidiaResult.model };
-  }
-
-  // NVIDIA also failed — try OpenRouter
-  const orResult = await openRouterFallback(request.messages, systemPrompt, request.language);
-  if (!orResult) {
-    return {
-      error: request.language === "ar"
-        ? "جميع نماذج الذكاء الاصطناعي مشغولة حالياً. يرجى المحاولة بعد قليل."
-        : "All AI models are temporarily busy. Please try again in a few seconds.",
-    };
-  }
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      try {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: orResult.reply })}\n\n`));
-        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-        controller.close();
-      } catch { /* controller already closed */ }
-    },
-  });
-  return { stream, model: orResult.model };
-}
-
-/**
- * If a Modal stream fails, fall back to a NON-streaming OpenRouter response,
- * then emit it as a single SSE text chunk so the client sees one clean reply.
- * As a last resort (OpenRouter also failed), try Modal (GLM-5.1) non-streaming
- * — this ensures instant mode users still get an answer if Groq + OpenRouter
- * are both down.
- */
-async function streamOpenRouterFallback(
-  request: { messages: { role: string; content: string }[]; language?: string },
-  systemPrompt: string
-): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
-  const orResult = await openRouterFallback(request.messages, systemPrompt, request.language);
-  if (orResult) {
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        try {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: orResult.reply })}\n\n`));
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-          controller.close();
-        } catch { /* controller already closed */ }
-      },
-    });
-    return { stream, model: orResult.model };
-  }
-
-  // OpenRouter failed — last resort: try Modal (GLM-5.1) non-streaming.
-  // This ensures instant mode users get an answer even if Groq + OpenRouter
-  // are both down (mirrors the non-streaming getChatResponse cascade).
-  console.error("[Chatbot/Stream] OpenRouter fallback failed — last resort: Modal non-streaming.");
-  const modalResult = await tryModalTier(request.messages, systemPrompt);
-  if (modalResult?.success && modalResult.reply) {
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        try {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: modalResult.reply })}\n\n`));
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-          controller.close();
-        } catch { /* controller already closed */ }
-      },
-    });
-    return { stream, model: modalResult.model || MODAL_MODEL };
-  }
-
-  return {
-    error: request.language === "ar"
-      ? "جميع نماذج الذكاء الاصطناعي مشغولة حالياً. يرجى المحاولة بعد قليل."
-      : "All AI models are temporarily busy. Please try again in a few seconds.",
-  };
-}
-
-/**
- * Get stats about provider/model usage (for debugging/monitoring)
- */
 export function getChatbotStats() {
   return {
     tier1: {
@@ -1808,3 +821,12 @@ export function getChatbotStats() {
     },
   };
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// RE-EXPORTS from sub-modules
+// ════════════════════════════════════════════════════════════════════════
+
+// Streaming functions are implemented in chatbot-stream.ts.
+// They are re-exported here so that chatbot.ts remains the single import
+// target for downstream consumers (chatbot-router.ts, chatbot.test.ts).
+export { getStreamResponse, pickWorkingModel } from "./chatbot-stream.js";

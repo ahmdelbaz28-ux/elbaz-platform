@@ -1,6 +1,7 @@
 import { Redis } from "ioredis";
 import type { RateLimiterMemory, RateLimiterRes } from "rate-limiter-flexible";
 import { TRPCError } from "@trpc/server";
+import { logger } from "./logger.js";
 
 let redisClient: Redis | null = null;
 let rateLimiter: RateLimiterMemory | null = null;
@@ -19,10 +20,10 @@ async function initRedis(): Promise<void> {
       disconnectTimeout: 5000,
     });
     redisClient.on("error", (err) => {
-      console.error("[RateLimiter] Redis error:", err.message);
+      logger.error("[RateLimiter] Redis error", { error: err.message });
     });
   } catch {
-    console.warn("[RateLimiter] Redis unavailable, falling back to in-memory");
+    logger.warn("[RateLimiter] Redis unavailable, falling back to in-memory");
   }
 }
 
@@ -48,7 +49,7 @@ async function getRateLimiter() {
       }) as unknown as RateLimiterMemory;
       return rateLimiter;
     } catch {
-      console.warn("[RateLimiter] RateLimiterRedis failed, using in-memory fallback");
+      logger.warn("[RateLimiter] RateLimiterRedis failed, using in-memory fallback");
     }
   }
 
@@ -148,7 +149,7 @@ async function checkRateLimit(ip: string, action: RateLimitAction): Promise<void
   if (!redisClient && !redisWarningLogged) {
     redisWarningLogged = true;
     if (env.isProduction) {
-      console.warn("[RateLimiter] Redis not configured — falling back to in-memory rate limiter");
+      logger.warn("[RateLimiter] Redis not configured — falling back to in-memory rate limiter");
     }
     // Fall through to in-memory rate limiter (initialized in getRateLimiter)
   }
@@ -167,7 +168,7 @@ async function checkRateLimit(ip: string, action: RateLimitAction): Promise<void
           cause: { retryAfterMs: msBeforeNext, action },
         });
       }
-      console.warn(`[RateLimiter] Non-rate-limit error for ${action}:`, (error_ as Error)?.message || error_);
+      logger.warn(`[RateLimiter] Non-rate-limit error for ${action}`, { error: (error_ as Error)?.message || String(error_) });
     }
   }
 
@@ -183,7 +184,7 @@ async function checkRateLimit(ip: string, action: RateLimitAction): Promise<void
         cause: { retryAfterMs: msBeforeNext },
       });
     }
-    console.warn(`[RateLimiter] Non-rate-limit error for ${action}:`, (error_ as Error)?.message || error_);
+    logger.warn(`[RateLimiter] Non-rate-limit error for ${action}`, { error: (error_ as Error)?.message || String(error_) });
   }
 }
 
