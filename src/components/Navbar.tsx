@@ -10,7 +10,7 @@ import {
   Menu, X, LayoutDashboard, Headphones,
   Shield, LogOut, BookOpen, ChevronDown,
   UserCog, FileBox, HelpCircle, Heart, TrendingUp,
-  SunDim,
+  SunDim, BookMarked,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -136,6 +136,7 @@ export default function Navbar() { // NOSONAR — large navigation component wit
               { path: "/courses", label: lang === "ar" ? "الكورسات" : "Courses", icon: <BookOpen className="h-3.5 w-3.5" /> },
               { path: "/references", label: lang === "ar" ? "المراجع" : "References", icon: <FileBox className="h-3.5 w-3.5" /> },
               { path: "/faq", label: lang === "ar" ? "الأسئلة" : "FAQ", icon: <HelpCircle className="h-3.5 w-3.5" /> },
+              ...(isAuthenticated ? [{ path: "/documents", label: lang === "ar" ? "المستندات" : "Documents", icon: <BookMarked className="h-3.5 w-3.5" /> }] : []),
             ].map((link) => (
               <Magnetic key={link.path}>
                 <Link
@@ -347,6 +348,7 @@ export default function Navbar() { // NOSONAR — large navigation component wit
               { path: "/dashboard", label: lang === "ar" ? "لوحتي" : "Dashboard" },
               { path: "/wishlist", label: lang === "ar" ? "المفضلة" : "Wishlist" },
               { path: "/journey", label: lang === "ar" ? "رحلتي" : "My Journey" },
+              { path: "/documents", label: lang === "ar" ? "المستندات" : "Documents" },
               { path: "/profile", label: lang === "ar" ? "الملف الشخصي" : "Profile" },
               { path: "/support", label: lang === "ar" ? "الدعم" : "Support" },
             ] : []),
