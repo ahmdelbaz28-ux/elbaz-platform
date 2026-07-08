@@ -211,10 +211,24 @@ function ParallaxHeroImage({ src, alt, className }: { readonly src: string; read
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
   const y = useTransform(scrollYProgress, [0, 1], [0, -100]);
   const scale = useTransform(scrollYProgress, [0, 1], [1, 0.95]);
+  const [imgError, setImgError] = useState(false);
+
+  if (imgError) {
+    return (
+      <motion.div ref={ref} style={{ y, scale }} className={className}>
+        <div className="flex h-[400px] w-full items-center justify-center bg-gradient-to-br from-cyan-600/10 via-blue-600/5 to-transparent lg:h-[500px]">
+          <div className="text-center">
+            <Zap className="mx-auto h-16 w-16 text-cyan-400/50" />
+            <p className="mt-4 text-sm text-slate-500">Master Electrical Engineering</p>
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div ref={ref} style={{ y, scale }} className={className}>
-      <img src={src} alt={alt} className="w-full h-auto object-cover max-h-[480px] lg:max-h-[600px] xl:max-h-[680px]" loading="eager" fetchPriority="high" decoding="async" width="1200" height="800" onError={(e) => { e.currentTarget.src = "/hero-bg.jpg"; e.currentTarget.onerror = null; }} />
+      <img src={src} alt={alt} className="w-full h-auto object-cover max-h-[480px] lg:max-h-[600px] xl:max-h-[680px]" loading="eager" fetchPriority="high" decoding="async" width="1200" height="800" onError={() => setImgError(true)} />
     </motion.div>
   );
 }
