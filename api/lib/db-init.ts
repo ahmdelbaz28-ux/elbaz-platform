@@ -374,7 +374,8 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
       // We now add them inline so existing DBs get upgraded on next boot.
       logger.info("[DB] Running v4 features migration (2FA + sessions/notes/licenses)...");
 
-      // 2FA columns on users table        if (!(await columnExists("users", "totpSecret"))) {
+      // 2FA columns on users table
+      if (!(await columnExists("users", "totpSecret"))) {
         try { await conn.execute(`ALTER TABLE users ADD COLUMN totpSecret VARCHAR(255) NULL`); logger.info("[DB]   + users.totpSecret"); } catch (e) { logger.warn("[DB] totpSecret", { error: (e as Error).message }); }
       }
       if (!(await columnExists("users", "totpEnabled"))) {
