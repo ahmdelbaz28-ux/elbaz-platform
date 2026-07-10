@@ -1,3 +1,24 @@
+---
+title: Elbaz Platform
+emoji: ⚡
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: true
+license: other
+short_description: Production-grade LMS for Electrical Engineering
+tags:
+  - docker
+  - education
+  - lms
+  - react
+  - typescript
+  - hono
+  - trpc
+  - mysql
+---
+
 <div align="center">
 
 # ⚡ Elbaz Platform
