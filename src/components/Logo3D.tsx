@@ -8,10 +8,10 @@ import { useEffect, useRef, useState } from 'react';
 /*  Design intent:                                                             */
 /*    • Rounded-square (squircle) container instead of circle — more modern    */
 /*    • Clean gradient backing + subtle border — no inner decorative rings     */
-/*    • Slow 6s breathing glow halo — alive but never distracting              */
+/*    • Slow 6s breathing glow halo via CSS animation (no JS re-renders)       */
 /*    • On hover: subtle lift + brighter halo, NO tilt, NO sweep               */
 /*    • Accessibility: respects prefers-reduced-motion                          */
-/*    • Performance: one rAF per instance, paused when tab hidden              */
+/*    • Performance: CSS-driven animation — zero React re-renders while idle   */
 /*    • Matching aesthetic with BackgroundLogoWatermark                         */
 /* -------------------------------------------------------------------------- */
 
@@ -46,10 +46,7 @@ export default function Logo3D({
   const outerSize = Math.round(px * HALO_SCALE);
 
   const [isHovered, setIsHovered] = useState(false);
-  const [breath, setBreath] = useState(0.5);
   const [isLight, setIsLight] = useState(false);
-  const rafRef = useRef<number>(0);
-  const visibleRef = useRef(true);
 
   /* ── Theme detection ──────────────────────────────────────────────────── */
   useEffect(() => {
@@ -65,54 +62,14 @@ export default function Logo3D({
     return () => observer.disconnect();
   }, []);
 
-  /* ── Slow breathing glow (6s cycle, very subtle) ──────────────────────── */
-  useEffect(() => {
-    const prefersReduced =
-      typeof window !== 'undefined' &&
-      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    if (prefersReduced) {
-      setBreath(0.5);
-      return;
-    }
-
-    const PERIOD = 6000;
-    let start: number | null = null;
-
-    const tick = (ts: number) => {
-      if (!visibleRef.current) {
-        rafRef.current = requestAnimationFrame(tick);
-        return;
-      }
-      if (start === null) start = ts;
-      const t = (ts - start) / PERIOD;
-      setBreath((Math.sin(t * Math.PI * 2) + 1) / 2);
-      rafRef.current = requestAnimationFrame(tick);
-    };
-
-    rafRef.current = requestAnimationFrame(tick);
-
-    const onVisibility = () => {
-      visibleRef.current = !document.hidden;
-      if (!document.hidden) start = null;
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, []);
-
   /* ── Derived values ───────────────────────────────────────────────────── */
   const accentRgb = isLight ? ACCENT_RGB_LIGHT : ACCENT_RGB_DARK;
   const badgeTop = isLight ? BADGE_TOP_LIGHT : BADGE_TOP_DARK;
   const badgeBottom = isLight ? BADGE_BOTTOM_LIGHT : BADGE_BOTTOM_DARK;
-  const haloAlpha = isHovered ? 0.45 : 0.14 + breath * 0.10;
-  const ringAlpha = isHovered ? 0.55 : 0.30 + breath * 0.06;
   const lift = isHovered && interactive ? -1 : 0;
   const haloBlur = Math.max(4, Math.round(px * 0.22));
   const ringWidth = Math.max(1, Math.round(px * 0.025));
-  const borderRadiusPx = Math.round(px * 0.22); // ~22% radius for squircle effect
+  const borderRadiusPx = Math.round(px * 0.22);
 
   /* ── Render ───────────────────────────────────────────────────────────── */
   return (
@@ -131,23 +88,30 @@ export default function Logo3D({
       onMouseEnter={() => interactive && setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* ── Ambient halo (slow breathing glow) ──────────────────────────── */}
+      {/* ── Ambient halo (CSS-driven breathing glow — no JS re-renders) ─── */}
       <div
         aria-hidden="true"
+        className="logo-halo"
         style={{
           position: 'absolute',
           inset: -Math.round(px * 0.08),
           borderRadius: borderRadiusPx + Math.round(px * 0.08),
-          background: `radial-gradient(circle at 40% 30%, rgba(${accentRgb},${haloAlpha}) 0%, rgba(${accentRgb},${haloAlpha * 0.35}) 30%, transparent 70%)`,
+          background: `radial-gradient(circle at 40% 30%, rgba(${accentRgb},0.24) 0%, rgba(${accentRgb},0.08) 30%, transparent 70%)`,
           transition: 'background 0.6s ease',
           pointerEvents: 'none',
           filter: `blur(${haloBlur * 0.6}px)`,
-          willChange: 'background',
+          willChange: 'opacity',
+          opacity: isHovered ? 1 : 0.6,
+          animation: !interactive || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
+            ? 'none'
+            : 'logoBreath 6s ease-in-out infinite',
         }}
       />
 
       {/* ── Main rounded-square badge ───────────────────────────────────── */}
       <div
+        className="logo-badge"
+        data-hovered={isHovered ? '' : undefined}
         style={{
           position: 'relative',
           width: px,
@@ -163,10 +127,10 @@ export default function Logo3D({
             radial-gradient(circle at 30% 25%, rgba(255,255,255,${isLight ? 0.9 : 0.08}) 0%, transparent 50%),
             linear-gradient(155deg, ${badgeTop} 0%, ${badgeBottom} 100%)
           `,
-          border: `${ringWidth}px solid rgba(${accentRgb}, ${ringAlpha})`,
+          border: `${ringWidth}px solid rgba(${accentRgb}, 0.36)`,
           boxShadow: `
             0 ${Math.max(2, Math.round(px * 0.05))}px ${Math.round(px * 0.18)}px rgba(0,0,0,${isLight ? 0.12 : 0.5}),
-            0 0 ${Math.round(px * 0.28)}px rgba(${accentRgb}, ${haloAlpha * 0.5}),
+            0 0 ${Math.round(px * 0.28)}px rgba(${accentRgb}, 0.12),
             inset 0 1px 1px rgba(255,255,255,${isLight ? 0.5 : 0.08}),
             inset 0 -1px 2px rgba(0,0,0,${isLight ? 0.08 : 0.55})
           `,
@@ -175,6 +139,7 @@ export default function Logo3D({
         {/* ── Subtle inner highlight (top edge only, no full ring) ──────── */}
         <div
           aria-hidden="true"
+          className="logo-highlight"
           style={{
             position: 'absolute',
             top: 0,
@@ -187,7 +152,7 @@ export default function Logo3D({
           }}
         />
 
-        {/* ── Logo image — NEVER modified, only its container ──────────── */}
+        {/* ── Logo image — loaded from SVG for instant, crisp rendering ─── */}
         <picture
           aria-hidden="true"
           style={{
@@ -201,23 +166,15 @@ export default function Logo3D({
             zIndex: 2,
           }}
         >
-          <source srcSet="/logo.webp 1x, /logo@2x.webp 2x" type="image/webp" />
+          {/* SVG works natively in all modern browsers — crisp at any size */}
           <img
-            src="/logo.png"
-            srcSet="/logo.png 1x, /logo@2x.webp 2x"
+            src="/logo.svg"
             alt="Elbaz Platform Logo"
             draggable={false}
             loading="eager"
             decoding="async"
             fetchPriority="high"
-            onError={(e) => {
-              e.currentTarget.style.display = 'none';
-              e.currentTarget.onerror = null;
-              const parent = e.currentTarget.closest('[class*="logo-3d"]');
-              if (parent) {
-                (parent as HTMLElement).style.display = 'none';
-              }
-            }}
+            className="logo-img"
             style={{
               maxWidth: '100%',
               maxHeight: '100%',
@@ -226,7 +183,7 @@ export default function Logo3D({
               objectFit: 'contain',
               filter: isHovered
                 ? `drop-shadow(0 0 9px rgba(${accentRgb},0.55)) brightness(1.08)`
-                : `drop-shadow(0 0 3px rgba(${accentRgb},${0.20 + breath * 0.10}))`,
+                : `drop-shadow(0 0 3px rgba(${accentRgb},0.25))`,
               transition: 'filter 0.5s ease',
             }}
           />

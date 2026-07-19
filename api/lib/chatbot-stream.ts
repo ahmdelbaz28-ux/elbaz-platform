@@ -36,27 +36,10 @@ import {
   MAX_CONSEC_NVIDIA_FAILS,
   NVIDIA_COOLDOWN_MS,
 
-  // ── Health state ──
-  modalKeyValid,
-  modalConsecFails,
-  modalLastSuccess,
-  modalLastFailTime,
-  groqKeyValid,
-  groqConsecFails,
-  groqLastSuccess,
-  groqLastFailTime,
-  nvidiaKeyValid,
-  nvidiaConsecFails,
-  nvidiaLastSuccess,
-  nvidiaLastFailTime,
-  groqCurrentModelIndex,
+  // ── Health state (mutable via properties; direct scalar reassignments crash in ESM) ──
+  chatHealth,
   modelFailCount,
   modelSuccessCount,
-  lastWorkingModel,
-  lastWorkingTime,
-  openrouterKeyValid,
-  openrouterKeyValidated,
-  modelFailResetTime,
 
   // ── Availability checks ──
   modalIsAvailable,
@@ -87,7 +70,7 @@ import {
  */
 async function tryPickModalProvider(systemPrompt: string): Promise<{ provider: "modal"; modelId: string; systemPrompt: string } | null> {
   if (!modalIsAvailable()) return null;
-  if (modalKeyValid === null) {
+  if (chatHealth.modalKeyValid === null) {
     // Need to reach into chatbot.ts for validateModalKey
     await validateModalKey();
   }
@@ -101,11 +84,11 @@ async function tryPickModalProvider(systemPrompt: string): Promise<{ provider: "
  */
 async function tryPickGroqProvider(systemPrompt: string): Promise<{ provider: "groq"; modelId: string; systemPrompt: string } | null> {
   if (!groqIsAvailable()) return null;
-  if (groqKeyValid === null) {
+  if (chatHealth.groqKeyValid === null) {
     await validateGroqKey();
   }
   if (!groqIsAvailable()) return null;
-  const modelId = GROQ_MODELS[groqCurrentModelIndex] || GROQ_MODELS[0];
+  const modelId = GROQ_MODELS[chatHealth.groqCurrentModelIndex] || GROQ_MODELS[0];
   logger.info(`[Chatbot] Using TIER 2: ${modelId} (Groq)`);
   return { provider: "groq", modelId, systemPrompt };
 }
@@ -114,16 +97,16 @@ async function tryPickGroqProvider(systemPrompt: string): Promise<{ provider: "g
  * Try to pick an OpenRouter provider (last working model or best tier-1).
  */
 async function tryPickOpenRouterProvider(systemPrompt: string): Promise<{ provider: "openrouter"; modelId: string; systemPrompt: string } | null> {
-  if (!openrouterKeyValidated) {
+  if (!chatHealth.openrouterKeyValidated) {
     await validateOpenRouterKey();
   }
-  if (openrouterKeyValid === false) return null;
+  if (chatHealth.openrouterKeyValid === false) return null;
 
   // Use last working model or best tier-1 model — NO PROBING (saves 30s)
-  if (lastWorkingModel && (Date.now() - lastWorkingTime) < 600000) {
-    if ((modelFailCount[lastWorkingModel] || 0) < 3) {
-      logger.info("[Chatbot] Using last working OpenRouter model", { model: lastWorkingModel });
-      return { provider: "openrouter", modelId: lastWorkingModel, systemPrompt };
+  if (chatHealth.lastWorkingModel && (Date.now() - chatHealth.lastWorkingTime) < 600000) {
+    if ((modelFailCount[chatHealth.lastWorkingModel] || 0) < 3) {
+      logger.info("[Chatbot] Using last working OpenRouter model", { model: chatHealth.lastWorkingModel });
+      return { provider: "openrouter", modelId: chatHealth.lastWorkingModel, systemPrompt };
     }
   }
 
@@ -363,8 +346,8 @@ async function tryModalStreamFetch(
       signal: AbortSignal.timeout(timeout),
     });
   } catch (e) {
-    modalConsecFails++;
-    modalLastFailTime = Date.now();
+    chatHealth.modalConsecFails++;
+    chatHealth.modalLastFailTime = Date.now();
     logger.warn(`[Chatbot/Stream] Modal attempt ${attempt + 1} threw`, { error: String(e) });
     if (!isLastAttempt) {
       logger.info("[Chatbot/Stream] Retrying Modal in 5s (queue congestion)...");
@@ -374,8 +357,8 @@ async function tryModalStreamFetch(
   }
 
   if (response.status === 429 || response.status === 503) {
-    modalConsecFails++;
-    modalLastFailTime = Date.now();
+    chatHealth.modalConsecFails++;
+    chatHealth.modalLastFailTime = Date.now();
     const retryAfter = response.headers.get("retry-after") || "5";
     logger.warn(`[Chatbot/Stream] Modal overloaded (${response.status}) — waiting ${retryAfter}s before retry...`);
     await sleep(Number.parseInt(retryAfter, 10) * 1000);
@@ -386,8 +369,8 @@ async function tryModalStreamFetch(
   }
 
   if (!response.ok || !response.body) {
-    modalConsecFails++;
-    modalLastFailTime = Date.now();
+    chatHealth.modalConsecFails++;
+    chatHealth.modalLastFailTime = Date.now();
     logger.warn(`[Chatbot/Stream] Modal attempt ${attempt + 1} failed: HTTP ${response.status}`);
     if (!isLastAttempt) {
       logger.info("[Chatbot/Stream] Retrying Modal...");
@@ -397,9 +380,9 @@ async function tryModalStreamFetch(
   }
 
   // SUCCESS
-  modalConsecFails = 0;
-  modalLastSuccess = Date.now();
-  modalKeyValid = true;
+  chatHealth.modalConsecFails = 0;
+  chatHealth.modalLastSuccess = Date.now();
+  chatHealth.modalKeyValid = true;
   logger.info(`[Chatbot/Stream] GLM-5.1 attempt ${attempt + 1} SUCCESS`);
   return response;
 }
@@ -552,7 +535,7 @@ async function streamGroqProvider(
 
   for (let i = 0; i < GROQ_MODELS.length; i++) {
     const modelId = GROQ_MODELS[i];
-    groqCurrentModelIndex = i;
+    chatHealth.groqCurrentModelIndex = i;
 
     for (let attempt = 0; attempt < timeouts.length; attempt++) {
       const response = await tryGroqStreamFetch(request, picked, modelId, timeouts[attempt], attempt, timeouts.length);
@@ -566,17 +549,17 @@ async function streamGroqProvider(
       if (evaluation.kind === "retry") continue;
 
       // SUCCESS
-      groqConsecFails = 0;
-      groqLastSuccess = Date.now();
-      groqKeyValid = true;
+      chatHealth.groqConsecFails = 0;
+      chatHealth.groqLastSuccess = Date.now();
+      chatHealth.groqKeyValid = true;
       logger.info(`[Chatbot/Stream/Groq] ${modelId} SUCCESS`);
 
       const transformStreamOC = buildSSEContentTransformStream(encoder);
       return { stream: response.body!.pipeThrough(transformStreamOC), model: modelId };
     }
 
-    groqConsecFails++;
-    groqLastFailTime = Date.now();
+    chatHealth.groqConsecFails++;
+    chatHealth.groqLastFailTime = Date.now();
     logger.warn(`[Chatbot/Stream/Groq] ${modelId} exhausted — trying next model...`);
   }
 
@@ -772,3 +755,4 @@ export async function getStreamResponse(request: {
 
   return await streamOpenRouterProvider(request, picked, encoder);
 }
+

@@ -62,35 +62,38 @@ export const OPENROUTER_API_KEY =
 // HEALTH TRACKING — remember which provider works to optimize routing
 // ════════════════════════════════════════════════════════════════════════
 
-// Modal (Tier 1) health
-export let modalKeyValid: boolean | null = null;
-export let modalConsecFails = 0;
-export let modalLastSuccess = 0;
-export let modalLastFailTime = 0;
+// ── Shared mutable health state ──
+// ESM rule: imported bindings are read-only. Reassignment (e.g. chatHealth.modalConsecFails++)
+// from another module throws TypeError. We use a single exported OBJECT whose
+// properties are freely mutable from any importer — the standard ESM pattern.
+export const chatHealth = {
+  modalKeyValid: null as boolean | null,
+  modalConsecFails: 0,
+  modalLastSuccess: 0,
+  modalLastFailTime: 0,
 
-// Groq (Tier 2) health
-export let groqKeyValid: boolean | null = null;
-export let groqConsecFails = 0;
-export let groqLastSuccess = 0;
-export let groqLastFailTime = 0;
-export let groqCurrentModelIndex = 0;
+  groqKeyValid: null as boolean | null,
+  groqConsecFails: 0,
+  groqLastSuccess: 0,
+  groqLastFailTime: 0,
+  groqCurrentModelIndex: 0,
 
-// NVIDIA (Tier 2.5) health
-export let nvidiaKeyValid: boolean | null = null;
-export let nvidiaConsecFails = 0;
-export let nvidiaLastSuccess = 0;
-export let nvidiaLastFailTime = 0;
+  nvidiaKeyValid: null as boolean | null,
+  nvidiaConsecFails: 0,
+  nvidiaLastSuccess: 0,
+  nvidiaLastFailTime: 0,
 
-// OpenRouter (Tier 3) health
-export let openrouterKeyValidated = false;
-export let openrouterKeyValid: boolean | null = null;
+  openrouterKeyValidated: false,
+  openrouterKeyValid: null as boolean | null,
 
-// Per-model OpenRouter tracking
+  lastWorkingModel: "",
+  lastWorkingTime: 0,
+  modelFailResetTime: 0,
+};
+
+// These are const objects — mutating their properties IS legal in ESM
 export const modelSuccessCount: Record<string, number> = {};
 export const modelFailCount: Record<string, number> = {};
-export let lastWorkingModel = "";
-export let lastWorkingTime = 0;
-export let modelFailResetTime = 0;
 
 export const MODAL_COOLDOWN_MS = 5 * 60_000;
 export const MAX_CONSEC_MODAL_FAILS = 5;
@@ -137,16 +140,16 @@ export async function validateModalKey(): Promise<boolean> {
   if (!MODAL_API_KEY.startsWith("modalresearch_") && !MODAL_API_KEY.startsWith("ak-")) {
     logger.warn("[Chatbot/Modal] API key has unexpected format", { keyPrefix: `${MODAL_API_KEY.substring(0, 15)}...` });
   }
-  modalKeyValid = true;
+  chatHealth.modalKeyValid = true;
   logger.info("[Chatbot/Modal] API key configured (will be validated on first request).");
   return true;
 }
 
 export function modalIsAvailable(): boolean {
   if (!MODAL_API_KEY) return false;
-  if (modalKeyValid === false) return false;
-  if (modalConsecFails >= MAX_CONSEC_MODAL_FAILS) {
-    if (modalLastFailTime && Date.now() - modalLastFailTime < MODAL_COOLDOWN_MS) {
+  if (chatHealth.modalKeyValid === false) return false;
+  if (chatHealth.modalConsecFails >= MAX_CONSEC_MODAL_FAILS) {
+    if (chatHealth.modalLastFailTime && Date.now() - chatHealth.modalLastFailTime < MODAL_COOLDOWN_MS) {
       return false;
     }
   }
@@ -184,15 +187,15 @@ export async function tryModal(
     if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
 
     if (response.status === 401 || response.status === 403) {
-      modalKeyValid = false;
-      modalConsecFails++;
-      modalLastFailTime = Date.now();
+      chatHealth.modalKeyValid = false;
+      chatHealth.modalConsecFails++;
+      chatHealth.modalLastFailTime = Date.now();
       logger.error("[Chatbot/Modal] request rejected", { status: response.status });
       return null;
     }
     if (!response.ok) {
-      modalConsecFails++;
-      modalLastFailTime = Date.now();
+      chatHealth.modalConsecFails++;
+      chatHealth.modalLastFailTime = Date.now();
       return null;
     }
 
@@ -202,27 +205,27 @@ export async function tryModal(
     };
 
     if (data.error) {
-      modalConsecFails++;
-      modalLastFailTime = Date.now();
+      chatHealth.modalConsecFails++;
+      chatHealth.modalLastFailTime = Date.now();
       return null;
     }
 
     const reply = data.choices?.[0]?.message?.content ?? "";
 
     if (!reply || reply.trim().length === 0) {
-      modalConsecFails++;
-      modalLastFailTime = Date.now();
+      chatHealth.modalConsecFails++;
+      chatHealth.modalLastFailTime = Date.now();
       return null;
     }
 
-    modalConsecFails = 0;
-    modalLastSuccess = Date.now();
-    modalKeyValid = true;
+    chatHealth.modalConsecFails = 0;
+    chatHealth.modalLastSuccess = Date.now();
+    chatHealth.modalKeyValid = true;
     return { reply: reply.trim(), model: MODAL_MODEL };
   } catch (e) {
     if (timeoutId) clearTimeout(timeoutId);
-    modalConsecFails++;
-    modalLastFailTime = Date.now();
+    chatHealth.modalConsecFails++;
+    chatHealth.modalLastFailTime = Date.now();
     logger.warn("[Chatbot/Modal] request failed", { error: String(e) });
     return null;
   }
@@ -234,19 +237,19 @@ export async function tryModal(
 
 export async function validateGroqKey(): Promise<boolean> {
   if (!GROQ_API_KEY) {
-    groqKeyValid = false;
+    chatHealth.groqKeyValid = false;
     return false;
   }
-  groqKeyValid = true;
+  chatHealth.groqKeyValid = true;
   logger.info("[Chatbot/Groq] API key configured.");
   return true;
 }
 
 export function groqIsAvailable(): boolean {
   if (!GROQ_API_KEY) return false;
-  if (groqKeyValid === false) return false;
-  if (groqConsecFails >= MAX_CONSEC_GROQ_FAILS) {
-    if (groqLastFailTime && Date.now() - groqLastFailTime < GROQ_COOLDOWN_MS) {
+  if (chatHealth.groqKeyValid === false) return false;
+  if (chatHealth.groqConsecFails >= MAX_CONSEC_GROQ_FAILS) {
+    if (chatHealth.groqLastFailTime && Date.now() - chatHealth.groqLastFailTime < GROQ_COOLDOWN_MS) {
       return false;
     }
   }
@@ -285,16 +288,16 @@ export async function tryGroq(
     if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
 
     if (response.status === 401 || response.status === 403) {
-      groqKeyValid = false;
-      groqConsecFails++;
-      groqLastFailTime = Date.now();
+      chatHealth.groqKeyValid = false;
+      chatHealth.groqConsecFails++;
+      chatHealth.groqLastFailTime = Date.now();
       logger.error("[Chatbot/Groq] request rejected", { status: response.status });
       return null;
     }
 
     if (!response.ok) {
-      groqConsecFails++;
-      groqLastFailTime = Date.now();
+      chatHealth.groqConsecFails++;
+      chatHealth.groqLastFailTime = Date.now();
       return null;
     }
 
@@ -304,27 +307,27 @@ export async function tryGroq(
     };
 
     if (data.error) {
-      groqConsecFails++;
-      groqLastFailTime = Date.now();
+      chatHealth.groqConsecFails++;
+      chatHealth.groqLastFailTime = Date.now();
       return null;
     }
 
     const reply = data.choices?.[0]?.message?.content ?? "";
 
     if (!reply || reply.trim().length === 0) {
-      groqConsecFails++;
-      groqLastFailTime = Date.now();
+      chatHealth.groqConsecFails++;
+      chatHealth.groqLastFailTime = Date.now();
       return null;
     }
 
-    groqConsecFails = 0;
-    groqLastSuccess = Date.now();
-    groqKeyValid = true;
+    chatHealth.groqConsecFails = 0;
+    chatHealth.groqLastSuccess = Date.now();
+    chatHealth.groqKeyValid = true;
     return { reply: reply.trim(), model: modelId };
   } catch (e) {
     if (timeoutId) clearTimeout(timeoutId);
-    groqConsecFails++;
-    groqLastFailTime = Date.now();
+    chatHealth.groqConsecFails++;
+    chatHealth.groqLastFailTime = Date.now();
     logger.warn("[Chatbot/Groq] request failed", { error: String(e) });
     return null;
   }
@@ -336,9 +339,9 @@ export async function tryGroq(
 
 export function nvidiaIsAvailable(): boolean {
   if (!NVIDIA_API_KEY) return false;
-  if (nvidiaKeyValid === false) return false;
-  if (nvidiaConsecFails >= MAX_CONSEC_NVIDIA_FAILS) {
-    if (nvidiaLastFailTime && Date.now() - nvidiaLastFailTime < NVIDIA_COOLDOWN_MS) {
+  if (chatHealth.nvidiaKeyValid === false) return false;
+  if (chatHealth.nvidiaConsecFails >= MAX_CONSEC_NVIDIA_FAILS) {
+    if (chatHealth.nvidiaLastFailTime && Date.now() - chatHealth.nvidiaLastFailTime < NVIDIA_COOLDOWN_MS) {
       return false;
     }
   }
@@ -376,16 +379,16 @@ export async function tryNvidia(
     if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
 
     if (response.status === 401 || response.status === 403) {
-      nvidiaKeyValid = false;
-      nvidiaConsecFails++;
-      nvidiaLastFailTime = Date.now();
+      chatHealth.nvidiaKeyValid = false;
+      chatHealth.nvidiaConsecFails++;
+      chatHealth.nvidiaLastFailTime = Date.now();
       logger.error("[Chatbot/NVIDIA] request rejected", { status: response.status });
       return null;
     }
 
     if (!response.ok) {
-      nvidiaConsecFails++;
-      nvidiaLastFailTime = Date.now();
+      chatHealth.nvidiaConsecFails++;
+      chatHealth.nvidiaLastFailTime = Date.now();
       return null;
     }
 
@@ -395,27 +398,27 @@ export async function tryNvidia(
     };
 
     if (data.error) {
-      nvidiaConsecFails++;
-      nvidiaLastFailTime = Date.now();
+      chatHealth.nvidiaConsecFails++;
+      chatHealth.nvidiaLastFailTime = Date.now();
       return null;
     }
 
     const reply = data.choices?.[0]?.message?.content ?? "";
 
     if (!reply || reply.trim().length === 0) {
-      nvidiaConsecFails++;
-      nvidiaLastFailTime = Date.now();
+      chatHealth.nvidiaConsecFails++;
+      chatHealth.nvidiaLastFailTime = Date.now();
       return null;
     }
 
-    nvidiaConsecFails = 0;
-    nvidiaLastSuccess = Date.now();
-    nvidiaKeyValid = true;
+    chatHealth.nvidiaConsecFails = 0;
+    chatHealth.nvidiaLastSuccess = Date.now();
+    chatHealth.nvidiaKeyValid = true;
     return { reply: reply.trim(), model: NVIDIA_MODEL };
   } catch (e) {
     if (timeoutId) clearTimeout(timeoutId);
-    nvidiaConsecFails++;
-    nvidiaLastFailTime = Date.now();
+    chatHealth.nvidiaConsecFails++;
+    chatHealth.nvidiaLastFailTime = Date.now();
     logger.warn("[Chatbot/NVIDIA] request failed", { error: String(e) });
     return null;
   }
@@ -436,14 +439,14 @@ export async function nvidiaFallback(
 
 export async function validateOpenRouterKey(): Promise<boolean> {
   if (!OPENROUTER_API_KEY) {
-    openrouterKeyValid = false;
-    openrouterKeyValidated = true;
+    chatHealth.openrouterKeyValid = false;
+    chatHealth.openrouterKeyValidated = true;
     logger.warn("[Chatbot/OpenRouter] No OPENROUTER_API_KEY configured — chatbot will not work without either MODAL_API_KEY or OPENROUTER_API_KEY.");
     return false;
   }
   if (!OPENROUTER_API_KEY.startsWith("sk-or-")) {
-    openrouterKeyValid = false;
-    openrouterKeyValidated = true;
+    chatHealth.openrouterKeyValid = false;
+    chatHealth.openrouterKeyValidated = true;
     logger.error("[Chatbot/OpenRouter] Invalid API key format — must start with 'sk-or-'", { keyPrefix: `${OPENROUTER_API_KEY.substring(0, 6)}...` });
     return false;
   }
@@ -452,8 +455,8 @@ export async function validateOpenRouterKey(): Promise<boolean> {
       headers: { "Authorization": `Bearer ${OPENROUTER_API_KEY}` },
       signal: AbortSignal.timeout(5000),
     });
-    openrouterKeyValid = resp.ok;
-    openrouterKeyValidated = true;
+    chatHealth.openrouterKeyValid = resp.ok;
+    chatHealth.openrouterKeyValidated = true;
     if (!resp.ok) {
       const errData = await resp.json().catch(() => ({}));
       logger.error("[Chatbot/OpenRouter] API key validation failed", { error: JSON.stringify(errData) });
@@ -462,11 +465,11 @@ export async function validateOpenRouterKey(): Promise<boolean> {
     } else {
       logger.info("[Chatbot/OpenRouter] API key validated successfully.");
     }
-    return openrouterKeyValid;
+    return chatHealth.openrouterKeyValid;
   } catch (e) {
     logger.warn("[Chatbot/OpenRouter] Could not validate API key (network error — assuming valid)", { error: String(e) });
-    openrouterKeyValid = true;
-    openrouterKeyValidated = true;
+    chatHealth.openrouterKeyValid = true;
+    chatHealth.openrouterKeyValidated = true;
     return true;
   }
 }
@@ -508,8 +511,8 @@ export async function tryModel(
 
     if (response.status === 401) {
       logger.error("[Chatbot/OpenRouter] API key returned 401 Unauthorized — key is invalid or expired");
-      openrouterKeyValid = false;
-      openrouterKeyValidated = true;
+      chatHealth.openrouterKeyValid = false;
+      chatHealth.openrouterKeyValidated = true;
       return null;
     }
 
@@ -533,8 +536,8 @@ export async function tryModel(
 
     modelSuccessCount[modelId] = (modelSuccessCount[modelId] || 0) + 1;
     modelFailCount[modelId] = 0;
-    lastWorkingModel = modelId;
-    lastWorkingTime = Date.now();
+    chatHealth.lastWorkingModel = modelId;
+    chatHealth.lastWorkingTime = Date.now();
 
     return { reply: reply.trim(), model: modelId };
   } catch {
@@ -549,10 +552,10 @@ export async function tryLastWorkingModel(
   systemPrompt: string,
   tierTimeouts: Record<number, number>,
 ): Promise<{ reply: string; model: string } | null> {
-  if (!lastWorkingModel) return null;
-  if ((Date.now() - lastWorkingTime) >= 300000) return null;
-  if ((modelFailCount[lastWorkingModel] || 0) >= 3) return null;
-  return await tryModel(lastWorkingModel, messages, systemPrompt, tierTimeouts[1]);
+  if (!chatHealth.lastWorkingModel) return null;
+  if ((Date.now() - chatHealth.lastWorkingTime) >= 300000) return null;
+  if ((modelFailCount[chatHealth.lastWorkingModel] || 0) >= 3) return null;
+  return await tryModel(chatHealth.lastWorkingModel, messages, systemPrompt, tierTimeouts[1]);
 }
 
 export async function tryModelsByTier(
@@ -604,14 +607,14 @@ export async function openRouterFallback(
   systemPrompt: string,
   _language?: string
 ): Promise<{ reply: string; model: string } | null> {
-  if (!openrouterKeyValidated) {
+  if (!chatHealth.openrouterKeyValidated) {
     await validateOpenRouterKey();
   }
-  if (openrouterKeyValid === false) return null;
+  if (chatHealth.openrouterKeyValid === false) return null;
 
-  if (!modelFailResetTime || Date.now() - modelFailResetTime > 600000) {
+  if (!chatHealth.modelFailResetTime || Date.now() - chatHealth.modelFailResetTime > 600000) {
     for (const k in modelFailCount) { modelFailCount[k] = 0; }
-    modelFailResetTime = Date.now();
+    chatHealth.modelFailResetTime = Date.now();
   }
 
   const globalStartTime = Date.now();
@@ -645,9 +648,9 @@ function buildSuccessResult(result: { reply: string; model: string }): { success
 }
 
 function buildAllTiersFailedResponse(language?: string): { success: boolean; error: string } {
-  const modalDead = modalKeyValid === false || !MODAL_API_KEY;
-  const groqDead = groqKeyValid === false || !GROQ_API_KEY;
-  const orDead = openrouterKeyValid === false || !OPENROUTER_API_KEY;
+  const modalDead = chatHealth.modalKeyValid === false || !MODAL_API_KEY;
+  const groqDead = chatHealth.groqKeyValid === false || !GROQ_API_KEY;
+  const orDead = chatHealth.openrouterKeyValid === false || !OPENROUTER_API_KEY;
 
   if (modalDead && groqDead && orDead) {
     return {
@@ -675,7 +678,7 @@ export async function tryModalTier(
     logger.info("[Chatbot] Modal not available — trying Groq next.");
     return null;
   }
-  if (modalKeyValid === null) {
+  if (chatHealth.modalKeyValid === null) {
     await validateModalKey();
   }
   if (!modalIsAvailable()) return null;
@@ -708,13 +711,13 @@ export async function tryGroqTier(
     logger.info("[Chatbot] NVIDIA also not available — using OpenRouter fallback.");
     return null;
   }
-  if (groqKeyValid === null) {
+  if (chatHealth.groqKeyValid === null) {
     await validateGroqKey();
   }
   if (!groqIsAvailable()) return null;
 
   for (let i = 0; i < GROQ_MODELS.length; i++) {
-    groqCurrentModelIndex = i;
+    chatHealth.groqCurrentModelIndex = i;
     const modelId = GROQ_MODELS[i];
 
     let result = await tryGroq(messages, systemPrompt, modelId, 120000);
@@ -785,37 +788,37 @@ export function getChatbotStats() {
       provider: "modal",
       model: MODAL_MODEL,
       configured: !!MODAL_API_KEY,
-      keyValid: modalKeyValid,
-      consecFails: modalConsecFails,
-      lastSuccessAgo: modalLastSuccess ? `${Math.round((Date.now() - modalLastSuccess) / 1000)}s ago` : "never",
+      keyValid: chatHealth.modalKeyValid,
+      consecFails: chatHealth.modalConsecFails,
+      lastSuccessAgo: chatHealth.modalLastSuccess ? `${Math.round((Date.now() - chatHealth.modalLastSuccess) / 1000)}s ago` : "never",
       available: modalIsAvailable(),
     },
     tier2: {
       provider: "groq",
       models: GROQ_MODELS,
-      currentModel: GROQ_MODELS[groqCurrentModelIndex] || GROQ_MODELS[0],
+      currentModel: GROQ_MODELS[chatHealth.groqCurrentModelIndex] || GROQ_MODELS[0],
       configured: !!GROQ_API_KEY,
-      keyValid: groqKeyValid,
-      consecFails: groqConsecFails,
-      lastSuccessAgo: groqLastSuccess ? `${Math.round((Date.now() - groqLastSuccess) / 1000)}s ago` : "never",
+      keyValid: chatHealth.groqKeyValid,
+      consecFails: chatHealth.groqConsecFails,
+      lastSuccessAgo: chatHealth.groqLastSuccess ? `${Math.round((Date.now() - chatHealth.groqLastSuccess) / 1000)}s ago` : "never",
       available: groqIsAvailable(),
     },
     tier2_5: {
       provider: "nvidia",
       model: NVIDIA_MODEL,
       configured: !!NVIDIA_API_KEY,
-      keyValid: nvidiaKeyValid,
-      consecFails: nvidiaConsecFails,
-      lastSuccessAgo: nvidiaLastSuccess ? `${Math.round((Date.now() - nvidiaLastSuccess) / 1000)}s ago` : "never",
+      keyValid: chatHealth.nvidiaKeyValid,
+      consecFails: chatHealth.nvidiaConsecFails,
+      lastSuccessAgo: chatHealth.nvidiaLastSuccess ? `${Math.round((Date.now() - chatHealth.nvidiaLastSuccess) / 1000)}s ago` : "never",
       available: nvidiaIsAvailable(),
     },
     tier3: {
       provider: "openrouter",
       configured: !!OPENROUTER_API_KEY,
-      keyValid: openrouterKeyValid,
+      keyValid: chatHealth.openrouterKeyValid,
       totalModels: AI_MODELS.length,
-      lastWorkingModel: lastWorkingModel,
-      lastWorkingTimeAgo: lastWorkingTime ? `${Math.round((Date.now() - lastWorkingTime) / 1000)}s ago` : "never",
+      lastWorkingModel: chatHealth.lastWorkingModel,
+      lastWorkingTimeAgo: chatHealth.lastWorkingTime ? `${Math.round((Date.now() - chatHealth.lastWorkingTime) / 1000)}s ago` : "never",
       modelSuccessCounts: modelSuccessCount,
       modelFailCounts: modelFailCount,
     },
@@ -830,3 +833,4 @@ export function getChatbotStats() {
 // They are re-exported here so that chatbot.ts remains the single import
 // target for downstream consumers (chatbot-router.ts, chatbot.test.ts).
 export { getStreamResponse, pickWorkingModel } from "./chatbot-stream.js";
+

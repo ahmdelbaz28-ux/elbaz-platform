@@ -96,12 +96,12 @@ const categoryIcons: Record<string, React.ReactNode> = {
 //   AutoCAD       — official AutoCAD logo by Autodesk (Wikimedia Commons)
 //   MATLAB        — official MATLAB logo by MathWorks (Wikimedia Commons)
 const SOFTWARE_LOGOS = [
-  { name: "ETAP", logo: "/software-logos/etap.webp", logoFallback: "/software-logos/etap.png" },
-  { name: "SKM", logo: "/software-logos/skm.webp", logoFallback: "/software-logos/skm.png" },
-  { name: "PowerFactory", logo: "/software-logos/powerfactory.webp", logoFallback: "/software-logos/powerfactory.png" },
-  { name: "PVSyst", logo: "/software-logos/pvsyst.webp", logoFallback: "/software-logos/pvsyst.png" },
-  { name: "AutoCAD", logo: "/software-logos/autocad.webp", logoFallback: "/software-logos/autocad.png" },
-  { name: "MATLAB", logo: "/software-logos/matlab.webp", logoFallback: "/software-logos/matlab.png" },
+  { name: "ETAP", logo: "/software-logos/etap.svg", logoFallback: "/software-logos/etap.webp" },
+  { name: "SKM", logo: "/software-logos/skm.svg", logoFallback: "/software-logos/skm.webp" },
+  { name: "PowerFactory", logo: "/software-logos/powerfactory.svg", logoFallback: "/software-logos/powerfactory.webp" },
+  { name: "PVSyst", logo: "/software-logos/pvsyst.svg", logoFallback: "/software-logos/pvsyst.webp" },
+  { name: "AutoCAD", logo: "/software-logos/autocad.svg", logoFallback: "/software-logos/autocad.webp" },
+  { name: "MATLAB", logo: "/software-logos/matlab.svg", logoFallback: "/software-logos/matlab.webp" },
 ];
 
 // Realistic fallback stats — updated to match actual platform data
@@ -272,13 +272,13 @@ function SectionHeader({ badge, title, subtitle }: { readonly badge: string; rea
 
 export default function Home() { // NOSONAR — landing page with hero + features + courses + testimonials + FAQ + CTA; section extraction would require prop-drilling many translation/lang-dependent props
   const { t, lang } = useTranslation();
-  const { data: coursesData } = trpc.course.list.useQuery({ featured: true });
+  const { data: coursesData, isPending: coursesPending } = trpc.course.list.useQuery({ featured: true });
   const courses = Array.isArray(coursesData?.items) ? coursesData.items : [];
-  const { data: categories } = trpc.course.categories.useQuery();
-  const { data: testimonials } = trpc.course.testimonials.useQuery();
+  const { data: categories, isPending: categoriesPending } = trpc.course.categories.useQuery();
+  const { data: testimonials, isPending: testimonialsPending } = trpc.course.testimonials.useQuery();
   const { data: activePromotionsRaw } = trpc.settings.getActivePromotions.useQuery();
   const activePromotions = (activePromotionsRaw ?? []) as Promotion[];
-  const { data: platformStats } = trpc.course.stats.useQuery();
+  const { data: platformStats, isPending: statsPending } = trpc.course.stats.useQuery();
 
   const ps = platformStats ?? { totalStudents: 0, satisfactionRate: 0, totalCourses: 0, totalLessons: 0 } as Stats;
   const resolvedStats = {
@@ -375,7 +375,7 @@ export default function Home() { // NOSONAR — landing page with hero + feature
             <motion.div initial={{ opacity: 0, scale: 0.9, x: 50 }} animate={{ opacity: 1, scale: 1, x: 0 }} transition={{ duration: 0.8, type: "spring", stiffness: 100, damping: 20 }} className="relative w-full max-w-2xl lg:max-w-[600px] xl:max-w-[700px]">
               <motion.div animate={{ opacity: [0.4, 0.7, 0.4], scale: [1, 1.05, 1] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }} className="absolute -inset-6 rounded-[2rem] bg-gradient-to-br from-[#06b6d4]/20 via-[#8b5cf6]/10 to-transparent blur-3xl" />
               <motion.div animate={{ boxShadow: ["0 0 30px rgba(6,182,212,0.3)", "0 0 50px rgba(6,182,212,0.5)", "0 0 30px rgba(6,182,212,0.3)"] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }} className="relative z-10 overflow-hidden rounded-[1.5rem] border border-[#1f2d44] bg-[#0a0e17] shadow-2xl">
-                <ParallaxHeroImage src="hero-main.webp" alt="Master Electrical Engineering with Eng. Ahmed Elbaz" />
+                <ParallaxHeroImage src="hero-main.svg" alt="Master Electrical Engineering with Eng. Ahmed Elbaz" />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0a0e17]/40 via-transparent to-white/5 pointer-events-none" />
               </motion.div>
 
@@ -427,7 +427,8 @@ export default function Home() { // NOSONAR — landing page with hero + feature
                 <motion.div key={`${tool.name}-${i}`} className="software-logo-pill group flex flex-col items-center gap-2 cursor-default shrink-0" whileHover={{ y: -6, scale: 1.05 }} title={tool.name}>
                   <div className="flex h-16 w-32 items-center justify-center rounded-xl border border-[#1f2d44] bg-[#0a0e17] px-4 py-3 transition-all group-hover:border-[rgba(6,182,212,0.6)] group-hover:bg-[rgba(6,182,212,0.08)] shadow-lg">
                     <picture>
-                      <source srcSet={tool.logo} type="image/webp" />
+                      <source srcSet={tool.logo} type="image/svg+xml" />
+                      <source srcSet={tool.logoFallback} type="image/webp" />
                       <img
                         src={tool.logoFallback}
                         alt={`${tool.name} official logo`}
@@ -457,6 +458,13 @@ export default function Home() { // NOSONAR — landing page with hero + feature
         <div className="mx-auto max-w-7xl px-4 lg:px-6">
           <SectionHeader badge={t("curriculum")} title={t("browseByCategory")} subtitle={lang === "en" ? "Structured learning paths from fundamentals to advanced design." : "مسارات تعليمية منظمة من الأساسيات إلى التصميم المتقدم."} />
 
+          {categoriesPending ? (
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={`cat-sk-${i}`} className="h-44 rounded-xl border border-[#1f2d44] skeleton-shimmer" />
+              ))}
+            </div>
+          ) : (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {(categories || []).map((cat: Category, idx: number) => {
               // Cycle through modern variants so each card feels distinct
@@ -479,6 +487,7 @@ export default function Home() { // NOSONAR — landing page with hero + feature
               );
             })}
           </div>
+          )}
         </div>
       </section>
 
@@ -493,6 +502,13 @@ export default function Home() { // NOSONAR — landing page with hero + feature
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </Link>
           </div>
+          {coursesPending ? (
+            <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
+              {[1, 2, 3].map((i) => (
+                <div key={`course-sk-${i}`} className="h-80 rounded-xl border border-[#1f2d44] skeleton-shimmer" />
+              ))}
+            </div>
+          ) : (
           <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
             {courses.map((course, idx: number) => (
               <ScrollReveal key={course.id} delay={idx * 0.1}>
@@ -500,6 +516,7 @@ export default function Home() { // NOSONAR — landing page with hero + feature
               </ScrollReveal>
             ))}
           </div>
+          )}
         </div>
       </section>
 
@@ -624,6 +641,13 @@ export default function Home() { // NOSONAR — landing page with hero + feature
         <div className="mx-auto max-w-7xl px-4 lg:px-6">
           <SectionHeader badge={t("testimonials")} title={t("whatEngineersSay")} />
 
+          {testimonialsPending ? (
+            <div className="grid gap-6 md:grid-cols-3">
+              {[1, 2, 3].map((i) => (
+                <div key={`test-sk-${i}`} className="h-52 rounded-xl border border-[#1f2d44] skeleton-shimmer" />
+              ))}
+            </div>
+          ) : (
           <div className="grid gap-6 md:grid-cols-3">
             {(testimonials || []).map((testimonial: Testimonial, idx: number) => (
               <ScrollReveal key={testimonial.id} delay={idx * 0.1}>
@@ -647,6 +671,7 @@ export default function Home() { // NOSONAR — landing page with hero + feature
               </ScrollReveal>
             ))}
           </div>
+          )}
         </div>
       </section>
 
