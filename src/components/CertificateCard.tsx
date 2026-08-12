@@ -139,19 +139,16 @@ export default function CertificateCard({ data }: CertificateCardProps) {
         {/* Logo & Institution */}
         <div className="cert-logo-area">
           <div className="cert-logo-ring">
-            <picture>
-              <source srcSet="/logo.webp 1x, /logo@2x.webp 2x" type="image/webp" />
-              <img
-                src="/logo.png"
-                srcSet="/logo.png 1x, /logo@2x.webp 2x"
-                alt="Elbaz Platform Logo"
-                width={120}
-                height={120}
-                loading="eager"
-                decoding="async"
-                onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.onerror = null; const parent = e.currentTarget.closest('.cert-logo-ring') as HTMLElement | null; if (parent) parent.style.background = 'linear-gradient(135deg, rgba(6,182,212,0.3), rgba(16,185,129,0.2))'; }}
-              />
-            </picture>
+            <img
+              src="/logo.svg"
+              alt="Elbaz Platform Logo"
+              width={120}
+              height={120}
+              loading="eager"
+              decoding="async"
+              className="w-full h-full object-contain"
+              onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.onerror = null; const parent = e.currentTarget.closest('.cert-logo-ring') as HTMLElement | null; if (parent) parent.style.background = 'linear-gradient(135deg, rgba(6,182,212,0.3), rgba(16,185,129,0.2))'; }}
+            />
           </div>
           <span className="cert-platform-label">Elbaz Platform</span>
           <span className="cert-institution-name">Electrical Engineering Academy</span>
