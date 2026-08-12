@@ -110,26 +110,23 @@ export default function BackgroundLogoWatermark() {
           }}
         >
           {/* Logo image */}
-          <picture className="flex items-center justify-center w-full h-full p-[18%]">
-            <source srcSet="/logo.webp 1x, /logo@2x.webp 2x" type="image/webp" />
-            <img
-              src="/logo.png"
-              alt=""
-              draggable={false}
-              loading="lazy"
-              decoding="async"
-              className="w-full h-full object-contain"
-              onError={(e) => {
-                e.currentTarget.style.display = 'none';
-                e.currentTarget.onerror = null;
-              }}
-              style={{
-                filter: isLight
-                  ? "brightness(0.55) saturate(0.7)"
-                  : "brightness(1.3) saturate(0.85)",
-              }}
-            />
-          </picture>
+          <img
+            src="/logo.svg"
+            alt=""
+            draggable={false}
+            loading="lazy"
+            decoding="async"
+            className="w-full h-full object-contain"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+              e.currentTarget.onerror = null;
+            }}
+            style={{
+              filter: isLight
+                ? "brightness(0.55) saturate(0.7)"
+                : "brightness(1.3) saturate(0.85)",
+            }}
+          />
         </div>
       </motion.div>
     </motion.div>

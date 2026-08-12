@@ -90,7 +90,7 @@ export default function Footer() {
           {/* Brand column */}
           <div className="lg:col-span-1">
             <Link to="/" className="flex items-center gap-2.5">
-              <img src="/logo.png" alt="Eng. Ahmed Elbaz Logo" className="h-12 w-auto object-contain rounded-full bg-white" />
+              <img src="/logo.svg" alt="Eng. Ahmed Elbaz Logo" className="h-12 w-auto object-contain rounded-xl" />
               <div>
                 <div className="footer-glow-text text-[13px] font-extrabold text-foreground">
                   {lang === "ar" ? "أحمد الباز" : "Eng. Ahmed Elbaz"}

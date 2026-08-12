@@ -115,7 +115,7 @@ export default function Navbar() { // NOSONAR — large navigation component wit
           {/* ── Brand Mark ── */}
           <Link to="/" className="group flex items-center gap-3 outline-none">
             {/* Custom Logo Image */}
-            <img src="/logo.png" alt="Eng. Ahmed Elbaz Logo" className="h-12 w-auto object-contain rounded-full bg-white" />
+            <img src="/logo.svg" alt="Eng. Ahmed Elbaz Logo" className="h-12 w-auto object-contain rounded-xl" />
 
             {/* Text */}
             <div className="flex flex-col leading-none">

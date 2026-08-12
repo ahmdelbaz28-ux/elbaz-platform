@@ -96,9 +96,9 @@ const categoryIcons: Record<string, React.ReactNode> = {
 //   AutoCAD       — official AutoCAD logo by Autodesk (Wikimedia Commons)
 //   MATLAB        — official MATLAB logo by MathWorks (Wikimedia Commons)
 const SOFTWARE_LOGOS = [
-  { name: "ETAP", logo: "https://cdn.worldvectorlogo.com/logos/etap.svg", logoFallback: "https://cdn.worldvectorlogo.com/logos/etap.svg" },
+  { name: "ETAP", logo: "/software-logos/etap.svg", logoFallback: "/software-logos/etap.svg" },
   { name: "SKM", logo: "/software-logos/skm.png", logoFallback: "/software-logos/skm.png" },
-  { name: "PowerFactory", logo: "/software-logos/powerfactory.png", logoFallback: "/software-logos/powerfactory.png" },
+  { name: "PowerFactory", logo: "/software-logos/powerfactory.svg", logoFallback: "/software-logos/powerfactory.svg" },
   { name: "PVSyst", logo: "/software-logos/pvsyst.png", logoFallback: "/software-logos/pvsyst.png" },
   { name: "AutoCAD", logo: "/software-logos/autocad.png", logoFallback: "/software-logos/autocad.png" },
   { name: "MATLAB", logo: "/software-logos/matlab.png", logoFallback: "/software-logos/matlab.png" },
