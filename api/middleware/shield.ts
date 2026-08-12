@@ -40,7 +40,7 @@ function checkRateLimit(c: any, ip: string, path: string): Response | null {
   return null;
 }
 
-function checkPayloadSize(c: any, path: string): Response | null {
+function checkPayloadSize(c: any, ip: string, path: string): Response | null {
   const method = c.req.method;
   if (method !== "POST" && method !== "PUT" && method !== "PATCH") return null;
 
@@ -91,7 +91,7 @@ export const shieldMiddleware = createMiddleware(async (c, next) => {
   const rateLimited = checkRateLimit(c, ip, path);
   if (rateLimited) return rateLimited;
 
-  const payloadRejected = checkPayloadSize(c, path);
+  const payloadRejected = checkPayloadSize(c, ip, path);
   if (payloadRejected) return payloadRejected;
 
   const ua = c.req.header("User-Agent") || "";

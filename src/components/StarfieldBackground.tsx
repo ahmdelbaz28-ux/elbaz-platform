@@ -84,35 +84,25 @@ export default function StarfieldBackground() {
 
     // Theme detection — refined for both dark and light modes
     const getThemeColors = () => {
-      const isLight = document.documentElement.dataset.theme === 'light';
       return {
-        isLight,
-        // Particles: white dots on dark, subtle gray-blue on light
-        particleColor: isLight ? '148,163,184' : '255,255,255',
-        // Glow particles: accent cyan on dark, muted slate on light
-        particleGlow: isLight ? '100,116,139' : '6,182,212',
-        // Connection lines: subtle on dark, very light on light
-        connectionColor: isLight ? '148,163,184' : '6,182,212',
-        // Shooting stars: cyan accent on dark, warm gray on light
-        shootingColor: isLight ? '100,116,139' : '255,255,255',
-        // Grid lines: barely visible on both
-        gridColor: isLight ? 'rgba(148,163,184,0.06)' : 'rgba(6,182,212,0.035)',
-        gridColorMajor: isLight ? 'rgba(148,163,184,0.1)' : 'rgba(6,182,212,0.06)',
-        // Cosmic gradient: soft warm white to cool gray on light, deep cyan to purple on dark
-        gradientFrom: isLight ? 'rgba(241,245,249,0.5)' : 'rgba(6,182,212,0.06)',
-        gradientTo: isLight ? 'rgba(226,232,240,0.15)' : 'rgba(139,92,246,0.03)',
+        isLight: false,
+        // Particles: white dots
+        particleColor: '255,255,255',
+        // Glow particles: accent orange
+        particleGlow: '249,115,22',
+        // Connection lines: accent orange
+        connectionColor: '249,115,22',
+        // Shooting stars: accent orange
+        shootingColor: '249,115,22',
+        // Grid lines: using border color #4338CA (67, 56, 202)
+        gridColor: 'rgba(67,56,202,0.1)',
+        gridColorMajor: 'rgba(67,56,202,0.25)',
+        // Cosmic gradient
+        gradientFrom: 'rgba(249,115,22,0.06)',
+        gradientTo: 'rgba(49,46,129,0.03)',
       };
     };
     let themeColors = getThemeColors();
-
-    const themeObserver = new MutationObserver(() => {
-      themeColors = getThemeColors();
-      paint(performance.now());
-    });
-    themeObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['data-theme'],
-    });
 
     let particles: Particle[] = [];
     const shootings: Shooting[] = [];
@@ -183,48 +173,27 @@ export default function StarfieldBackground() {
       };
     };
 
-    // Draw cosmic gradient background — adapts to theme
+    // Draw cosmic gradient background — cyberpunk dark mode only
     const drawCosmicGradient = () => {
-      const isLight = document.documentElement.dataset.theme === 'light';
+      // Dark mode: deep cosmic background
+      ctx.fillStyle = 'rgba(15, 15, 35, 1)'; // Match background color
+      ctx.fillRect(0, 0, width, height);
       
-      if (isLight) {
-        // Light mode: soft ambient gradient
-        const centerX = width * 0.5;
-        const centerY = height * 0.15;
-        const radius = Math.max(width, height) * 0.8;
-        
-        const gradient = ctx.createRadialGradient(
-          centerX, centerY, 0,
-          centerX, centerY, radius
-        );
-        // Subtle warm center fading to pure white edges
-        gradient.addColorStop(0, 'rgba(6, 182, 212, 0.04)'); // very subtle cyan center
-        gradient.addColorStop(0.3, 'rgba(241, 245, 249, 0.6)'); // soft gray-white
-        gradient.addColorStop(1, 'rgba(248, 250, 252, 1)'); // near-white edges
-        
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, width, height);
-      } else {
-        // Dark mode: deep cosmic background
-        ctx.fillStyle = 'rgba(7, 11, 18, 1)'; // Match site bg color
-        ctx.fillRect(0, 0, width, height);
-        
-        // Subtle radial glow from top center
-        const centerX = width * 0.5;
-        const centerY = height * 0.2;
-        const radius = Math.max(width, height) * 0.6;
-        
-        const gradient = ctx.createRadialGradient(
-          centerX, centerY, 0,
-          centerX, centerY, radius
-        );
-        gradient.addColorStop(0, 'rgba(6, 182, 212, 0.08)'); // cyan glow
-        gradient.addColorStop(0.4, 'rgba(139, 92, 246, 0.04)'); // purple mid
-        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, width, height);
-      }
+      // Subtle radial glow from top center
+      const centerX = width * 0.5;
+      const centerY = height * 0.2;
+      const radius = Math.max(width, height) * 0.6;
+      
+      const gradient = ctx.createRadialGradient(
+        centerX, centerY, 0,
+        centerX, centerY, radius
+      );
+      gradient.addColorStop(0, 'rgba(249, 115, 22, 0.08)'); // orange glow
+      gradient.addColorStop(0.4, 'rgba(49, 46, 129, 0.04)'); // secondary dark blue mid
+      gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
     };
 
     // Draw subtle grid overlay
@@ -331,22 +300,12 @@ export default function StarfieldBackground() {
 
     // Draw particle bodies with optional glow (extracted from drawParticles).
     function drawParticleBodies(ctx: CanvasRenderingContext2D, particlesList: typeof particles, particleGlow: string): void {
-      const isLight = document.documentElement.dataset.theme === 'light';
       for (const p of particlesList) {
         // Glow effect for brighter particles
         if (p.color === particleGlow) {
           ctx.beginPath();
-          ctx.arc(p.x, p.y, p.r * (isLight ? 1.5 : 2), 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(${p.color},${p.alpha * (isLight ? 0.15 : 0.2)})`;
-          ctx.fill();
-        }
-
-        // Main particle with subtle outer glow in light mode
-        if (isLight) {
-          // Soft glow behind particle
-          ctx.beginPath();
           ctx.arc(p.x, p.y, p.r * 2, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(${p.color},${p.alpha * 0.1})`;
+          ctx.fillStyle = `rgba(${p.color},${p.alpha * 0.2})`;
           ctx.fill();
         }
 
@@ -466,7 +425,6 @@ export default function StarfieldBackground() {
       if (rafId) cancelAnimationFrame(rafId);
       globalThis.removeEventListener('resize', resize);
       document.removeEventListener('visibilitychange', onVisibility);
-      themeObserver.disconnect();
     };
   }, []);
 
@@ -484,11 +442,7 @@ export default function StarfieldBackground() {
           zIndex: -1,
           pointerEvents: 'none',
           // ✅ Dynamic background based on current theme
-          // The CSS override [data-theme="light"] canvas also handles this,
-          // but we set it inline for immediate effect before CSS loads.
-          background: document?.documentElement?.dataset?.theme === 'light'
-            ? '#f8fafc'
-            : '#070b12',
+          background: '#0F0F23',
         }}
       />
     </div>

@@ -1,7 +1,6 @@
 import { Link } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useContactSettings } from "@/hooks/useContactSettings";
-import Logo3D from "@/components/Logo3D";
 import { Youtube, Linkedin, Mail, Facebook, Instagram, Twitter } from "lucide-react";
 
 const TiktokIcon = ({ className }: { className?: string }) => (
@@ -54,7 +53,7 @@ const BRAND_COLORS: Record<string, string> = {
   Instagram: "hover:border-[#E1306C] hover:text-[#E1306C] hover:bg-[rgba(225,48,108,0.1)] hover:shadow-[0_0_15px_rgba(225,48,108,0.3)]",
   Twitter: "hover:border-[#e8f0fe] hover:text-[#e8f0fe] hover:bg-[rgba(232,240,254,0.1)] hover:shadow-[0_0_15px_rgba(232,240,254,0.3)]",
   TikTok: "hover:border-[#00f2fe] hover:text-[#00f2fe] hover:bg-[rgba(0,242,254,0.1)] hover:shadow-[0_0_15px_rgba(0,242,254,0.3)]",
-  Email: "hover:border-[#06b6d4] hover:text-[#06b6d4] hover:bg-[rgba(6,182,212,0.1)] hover:shadow-[0_0_15px_rgba(6,182,212,0.3)]",
+  Email: "hover:border-accent hover:text-accent hover:bg-accent/10 hover:shadow-[0_0_15px_rgba(249,115,22,0.3)]",
 };
 
 export default function Footer() {
@@ -81,9 +80,9 @@ export default function Footer() {
   const socialLinks = buildSocialLinks(contact);
 
   return (
-    <footer className="relative border-t border-[#1e2d3d] bg-[#070b12]">
+    <footer className="relative border-t border-border bg-background">
       {/* Top ambient glow */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 h-px w-1/2 bg-gradient-to-r from-transparent via-[rgba(6,182,212,0.3)] to-transparent" />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 h-px w-1/2 bg-gradient-to-r from-transparent via-[rgba(249,115,22,0.3)] to-transparent" />
 
       <div className="mx-auto max-w-7xl px-4 lg:px-6">
         {/* ── Main grid ── */}
@@ -91,18 +90,18 @@ export default function Footer() {
           {/* Brand column */}
           <div className="lg:col-span-1">
             <Link to="/" className="flex items-center gap-2.5">
-              <Logo3D size="lg" interactive={true} />
+              <img src="/logo.png" alt="Eng. Ahmed Elbaz Logo" className="h-12 w-auto object-contain rounded-full bg-white" />
               <div>
-                <div className="footer-glow-text text-[13px] font-extrabold text-[#e8f0fe]">
+                <div className="footer-glow-text text-[13px] font-extrabold text-foreground">
                   {lang === "ar" ? "أحمد الباز" : "Eng. Ahmed Elbaz"}
                 </div>
-                <div className="footer-glow-text text-[10px] font-medium uppercase tracking-widest text-[#06b6d4]">
+                <div className="footer-glow-text text-[10px] font-medium uppercase tracking-widest text-accent text-neon">
                   {lang === "ar" ? "هندسة كهربية" : "Electrical Engineering"}
                 </div>
               </div>
             </Link>
 
-            <p className="footer-glow-text mt-4 text-[13px] leading-relaxed text-[#64748b]">
+            <p className="footer-glow-text mt-4 text-[13px] leading-relaxed text-secondary">
               {lang === "ar"
                 ? "منصة تعليمية متخصصة في برامج تصميم الطاقة الكهربية للمهندسين العرب."
                 : "Specialized platform for power system design software, built for serious electrical engineers."}
@@ -117,7 +116,7 @@ export default function Footer() {
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label={s.label}
-                  className={`flex h-10 w-10 items-center justify-center rounded-lg border border-[#1e2d3d] bg-[#0d1420] text-[#64748b] transition-all duration-300 ${BRAND_COLORS[s.label] || "hover:border-[#06b6d4] hover:text-[#06b6d4]"}`}
+                  className={`flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-primary text-secondary transition-all duration-300 ${BRAND_COLORS[s.label] || "hover:border-accent hover:text-accent"}`}
                 >
                   {s.icon}
                 </a>
@@ -127,7 +126,7 @@ export default function Footer() {
 
           {/* Platform links */}
           <div>
-            <h4 className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-[#475569]">
+            <h4 className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-secondary">
               {lang === "ar" ? "المنصة" : "Platform"}
             </h4>
             <ul className="space-y-3">
@@ -135,7 +134,7 @@ export default function Footer() {
                 <li key={l.to}>
                   <Link
                     to={l.to}
-                    className="text-[13px] text-[#64748b] transition-colors hover:text-[#06b6d4]"
+                    className="text-[13px] text-secondary transition-colors hover:text-accent"
                   >
                     {l.label}
                   </Link>
@@ -146,7 +145,7 @@ export default function Footer() {
 
           {/* Legal links */}
           <div>
-            <h4 className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-[#475569]">
+            <h4 className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-secondary">
               {lang === "ar" ? "قانوني" : "Legal"}
             </h4>
             <ul className="space-y-3">
@@ -154,7 +153,7 @@ export default function Footer() {
                 <li key={l.label}>
                   <Link
                     to={l.to}
-                    className="text-[13px] text-[#64748b] transition-colors hover:text-[#94a3b8]"
+                    className="text-[13px] text-secondary transition-colors hover:text-foreground"
                   >
                     {l.label}
                   </Link>
@@ -165,14 +164,14 @@ export default function Footer() {
 
           {/* Tools */}
           <div>
-            <h4 className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-[#475569]">
+            <h4 className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-secondary">
               {lang === "ar" ? "البرامج التي ستتعلمها" : "Tools You'll Master"}
             </h4>
             <div className="flex flex-wrap gap-2">
               {tools.map((tool) => (
                 <span
                   key={tool}
-                  className="rounded-md border border-[#1e2d3d] bg-[#0d1420] px-2.5 py-1 text-[11px] font-medium text-[#64748b] transition-colors hover:border-[rgba(6,182,212,0.3)] hover:text-[#94a3b8]"
+                  className="rounded-md border border-border bg-primary px-2.5 py-1 text-[11px] font-medium text-secondary transition-colors hover:border-accent hover:text-foreground"
                 >
                   {tool}
                 </span>
@@ -182,15 +181,15 @@ export default function Footer() {
         </div>
 
         {/* ── Bottom bar ── */}
-        <div className="flex flex-col items-center justify-between gap-3 border-t border-[#1e2d3d] py-6 sm:flex-row">
-          <p className="footer-glow-text text-[12px] text-[#475569]">
+        <div className="flex flex-col items-center justify-between gap-3 border-t border-border py-6 sm:flex-row">
+          <p className="footer-glow-text text-[12px] text-secondary">
             © {currentYear}{" "}
-            <span className="text-[#64748b]">
+            <span className="text-foreground">
               {lang === "ar" ? "أحمد الباز" : "Ahmed Elbaz"}
             </span>
             {lang === "ar" ? " — جميع الحقوق محفوظة" : " — All rights reserved."}
           </p>
-          <div className="flex items-center gap-2 text-[11px] text-[#475569]">
+          <div className="flex items-center gap-2 text-[11px] text-secondary">
             <div className="h-1.5 w-1.5 rounded-full bg-[#10b981] animate-pulse" />
             {lang === "ar" ? "جميع الأنظمة تعمل" : "All systems operational"}
           </div>

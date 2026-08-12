@@ -96,12 +96,12 @@ const categoryIcons: Record<string, React.ReactNode> = {
 //   AutoCAD       — official AutoCAD logo by Autodesk (Wikimedia Commons)
 //   MATLAB        — official MATLAB logo by MathWorks (Wikimedia Commons)
 const SOFTWARE_LOGOS = [
-  { name: "ETAP", logo: "/software-logos/etap.svg", logoFallback: "/software-logos/etap.webp" },
-  { name: "SKM", logo: "/software-logos/skm.svg", logoFallback: "/software-logos/skm.webp" },
-  { name: "PowerFactory", logo: "/software-logos/powerfactory.svg", logoFallback: "/software-logos/powerfactory.webp" },
-  { name: "PVSyst", logo: "/software-logos/pvsyst.svg", logoFallback: "/software-logos/pvsyst.webp" },
-  { name: "AutoCAD", logo: "/software-logos/autocad.svg", logoFallback: "/software-logos/autocad.webp" },
-  { name: "MATLAB", logo: "/software-logos/matlab.svg", logoFallback: "/software-logos/matlab.webp" },
+  { name: "ETAP", logo: "https://cdn.worldvectorlogo.com/logos/etap.svg", logoFallback: "https://cdn.worldvectorlogo.com/logos/etap.svg" },
+  { name: "SKM", logo: "/software-logos/skm.png", logoFallback: "/software-logos/skm.png" },
+  { name: "PowerFactory", logo: "/software-logos/powerfactory.png", logoFallback: "/software-logos/powerfactory.png" },
+  { name: "PVSyst", logo: "/software-logos/pvsyst.png", logoFallback: "/software-logos/pvsyst.png" },
+  { name: "AutoCAD", logo: "/software-logos/autocad.png", logoFallback: "/software-logos/autocad.png" },
+  { name: "MATLAB", logo: "/software-logos/matlab.png", logoFallback: "/software-logos/matlab.png" },
 ];
 
 // Realistic fallback stats — updated to match actual platform data
@@ -278,7 +278,7 @@ export default function Home() { // NOSONAR — landing page with hero + feature
   const { data: testimonials, isPending: testimonialsPending } = trpc.course.testimonials.useQuery();
   const { data: activePromotionsRaw } = trpc.settings.getActivePromotions.useQuery();
   const activePromotions = (activePromotionsRaw ?? []) as Promotion[];
-  const { data: platformStats, isPending: statsPending } = trpc.course.stats.useQuery();
+  const { data: platformStats } = trpc.course.stats.useQuery();
 
   const ps = platformStats ?? { totalStudents: 0, satisfactionRate: 0, totalCourses: 0, totalLessons: 0 } as Stats;
   const resolvedStats = {
@@ -439,7 +439,7 @@ export default function Home() { // NOSONAR — landing page with hero + feature
                         className="max-h-10 max-w-full object-contain filter brightness-110 contrast-125 transition-all group-hover:scale-110 drop-shadow-md"
                         onError={(e) => {
                           // Hide the broken image completely — no logo fallback available
-                          const pill = e.currentTarget.closest('.software-logo-pill');
+                          const pill = e.currentTarget.closest('.software-logo-pill') as HTMLElement | null;
                           if (pill) pill.style.display = 'none';
                         }}
                       />

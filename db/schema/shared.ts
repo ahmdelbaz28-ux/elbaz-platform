@@ -12,7 +12,6 @@ import {
   text,
   boolean,
   timestamp,
-  json,
   int,
   index,
   uniqueIndex,

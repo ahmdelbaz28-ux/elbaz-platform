@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "@/hooks/useTranslation";
-import Logo3D from "@/components/Logo3D";
 import GlobalSearch from "@/components/GlobalSearch";
 import { motion } from "framer-motion";
 import { Magnetic } from "@/components/ui/motion";
@@ -15,7 +14,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { EngineeringModeToggle } from "@/components/ui/EngineeringMode";
-import ThemeToggle from "@/components/ThemeToggle";
+
 import { useEyeProtection } from "@/hooks/useEyeProtection";
 
 export default function Navbar() { // NOSONAR — large navigation component with intertwined auth/admin/RTL logic and many JSX conditionals; extraction would require prop-drilling many hooks
@@ -107,7 +106,7 @@ export default function Navbar() { // NOSONAR — large navigation component wit
         aria-label={lang === "ar" ? "التنقل الرئيسي" : "Main navigation"}
         className={`fixed top-0 left-0 right-0 z-50 h-16 transition-all duration-300 ${
           scrolled
-            ? "border-b border-[#1e2d3d] bg-[rgba(7,11,18,0.95)] shadow-[0_4px_32px_rgba(0,0,0,0.4)] backdrop-blur-xl"
+            ? "border-b border-border bg-[rgba(15,15,35,0.95)] shadow-lg backdrop-blur-xl"
             : "bg-transparent"
         }`}
       >
@@ -115,15 +114,15 @@ export default function Navbar() { // NOSONAR — large navigation component wit
 
           {/* ── Brand Mark ── */}
           <Link to="/" className="group flex items-center gap-3 outline-none">
-            {/* 3D Auto-Rotating Logo — rotates every 5 seconds */}
-            <Logo3D size="lg" interactive={true} />
+            {/* Custom Logo Image */}
+            <img src="/logo.png" alt="Eng. Ahmed Elbaz Logo" className="h-12 w-auto object-contain rounded-full bg-white" />
 
             {/* Text */}
             <div className="flex flex-col leading-none">
-              <span className="text-[13px] font-extrabold tracking-tight text-[#e8f0fe]">
+              <span className="text-[13px] font-extrabold tracking-tight text-foreground">
                 {lang === "ar" ? "أحمد الباز" : "Eng. Ahmed Elbaz"}
               </span>
-              <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-[#06b6d4]">
+              <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-accent text-neon">
                 {lang === "ar" ? "كورسات الهندسة الكهربية" : "Electrical Engineering"}
               </span>
             </div>
@@ -144,8 +143,8 @@ export default function Navbar() { // NOSONAR — large navigation component wit
                   aria-current={isActive(link.path) ? "page" : undefined}
                   className={`relative flex items-center gap-1.5 rounded-lg px-4 py-2 text-[13px] font-medium transition-all duration-200 ${
                     isActive(link.path)
-                      ? "bg-[rgba(6,182,212,0.1)] text-[#06b6d4]"
-                      : "text-[#94a3b8] hover:text-[#e8f0fe]"
+                      ? "bg-accent/10 text-accent"
+                      : "text-secondary hover:text-foreground"
                   }`}
                 >
                   {link.icon}
@@ -153,7 +152,7 @@ export default function Navbar() { // NOSONAR — large navigation component wit
                   {isActive(link.path) && (
                     <motion.span 
                       layoutId="nav-underline"
-                      className="absolute -bottom-0.5 left-3 right-3 h-0.5 rounded-full bg-[#06b6d4]" 
+                      className="absolute -bottom-0.5 left-3 right-3 h-0.5 rounded-full bg-accent text-neon" 
                     />
                   )}
                 </Link>
@@ -167,8 +166,8 @@ export default function Navbar() { // NOSONAR — large navigation component wit
                 aria-current={isActive("/dashboard") ? "page" : undefined}
                 className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-150 ${
                   isActive("/dashboard")
-                    ? "bg-[rgba(6,182,212,0.1)] text-[#06b6d4]"
-                    : "text-[#94a3b8] hover:bg-[rgba(255,255,255,0.04)] hover:text-[#e8f0fe]"
+                    ? "bg-accent/10 text-accent"
+                    : "text-secondary hover:bg-white/5 hover:text-foreground"
                 }`}
               >
                 <LayoutDashboard className="h-3.5 w-3.5" />
@@ -182,9 +181,6 @@ export default function Navbar() { // NOSONAR — large navigation component wit
             {/* Global Search */}
             <GlobalSearch />
 
-            {/* Theme toggle (dark/light) */}
-            <ThemeToggle variant="compact" />
-
             {/* Eye Protection toggle (blue light filter) */}
             <button
               onClick={toggleEyeProtection}
@@ -192,7 +188,7 @@ export default function Navbar() { // NOSONAR — large navigation component wit
               className={`eye-protection-btn rounded-lg p-2 text-[13px] transition-all ${
                 isEyeProtectionActive
                   ? "active text-amber-400"
-                  : "text-[#64748b] hover:text-[#e8f0fe]"
+                  : "text-secondary hover:text-foreground"
               }`}
               title={lang === "ar" ? "فلتر حماية العين من الضوء الأزرق" : "Blue light filter"}
             >
@@ -204,7 +200,7 @@ export default function Navbar() { // NOSONAR — large navigation component wit
               data-testid="language-toggle"
               onClick={() => setLang(lang === "en" ? "ar" : "en")}
               aria-label={lang === "en" ? "Switch to Arabic" : "Switch to English"}
-              className="rounded-lg border border-[#1e2d3d] bg-[#0d1420] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#64748b] transition-all hover:border-[#06b6d4] hover:text-[#06b6d4]"
+              className="rounded-lg border border-border bg-primary px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-secondary transition-all hover:border-accent hover:text-accent"
             >
               {lang === "en" ? "عربي" : "EN"}
             </button>
@@ -220,12 +216,12 @@ export default function Navbar() { // NOSONAR — large navigation component wit
                   aria-expanded={userMenuOpen}
                   aria-haspopup="true"
                   aria-label={lang === "ar" ? "قائمة المستخدم" : "User menu"}
-                  className="flex items-center gap-2 rounded-lg border border-[#1e2d3d] bg-[#0d1420] px-3 py-1.5 text-[13px] transition-all hover:border-[#2d3f52]"
+                  className="flex items-center gap-2 rounded-lg border border-border bg-primary px-3 py-1.5 text-[13px] transition-all hover:border-accent"
                 >
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-[#06b6d4] to-[#0284c7] text-[11px] font-bold text-white">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-accent text-[11px] font-bold text-white">
                     {(user?.name || user?.username || "U").charAt(0).toUpperCase()}
                   </div>
-                  <span className="max-w-[100px] truncate text-[#94a3b8]">
+                  <span className="max-w-[100px] truncate text-secondary">
                     {user?.name || user?.username}
                   </span>
                   <ChevronDown className={`h-3.5 w-3.5 text-[#475569] transition-transform ${userMenuOpen ? "rotate-180" : ""}`} />
@@ -234,12 +230,12 @@ export default function Navbar() { // NOSONAR — large navigation component wit
                 {userMenuOpen && (
                   <div
                     role="menu"
-                    className="absolute end-0 top-full mt-2 w-48 overflow-hidden rounded-xl border border-[#1e2d3d] bg-[#0d1420] shadow-[0_16px_48px_rgba(0,0,0,0.5)]"
+                    className="absolute end-0 top-full mt-2 w-48 overflow-hidden rounded-xl border border-border bg-primary shadow-xl"
                   >
                     <Link
                       to="/profile"
                       role="menuitem"
-                      className="flex items-center gap-2 px-4 py-3 text-[13px] text-[#94a3b8] transition-colors hover:bg-[rgba(6,182,212,0.08)] hover:text-[#06b6d4]"
+                      className="flex items-center gap-2 px-4 py-3 text-[13px] text-secondary transition-colors hover:bg-accent/10 hover:text-accent"
                     >
                       <UserCog className="h-4 w-4" />
                       {lang === "ar" ? "الملف الشخصي" : "Profile"}
@@ -247,7 +243,7 @@ export default function Navbar() { // NOSONAR — large navigation component wit
                     <Link
                       to="/wishlist"
                       role="menuitem"
-                      className="flex items-center gap-2 px-4 py-3 text-[13px] text-[#94a3b8] transition-colors hover:bg-[rgba(6,182,212,0.08)] hover:text-[#06b6d4]"
+                      className="flex items-center gap-2 px-4 py-3 text-[13px] text-secondary transition-colors hover:bg-accent/10 hover:text-accent"
                     >
                       <Heart className="h-4 w-4" />
                       {lang === "ar" ? "المفضلة" : "Wishlist"}
@@ -255,7 +251,7 @@ export default function Navbar() { // NOSONAR — large navigation component wit
                     <Link
                       to="/journey"
                       role="menuitem"
-                      className="flex items-center gap-2 px-4 py-3 text-[13px] text-[#94a3b8] transition-colors hover:bg-[rgba(6,182,212,0.08)] hover:text-[#06b6d4]"
+                      className="flex items-center gap-2 px-4 py-3 text-[13px] text-secondary transition-colors hover:bg-accent/10 hover:text-accent"
                     >
                       <TrendingUp className="h-4 w-4" />
                       {lang === "ar" ? "رحلتي" : "My Journey"}
@@ -264,7 +260,7 @@ export default function Navbar() { // NOSONAR — large navigation component wit
                       <Link
                         to="/admin"
                         role="menuitem"
-                        className="flex items-center gap-2 px-4 py-3 text-[13px] text-[#94a3b8] transition-colors hover:bg-[rgba(6,182,212,0.08)] hover:text-[#06b6d4]"
+                        className="flex items-center gap-2 px-4 py-3 text-[13px] text-secondary transition-colors hover:bg-accent/10 hover:text-accent"
                       >
                         <Shield className="h-4 w-4" />
                         {lang === "ar" ? "لوحة التحكم" : "Admin Panel"}
@@ -273,7 +269,7 @@ export default function Navbar() { // NOSONAR — large navigation component wit
                     <Link
                       to="/support"
                       role="menuitem"
-                      className="flex items-center gap-2 px-4 py-3 text-[13px] text-[#94a3b8] transition-colors hover:bg-[rgba(255,255,255,0.04)] hover:text-[#e8f0fe]"
+                      className="flex items-center gap-2 px-4 py-3 text-[13px] text-secondary transition-colors hover:bg-white/5 hover:text-foreground"
                     >
                       <Headphones className="h-4 w-4" />
                       {lang === "ar" ? "الدعم الفني" : "Support"}
@@ -281,11 +277,11 @@ export default function Navbar() { // NOSONAR — large navigation component wit
                     {/* biome-ignore lint/a11y/useFocusableInteractive: decorative separator — no interaction needed */}
                     {/* biome-ignore lint/a11y/useSemanticElements: <hr> would add unwanted default styling; role=separator on div is WAI-ARIA compliant */}
                     {/* biome-ignore lint/a11y/useAriaPropsForRole: role=separator is valid per ARIA spec */}
-                    <div className="mx-4 h-px bg-[#1e2d3d]" role="separator" /> {/* NOSONAR - shadcn/ui ARIA role pattern */}
+                    <div className="mx-4 h-px bg-border" role="separator" /> {/* NOSONAR - shadcn/ui ARIA role pattern */}
                     <button
                       role="menuitem"
                       onClick={() => { logout(); setUserMenuOpen(false); }}
-                      className="flex w-full items-center gap-2 px-4 py-3 text-[13px] text-[#64748b] transition-colors hover:bg-[rgba(239,68,68,0.08)] hover:text-[#f87171]"
+                      className="flex w-full items-center gap-2 px-4 py-3 text-[13px] text-secondary transition-colors hover:bg-destructive/10 hover:text-destructive"
                     >
                       <LogOut className="h-4 w-4" />
                       {lang === "ar" ? "تسجيل الخروج" : "Sign Out"}
@@ -299,7 +295,7 @@ export default function Navbar() { // NOSONAR — large navigation component wit
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-8 border border-[#1e2d3d] bg-transparent text-[13px] text-[#94a3b8] hover:border-[#2d3f52] hover:bg-[rgba(255,255,255,0.04)] hover:text-[#e8f0fe]"
+                    className="h-8 border border-border bg-transparent text-[13px] text-secondary hover:border-accent hover:bg-white/5 hover:text-foreground"
                   >
                     {lang === "ar" ? "تسجيل الدخول" : "Sign In"}
                   </Button>
@@ -307,7 +303,7 @@ export default function Navbar() { // NOSONAR — large navigation component wit
                 <Link to="/register">
                   <Button
                     size="sm"
-                    className="h-8 bg-gradient-to-r from-[#06b6d4] to-[#0284c7] text-[13px] font-semibold text-white shadow-[0_0_16px_rgba(6,182,212,0.25)] hover:shadow-[0_0_24px_rgba(6,182,212,0.4)]"
+                    className="h-8 btn-primary"
                   >
                     {lang === "ar" ? "ابدأ مجاناً" : "Start Free"}
                   </Button>
@@ -318,7 +314,7 @@ export default function Navbar() { // NOSONAR — large navigation component wit
 
           {/* ── Mobile Hamburger ── */}
           <button
-            className="rounded-lg p-2 text-[#94a3b8] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#e8f0fe] md:hidden"
+            className="rounded-lg p-2 text-secondary transition-colors hover:bg-white/5 hover:text-foreground md:hidden"
             onClick={() => setMobileOpen(!mobileOpen)}
             aria-label={lang === "ar" ? "فتح القائمة" : "Toggle menu"}
             aria-expanded={mobileOpen}
@@ -359,7 +355,7 @@ export default function Navbar() { // NOSONAR — large navigation component wit
               to={link.path}
               aria-current={isActive(link.path) ? "page" : undefined}
               className={`text-2xl font-bold transition-colors ${
-                isActive(link.path) ? "text-[#06b6d4]" : "text-[#94a3b8] hover:text-[#e8f0fe]"
+                isActive(link.path) ? "text-accent text-neon" : "text-secondary hover:text-foreground"
               }`}
             >
               {link.label}
@@ -369,11 +365,10 @@ export default function Navbar() { // NOSONAR — large navigation component wit
           {/* Lang + Theme + Auth */}
           <div className="mt-6 flex flex-col items-center gap-3">
             <div className="flex items-center gap-3">
-              <ThemeToggle variant="full" />
               <button
                 data-testid="language-toggle-mobile"
                 onClick={() => setLang(lang === "en" ? "ar" : "en")}
-                className="rounded-xl border border-[#1e2d3d] px-6 py-2.5 text-base font-medium text-[#64748b] hover:border-[#06b6d4] hover:text-[#06b6d4]"
+                className="rounded-xl border border-border px-6 py-2.5 text-base font-medium text-secondary hover:border-accent hover:text-accent"
               >
                 {lang === "en" ? "العربية" : "English"}
               </button>
@@ -381,14 +376,14 @@ export default function Navbar() { // NOSONAR — large navigation component wit
             {isAuthenticated ? (
               <button
                 onClick={() => { logout(); setMobileOpen(false); }}
-                className="text-base font-medium text-[#f87171]"
+                className="text-base font-medium text-destructive"
               >
                 {lang === "ar" ? "تسجيل الخروج" : "Sign Out"}
               </button>
             ) : (
               <Link
                 to="/register"
-                className="rounded-xl bg-gradient-to-r from-[#06b6d4] to-[#0284c7] px-8 py-3 text-base font-bold text-white"
+                className="btn-primary"
               >
                 {lang === "ar" ? "ابدأ مجاناً" : "Start Free"}
               </Link>
