@@ -24,27 +24,16 @@ import {
   GROQ_API_KEY,
   GROQ_ENDPOINT,
   GROQ_MODELS,
-  NVIDIA_API_KEY,
-  NVIDIA_ENDPOINT,
-  NVIDIA_MODEL,
   OPENROUTER_API_KEY,
   AI_MODELS,
-  MAX_CONSEC_MODAL_FAILS,
-  MODAL_COOLDOWN_MS,
-  MAX_CONSEC_GROQ_FAILS,
-  GROQ_COOLDOWN_MS,
-  MAX_CONSEC_NVIDIA_FAILS,
-  NVIDIA_COOLDOWN_MS,
 
   // ── Health state (mutable via properties; direct scalar reassignments crash in ESM) ──
   chatHealth,
   modelFailCount,
-  modelSuccessCount,
 
   // ── Availability checks ──
   modalIsAvailable,
   groqIsAvailable,
-  nvidiaIsAvailable,
 
   // ── Fallback functions ──
   tryModalTier,

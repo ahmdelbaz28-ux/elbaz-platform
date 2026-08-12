@@ -10,7 +10,6 @@ import { Hono } from "hono";
 import { getChatResponse, getStreamResponse } from "./lib/chatbot.js";
 import { getClientIpFromHono as getChatbotIp } from "./lib/client-ip";
 import { logger } from "./lib/logger.js";
-import { logger } from "./lib/logger.js";
 // Removed checkRateLimit
 
 const chatbotRouter = new Hono();
