@@ -79,10 +79,25 @@ export default defineConfig({
     viteCompression({ algorithm: 'gzip', threshold: 1024 }),
     viteCompression({ algorithm: 'brotliCompress', threshold: 1024, ext: '.br' }),
     buildIdPlugin(),
+    // 🛡️ Elite: Exclude cache-nuke.js and rtl-detect.js from PWA processing entirely.
+    // These files must run BEFORE the Service Worker and cannot be treated as modules.
+    {
+      name: 'elbaz-exclude-pwa-scripts',
+      transformIndexHtml(html: string) {
+        // Add data-pwa="exclude" to cache-nuke.js and rtl-detect.js to prevent PWA processing
+        return html.replace(/<script src="(cache-nuke|rtl-detect)\.js\?v=%%CACHE_BUST%%"><\/script>/g, (match) => {
+          return match.replace('<script', '<script data-pwa="exclude"');
+        });
+      },
+    },
     VitePWA({
       // CRITICAL: 'prompt' means VitePWA only generates the SW file.
       // We register it manually in main.tsx to avoid double-registration.
       registerType: 'prompt',
+      injectManifest: {
+        // 🛡️ Elite: Disable CSS inlining to avoid the proxy error.
+        inlineCSS: false,
+      },
       workbox: {
         // 🚀 PERFORMANCE: Only precache critical assets (JS, CSS, HTML).
         // Images and fonts are cached on-demand via runtimeCaching (CacheFirst).

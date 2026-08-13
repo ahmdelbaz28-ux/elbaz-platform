@@ -14,6 +14,7 @@ import { NotificationProvider } from "@/components/NotificationToast";
 import ThemeProvider from "@/components/ThemeProvider";
 import { EngineeringModeProvider } from "@/components/ui/EngineeringMode";
 import AmbientOrbs from "@/components/ui/AmbientOrbs";
+import { useTranslation } from "@/hooks/useTranslation";
 import "@/engineering-mode.css";
 
 // 🚀 PERFORMANCE (Task ID 7): Lazy-load ChatBot (~50KB compressed).
@@ -47,17 +48,22 @@ const CertificateView = lazy(() => import("./pages/CertificateView"));
 const CertificateVerify = lazy(() => import("./components/CertificateVerify"));
 
 function PageLoader() {
+  const { t } = useTranslation();
   return (
-    <div className="flex min-h-[60vh] items-center justify-center" role="status" aria-label="Loading"> {/* NOSONAR - shadcn/ui ARIA role pattern */}
-      <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#1f2d44] border-t-[#06b6d4]" />
-      <span className="sr-only">Loading...</span>
-    </div>
+    <ErrorBoundary fallback={<div>{t("loadingError")}</div>}>
+      <div className="flex min-h-[60vh] items-center justify-center" role="status" aria-label={t("loading")}> {/* NOSONAR - shadcn/ui ARIA role pattern */}
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#1f2d44] border-t-[#06b6d4]" />
+        <span className="sr-only">{t("loading")}</span>
+      </div>
+    </ErrorBoundary>
   );
 }
 
 function Layout({ children }: { readonly children: React.ReactNode }) {
+  const { t } = useTranslation();
   const location = useLocation();
-  const isAuthPage = location.pathname === "/login" || location.pathname === "/register" || location.pathname === "/forgot-password" || location.pathname === "/reset-password";
+  const AUTH_PAGES = new Set(["/login", "/register", "/forgot-password", "/reset-password"]);
+  const isAuthPage = AUTH_PAGES.has(location.pathname);
 
   return (
     <div className="min-h-screen overflow-x-hidden w-full relative flex flex-col">
@@ -66,7 +72,7 @@ function Layout({ children }: { readonly children: React.ReactNode }) {
       {/* ── Ambient floating orbs for visual depth ── */}
       <AmbientOrbs />
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:rounded-lg focus:bg-[#06b6d4] focus:px-4 focus:py-2 focus:text-[#0a0e17] focus:font-semibold focus:outline-none focus:ring-2 focus:ring-[#06b6d4]">
-        Skip to main content
+        {t("skipToContent")}
       </a>
       <Navbar />
       <ScrollToTop />
@@ -87,58 +93,58 @@ export default function App() {
       <NotificationProvider>
         <EngineeringModeProvider>
           <ThemeProvider>
-          <Toaster theme="dark" richColors position="top-center" />
-          <Layout>
-            <Routes>
-            {/* ── Public Routes ── */}
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/verify-email" element={<VerifyEmail />} />
-            <Route path="/" element={<Home />} />
-            <Route path="/courses" element={<Courses />} />
-            <Route path="/courses/:slug" element={<CourseDetail />} />
-            <Route path="/references" element={<References />} />
-            <Route path="/faq" element={<Faq />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/terms" element={<TermsOfService />} />
-            <Route path="/privacy" element={<PrivacyPolicy />} />
-            <Route path="/refund" element={<RefundPolicy />} />
+            <Toaster theme="dark" richColors position="top-center" />
+            <Layout>
+              <Routes>
+                {/* ── Public Routes ── */}
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/verify-email" element={<VerifyEmail />} />
+                <Route path="/" element={<Home />} />
+                <Route path="/courses" element={<Courses />} />
+                <Route path="/courses/:slug" element={<CourseDetail />} />
+                <Route path="/references" element={<References />} />
+                <Route path="/faq" element={<Faq />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<Register />} />
+                <Route path="/terms" element={<TermsOfService />} />
+                <Route path="/privacy" element={<PrivacyPolicy />} />
+                <Route path="/refund" element={<RefundPolicy />} />
 
-            {/* ── Certificate Routes (public) ── */}
-            <Route path="/certificate/:certificateNumber" element={<CertificateView />} />
-            <Route path="/verify" element={<CertificateVerify />} />
+                {/* ── Certificate Routes (public) ── */}
+                <Route path="/certificate/:certificateNumber" element={<CertificateView />} />
+                <Route path="/verify" element={<CertificateVerify />} />
 
-            {/* ── Protected Routes (requires login) ── */}
-            <Route path="/dashboard" element={
-              <ProtectedRoute><Dashboard /></ProtectedRoute>
-            } />
-            <Route path="/profile" element={
-              <ProtectedRoute><Profile /></ProtectedRoute>
-            } />
-            <Route path="/support" element={
-              <ProtectedRoute><Support /></ProtectedRoute>
-            } />
-            <Route path="/wishlist" element={
-              <ProtectedRoute><Wishlist /></ProtectedRoute>
-            } />
-            <Route path="/journey" element={
-              <ProtectedRoute><LearningJourney /></ProtectedRoute>
-            } />
-            <Route path="/documents" element={
-              <ProtectedRoute><Documents /></ProtectedRoute>
-            } />
+                {/* ── Protected Routes (requires login) ── */}
+                <Route path="/dashboard" element={
+                  <ProtectedRoute><Dashboard /></ProtectedRoute>
+                } />
+                <Route path="/profile" element={
+                  <ProtectedRoute><Profile /></ProtectedRoute>
+                } />
+                <Route path="/support" element={
+                  <ProtectedRoute><Support /></ProtectedRoute>
+                } />
+                <Route path="/wishlist" element={
+                  <ProtectedRoute><Wishlist /></ProtectedRoute>
+                } />
+                <Route path="/journey" element={
+                  <ProtectedRoute><LearningJourney /></ProtectedRoute>
+                } />
+                <Route path="/documents" element={
+                  <ProtectedRoute><Documents /></ProtectedRoute>
+                } />
 
 
-            {/* ── Admin Route (requires admin role) ── */}
-            <Route path="/admin" element={
-              <ProtectedRoute requireAdmin><Admin /></ProtectedRoute>
-            } />
+                {/* ── Admin Route (requires admin role) ── */}
+                <Route path="/admin" element={
+                  <ProtectedRoute requireAdmin><Admin /></ProtectedRoute>
+                } />
 
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-          </Layout>
-        </ThemeProvider>
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Layout>
+          </ThemeProvider>
         </EngineeringModeProvider>
       </NotificationProvider>
     </ErrorBoundary>
