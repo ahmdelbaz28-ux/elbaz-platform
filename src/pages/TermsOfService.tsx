@@ -8,12 +8,12 @@ export default function TermsOfService() {
   const { data: contact } = useContactSettings();
 
   return (
-    <div className="min-h-screen bg-[#0a0e17] pt-24">
+    <div className="min-h-screen bg-background pt-24">
       <div className="mx-auto max-w-3xl px-4 pb-20 lg:px-6">
         {/* Back */}
         <button
           onClick={() => globalThis.history.back()}
-          className="mb-6 flex items-center gap-1 text-sm text-[#94a3b8] transition-colors hover:text-[#06b6d4]"
+          className="mb-6 flex items-center gap-1 text-sm text-text-muted transition-colors hover:text-accent-secondary"
         >
           <ChevronLeft className="h-4 w-4" />
           {lang === "en" ? "Back" : "رجوع"}
@@ -22,13 +22,13 @@ export default function TermsOfService() {
         {/* Header */}
         <div className="mb-10 flex items-center gap-4">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[rgba(6,182,212,0.1)]">
-            <FileText className="h-6 w-6 text-[#06b6d4]" />
+            <FileText className="h-6 w-6 text-accent-secondary" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-[#f0f4f8]">
+            <h1 className="text-3xl font-bold text-foreground">
               {lang === "en" ? "Terms of Service" : "شروط وأحكام الاستخدام"}
             </h1>
-            <p className="text-sm text-[#64748b]">
+            <p className="text-sm text-text-faint">
               {lang === "en" ? "Last updated: May 2025" : "آخر تحديث: مايو 2025"}
             </p>
           </div>
@@ -71,7 +71,7 @@ export default function TermsOfService() {
               </Section>
 
               <Section title="9. Contact">
-                <p>For any questions regarding these Terms of Service, please contact us through our <Link to="/support" className="text-[#06b6d4] hover:underline">Support Center</Link> or via email at <a href={`mailto:${contact.email}`} className="text-[#06b6d4] hover:underline">{contact.email}</a>.</p>
+                <p>For any questions regarding these Terms of Service, please contact us through our <Link to="/support" className="text-accent-secondary hover:underline">Support Center</Link> or via email at <a href={`mailto:${contact.email}`} className="text-accent-secondary hover:underline">{contact.email}</a>.</p>
               </Section>
             </>
           ) : (
@@ -109,7 +109,7 @@ export default function TermsOfService() {
               </Section>
 
               <Section title="٩. التواصل">
-                <p>لأي أسئلة بخصوص شروط الاستخدام، يرجى التواصل معنا عبر <Link to="/support" className="text-[#06b6d4] hover:underline">مركز الدعم</Link> أو عبر البريد الإلكتروني <a href={`mailto:${contact.email}`} className="text-[#06b6d4] hover:underline">{contact.email}</a>.</p>
+                <p>لأي أسئلة بخصوص شروط الاستخدام، يرجى التواصل معنا عبر <Link to="/support" className="text-accent-secondary hover:underline">مركز الدعم</Link> أو عبر البريد الإلكتروني <a href={`mailto:${contact.email}`} className="text-accent-secondary hover:underline">{contact.email}</a>.</p>
               </Section>
             </>
           )}
@@ -122,8 +122,8 @@ export default function TermsOfService() {
 function Section({ title, children }: { readonly title: string; readonly children: React.ReactNode }) {
   return (
     <section>
-      <h2 className="mb-3 text-lg font-bold text-[#f0f4f8]">{title}</h2>
-      <div className="text-sm leading-relaxed text-[#94a3b8]">{children}</div>
+      <h2 className="mb-3 text-lg font-bold text-foreground">{title}</h2>
+      <div className="text-sm leading-relaxed text-text-muted">{children}</div>
     </section>
   );
 }

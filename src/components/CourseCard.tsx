@@ -114,7 +114,7 @@ export default function CourseCard({ course }: CourseCardProps) {
               <ThumbnailFallback title={title} />
             ) : (
               <img
-                src={course.thumbnail || "/hero-bg.jpg"}
+                src={course.thumbnail || "/hero-main.svg"}
                 alt={title}
                 loading="lazy"
                 width="384"

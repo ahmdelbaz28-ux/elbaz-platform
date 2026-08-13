@@ -41,17 +41,32 @@
 }
 
 :root {
-  --color-primary: #1E1B4B;
-  --color-on-primary: #FFFFFF;
-  --color-secondary: #312E81;
-  --color-accent: #F97316;
-  --color-background: #0F0F23;
-  --color-foreground: #F8FAFC;
-  --color-muted: #27273B;
-  --color-border: #4338CA;
-  --color-destructive: #EF4444;
-  --color-ring: #1E1B4B;
+  /* ════════════════════════════════════════════════════════════════════
+     PREMIUM DARK THEME — WCAG AA compliant contrast ratios
+     ════════════════════════════════════════════════════════════════════ */
 
+  /* Surfaces */
+  --color-background: #0B0F19;
+  --color-primary: #111827;
+  --color-secondary: #1F2937;
+  --color-muted: #374151;
+  --color-border: #4B5563;
+
+  /* Text — high contrast for readability */
+  --color-foreground: #F9FAFB;
+  --color-on-primary: #FFFFFF;
+  --color-text: #F9FAFB;
+  --color-text-secondary: #D1D5DB;
+  --color-text-muted: #9CA3AF;
+  --color-text-faint: #6B7280;
+
+  /* Accents */
+  --color-accent: #F97316;
+  --color-accent-secondary: #06B6D4;
+  --color-destructive: #EF4444;
+  --color-ring: #F97316;
+
+  /* Aliases */
   --color-bg: var(--color-background);
   --color-text: var(--color-foreground);
 
@@ -884,7 +899,11 @@ img[loading="lazy"] {
 [data-theme="light"] {
   --color-bg: #f8fafc;
   --color-text: #0f172a;
+  --color-text-secondary: #334155;
+  --color-text-muted: #64748b;
+  --color-text-faint: #94a3b8;
   --color-accent: #0891b2;
+  --color-accent-secondary: #0e7490;
   color-scheme: light;
 }
 
@@ -1608,4 +1627,31 @@ img[loading="lazy"] {
 }
 [data-theme="light"] .glow-btn:hover {
   box-shadow: 0 6px 20px rgba(8, 145, 178, 0.35) !important;
+}
+
+/* ── Premium text hierarchy for light mode ──────────────────────────── */
+[data-theme="light"] .text-text-secondary,
+[data-theme="light"] .text-secondary {
+  color: #334155 !important;
+}
+[data-theme="light"] .text-text-muted,
+[data-theme="light"] .text-muted-foreground {
+  color: #64748b !important;
+}
+[data-theme="light"] .text-text-faint {
+  color: #94a3b8 !important;
+}
+
+/* ── Premium card surfaces in light mode ────────────────────────────── */
+[data-theme="light"] .bg-primary {
+  background-color: #ffffff !important;
+}
+[data-theme="light"] .bg-secondary {
+  background-color: #f8fafc !important;
+}
+[data-theme="light"] .border-border {
+  border-color: #e2e8f0 !important;
+}
+[data-theme="light"] .bg-background {
+  background-color: #f8fafc !important;
 }

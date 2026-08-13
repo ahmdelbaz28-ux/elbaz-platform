@@ -15,6 +15,7 @@ export default {
         "on-primary": "var(--color-on-primary)",
         secondary: "var(--color-secondary)",
         accent: "var(--color-accent)",
+        "accent-secondary": "var(--color-accent-secondary)",
         "accent-dim": "rgba(249, 115, 22, 0.15)",
         muted: "var(--color-muted)",
         border: "var(--color-border)",
@@ -28,9 +29,9 @@ export default {
         },
         text: {
           primary: "var(--color-foreground)",
-          secondary: "rgba(248, 250, 252, 0.7)",
-          muted: "var(--color-muted)",
-          faint: "rgba(248, 250, 252, 0.4)",
+          secondary: "var(--color-text-secondary)",
+          muted: "var(--color-text-muted)",
+          faint: "var(--color-text-faint)",
         },
       },
       boxShadow: {

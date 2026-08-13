@@ -8,12 +8,12 @@ export default function RefundPolicy() {
   const { data: contact } = useContactSettings();
 
   return (
-    <div className="min-h-screen bg-[#0a0e17] pt-24">
+    <div className="min-h-screen bg-background pt-24">
       <div className="mx-auto max-w-3xl px-4 pb-20 lg:px-6">
         {/* Back */}
         <button
           onClick={() => globalThis.history.back()}
-          className="mb-6 flex items-center gap-1 text-sm text-[#94a3b8] transition-colors hover:text-[#06b6d4]"
+          className="mb-6 flex items-center gap-1 text-sm text-text-muted transition-colors hover:text-accent-secondary"
         >
           <ChevronLeft className="h-4 w-4" />
           {lang === "en" ? "Back" : "رجوع"}
@@ -22,13 +22,13 @@ export default function RefundPolicy() {
         {/* Header */}
         <div className="mb-10 flex items-center gap-4">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[rgba(6,182,212,0.1)]">
-            <RotateCcw className="h-6 w-6 text-[#06b6d4]" />
+            <RotateCcw className="h-6 w-6 text-accent-secondary" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-[#f0f4f8]">
+            <h1 className="text-3xl font-bold text-foreground">
               {lang === "en" ? "Refund Policy" : "سياسة الاسترداد"}
             </h1>
-            <p className="text-sm text-[#64748b]">
+            <p className="text-sm text-text-faint">
               {lang === "en" ? "Last updated: May 2025" : "آخر تحديث: مايو 2025"}
             </p>
           </div>
@@ -36,26 +36,26 @@ export default function RefundPolicy() {
 
         {/* Quick summary cards */}
         <div className="mb-10 grid gap-4 sm:grid-cols-3">
-          <div className="rounded-xl border border-[#1f2d44] bg-[#111827] p-4 text-center">
-            <Clock className="mx-auto h-8 w-8 text-[#f59e0b]" />
-            <p className="mt-2 text-2xl font-bold text-[#f0f4f8]">7</p>
-            <p className="text-xs text-[#64748b]">
+          <div className="rounded-xl border border-border bg-primary p-4 text-center">
+            <Clock className="mx-auto h-8 w-8 text-amber-500" />
+            <p className="mt-2 text-2xl font-bold text-foreground">7</p>
+            <p className="text-xs text-text-faint">
               {lang === "en" ? "Days guarantee" : "أيام ضمان"}
             </p>
           </div>
-          <div className="rounded-xl border border-[#1f2d44] bg-[#111827] p-4 text-center">
-            <CheckCircle2 className="mx-auto h-8 w-8 text-[#10b981]" />
-            <p className="mt-2 text-2xl font-bold text-[#f0f4f8]">100%</p>
-            <p className="text-xs text-[#64748b]">
+          <div className="rounded-xl border border-border bg-primary p-4 text-center">
+            <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500" />
+            <p className="mt-2 text-2xl font-bold text-foreground">100%</p>
+            <p className="text-xs text-text-faint">
               {lang === "en" ? "Full refund" : "استرداد كامل"}
             </p>
           </div>
-          <div className="rounded-xl border border-[#1f2d44] bg-[#111827] p-4 text-center">
-            <XCircle className="mx-auto h-8 w-8 text-[#f43f5e]" />
-            <p className="mt-2 text-2xl font-bold text-[#f0f4f8]">
+          <div className="rounded-xl border border-border bg-primary p-4 text-center">
+            <XCircle className="mx-auto h-8 w-8 text-destructive" />
+            <p className="mt-2 text-2xl font-bold text-foreground">
               {lang === "en" ? "No questions" : "بدون أسئلة"}
             </p>
-            <p className="text-xs text-[#64748b]">
+            <p className="text-xs text-text-faint">
               {lang === "en" ? "Asked" : "مطلوبة"}
             </p>
           </div>
@@ -74,7 +74,7 @@ export default function RefundPolicy() {
               </Section>
 
               <Section title="3. How to Request a Refund">
-                <p>To request a refund, simply contact our support team through the <Link to="/support" className="text-[#06b6d4] hover:underline">Support Center</Link>. Include your order number and the reason for the refund request. Our team will process your request within 3-5 business days. Refunds are credited back to the original payment method.</p>
+                <p>To request a refund, simply contact our support team through the <Link to="/support" className="text-accent-secondary hover:underline">Support Center</Link>. Include your order number and the reason for the refund request. Our team will process your request within 3-5 business days. Refunds are credited back to the original payment method.</p>
               </Section>
 
               <Section title="4. Refund Processing Time">
@@ -90,7 +90,7 @@ export default function RefundPolicy() {
               </Section>
 
               <Section title="7. Contact Us">
-                <p>For refund inquiries, please contact our support team via <Link to="/support" className="text-[#06b6d4] hover:underline">Support Center</Link> or email <a href={`mailto:${contact.email}`} className="text-[#06b6d4] hover:underline">{contact.email}</a>. We aim to resolve all refund requests within 24 hours.</p>
+                <p>For refund inquiries, please contact our support team via <Link to="/support" className="text-accent-secondary hover:underline">Support Center</Link> or email <a href={`mailto:${contact.email}`} className="text-accent-secondary hover:underline">{contact.email}</a>. We aim to resolve all refund requests within 24 hours.</p>
               </Section>
             </>
           ) : (
@@ -104,7 +104,7 @@ export default function RefundPolicy() {
               </Section>
 
               <Section title="٣. كيف تطلب استرداد">
-                <p>لطلب استرداد، تواصل مع فريق الدعم عبر <Link to="/support" className="text-[#06b6d4] hover:underline">مركز الدعم</Link>. أرفق رقم الطلب وسبب طلب الاسترداد. سيعالج فريقنا طلبك خلال ٣-٥ أيام عمل. يُرد المبلغ بنفس طريقة الدفع الأصلية.</p>
+                <p>لطلب استرداد، تواصل مع فريق الدعم عبر <Link to="/support" className="text-accent-secondary hover:underline">مركز الدعم</Link>. أرفق رقم الطلب وسبب طلب الاسترداد. سيعالج فريقنا طلبك خلال ٣-٥ أيام عمل. يُرد المبلغ بنفس طريقة الدفع الأصلية.</p>
               </Section>
 
               <Section title="٤. مدة معالجة الاسترداد">
@@ -120,7 +120,7 @@ export default function RefundPolicy() {
               </Section>
 
               <Section title="٧. تواصل معنا">
-                <p>للاستفسارات عن الاسترداد، تواصل معنا عبر <Link to="/support" className="text-[#06b6d4] hover:underline">مركز الدعم</Link> أو <a href={`mailto:${contact.email}`} className="text-[#06b6d4] hover:underline">{contact.email}</a>. نهدف لحل جميع طلبات الاسترداد خلال ٢٤ ساعة.</p>
+                <p>للاستفسارات عن الاسترداد، تواصل معنا عبر <Link to="/support" className="text-accent-secondary hover:underline">مركز الدعم</Link> أو <a href={`mailto:${contact.email}`} className="text-accent-secondary hover:underline">{contact.email}</a>. نهدف لحل جميع طلبات الاسترداد خلال ٢٤ ساعة.</p>
               </Section>
             </>
           )}
@@ -133,8 +133,8 @@ export default function RefundPolicy() {
 function Section({ title, children }: { readonly title: string; readonly children: React.ReactNode }) {
   return (
     <section>
-      <h2 className="mb-3 text-lg font-bold text-[#f0f4f8]">{title}</h2>
-      <div className="text-sm leading-relaxed text-[#94a3b8]">{children}</div>
+      <h2 className="mb-3 text-lg font-bold text-foreground">{title}</h2>
+      <div className="text-sm leading-relaxed text-text-muted">{children}</div>
     </section>
   );
 }

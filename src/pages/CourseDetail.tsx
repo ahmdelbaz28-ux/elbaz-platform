@@ -57,7 +57,7 @@ function CourseThumbnailWithFallback({ thumbnail, title }: { readonly thumbnail:
 
   return (
     <img
-      src={thumbnail || "/hero-bg.jpg"}
+      src={thumbnail || "/hero-main.svg"}
       alt={title}
       onError={() => setErr(true)}
       className="aspect-video w-full object-cover opacity-100"
