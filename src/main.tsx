@@ -20,72 +20,79 @@ import App from './App.tsx'
  */
 if ('serviceWorker' in navigator && !(globalThis as any).Capacitor?.isNativePlatform?.()) {
   try {
-    const { registerSW }: { registerSW: (opts: {
-      immediate?: boolean;
-      onNeedRefresh?: () => void;
-      onOfflineReady?: () => void;
-      onRegisteredSW?: (swUrl: string, registration: ServiceWorkerRegistration | undefined) => void;
-      onRegisterError?: (error: unknown) => void;
-    }) => void } = await import('virtual:pwa-register');
-    registerSW({
-      immediate: true,
-      onNeedRefresh() {
-        console.log('[PWA] New content available — deferring reload to cache-nuke.js');
-        if (navigator.serviceWorker.controller) {
-          navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' });
+    const { registerSW }: {
+      registerSW: (opts: {
+        immediate?: boolean;
+        onNeedRefresh?: () => void;
+        onOfflineReady?: () => void;
+        onRegisteredSW?: (swUrl: string, registration: ServiceWorkerRegistration | undefined) => void;
+        onRegisterError?: (error: unknown) => void;
+      }) => void
+    } = await import('virtual:pwa-register');
+
+    const registerServiceWorker = async () => {
+      const SW_UPDATE_INTERVAL = 5 * 60 * 1000; // 5 minutes
+      let intervalId: ReturnType<typeof setInterval> | null = null;
+
+      const checkForUpdate = () => {
+        if (!document.hidden && registration) {
+          registration.update().catch(() => { });
         }
-      },
-      onOfflineReady() {
-        console.log('[PWA] App ready for offline use');
-      },
-      onRegisteredSW(_swUrl: string, registration: ServiceWorkerRegistration | undefined) {
-        if (registration) {
-          // ✅ FIX: Check for SW updates every 5 minutes (reduced from 1 minute —
-          // 1 minute was too aggressive and caused unnecessary network requests).
-          // Also properly clean up the interval on page unload.
-          const SW_UPDATE_INTERVAL = 5 * 60 * 1000; // 5 minutes
-          let intervalId: ReturnType<typeof setInterval> | null = null;
+      };
 
-          const checkForUpdate = () => {
-            if (!document.hidden) {
-              registration.update().catch(() => {});
-            }
-          };
+      const startInterval = () => {
+        intervalId ??= setInterval(checkForUpdate, SW_UPDATE_INTERVAL);
+      };
+      const stopInterval = () => {
+        if (intervalId !== null) {
+          clearInterval(intervalId);
+          intervalId = null;
+        }
+      };
 
-          // Only run interval when page is visible (saves battery + bandwidth)
-          const startInterval = () => {
-            intervalId ??= setInterval(checkForUpdate, SW_UPDATE_INTERVAL);
-          };
-          const stopInterval = () => {
-            if (intervalId !== null) {
-              clearInterval(intervalId);
-              intervalId = null;
-            }
-          };
-
-          // Start/stop based on visibility
-          document.addEventListener('visibilitychange', () => {
-            if (document.hidden) {
-              stopInterval();
-            } else {
-              checkForUpdate(); // Check immediately on becoming visible
-              startInterval();
-            }
-          });
-
-          // Initial start
+      const handleVisibilityChange = () => {
+        if (document.hidden) {
+          stopInterval();
+        } else {
+          checkForUpdate(); // Check immediately on becoming visible
           startInterval();
-
-          // ✅ FIX: Clean up interval on page unload (prevents leak)
-          globalThis.addEventListener('beforeunload', () => {
-            stopInterval();
-          });
         }
-      },
-      onRegisterError(error: unknown) {
-        console.warn('[PWA] Service worker registration failed — site works without it', error);
-      },
-    });
+      };
+
+      let registration: ServiceWorkerRegistration | undefined;
+      registerSW({
+        immediate: true,
+        onNeedRefresh() {
+          console.log('[PWA] New content available — deferring reload to cache-nuke.js');
+          if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' });
+          }
+        },
+        onOfflineReady() {
+          console.log('[PWA] App ready for offline use');
+        },
+        onRegisteredSW(_swUrl: string, reg: ServiceWorkerRegistration | undefined) {
+          registration = reg;
+          if (registration) {
+            document.addEventListener('visibilitychange', handleVisibilityChange);
+            globalThis.addEventListener('beforeunload', stopInterval);
+            startInterval(); // Initial start
+          }
+        },
+        onRegisterError(error: unknown) {
+          console.warn('[PWA] Service worker registration failed — site works without it', error);
+        },
+      });
+
+      // Cleanup function for unmounting
+      return () => {
+        stopInterval();
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+        globalThis.removeEventListener('beforeunload', stopInterval);
+      };
+    };
+
+    await registerServiceWorker();
   } catch {
     // PWA not available — non-critical
   }

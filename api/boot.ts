@@ -427,3 +427,4 @@ try {
 }
 
 export { app };
+export default app;
