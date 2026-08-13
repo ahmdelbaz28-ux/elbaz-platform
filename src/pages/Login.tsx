@@ -13,7 +13,6 @@ import { trackPlatform, identifyUser } from "@/lib/clarity";
 import { isNativePlatform, setStoredToken } from "@/lib/auth-storage";
 import { bilingualByLang } from "@/lib/i18n";
 
-// ─── Google Identity Types ───
 interface GoogleCredentialResponse {
   credential?: string;
   select_by?: string;
@@ -46,189 +45,107 @@ export default function Login() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleClientId, setGoogleClientId] = useState("");
 
-  // Fetch Google Client ID from public env vars.
-  // 🔧 ROOT CAUSE FIX: Read from globalThis.__ENV__ (injected by server into HTML)
-  // FIRST, before falling back to /api/env fetch. The fetch was being blocked
-  // by Cloudflare Bot Management on some browsers, causing the Google Sign-In
-  // button to never render.
   useEffect(() => {
-    // 1. Synchronous: read from injected globalThis.__ENV__
     const injected = (globalThis as any).__ENV__ as Record<string, string> | undefined;
     if (injected?.GOOGLE_CLIENT_ID) {
       setGoogleClientId(injected.GOOGLE_CLIENT_ID);
-      return; // ✅ Got it — no need to fetch
+      return;
     }
-
-    // 2. Fallback: fetch /api/env (may be blocked by Cloudflare Bot Management)
     console.warn("[GoogleAuth] globalThis.__ENV__ not found, falling back to /api/env fetch");
     fetch("/api/env", { cache: "no-store" })
-      .then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then(data => {
-        if (data?.GOOGLE_CLIENT_ID) {
-          setGoogleClientId(data.GOOGLE_CLIENT_ID);
-        } else {
-          console.warn("[GoogleAuth] GOOGLE_CLIENT_ID not found in /api/env response");
-        }
-      })
-      .catch((err) => {
-        console.warn("[GoogleAuth] Could not fetch /api/env:", err.message);
-      });
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then(data => { if (data?.GOOGLE_CLIENT_ID) setGoogleClientId(data.GOOGLE_CLIENT_ID); })
+      .catch((err) => console.warn("[GoogleAuth] Could not fetch /api/env:", err.message));
   }, []);
 
-  // Check for Google OAuth error/success in URL params (from redirect flow)
   useEffect(() => {
     const params = new URLSearchParams(globalThis.location.search);
     const googleError = params.get("google_error");
     if (googleError) {
       const googleDetail = params.get("google_detail");
       const errorMessages: Record<string, { ar: string; en: string }> = {
-        "access_denied": { ar: "تم رفض تسجيل الدخول بجوجل. حاول مرة أخرى أو استخدم اسم المستخدم وكلمة المرور.", en: "Google sign-in was denied. Please try again or use your username and password." },
-        "token_exchange_failed": { ar: "فشل تبادل الرمز مع جوجل. تأكد من إعدادات OAuth في Google Cloud Console ثم حاول مرة أخرى.", en: "Google token exchange failed. Please verify OAuth settings in Google Cloud Console and try again." },
-        "invalid_token": { ar: "رمز جوجل غير صالح. حاول مرة أخرى.", en: "Invalid Google token. Please try again." },
-        "state_mismatch": { ar: "خطأ أمني في تسجيل جوجل (state mismatch). أغلق المتصفح وحاول مرة أخرى.", en: "Security error in Google sign-in (state mismatch). Please close your browser and try again." },
-        "callback_error": { ar: "حدث خطأ غير متوقع أثناء تسجيل الدخول بجوجل. حاول مرة أخرى.", en: "An unexpected error occurred during Google sign-in. Please try again." },
-        "missing_params": { ar: "بيانات ناقصة من جوجل. حاول مرة أخرى.", en: "Missing parameters from Google. Please try again." },
-        "no_id_token": { ar: "لم يتم استلام رمز الهوية من جوجل. حاول مرة أخرى.", en: "No ID token received from Google. Please try again." },
-        "invalid_user_info": { ar: "معلومات المستخدم من جوجل غير مكتملة. حاول مرة أخرى.", en: "Incomplete user info from Google. Please try again." },
-        "not_configured": { ar: "تسجيل الدخول بجوجل غير مُفعّل على الخادم. تواصل مع الإدارة.", en: "Google sign-in is not configured on the server. Please contact support." },
-        "origin_mismatch": { ar: "النطاق غير مصرح به في Google Cloud Console. تواصل مع الإدارة.", en: "This domain is not authorized in Google Cloud Console. Please contact support." },
-        "redirect_uri_mismatch": {
-          ar: "⚠️ رابط إعادة التوجيه غير مسجل في Google Cloud Console. يجب إضافة: https://ahmedelbaz.qzz.io/api/google-auth/callback في Authorized redirect URIs.",
-          en: "⚠️ Redirect URI not registered in Google Cloud Console. Add: https://ahmedelbaz.qzz.io/api/google-auth/callback to Authorized redirect URIs."
-        },
+        access_denied: { ar: "تم رفض تسجيل الدخول بجوجل. حاول مرة أخرى أو استخدم اسم المستخدم وكلمة المرور.", en: "Google sign-in was denied. Please try again or use your username and password." },
+        token_exchange_failed: { ar: "فشل تبادل الرمز مع جوجل. تأكد من إعدادات OAuth في Google Cloud Console ثم حاول مرة أخرى.", en: "Google token exchange failed. Please verify OAuth settings in Google Cloud Console and try again." },
+        invalid_token: { ar: "رمز جوجل غير صالح. حاول مرة أخرى.", en: "Invalid Google token. Please try again." },
+        state_mismatch: { ar: "خطأ أمني في تسجيل جوجل (state mismatch). أغلق المتصفح وحاول مرة أخرى.", en: "Security error in Google sign-in (state mismatch). Please close your browser and try again." },
+        callback_error: { ar: "حدث خطأ غير متوقع أثناء تسجيل الدخول بجوجل. حاول مرة أخرى.", en: "An unexpected error occurred during Google sign-in. Please try again." },
+        missing_params: { ar: "بيانات ناقصة من جوجل. حاول مرة أخرى.", en: "Missing parameters from Google. Please try again." },
+        no_id_token: { ar: "لم يتم استلام رمز الهوية من جوجل. حاول مرة أخرى.", en: "No ID token received from Google. Please try again." },
+        invalid_user_info: { ar: "معلومات المستخدم من جوجل غير مكتملة. حاول مرة أخرى.", en: "Incomplete user info from Google. Please try again." },
+        not_configured: { ar: "تسجيل الدخول بجوجل غير مُفعّل على الخادم. تواصل مع الإدارة.", en: "Google sign-in is not configured on the server. Please contact support." },
+        origin_mismatch: { ar: "النطاق غير مصرح به في Google Cloud Console. تواصل مع الإدارة.", en: "This domain is not authorized in Google Cloud Console. Please contact support." },
+        redirect_uri_mismatch: { ar: "⚠️ رابط إعادة التوجيه غير مسجل في Google Cloud Console. يجب إضافة: https://ahmedelbaz.qzz.io/api/google-auth/callback في Authorized redirect URIs.", en: "⚠️ Redirect URI not registered in Google Cloud Console. Add: https://ahmedelbaz.qzz.io/api/google-auth/callback to Authorized redirect URIs." },
       };
       let msg = errorMessages[googleError]?.[lang] || (lang === "ar" ? `حدث خطأ في تسجيل الدخول بجوجل: ${googleError}` : `Google sign-in error occurred: ${googleError}`);
-      
-      // Append Google's specific error detail for token_exchange_failed
-      // This helps diagnose: invalid_grant, invalid_client, invalid_request, etc.
       if (googleError === "token_exchange_failed" && googleDetail) {
-        const detailMsg = lang === "ar" 
-          ? ` (تفاصيل الخطأ من Google: ${googleDetail})` 
-          : ` (Google error detail: ${googleDetail})`;
-        msg += detailMsg;
+        msg += lang === "ar" ? ` (تفاصيل الخطأ من Google: ${googleDetail})` : ` (Google error detail: ${googleDetail})`;
       }
-      
       setError(msg);
       toast.error(msg, { duration: 10000 });
-      // Clean the URL
       globalThis.history.replaceState({}, "", globalThis.location.pathname);
     }
   }, [lang]);
 
-  // Handle Google Sign-In response
   const handleGoogleCallback = useCallback(async (response: GoogleCredentialResponse) => {
-    if (!response.credential) {
-      console.error("[GoogleAuth] No credential in response");
-      return;
-    }
-
+    if (!response.credential) return;
     setGoogleLoading(true);
     setError("");
-
     try {
-      const res = await fetch("/api/google-auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken: response.credential }),
-      });
-
+      const res = await fetch("/api/google-auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken: response.credential }) });
       const data = await res.json();
-
       if (data.success && data.user) {
         trackPlatform("google_login_success");
-        if (data.user?.id && data.user?.username) {
-          identifyUser(data.user.id, data.user.username, {
-            role: data.user.role || "user",
-            loginMethod: "google",
-          });
-        }
+        if (data.user?.id && data.user?.username) identifyUser(data.user.id, data.user.username, { role: data.user.role || "user", loginMethod: "google" });
         toast.success(lang === "ar" ? "تم تسجيل الدخول بنجاح" : "Logged in successfully");
         navigate("/", { replace: true });
       } else {
         const errMsg = data.error || (lang === "ar" ? "فشل تسجيل الدخول بجوجل" : "Google login failed");
-        setError(errMsg);
-        toast.error(errMsg);
+        setError(errMsg); toast.error(errMsg);
       }
     } catch (err) {
       console.error("[GoogleAuth] Network error:", err);
       const errMsg = lang === "ar" ? "تعذر الاتصال بالخادم" : "Could not connect to server";
-      setError(errMsg);
-      toast.error(errMsg);
-    } finally {
-      setGoogleLoading(false);
-    }
+      setError(errMsg); toast.error(errMsg);
+    } finally { setGoogleLoading(false); }
   }, [lang, navigate]);
 
-  // Initialize Google Identity Services when clientId is available
   useEffect(() => {
     if (!googleClientId) return;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let disposed = false;
-
     const waitForGoogle = () => {
       if (disposed) return;
       if (globalThis.google?.accounts?.id) {
-        globalThis.google.accounts.id.initialize({
-          client_id: googleClientId,
-          callback: handleGoogleCallback,
-          auto_select: false,
-          cancel_on_tap_outside: true,
-        });
-      } else if (!document.querySelector('script[src*="accounts.google.com/gsi/client"]')) { // NOSONAR — guard against double-loading GIS script
-        // Load GIS script on demand if not already loaded
-        // Use the __loadGsi helper from index.html if available
-        if (typeof (globalThis as any).__loadGsi === 'function') {
-          (globalThis as any).__loadGsi();
-        } else {
+        globalThis.google.accounts.id.initialize({ client_id: googleClientId, callback: handleGoogleCallback, auto_select: false, cancel_on_tap_outside: true });
+      } else if (!document.querySelector('script[src*="accounts.google.com/gsi/client"]')) {
+        if (typeof (globalThis as any).__loadGsi === 'function') (globalThis as any).__loadGsi();
+        else {
           const s = document.createElement('script');
           s.src = 'https://accounts.google.com/gsi/client';
-          s.async = true;
-          s.defer = true;
-          s.crossOrigin = 'anonymous';
+          s.async = true; s.defer = true; s.crossOrigin = 'anonymous';
           document.head.appendChild(s);
         }
-        // Wait for script to load
         retryTimer = setTimeout(waitForGoogle, 500);
-      } else {
-        retryTimer = setTimeout(waitForGoogle, 200);
-      }
+      } else { retryTimer = setTimeout(waitForGoogle, 200); }
     };
     waitForGoogle();
-
-    return () => {
-      disposed = true;
-      if (retryTimer) clearTimeout(retryTimer);
-    };
+    return () => { disposed = true; if (retryTimer) clearTimeout(retryTimer); };
   }, [googleClientId, handleGoogleCallback]);
 
   const handleGoogleSignIn = useCallback(() => {
-    setGoogleLoading(true);
-    setError("");
-
+    setGoogleLoading(true); setError("");
     setTimeout(() => {
       if (!googleClientId) {
         setGoogleLoading(false);
-        const errMsg = lang === "ar"
-          ? "تعذر بدء تسجيل الدخول بجوجل. أعد تحميل الصفحة وحاول مرة أخرى."
-          : "Could not start Google sign-in. Please reload the page and try again.";
-        setError(errMsg);
-        toast.error(errMsg);
-        return;
+        const errMsg = lang === "ar" ? "تعذر بدء تسجيل الدخول بجوجل. أعد تحميل الصفحة وحاول مرة أخرى." : "Could not start Google sign-in. Please reload the page and try again.";
+        setError(errMsg); toast.error(errMsg); return;
       }
-
-      try {
-        initiateGoogleOAuth(googleClientId);
-      } catch (err) {
+      try { initiateGoogleOAuth(googleClientId); }
+      catch (err) {
         console.error("[GoogleAuth] Failed to redirect:", err);
         setGoogleLoading(false);
-        const errMsg = lang === "ar"
-          ? "تعذر بدء تسجيل الدخول بجوجل. حاول مرة أخرى."
-          : "Could not start Google sign-in. Please try again.";
-        setError(errMsg);
-        toast.error(errMsg);
+        const errMsg = lang === "ar" ? "تعذر بدء تسجيل الدخول بجوجل. حاول مرة أخرى." : "Could not start Google sign-in. Please try again.";
+        setError(errMsg); toast.error(errMsg);
       }
     }, 50);
   }, [lang, googleClientId]);
@@ -236,38 +153,19 @@ export default function Login() {
   const loginMutation = trpc.auth.login.useMutation({
     onSuccess: (data) => {
       trackPlatform("login_success");
-      if (data?.user?.id && data?.user?.username) {
-        identifyUser(data.user.id, data.user.username, {
-          role: data.user.role || "user",
-        });
-      }
-      if (isNativePlatform() && data?.token) {
-        setStoredToken(data.token);
-      }
+      if (data?.user?.id && data?.user?.username) identifyUser(data.user.id, data.user.username, { role: data.user.role || "user" });
+      if (isNativePlatform() && data?.token) setStoredToken(data.token);
       toast.success(t("loginSuccess"));
       navigate("/", { replace: true });
     },
     onError: (err) => {
       trackPlatform("login_failed");
-      // The if/else-if/else below covers every case, so `err.message` is
-      // always overwritten — declared without an initialiser (SonarCloud S1854).
       let errorMsg: string;
       const errorCode = (err.data as { code?: string })?.code;
-      if (errorCode === "TOO_MANY_REQUESTS") {
-        errorMsg = lang === "ar"
-          ? "محاولات كثيرة. انتظر قليلاً ثم حاول مرة أخرى."
-          : "Too many login attempts. Please wait a moment and try again.";
-      } else if (errorCode === "UNAUTHORIZED") {
-        errorMsg = lang === "ar"
-          ? "اسم المستخدم أو كلمة المرور غير صحيح"
-          : "Invalid username or password";
-      } else {
-        errorMsg = lang === "ar"
-          ? "حدث خطأ في النظام. يرجى المحاولة مرة أخرى لاحقاً."
-          : "A system error occurred. Please try again later.";
-      }
-      setError(errorMsg);
-      toast.error(errorMsg);
+      if (errorCode === "TOO_MANY_REQUESTS") errorMsg = lang === "ar" ? "محاولات كثيرة. انتظر قليلاً ثم حاول مرة أخرى." : "Too many login attempts. Please wait a moment and try again.";
+      else if (errorCode === "UNAUTHORIZED") errorMsg = lang === "ar" ? "اسم المستخدم أو كلمة المرور غير صحيح" : "Invalid username or password";
+      else errorMsg = lang === "ar" ? "حدث خطأ في النظام. يرجى المحاولة مرة أخرى لاحقاً." : "A system error occurred. Please try again later.";
+      setError(errorMsg); toast.error(errorMsg);
     },
   });
 
@@ -276,23 +174,21 @@ export default function Login() {
     setError("");
     if (!username.trim() || !password.trim()) {
       const msg = lang === "en" ? "Please fill in all fields" : "يرجى ملء جميع الحقول";
-      setError(msg);
-      toast.error(msg);
-      return;
+      setError(msg); toast.error(msg); return;
     }
     loginMutation.mutate({ username: username.trim(), password, remember });
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#0a0e17] px-4">
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="mb-8 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[rgba(6,182,212,0.15)]">
-            <Zap className="h-6 w-6 text-[#06b6d4]" />
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-accent-secondary/10">
+            <Zap className="h-6 w-6 text-accent-secondary" />
           </div>
-          <h1 className="mt-4 text-2xl font-bold text-[#f0f4f8]">{t("welcomeBack")}</h1>
-          <p className="mt-1 text-sm text-[#94a3b8]">{t("loginToContinue")}</p>
+          <h1 className="mt-4 text-2xl font-bold text-foreground">{t("welcomeBack")}</h1>
+          <p className="mt-1 text-sm text-text-muted">{t("loginToContinue")}</p>
         </div>
 
         {/* Google Sign-In Button */}
@@ -302,10 +198,10 @@ export default function Login() {
               type="button"
               onClick={handleGoogleSignIn}
               disabled={googleLoading || loginMutation.isPending}
-              className="flex w-full items-center justify-center gap-3 rounded-xl border border-[#1f2d44] bg-[#111827] px-4 py-3 text-sm font-medium text-[#f0f4f8] transition-all duration-200 hover:border-[#4285f4]/50 hover:bg-[#1a1a2e] disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-primary px-4 py-3 text-sm font-medium text-foreground transition-all duration-200 hover:border-accent-secondary/60 hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
             >
               {googleLoading ? (
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#4285f4] border-t-transparent" />
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-accent-secondary border-t-transparent" />
               ) : (
                 <svg className="h-5 w-5" viewBox="0 0 24 24" role="img" aria-hidden="true">
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
@@ -314,8 +210,7 @@ export default function Login() {
                   <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
                 </svg>
               )}
-              {googleLoading ? bilingualByLang("جارٍ تسجيل الدخول...", "Signing in...", lang) : bilingualByLang("تسجيل الدخول بجوجل", "Sign in with Google", lang)
-              }
+              {googleLoading ? bilingualByLang("جارٍ تسجيل الدخول...", "Signing in...", lang) : bilingualByLang("تسجيل الدخول بجوجل", "Sign in with Google", lang)}
             </button>
           </div>
         )}
@@ -324,10 +219,10 @@ export default function Login() {
         {googleClientId && (
           <div className="relative my-4">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-[#1f2d44]" />
+              <div className="w-full border-t border-border" />
             </div>
             <div className="relative flex justify-center text-xs">
-              <span className="bg-[#0a0e17] px-3 text-[#64748b]">
+              <span className="bg-background px-3 text-text-muted">
                 {lang === "ar" ? "أو" : "or"}
               </span>
             </div>
@@ -336,23 +231,23 @@ export default function Login() {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="rounded-xl border border-[#1f2d44] bg-[#111827] p-6">
+          <div className="rounded-xl border border-border bg-primary p-6">
             {error && (
-              <div className="mb-4 rounded-lg bg-[rgba(244,63,94,0.1)] p-3 text-sm text-[#f43f5e]" role="alert">
+              <div className="mb-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive" role="alert">
                 {error}
               </div>
             )}
 
             <div className="space-y-4">
               <div>
-                <Label htmlFor="login-username" className="text-sm text-[#94a3b8]">{t("username")}</Label>
+                <Label htmlFor="login-username" className="text-sm text-text-muted">{t("username")}</Label>
                 <Input
                   id="login-username"
                   name="username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder={t("enterUsername")}
-                  className="mt-1 border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8] placeholder:text-[#64748b] focus:border-[#06b6d4] focus:ring-[#06b6d4]"
+                  className="mt-1 border-border bg-background text-foreground placeholder:text-text-faint focus:border-accent-secondary focus:ring-accent-secondary"
                   autoComplete="username"
                   autoCapitalize="none"
                   autoCorrect="off"
@@ -363,11 +258,8 @@ export default function Login() {
 
               <div>
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="login-password" className="text-sm text-[#94a3b8]">{t("password")}</Label>
-                  <Link
-                    to="/forgot-password"
-                    className="text-xs font-medium text-[#06b6d4] transition-colors hover:text-[#22d3ee]"
-                  >
+                  <Label htmlFor="login-password" className="text-sm text-text-muted">{t("password")}</Label>
+                  <Link to="/forgot-password" className="text-xs font-medium text-accent-secondary transition-colors hover:text-accent">
                     {t("forgotPassword")}
                   </Link>
                 </div>
@@ -379,14 +271,14 @@ export default function Login() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder={t("enterPassword")}
-                    className="border-[#1f2d44] bg-[#0a0e17] pr-10 text-[#f0f4f8] placeholder:text-[#64748b] focus:border-[#06b6d4] focus:ring-[#06b6d4]"
+                    className="border-border bg-background pr-10 text-foreground placeholder:text-text-faint focus:border-accent-secondary focus:ring-accent-secondary"
                     autoComplete="current-password"
                     required
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748b] hover:text-[#94a3b8]"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary"
                     aria-label={showPassword ? bilingualByLang("إخفاء كلمة المرور", "Hide password", lang) : bilingualByLang("إظهار كلمة المرور", "Show password", lang)}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -400,9 +292,9 @@ export default function Login() {
                   id="remember-me"
                   checked={remember}
                   onCheckedChange={(v) => setRemember(v === true)}
-                  className="border-[#1f2d44] data-[state=checked]:bg-[#06b6d4] data-[state=checked]:border-[#06b6d4]"
+                  className="border-border data-[state=checked]:bg-accent-secondary data-[state=checked]:border-accent-secondary"
                 />
-                <Label htmlFor="remember-me" className="text-sm text-[#94a3b8] cursor-pointer select-none">
+                <Label htmlFor="remember-me" className="text-sm text-text-muted cursor-pointer select-none">
                   {lang === "ar" ? "تذكّرني على هذا الجهاز" : "Remember me on this device"}
                 </Label>
               </div>
@@ -410,7 +302,7 @@ export default function Login() {
 
             <Button
               type="submit"
-              className="glow-btn mt-6 w-full bg-gradient-to-r from-[#06b6d4] to-[#0891b2] font-semibold text-[#0a0e17]"
+              className="glow-btn mt-6 w-full bg-gradient-to-r from-accent-secondary to-accent-secondary/80 font-semibold text-background"
               disabled={loginMutation.isPending || googleLoading}
             >
               {loginMutation.isPending ? t("loading") : t("login")}
@@ -418,19 +310,19 @@ export default function Login() {
           </div>
         </form>
 
-        <p className="mt-6 text-center text-sm text-[#94a3b8]">
+        <p className="mt-6 text-center text-sm text-text-muted">
           {t("dontHaveAccount")}{" "}
-          <Link to="/register" className="font-medium text-[#06b6d4] hover:underline">
+          <Link to="/register" className="font-medium text-accent-secondary hover:underline">
             {t("register")}
           </Link>
         </p>
 
         {/* Demo credentials only shown in development */}
         {import.meta.env.DEV && (
-          <div className="mt-6 rounded-lg border border-dashed border-[#1f2d44] bg-[#111827] p-4 text-center">
-            <p className="text-xs text-[#64748b]">{lang === "en" ? "Demo credentials:" : "بيانات تجريبية:"}</p>
-            <p className="mt-1 text-xs text-[#94a3b8]">admin / admin123</p>
-            <p className="text-xs text-[#94a3b8]">demo / demo123</p>
+          <div className="mt-6 rounded-lg border border-dashed border-border bg-primary p-4 text-center">
+            <p className="text-xs text-text-muted">{lang === "en" ? "Demo credentials:" : "بيانات تجريبية:"}</p>
+            <p className="mt-1 text-xs text-text-secondary">admin / admin123</p>
+            <p className="text-xs text-text-secondary">demo / demo123</p>
           </div>
         )}
       </div>

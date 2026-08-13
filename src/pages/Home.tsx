@@ -330,7 +330,7 @@ export default function Home() { // NOSONAR — landing page with hero + feature
             </StaggerItem>
 
             <StaggerItem>
-              <h1 className="mt-6 text-5xl font-extrabold leading-[1.06] tracking-tight text-[var(--animation-text)] sm:text-5xl lg:text-[64px]">
+              <h1 className="mt-6 text-5xl font-extrabold leading-[1.06] tracking-tight text-foreground sm:text-5xl lg:text-[64px]">
                 {lang === "en" ? "Master the Power" : "أتقن قوة"}
                 <br />
                 <span className="gradient-text">
@@ -340,7 +340,7 @@ export default function Home() { // NOSONAR — landing page with hero + feature
             </StaggerItem>
 
             <StaggerItem>
-              <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, duration: 0.6 }} className="mx-auto mt-5 max-w-lg text-base leading-relaxed text-[var(--animation-muted)] lg:mx-0 lg:text-lg">
+              <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, duration: 0.6 }} className="mx-auto mt-5 max-w-lg text-base leading-relaxed text-text-muted lg:mx-0 lg:text-lg">
                 {lang === "en" ? "From electrical network design to advanced simulations in ETAP, SKM, PowerFactory, and PVSyst. Learn from an industry expert with real-world project experience." : "من تصميم الشبكات الكهربية إلى المحاكاة المتقدمة في ETAP وSKM وPowerFactory وPVSyst. تعلم من خبير صناعة ذي خبرة عملية."}
               </motion.p>
             </StaggerItem>
@@ -363,9 +363,9 @@ export default function Home() { // NOSONAR — landing page with hero + feature
             <StaggerItem>
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5, duration: 0.5 }} className="mt-10 flex flex-wrap items-center justify-center gap-8 lg:justify-start">
                 <AnimatedCounter value={resolvedStats.totalStudents} label={t("studentsEnrolled")} color="var(--animation-accent)" suffix="+" />
-                <div className="h-10 w-px bg-[var(--animation-border)]" />
+                <div className="h-10 w-px bg-border" />
                 <AnimatedCounter value={resolvedStats.satisfactionRate} label={t("satisfactionRate")} color="#10b981" suffix="%" />
-                <div className="h-10 w-px bg-[var(--animation-border)]" />
+                <div className="h-10 w-px bg-border" />
                 <AnimatedCounter value={resolvedStats.totalCourses} label={t("premiumCourses")} color="#f59e0b" suffix="+" />
               </motion.div>
             </StaggerItem>
@@ -373,28 +373,28 @@ export default function Home() { // NOSONAR — landing page with hero + feature
 
           <FadeIn delay={0.3} className="mt-8 flex flex-1 justify-center lg:mt-0 lg:justify-end">
             <motion.div initial={{ opacity: 0, scale: 0.9, x: 50 }} animate={{ opacity: 1, scale: 1, x: 0 }} transition={{ duration: 0.8, type: "spring", stiffness: 100, damping: 20 }} className="relative w-full max-w-2xl lg:max-w-[600px] xl:max-w-[700px]">
-              <motion.div animate={{ opacity: [0.4, 0.7, 0.4], scale: [1, 1.05, 1] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }} className="absolute -inset-6 rounded-[2rem] bg-gradient-to-br from-[#06b6d4]/20 via-[#8b5cf6]/10 to-transparent blur-3xl" />
-              <motion.div animate={{ boxShadow: ["0 0 30px rgba(6,182,212,0.3)", "0 0 50px rgba(6,182,212,0.5)", "0 0 30px rgba(6,182,212,0.3)"] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }} className="relative z-10 overflow-hidden rounded-[1.5rem] border border-[#1f2d44] bg-[#0a0e17] shadow-2xl">
+              <motion.div animate={{ opacity: [0.4, 0.7, 0.4], scale: [1, 1.05, 1] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }} className="absolute -inset-6 rounded-[2rem] bg-gradient-to-br from-accent-secondary/20 via-accent/10 to-transparent blur-3xl" />
+              <motion.div animate={{ boxShadow: ["0 0 30px rgba(6,182,212,0.3)", "0 0 50px rgba(6,182,212,0.5)", "0 0 30px rgba(6,182,212,0.3)"] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }} className="relative z-10 overflow-hidden rounded-[1.5rem] border border-border bg-background shadow-2xl">
                 <ParallaxHeroImage src="hero-main.svg" alt="Master Electrical Engineering with Eng. Ahmed Elbaz" />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#0a0e17]/40 via-transparent to-white/5 pointer-events-none" />
+                <div className="absolute inset-0 bg-gradient-to-t from-background/40 via-transparent to-white/5 pointer-events-none" />
               </motion.div>
 
               <motion.div animate={{ y: [0, -8, 0] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }} className="absolute -bottom-4 -right-4 z-20 hidden lg:flex">
-                <NeonGlow color="#06b6d4" className="flex items-center gap-3 rounded-2xl bg-[#111827] p-4 border border-[#1f2d44] shadow-xl">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[rgba(6,182,212,0.1)]">
+                <NeonGlow color="#06b6d4" className="flex items-center gap-3 rounded-2xl bg-primary p-4 border border-border shadow-xl">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-secondary/10">
                     <Star className="h-6 w-6 text-yellow-400 fill-yellow-400" />
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-white">Top Rated</p>
-                    <p className="text-xs text-[#94a3b8]">Engineering Expert</p>
+                    <p className="text-sm font-bold text-foreground">Top Rated</p>
+                    <p className="text-xs text-text-muted">Engineering Expert</p>
                   </div>
                 </NeonGlow>
               </motion.div>
 
               <motion.div animate={{ y: [0, 6, 0] }} transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut", delay: 0.5 }} className="absolute -top-2 -left-2 z-20 hidden lg:flex">
-                <motion.div animate={{ boxShadow: ["0 0 15px rgba(16,185,129,0.3)", "0 0 25px rgba(16,185,129,0.5)", "0 0 15px rgba(16,185,129,0.3)"] }} transition={{ duration: 2, repeat: Infinity }} className="flex items-center gap-2 rounded-xl bg-[#111827] border border-[#1f2d44] px-3 py-2 shadow-xl">
-                  <Zap className="h-5 w-5 text-[#10b981]" />
-                  <span className="text-xs font-semibold text-white">{resolvedStats.totalStudents}+ {lang === "ar" ? "طالب" : "Students"}</span>
+                <motion.div animate={{ boxShadow: ["0 0 15px rgba(16,185,129,0.3)", "0 0 25px rgba(16,185,129,0.5)", "0 0 15px rgba(16,185,129,0.3)"] }} transition={{ duration: 2, repeat: Infinity }} className="flex items-center gap-2 rounded-xl bg-primary border border-border px-3 py-2 shadow-xl">
+                  <Zap className="h-5 w-5 text-emerald-500" />
+                  <span className="text-xs font-semibold text-foreground">{resolvedStats.totalStudents}+ {lang === "ar" ? "طالب" : "Students"}</span>
                 </motion.div>
               </motion.div>
             </motion.div>
@@ -402,30 +402,30 @@ export default function Home() { // NOSONAR — landing page with hero + feature
         </div>
 
         <motion.div animate={{ y: [0, 8, 0], opacity: [0.4, 1, 0.4] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} className="absolute bottom-8 left-1/2 z-20 -translate-x-1/2 flex flex-col items-center gap-2">
-          <span className="text-[10px] uppercase tracking-widest text-[#64748b]">{lang === "ar" ? "مرر للأسفل" : "Scroll Down"}</span>
+          <span className="text-[10px] uppercase tracking-widest text-text-muted">{lang === "ar" ? "مرر للأسفل" : "Scroll Down"}</span>
           <div className="flex h-6 w-4 items-start justify-center">
             <svg width="16" height="24" viewBox="0 0 16 24" fill="none" role="img" aria-hidden="true">
-              <path d="M8 0 L8 18 M3 13 L8 18 L13 13" stroke="#06b6d4" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M8 0 L8 18 M3 13 L8 18 L13 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-accent-secondary"/>
             </svg>
           </div>
         </motion.div>
       </section>
 
       {/* ═══════════════════ SOFTWARE STRIP ═══════════════════ */}
-      <section className="border-y border-[#1f2d44] bg-[#111827] py-10 overflow-hidden">
+      <section className="border-y border-border bg-primary py-10 overflow-hidden">
         <div className="mx-auto max-w-7xl px-4 lg:px-6">
           <ScrollReveal>
-            <p className="mb-8 text-center text-xs font-semibold uppercase tracking-[0.15em] text-[#64748b]">
+            <p className="mb-8 text-center text-xs font-semibold uppercase tracking-[0.15em] text-text-muted">
               {lang === "en" ? "Industry Software You Will Master" : "البرامج الهندسية التي ستتقنها"}
             </p>
           </ScrollReveal>
           <div className="relative flex overflow-x-auto pb-4 scrollbar-hide">
-            <div className="absolute start-0 top-0 bottom-0 w-20 bg-gradient-to-r from-[#111827] to-transparent z-10 pointer-events-none shrink-0" />
-            <div className="absolute end-0 top-0 bottom-0 w-20 bg-gradient-to-l from-[#111827] to-transparent z-10 pointer-events-none shrink-0" />
+            <div className="absolute start-0 top-0 bottom-0 w-20 bg-gradient-to-r from-primary to-transparent z-10 pointer-events-none shrink-0" />
+            <div className="absolute end-0 top-0 bottom-0 w-20 bg-gradient-to-l from-primary to-transparent z-10 pointer-events-none shrink-0" />
             <div className="flex gap-10" style={{ animation: "scrollLogos 20s linear infinite", minWidth: "max-content" }}>
               {[...SOFTWARE_LOGOS, ...SOFTWARE_LOGOS].map((tool, i) => (
                 <motion.div key={`${tool.name}-${i}`} className="software-logo-pill group flex flex-col items-center gap-2 cursor-default shrink-0" whileHover={{ y: -6, scale: 1.05 }} title={tool.name}>
-                  <div className="flex h-16 w-32 items-center justify-center rounded-xl border border-[#1f2d44] bg-[#0a0e17] px-4 py-3 transition-all group-hover:border-[rgba(6,182,212,0.6)] group-hover:bg-[rgba(6,182,212,0.08)] shadow-lg">
+                  <div className="flex h-16 w-32 items-center justify-center rounded-xl border border-border bg-background px-4 py-3 transition-all group-hover:border-accent-secondary/60 group-hover:bg-accent-secondary/5 shadow-lg">
                     <picture>
                       <source srcSet={tool.logo} type="image/svg+xml" />
                       <source srcSet={tool.logoFallback} type="image/webp" />
@@ -436,16 +436,15 @@ export default function Home() { // NOSONAR — landing page with hero + feature
                         height={48}
                         loading="lazy"
                         decoding="async"
-                        className="max-h-10 max-w-full object-contain filter brightness-110 contrast-125 transition-all group-hover:scale-110 drop-shadow-md"
+                        className="max-h-10 max-w-full object-contain transition-all group-hover:scale-110"
                         onError={(e) => {
-                          // Hide the broken image completely — no logo fallback available
                           const pill = e.currentTarget.closest('.software-logo-pill') as HTMLElement | null;
                           if (pill) pill.style.display = 'none';
                         }}
                       />
                     </picture>
+                    <span className="text-[11px] font-bold uppercase tracking-widest text-text-muted group-hover:text-accent-secondary transition-colors">{tool.name}</span>
                   </div>
-                  <span className="text-[11px] font-bold uppercase tracking-widest text-[#64748b] group-hover:text-[#06b6d4] transition-colors">{tool.name}</span>
                 </motion.div>
               ))}
             </div>
@@ -461,32 +460,31 @@ export default function Home() { // NOSONAR — landing page with hero + feature
           {categoriesPending ? (
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
               {[1, 2, 3, 4].map((i) => (
-                <div key={`cat-sk-${i}`} className="h-44 rounded-xl border border-[#1f2d44] skeleton-shimmer" />
+                <div key={`cat-sk-${i}`} className="h-44 rounded-xl border border-border skeleton-shimmer" />
               ))}
             </div>
           ) : (
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {(categories || []).map((cat: Category, idx: number) => {
-              // Cycle through modern variants so each card feels distinct
-              const variants = ["glow", "pulse", "tilt", "ripple"] as const;
-              const variant = variants[idx % variants.length];
-              return (
-              <ScrollReveal key={cat.id} delay={idx * 0.1}>
-                <Link to={`/courses?category=${cat.id}`}>
-                  <motion.div whileHover={{ y: -8, scale: 1.03 }} whileTap={{ scale: 0.98 }} transition={{ type: "spring", stiffness: 400, damping: 20 }} className="group rounded-xl border border-[#1f2d44] bg-[#111827] p-8 transition-all hover:border-[rgba(6,182,212,0.35)] hover:shadow-[0_12px_32px_rgba(6,182,212,0.08)]">
-                    <AnimatedIcon icon={categoryIcons[cat.icon] || <Zap className="h-5 w-5" />} variant={variant} size="md" color="#06b6d4" />
-                    <h3 className="mt-4 text-lg font-semibold text-[#f0f4f8]">{lang === "ar" ? cat.nameAr : cat.nameEn}</h3>
-                    <p className="mt-2 text-sm leading-relaxed text-[#94a3b8]">{lang === "ar" ? cat.descriptionAr : cat.descriptionEn}</p>
-                    <motion.div className="mt-4 flex items-center gap-2 text-sm font-medium text-[#06b6d4] opacity-0 group-hover:opacity-100 transition-opacity">
-                      {lang === "en" ? "Explore" : "استكشف"}
-                      <ArrowRight className="h-4 w-4" />
-                    </motion.div>
-                  </motion.div>
-                </Link>
-              </ScrollReveal>
-              );
-            })}
-          </div>
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+              {(categories || []).map((cat: Category, idx: number) => {
+                const variants = ["glow", "pulse", "tilt", "ripple"] as const;
+                const variant = variants[idx % variants.length];
+                return (
+                  <ScrollReveal key={cat.id} delay={idx * 0.1}>
+                    <Link to={`/courses?category=${cat.id}`}>
+                      <motion.div whileHover={{ y: -8, scale: 1.03 }} whileTap={{ scale: 0.98 }} transition={{ type: "spring", stiffness: 400, damping: 20 }} className="group rounded-xl border border-border bg-primary p-8 transition-all hover:border-accent-secondary/40 hover:shadow-[0_12px_32px_rgba(6,182,212,0.1)]">
+                        <AnimatedIcon icon={categoryIcons[cat.icon] || <Zap className="h-5 w-5" />} variant={variant} size="md" color="#06b6d4" />
+                        <h3 className="mt-4 text-lg font-semibold text-foreground">{lang === "ar" ? cat.nameAr : cat.nameEn}</h3>
+                        <p className="mt-2 text-sm leading-relaxed text-text-muted">{lang === "ar" ? cat.descriptionAr : cat.descriptionEn}</p>
+                        <motion.div className="mt-4 flex items-center gap-2 text-sm font-medium text-accent-secondary opacity-0 group-hover:opacity-100 transition-opacity">
+                          {lang === "en" ? "Explore" : "استكشف"}
+                          <ArrowRight className="h-4 w-4" />
+                        </motion.div>
+                      </motion.div>
+                    </Link>
+                  </ScrollReveal>
+                );
+              })}
+            </div>
           )}
         </div>
       </section>
@@ -497,7 +495,7 @@ export default function Home() { // NOSONAR — landing page with hero + feature
         <div className="relative z-10 mx-auto max-w-7xl px-4 lg:px-6">
           <SectionHeader badge={t("featured")} title={t("mostPopularCourses")} />
           <div className="flex justify-end mb-8">
-            <Link to="/courses" className="inline-flex items-center gap-2 text-sm font-medium text-[#94a3b8] transition-colors hover:text-[#06b6d4] group">
+            <Link to="/courses" className="inline-flex items-center gap-2 text-sm font-medium text-text-muted transition-colors hover:text-accent-secondary group">
               {t("viewAll")}
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </Link>
@@ -505,23 +503,23 @@ export default function Home() { // NOSONAR — landing page with hero + feature
           {coursesPending ? (
             <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
               {[1, 2, 3].map((i) => (
-                <div key={`course-sk-${i}`} className="h-80 rounded-xl border border-[#1f2d44] skeleton-shimmer" />
+                <div key={`course-sk-${i}`} className="h-80 rounded-xl border border-border skeleton-shimmer" />
               ))}
             </div>
           ) : (
-          <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
-            {courses.map((course, idx: number) => (
-              <ScrollReveal key={course.id} delay={idx * 0.1}>
-                <CourseCard course={course} />
-              </ScrollReveal>
-            ))}
-          </div>
+            <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
+              {courses.map((course, idx: number) => (
+                <ScrollReveal key={course.id} delay={idx * 0.1}>
+                  <CourseCard course={course} />
+                </ScrollReveal>
+              ))}
+            </div>
           )}
         </div>
       </section>
 
       {/* ═══════════════════ FEATURES BENTO GRID ═══════════════════ */}
-      <section className="border-t border-[#1f2d44] py-24">
+      <section className="border-t border-border py-24">
         <div className="mx-auto max-w-7xl px-4 lg:px-6">
           <SectionHeader badge={t("whyUs")} title={t("builtForSeriousEngineers")} subtitle={lang === "en" ? "Every feature designed to maximize your learning and career growth." : "كل ميزة مصممة لتعظيم تعلمك ونمو مسيرتك المهنية."} />
 
@@ -529,14 +527,14 @@ export default function Home() { // NOSONAR — landing page with hero + feature
             <BentoCard span={2} delay={0} className="p-8">
               <div className="flex flex-col h-full">
                 <AnimatedIcon icon={<Shield className="h-8 w-8" />} variant="glow" size="lg" color="#06b6d4" />
-                <h3 className="mt-6 text-xl font-bold text-[#f0f4f8]">{t("secureAntiPiracyStreaming")}</h3>
-                <p className="mt-3 text-sm leading-relaxed text-[#94a3b8]">
+                <h3 className="mt-6 text-xl font-bold text-foreground">{t("secureAntiPiracyStreaming")}</h3>
+                <p className="mt-3 text-sm leading-relaxed text-text-muted">
                   {lang === "en" ? "Your premium content stays protected. Our player blocks screen recording, disables right-click downloads, and embeds invisible forensic watermarks unique to each student." : "يظل المحتوى المتميز محمياً. مشغلنا يمنع تصوير الشاشة ويعطل التنزيل ويضع علامات مائية فريدة."}
                 </p>
                 <ul className="mt-5 space-y-2">
                   {["Screen capture blocking at OS level", "Dynamic watermarking with user ID", "Encrypted HLS streaming protocol"].map((b, j) => (
-                    <motion.li key={b} initial={{ opacity: 0, x: -10 }} whileInView={{ opacity: 1, x: 0 }} transition={{ delay: j * 0.1 + 0.3 }} viewport={{ once: true }} className="flex items-start gap-2 text-sm text-[#94a3b8]">
-                      <CheckCircle2 className="h-4 w-4 text-[#10b981] mt-0.5 shrink-0" />
+                    <motion.li key={b} initial={{ opacity: 0, x: -10 }} whileInView={{ opacity: 1, x: 0 }} transition={{ delay: j * 0.1 + 0.3 }} viewport={{ once: true }} className="flex items-start gap-2 text-sm text-text-muted">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
                       {b}
                     </motion.li>
                   ))}
@@ -547,8 +545,8 @@ export default function Home() { // NOSONAR — landing page with hero + feature
             <BentoCard delay={0.1} className="p-8">
               <div className="flex flex-col h-full items-center text-center">
                 <AnimatedIcon icon={<Award className="h-8 w-8" />} variant="orbit" size="lg" color="#f59e0b" />
-                <h3 className="mt-6 text-xl font-bold text-[#f0f4f8]">{t("quizzesVerifiedCertificates")}</h3>
-                <p className="mt-3 text-sm leading-relaxed text-[#94a3b8]">
+                <h3 className="mt-6 text-xl font-bold text-foreground">{t("quizzesVerifiedCertificates")}</h3>
+                <p className="mt-3 text-sm leading-relaxed text-text-muted">
                   {lang === "en" ? "Auto-graded quizzes and blockchain-verifiable certificates with QR codes." : "اختبارات مصححة تلقائياً وشهادات قابلة للتحقق برموز QR."}
                 </p>
               </div>
@@ -557,8 +555,8 @@ export default function Home() { // NOSONAR — landing page with hero + feature
             <BentoCard delay={0.2} className="p-8">
               <div className="flex flex-col h-full items-center text-center">
                 <AnimatedIcon icon={<CreditCard className="h-8 w-8" />} variant="bounce" size="lg" color="#10b981" />
-                <h3 className="mt-6 text-xl font-bold text-[#f0f4f8]">{t("flexiblePaymentMethods")}</h3>
-                <p className="mt-3 text-sm leading-relaxed text-[#94a3b8]">
+                <h3 className="mt-6 text-xl font-bold text-foreground">{t("flexiblePaymentMethods")}</h3>
+                <p className="mt-3 text-sm leading-relaxed text-text-muted">
                   {lang === "en" ? "Visa, InstaPay, Vodafone Cash — all encrypted and PCI-compliant." : "Visa وInstaPay وفودافون كاش — كلها مشفرة ومتوافقة مع PCI."}
                 </p>
               </div>
@@ -568,10 +566,10 @@ export default function Home() { // NOSONAR — landing page with hero + feature
               <div className="flex flex-col lg:flex-row items-center gap-8 h-full">
                 <div className="flex-1">
                   <AnimatedIcon icon={<Rocket className="h-8 w-8" />} variant="morph" size="lg" color="#8b5cf6" />
-                  <h3 className="mt-6 text-xl font-bold text-[#f0f4f8]">
+                  <h3 className="mt-6 text-xl font-bold text-foreground">
                     {lang === "en" ? "Learn at Your Own Pace" : "تعلم بالسرعة التي تناسبك"}
                   </h3>
-                  <p className="mt-3 text-sm leading-relaxed text-[#94a3b8]">
+                  <p className="mt-3 text-sm leading-relaxed text-text-muted">
                     {lang === "en" ? "Lifetime access to all courses. Watch on any device, anytime. Track your progress with detailed analytics and get personalized recommendations." : "وصول مدى الحياة لجميع الكورسات. شاهد على أي جهاز في أي وقت. تابع تقدمك مع تحليلات مفصلة."}
                   </p>
                 </div>
@@ -582,11 +580,11 @@ export default function Home() { // NOSONAR — landing page with hero + feature
                     { icon: <BarChart3 className="h-5 w-5" />, label: lang === "en" ? "Progress Tracking" : "متابعة التقدم", color: "#f59e0b" },
                     { icon: <Sparkles className="h-5 w-5" />, label: lang === "en" ? "AI Recommendations" : "توصيات ذكية", color: "#8b5cf6" },
                   ].map((item) => (
-                    <motion.div key={item.label} whileHover={{ y: -4, scale: 1.05 }} className="rounded-xl border border-[#1f2d44] bg-[#0a0e17] p-4 text-center">
+                    <motion.div key={item.label} whileHover={{ y: -4, scale: 1.05 }} className="rounded-xl border border-border bg-background p-4 text-center">
                       <motion.div whileHover={{ rotate: [0, -10, 10, 0] }} transition={{ duration: 0.4 }} className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg" style={{ background: `rgba(${hexToRgb(item.color)}, 0.1)`, color: item.color }}>
                         {item.icon}
                       </motion.div>
-                      <p className="text-xs font-medium text-[#f0f4f8]">{item.label}</p>
+                      <p className="text-xs font-medium text-foreground">{item.label}</p>
                     </motion.div>
                   ))}
                 </div>
@@ -597,21 +595,21 @@ export default function Home() { // NOSONAR — landing page with hero + feature
       </section>
 
       {/* ═══════════════════ INSTRUCTOR ═══════════════════ */}
-      <section className="border-t border-[#1f2d44] py-24">
+      <section className="border-t border-border py-24">
         <div className="mx-auto max-w-7xl px-4 lg:px-6">
           <SectionHeader badge={t("yourInstructor")} title={lang === "en" ? "Eng. Ahmed Elbaz" : "م. أحمد الباز"} />
 
           <div className="flex flex-col items-center gap-12 lg:flex-row lg:items-start">
             <ScrollReveal direction="left" className="flex-1 text-center lg:text-start">
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="mx-auto mb-6 flex h-28 w-28 items-center justify-center rounded-2xl border border-[#1f2d44] bg-[#1a2233] lg:mx-0">
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="mx-auto mb-6 flex h-28 w-28 items-center justify-center rounded-2xl border border-border bg-secondary lg:mx-0">
                 <motion.div animate={{ filter: ["hue-rotate(0deg)", "hue-rotate(15deg)", "hue-rotate(0deg)"] }} transition={{ duration: 4, repeat: Infinity }}>
-                  <User className="h-14 w-14 text-[#06b6d4]" />
+                  <User className="h-14 w-14 text-accent-secondary" />
                 </motion.div>
               </motion.div>
-              <p className="mb-2 text-sm font-medium uppercase tracking-wider text-[#06b6d4]">
+              <p className="mb-2 text-sm font-medium uppercase tracking-wider text-accent-secondary">
                 {lang === "en" ? t("instructorRole") : t("instructorRoleAr")}
               </p>
-              <p className="text-base leading-relaxed text-[#94a3b8] lg:text-lg">
+              <p className="text-base leading-relaxed text-text-muted lg:text-lg">
                 {lang === "en" ? t("instructorBio") : t("instructorBioAr")}
               </p>
             </ScrollReveal>
@@ -623,12 +621,12 @@ export default function Home() { // NOSONAR — landing page with hero + feature
                 { icon: <Users className="h-6 w-6" />, value: `${resolvedStats.totalStudents}+`, label: t("studentsReached"), color: "#f59e0b" },
                 { icon: <Trophy className="h-6 w-6" />, value: `${resolvedStats.satisfactionRate}%`, label: t("satisfactionRate"), color: "#8b5cf6" },
               ].map((item) => (
-                <motion.div key={item.label} whileHover={{ y: -4, scale: 1.03 }} whileTap={{ scale: 0.97 }} transition={{ type: "spring", stiffness: 400, damping: 20 }} className="rounded-xl border border-[#1f2d44] bg-[#0a0e17] p-5 text-center">
+                <motion.div key={item.label} whileHover={{ y: -4, scale: 1.03 }} whileTap={{ scale: 0.97 }} transition={{ type: "spring", stiffness: 400, damping: 20 }} className="rounded-xl border border-border bg-background p-5 text-center">
                   <motion.div whileHover={{ rotate: [0, -10, 10, -5, 5, 0], scale: 1.1 }} transition={{ duration: 0.4 }} className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-lg" style={{ background: `rgba(${hexToRgb(item.color)}, 0.1)` }}>
                     <span style={{ color: item.color }}>{item.icon}</span>
                   </motion.div>
-                  <p className="text-xl font-bold text-[#f0f4f8]">{item.value}</p>
-                  <p className="mt-1 text-xs text-[#64748b]">{item.label}</p>
+                  <p className="text-xl font-bold text-foreground">{item.value}</p>
+                  <p className="mt-1 text-xs text-text-muted">{item.label}</p>
                 </motion.div>
               ))}
             </ScrollReveal>
@@ -644,33 +642,33 @@ export default function Home() { // NOSONAR — landing page with hero + feature
           {testimonialsPending ? (
             <div className="grid gap-6 md:grid-cols-3">
               {[1, 2, 3].map((i) => (
-                <div key={`test-sk-${i}`} className="h-52 rounded-xl border border-[#1f2d44] skeleton-shimmer" />
+                <div key={`test-sk-${i}`} className="h-52 rounded-xl border border-border skeleton-shimmer" />
               ))}
             </div>
           ) : (
-          <div className="grid gap-6 md:grid-cols-3">
-            {(testimonials || []).map((testimonial: Testimonial, idx: number) => (
-              <ScrollReveal key={testimonial.id} delay={idx * 0.1}>
-                <motion.div whileHover={{ y: -6, scale: 1.02 }} whileTap={{ scale: 0.98 }} className="rounded-xl border border-[#1f2d44] bg-[#111827] p-8">
-                  <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} className="flex gap-1">
-                    {Array.from({ length: testimonial.rating || 5 }, (_, j) => `star-${j + 1}`).map(starKey => (
-                      <Star key={starKey} className="h-4 w-4 fill-[#f59e0b] text-[#f59e0b]" />
-                    ))}
-                  </motion.div>
-                  <p className="mt-4 text-sm leading-relaxed italic text-[#f0f4f8]">"{testimonial.content}"</p>
-                  <motion.div whileHover={{ x: 4 }} className="mt-6 flex items-center gap-3">
-                    <motion.div whileHover={{ rotate: 360, scale: 1.1 }} transition={{ duration: 0.5 }} className="flex h-10 w-10 items-center justify-center rounded-full bg-[#1a2233] text-sm font-semibold text-[#06b6d4]">
-                      {testimonial.name.charAt(0)}
+            <div className="grid gap-6 md:grid-cols-3">
+              {(testimonials || []).map((testimonial: Testimonial, idx: number) => (
+                <ScrollReveal key={testimonial.id} delay={idx * 0.1}>
+                  <motion.div whileHover={{ y: -6, scale: 1.02 }} whileTap={{ scale: 0.98 }} className="rounded-xl border border-border bg-primary p-8">
+                    <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} className="flex gap-1">
+                      {Array.from({ length: testimonial.rating || 5 }, (_, j) => `star-${j + 1}`).map(starKey => (
+                        <Star key={starKey} className="h-4 w-4 fill-amber-500 text-amber-500" />
+                      ))}
                     </motion.div>
-                    <div>
-                      <p className="text-sm font-semibold text-[#f0f4f8]">{testimonial.name}</p>
-                      <p className="text-xs text-[#64748b]">{testimonial.title} {testimonial.company ? `at ${testimonial.company}` : ""}</p>
-                    </div>
+                    <p className="mt-4 text-sm leading-relaxed italic text-foreground">"{testimonial.content}"</p>
+                    <motion.div whileHover={{ x: 4 }} className="mt-6 flex items-center gap-3">
+                      <motion.div whileHover={{ rotate: 360, scale: 1.1 }} transition={{ duration: 0.5 }} className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-sm font-semibold text-accent-secondary">
+                        {testimonial.name.charAt(0)}
+                      </motion.div>
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">{testimonial.name}</p>
+                        <p className="text-xs text-text-muted">{testimonial.title} {testimonial.company ? `at ${testimonial.company}` : ""}</p>
+                      </div>
+                    </motion.div>
                   </motion.div>
-                </motion.div>
-              </ScrollReveal>
-            ))}
-          </div>
+                </ScrollReveal>
+              ))}
+            </div>
           )}
         </div>
       </section>
@@ -689,23 +687,23 @@ export default function Home() { // NOSONAR — landing page with hero + feature
       </section>
 
       {/* ═══════════════════ CTA BANNER ═══════════════════ */}
-      <section className="border-y border-[#1f2d44] py-20 relative overflow-hidden">
+      <section className="border-y border-border py-20 relative overflow-hidden">
         <div className="relative z-10 mx-auto max-w-3xl px-4 text-center lg:px-6">
           <ScrollReveal>
-            <motion.h2 initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.1 }} className="text-3xl font-bold text-[#f0f4f8] lg:text-4xl">
+            <motion.h2 initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.1 }} className="text-3xl font-bold text-foreground lg:text-4xl">
               {t("readyToPowerUp")}
             </motion.h2>
-            <motion.p initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.2 }} className="mt-3 text-base text-[#94a3b8]">
+            <motion.p initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.2 }} className="mt-3 text-base text-text-muted">
               {lang === "en" ? `Join ${resolvedStats.totalStudents}+ engineers mastering the tools that matter. Start learning today — no credit card required for free courses.` : `انضم لأكثر من ${resolvedStats.totalStudents} مهندس يتقنون الأدوات المهمة. ابدأ التعلم اليوم — لا تحتاج بطاقة ائتمان للكورسات المجانية.`}
             </motion.p>
             <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.3 }} className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
               <Link to="/courses">
-                <Button className="glow-btn h-12 bg-gradient-to-r from-[#06b6d4] to-[#0891b2] px-7 text-sm font-semibold text-[#0a0e17]" onClick={() => trackEvent("cta_click", { button: "get_started_free", page: "cta_banner" })}>
+                <Button className="glow-btn h-12 bg-gradient-to-r from-accent-secondary to-accent-secondary/80 px-7 text-sm font-semibold text-background" onClick={() => trackEvent("cta_click", { button: "get_started_free", page: "cta_banner" })}>
                   {t("getStartedFree")}
                 </Button>
               </Link>
               <Link to="/courses">
-                <Button variant="outline" className="h-12 border-[#1f2d44] bg-transparent px-7 text-sm font-semibold text-[#f0f4f8] hover:border-[#06b6d4] hover:text-[#06b6d4]" onClick={() => trackEvent("cta_click", { button: "view_pricing", page: "cta_banner" })}>
+                <Button variant="outline" className="h-12 border-border bg-transparent px-7 text-sm font-semibold text-foreground hover:border-accent-secondary hover:text-accent-secondary" onClick={() => trackEvent("cta_click", { button: "view_pricing", page: "cta_banner" })}>
                   {t("viewCoursePricing")}
                 </Button>
               </Link>
@@ -720,15 +718,15 @@ export default function Home() { // NOSONAR — landing page with hero + feature
 function FAQItem({ question, answer }: { readonly question: string; readonly answer: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <motion.div layout className="border-b border-[#1f2d44] overflow-hidden">
+    <motion.div layout className="border-b border-border overflow-hidden">
       <motion.button onClick={() => setOpen(!open)} className="flex w-full items-center justify-between py-6 text-start" whileTap={{ scale: 0.99 }}>
-        <span className="text-base font-semibold text-[#f0f4f8] transition-colors hover:text-[#06b6d4]">{question}</span>
-        <motion.div animate={{ rotate: open ? 180 : 0, color: open ? "#06b6d4" : "#64748b" }} transition={{ duration: 0.3, type: "spring", stiffness: 300, damping: 25 }}>
+        <span className="text-base font-semibold text-foreground transition-colors hover:text-accent-secondary">{question}</span>
+        <motion.div animate={{ rotate: open ? 180 : 0, color: open ? "var(--color-accent-secondary)" : "var(--color-text-muted)" }} transition={{ duration: 0.3, type: "spring", stiffness: 300, damping: 25 }}>
           {open ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
         </motion.div>
       </motion.button>
       <motion.div initial={false} animate={{ height: open ? "auto" : 0, opacity: open ? 1 : 0 }} transition={{ duration: 0.4, type: "spring", stiffness: 300, damping: 30 }} className="overflow-hidden">
-        <p className="pb-6 text-sm leading-relaxed text-[#94a3b8]">{answer}</p>
+        <p className="pb-6 text-sm leading-relaxed text-text-muted">{answer}</p>
       </motion.div>
     </motion.div>
   );

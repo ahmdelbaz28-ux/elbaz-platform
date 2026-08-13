@@ -64,16 +64,16 @@ function getFileIcon(fileType: string): ReactNode {
   if (fileType.startsWith("image/")) return <FileImage className="h-5 w-5 text-cyan-400" />;
   if (fileType.includes("pdf")) return <FileText className="h-5 w-5 text-red-400" />;
   if (fileType.includes("excel") || fileType.includes("spreadsheet") || fileType.includes("csv"))
-    return <FileSpreadsheet className="h-5 w-5 text-green-400" />;
+    return <FileSpreadsheet className="h-5 w-5 text-emerald-500" />;
   if (fileType.includes("word") || fileType.includes("document"))
-    return <FileText className="h-5 w-5 text-blue-400" />;
+    return <FileText className="h-5 w-5 text-sky-500" />;
   if (fileType.includes("powerpoint") || fileType.includes("presentation"))
-    return <FileText className="h-5 w-5 text-orange-400" />;
+    return <FileText className="h-5 w-5 text-orange-500" />;
   if (fileType.includes("zip") || fileType.includes("rar") || fileType.includes("7z") || fileType.includes("tar") || fileType.includes("gzip"))
-    return <FileArchive className="h-5 w-5 text-yellow-400" />;
+    return <FileArchive className="h-5 w-5 text-amber-500" />;
   if (fileType.includes("json") || fileType.includes("xml") || fileType.includes("javascript") || fileType.includes("text/"))
-    return <FileCode className="h-5 w-5 text-purple-400" />;
-  return <File className="h-5 w-5 text-slate-400" />;
+    return <FileCode className="h-5 w-5 text-violet-500" />;
+  return <File className="h-5 w-5 text-text-muted" />;
 }
 
 function getFileExtension(fileName: string): string {
@@ -86,8 +86,8 @@ function getFileExtension(fileName: string): string {
 function DocumentsLoading({ lang }: { readonly lang: "ar" | "en" }) {
   return (
     <div className="flex flex-col items-center justify-center py-32">
-      <Loader2 className="h-10 w-10 animate-spin text-[#06b6d4]" />
-      <p className="mt-4 text-sm text-[#94a3b8]">
+      <Loader2 className="h-10 w-10 animate-spin text-accent-secondary" />
+      <p className="mt-4 text-sm text-text-muted">
         {lang === "ar" ? "جارٍ تحميل المستندات..." : "Loading documents..."}
       </p>
     </div>
@@ -106,11 +106,11 @@ function DocumentsEmpty({ lang, hasFilter }: { readonly lang: "ar" | "en"; reado
 
   return (
     <div className="flex flex-col items-center justify-center py-32 text-center">
-      <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-[#111827] border border-[#1e2d3d]">
-        <FileBox className="h-10 w-10 text-[#475569]" />
+      <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-primary border border-border">
+        <FileBox className="h-10 w-10 text-border" />
       </div>
-      <h3 className="text-lg font-semibold text-[#e8f0fe]">{heading}</h3>
-      <p className="mt-2 text-sm text-[#64748b]">{subtext}</p>
+      <h3 className="text-lg font-semibold text-foreground">{heading}</h3>
+      <p className="mt-2 text-sm text-text-faint">{subtext}</p>
     </div>
   );
 }
@@ -128,38 +128,38 @@ function FileCard({ item, lang, isDownloading, onDownload }: FileCardProps) {
   const ext = getFileExtension(item.fileName);
 
   return (
-    <div className="group relative flex flex-col rounded-xl border border-[#1e2d3d] bg-[#0d1521] p-5 transition-all duration-200 hover:border-[rgba(6,182,212,0.35)] hover:bg-[#111827] hover:shadow-[0_8px_32px_rgba(6,182,212,0.06)]">
+    <div className="group relative flex flex-col rounded-xl border border-border bg-primary p-5 transition-all duration-200 hover:border-[rgba(6,182,212,0.35)] hover:bg-primary hover:shadow-[0_8px_32px_rgba(6,182,212,0.06)]">
       {/* Header: Icon + Extension badge */}
       <div className="mb-3 flex items-start justify-between">
-        <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#1a2434] group-hover:bg-[rgba(6,182,212,0.08)] transition-colors">
+        <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-background group-hover:bg-accent-secondary/10 transition-colors">
           {getFileIcon(item.fileType)}
         </div>
-        <span className="rounded-md bg-[#1a2434] px-2 py-0.5 text-[10px] font-bold text-[#64748b]">
+        <span className="rounded-md bg-background px-2 py-0.5 text-[10px] font-bold text-text-faint">
           {ext}
         </span>
       </div>
 
       {/* Title */}
-      <h3 className="mb-1 line-clamp-2 text-sm font-semibold text-[#e8f0fe] group-hover:text-[#06b6d4] transition-colors" title={item.title}>
+      <h3 className="mb-1 line-clamp-2 text-sm font-semibold text-foreground group-hover:text-accent-secondary transition-colors" title={item.title}>
         {item.title}
       </h3>
 
       {/* Description */}
       {item.description && (
-        <p className="mb-3 line-clamp-2 text-xs text-[#64748b]" title={item.description}>
+        <p className="mb-3 line-clamp-2 text-xs text-text-faint" title={item.description}>
           {item.description}
         </p>
       )}
 
       {/* Meta row */}
       <div className="mt-auto space-y-2">
-        <div className="flex items-center justify-between text-[11px] text-[#64748b]">
+        <div className="flex items-center justify-between text-[11px] text-text-faint">
           <span className="truncate max-w-[140px]" title={item.fileName}>{item.fileName}</span>
           <span>{formatFileSize(item.fileSize)}</span>
         </div>
 
         {/* Stats row */}
-        <div className="flex items-center justify-between text-[11px] text-[#475569]">
+        <div className="flex items-center justify-between text-[11px] text-border">
           <span className="flex items-center gap-1">
             <HardDriveDownload className="h-3 w-3" />
             {item.downloadCount}
@@ -172,7 +172,7 @@ function FileCard({ item, lang, isDownloading, onDownload }: FileCardProps) {
 
         {/* Category tag */}
         {item.category && item.category !== "general" && (
-          <span className="inline-block rounded-full bg-[rgba(6,182,212,0.08)] px-2 py-0.5 text-[10px] font-medium text-[#06b6d4]">
+          <span className="inline-block rounded-full bg-accent-secondary/10 px-2 py-0.5 text-[10px] font-medium text-accent-secondary">
             {item.category}
           </span>
         )}
@@ -182,7 +182,7 @@ function FileCard({ item, lang, isDownloading, onDownload }: FileCardProps) {
           onClick={() => onDownload(item.id, item.fileName)}
           disabled={isDownloading}
           size="sm"
-          className="mt-2 w-full bg-gradient-to-r from-[#06b6d4] to-[#0891b2] text-[#0a0e17] font-semibold hover:shadow-[0_4px_16px_rgba(6,182,212,0.25)] transition-all"
+          className="mt-2 w-full bg-gradient-to-r from-accent-secondary to-accent-secondary/80 text-background font-semibold hover:shadow-[0_4px_16px_rgba(6,182,212,0.25)] transition-all"
         >
           {isDownloading ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -267,22 +267,22 @@ export default function Documents() {
         }
       />
 
-      <div className="min-h-screen bg-[#0a0e17] pt-20">
+      <div className="min-h-screen bg-background pt-20">
         {/* ─── Hero Section ─── */}
-        <div className="relative overflow-hidden border-b border-[#1e2d3d] bg-gradient-to-br from-[rgba(6,182,212,0.08)] to-[rgba(8,145,178,0.04)]">
+        <div className="relative overflow-hidden border-b border-border bg-gradient-to-br from-[rgba(6,182,212,0.08)] to-[rgba(8,145,178,0.04)]">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgba(6,182,212,0.12),transparent_60%)]" />
           <div className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
             <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
               <div>
                 <div className="mb-3 flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-[#06b6d4] to-[#0891b2] shadow-lg shadow-[rgba(6,182,212,0.25)]">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-accent-secondary to-accent-secondary/80 shadow-lg shadow-accent-secondary/25">
                     <BookMarked className="h-7 w-7 text-white" />
                   </div>
-                  <h1 className="text-3xl font-bold text-[#e8f0fe] md:text-4xl">
+                  <h1 className="text-3xl font-bold text-foreground md:text-4xl">
                     {lang === "ar" ? "المستندات الدراسية" : "Study Documents"}
                   </h1>
                 </div>
-                <p className="max-w-2xl text-sm text-[#94a3b8] md:text-base">
+                <p className="max-w-2xl text-sm text-text-muted md:text-base">
                   {lang === "ar"
                     ? "مكتبتك الشاملة من المستندات الهندسية — كتب PDF، جداول Excel، ملفات AutoCAD، وعروض تقديمية. كل ما تحتاجه لمساندتك في رحلتك التعليمية."
                     : "Your comprehensive library of engineering documents — PDF books, Excel spreadsheets, AutoCAD files, and presentations. Everything you need for your learning journey."}
@@ -291,13 +291,13 @@ export default function Documents() {
 
               {/* Stats */}
               <div className="flex gap-3">
-                <div className="rounded-xl border border-[#1e2d3d] bg-[#0d1521] px-5 py-3 text-center">
-                  <div className="text-2xl font-bold text-[#06b6d4]">{totalFiles}</div>
-                  <div className="text-xs text-[#64748b]">{lang === "ar" ? "ملف" : "Files"}</div>
+                <div className="rounded-xl border border-border bg-primary px-5 py-3 text-center">
+                  <div className="text-2xl font-bold text-accent-secondary">{totalFiles}</div>
+                  <div className="text-xs text-text-faint">{lang === "ar" ? "ملف" : "Files"}</div>
                 </div>
-                <div className="rounded-xl border border-[#1e2d3d] bg-[#0d1521] px-5 py-3 text-center">
-                  <div className="text-2xl font-bold text-[#10b981]">{totalDownloads}</div>
-                  <div className="text-xs text-[#64748b]">{lang === "ar" ? "تنزيل" : "Downloads"}</div>
+                <div className="rounded-xl border border-border bg-primary px-5 py-3 text-center">
+                  <div className="text-2xl font-bold text-emerald-500">{totalDownloads}</div>
+                  <div className="text-xs text-text-faint">{lang === "ar" ? "تنزيل" : "Downloads"}</div>
                 </div>
               </div>
             </div>
@@ -305,23 +305,23 @@ export default function Documents() {
         </div>
 
         {/* ─── Search & Filter Bar ─── */}
-        <div className="sticky top-16 z-20 border-b border-[#1e2d3d] bg-[#0a0e17]/95 backdrop-blur-md">
+        <div className="sticky top-16 z-20 border-b border-border bg-background/95 backdrop-blur-md">
           <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               {/* Search */}
               <div className="relative flex-1 md:max-w-md">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#64748b]" />
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-faint" />
                 <Input
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder={lang === "ar" ? "ابحث في المستندات..." : "Search documents..."}
-                  className="pl-10 bg-[#0d1521] border-[#1e2d3d] text-[#e8f0fe] placeholder:text-[#64748b] focus:border-[#06b6d4] focus:ring-1 focus:ring-[#06b6d4]"
+                  className="pl-10 bg-primary border-border text-foreground placeholder:text-text-faint focus:border-accent-secondary focus:ring-accent-secondary"
                 />
                 {search && (
                   <button
                     onClick={() => setSearch("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748b] hover:text-[#e8f0fe] transition-colors"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-faint hover:text-foreground transition-colors"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -331,7 +331,7 @@ export default function Documents() {
               {/* Mobile filter toggle */}
               <button
                 onClick={() => setShowFilters(!showFilters)}
-                className="flex items-center gap-2 rounded-lg border border-[#1e2d3d] bg-[#0d1521] px-3 py-2 text-sm text-[#94a3b8] hover:text-[#e8f0fe] md:hidden"
+                className="flex items-center gap-2 rounded-lg border border-border bg-primary px-3 py-2 text-sm text-text-muted hover:text-foreground md:hidden"
               >
                 <Filter className="h-4 w-4" />
                 {lang === "ar" ? "تصفية" : "Filter"}
@@ -340,11 +340,11 @@ export default function Documents() {
 
               {/* Desktop category filter */}
               <div className="hidden md:flex md:items-center md:gap-2">
-                <span className="text-xs text-[#64748b]">{lang === "ar" ? "الفئة:" : "Category:"}</span>
+                <span className="text-xs text-text-faint">{lang === "ar" ? "الفئة:" : "Category:"}</span>
                 <select
                   value={selectedCategory}
                   onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="rounded-lg border border-[#1e2d3d] bg-[#0d1521] px-3 py-2 text-sm text-[#e8f0fe] focus:border-[#06b6d4] focus:outline-none focus:ring-1 focus:ring-[#06b6d4]"
+                  className="rounded-lg border border-border bg-primary px-3 py-2 text-sm text-foreground focus:border-accent-secondary focus:outline-none focus:ring-1 focus:ring-accent-secondary"
                 >
                   <option value="all">{lang === "ar" ? "كل الفئات" : "All categories"}</option>
                   {(categories || []).map((cat: string) => (
@@ -364,8 +364,8 @@ export default function Documents() {
                     onClick={() => setSelectedCategory("all")}
                     className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                       selectedCategory === "all"
-                        ? "bg-[rgba(6,182,212,0.15)] text-[#06b6d4] border border-[rgba(6,182,212,0.3)]"
-                        : "bg-[#0d1521] text-[#64748b] border border-[#1e2d3d] hover:text-[#e8f0fe]"
+                        ? "bg-[rgba(6,182,212,0.15)] text-accent-secondary border border-[rgba(6,182,212,0.3)]"
+                        : "bg-primary text-text-faint border border-border hover:text-foreground"
                     }`}
                   >
                     {lang === "ar" ? "الكل" : "All"}
@@ -376,8 +376,8 @@ export default function Documents() {
                       onClick={() => setSelectedCategory(cat)}
                       className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                         selectedCategory === cat
-                          ? "bg-[rgba(6,182,212,0.15)] text-[#06b6d4] border border-[rgba(6,182,212,0.3)]"
-                          : "bg-[#0d1521] text-[#64748b] border border-[#1e2d3d] hover:text-[#e8f0fe]"
+                          ? "bg-[rgba(6,182,212,0.15)] text-accent-secondary border border-[rgba(6,182,212,0.3)]"
+                          : "bg-primary text-text-faint border border-border hover:text-foreground"
                       }`}
                     >
                       {cat}

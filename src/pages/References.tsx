@@ -57,12 +57,12 @@ function formatFileSize(bytes: number): string {
 function getFileIcon(fileType: string): ReactNode {
   if (fileType.startsWith("image/")) return <FileImage className="h-6 w-6 text-cyan-400" />;
   if (fileType.includes("pdf")) return <FileText className="h-6 w-6 text-red-400" />;
-  if (fileType.includes("excel") || fileType.includes("spreadsheet") || fileType.includes("csv")) return <FileSpreadsheet className="h-6 w-6 text-green-400" />;
-  if (fileType.includes("word") || fileType.includes("document")) return <FileText className="h-6 w-6 text-blue-400" />;
-  if (fileType.includes("powerpoint") || fileType.includes("presentation")) return <FileText className="h-6 w-6 text-orange-400" />;
-  if (fileType.includes("zip") || fileType.includes("rar") || fileType.includes("7z") || fileType.includes("tar") || fileType.includes("gzip")) return <FileArchive className="h-6 w-6 text-yellow-400" />;
-  if (fileType.includes("json") || fileType.includes("xml") || fileType.includes("javascript") || fileType.includes("text/")) return <FileCode className="h-6 w-6 text-purple-400" />;
-  return <File className="h-6 w-6 text-slate-400" />;
+  if (fileType.includes("excel") || fileType.includes("spreadsheet") || fileType.includes("csv")) return <FileSpreadsheet className="h-6 w-6 text-emerald-500" />;
+  if (fileType.includes("word") || fileType.includes("document")) return <FileText className="h-6 w-6 text-sky-500" />;
+  if (fileType.includes("powerpoint") || fileType.includes("presentation")) return <FileText className="h-6 w-6 text-orange-500" />;
+  if (fileType.includes("zip") || fileType.includes("rar") || fileType.includes("7z") || fileType.includes("tar") || fileType.includes("gzip")) return <FileArchive className="h-6 w-6 text-amber-500" />;
+  if (fileType.includes("json") || fileType.includes("xml") || fileType.includes("javascript") || fileType.includes("text/")) return <FileCode className="h-6 w-6 text-violet-500" />;
+  return <File className="h-6 w-6 text-text-muted" />;
 }
 
 function getFileExtension(fileName: string): string {
@@ -83,33 +83,33 @@ interface FileCardProps {
 
 function FileCard({ item, lang, isAdmin, isDownloading, onDownload, onDelete }: FileCardProps) {
   return (
-    <div className="group relative flex flex-col rounded-xl border border-[#1e2d3d] bg-[#0d1521] p-5 transition-all hover:border-cyan-500/30 hover:bg-[#111827] hover:shadow-lg hover:shadow-cyan-500/5">
+    <div className="group relative flex flex-col rounded-xl border border-border bg-background p-5 transition-all hover:border-accent-secondary/40 hover:bg-primary hover:shadow-lg hover:shadow-accent-secondary/5">
       {/* File icon + extension badge */}
       <div className="mb-3 flex items-start justify-between">
-        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#1a2434]">
+        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary">
           {getFileIcon(item.fileType)}
         </div>
-        <span className="rounded-md bg-[#1a2434] px-2 py-1 text-[10px] font-bold text-slate-400">
+        <span className="rounded-md bg-primary px-2 py-1 text-[10px] font-bold text-text-muted">
           {getFileExtension(item.fileName)}
         </span>
       </div>
 
       {/* Title + description */}
-      <h3 className="mb-1 line-clamp-2 text-sm font-semibold text-[#e8f0fe]" title={item.title}>
+      <h3 className="mb-1 line-clamp-2 text-sm font-semibold text-foreground" title={item.title}>
         {item.title}
       </h3>
       {item.description && (
-        <p className="mb-3 line-clamp-2 text-xs text-slate-500" title={item.description}>
+        <p className="mb-3 line-clamp-2 text-xs text-text-muted" title={item.description}>
           {item.description}
         </p>
       )}
 
       {/* File meta */}
-      <div className="mt-auto space-y-2">
-        <div className="flex items-center justify-between text-[11px] text-slate-500">
+        <div className="mt-auto space-y-2">
+        <div className="flex items-center justify-between text-[11px] text-text-muted">
           <span className="truncate" title={item.fileName}>{item.fileName}</span>
         </div>
-        <div className="flex items-center justify-between text-[11px] text-slate-500">
+        <div className="flex items-center justify-between text-[11px] text-text-muted">
           <span>{formatFileSize(item.fileSize)}</span>
           <span className="flex items-center gap-1">
             <HardDriveDownload className="h-3 w-3" />
@@ -148,7 +148,7 @@ function FileCard({ item, lang, isAdmin, isDownloading, onDownload, onDelete }: 
 
       {/* Category badge */}
       {item.category && item.category !== "general" && (
-        <span className="absolute top-3 right-3 rounded-full bg-cyan-500/10 px-2 py-0.5 text-[10px] font-medium text-cyan-400">
+        <span className="absolute top-3 right-3 rounded-full bg-accent-secondary/10 px-2 py-0.5 text-[10px] font-medium text-accent-secondary">
           {item.category}
         </span>
       )}
@@ -161,8 +161,8 @@ function FileCard({ item, lang, isAdmin, isDownloading, onDownload, onDelete }: 
 function ReferencesLoading({ lang }: { readonly lang: "ar" | "en" }) {
   return (
     <div className="flex items-center justify-center py-20">
-      <Loader2 className="h-8 w-8 animate-spin text-cyan-400" />
-      <span className="ml-3 text-slate-400">{lang === "ar" ? "جارٍ التحميل..." : "Loading..."}</span>
+      <Loader2 className="h-8 w-8 animate-spin text-accent-secondary" />
+      <span className="ml-3 text-text-muted">{lang === "ar" ? "جارٍ التحميل..." : "Loading..."}</span>
     </div>
   );
 }
@@ -180,9 +180,9 @@ function ReferencesEmpty({ lang, hasFilter }: { readonly lang: "ar" | "en"; read
   const bucket = hasFilter ? "filtered" : "empty";
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center">
-      <FileBox className="h-16 w-16 text-slate-600 mb-4" />
-      <h3 className="text-lg font-medium text-slate-300 mb-1">{headings[bucket][lang]}</h3>
-      <p className="text-sm text-slate-500">{subtexts[bucket][lang]}</p>
+      <FileBox className="h-16 w-16 text-border mb-4" />
+      <h3 className="text-lg font-medium text-text-muted mb-1">{headings[bucket][lang]}</h3>
+      <p className="text-sm text-text-muted">{subtexts[bucket][lang]}</p>
     </div>
   );
 }
@@ -299,9 +299,9 @@ export default function References() {
           : "Engineering reference library — PDF books, Excel spreadsheets, AutoCAD files, and more"}
       />
 
-      <div className="min-h-screen bg-[#0a0e17] text-[#e8f0fe]">
+      <div className="min-h-screen bg-background text-foreground">
         {/* ─── Hero Section ─── */}
-        <div className="relative overflow-hidden border-b border-[#1e2d3d] bg-gradient-to-br from-cyan-600/10 to-blue-600/10">
+        <div className="relative overflow-hidden border-b border-border bg-gradient-to-br from-cyan-600/10 to-blue-600/10">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgba(6,182,212,0.15),transparent_60%)]" />
           <div className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
             <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
@@ -323,13 +323,13 @@ export default function References() {
 
               {/* Stats */}
               <div className="flex gap-4">
-                <div className="rounded-xl border border-[#1e2d3d] bg-[#0d1521] px-5 py-3 text-center">
+                <div className="rounded-xl border border-border bg-primary px-5 py-3 text-center">
                   <div className="text-2xl font-bold text-cyan-400">{totalFiles}</div>
-                  <div className="text-xs text-slate-500">{lang === "ar" ? "ملف" : "Files"}</div>
+                  <div className="text-xs text-text-faint">{lang === "ar" ? "ملف" : "Files"}</div>
                 </div>
-                <div className="rounded-xl border border-[#1e2d3d] bg-[#0d1521] px-5 py-3 text-center">
+                <div className="rounded-xl border border-border bg-primary px-5 py-3 text-center">
                   <div className="text-2xl font-bold text-green-400">{totalDownloads}</div>
-                  <div className="text-xs text-slate-500">{lang === "ar" ? "تنزيل" : "Downloads"}</div>
+                  <div className="text-xs text-text-faint">{lang === "ar" ? "تنزيل" : "Downloads"}</div>
                 </div>
               </div>
             </div>
@@ -337,23 +337,23 @@ export default function References() {
         </div>
 
         {/* ─── Controls Bar ─── */}
-        <div className="sticky top-0 z-20 border-b border-[#1e2d3d] bg-[#0a0e17]/95 backdrop-blur-md">
+        <div className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur-md">
           <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               {/* Search */}
               <div className="relative flex-1 md:max-w-md">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-faint" />
                 <Input
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder={lang === "ar" ? "ابحث في المراجع..." : "Search references..."}
-                  className="pl-10 bg-[#0d1521] border-[#1e2d3d] text-[#e8f0fe] placeholder:text-slate-500"
+                  className="pl-10 bg-primary border-border text-foreground placeholder:text-text-faint"
                 />
                 {search && (
                   <button
                     onClick={() => setSearch("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-faint hover:text-slate-300"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -365,7 +365,7 @@ export default function References() {
                 <select
                   value={selectedCategory}
                   onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="rounded-lg border border-[#1e2d3d] bg-[#0d1521] px-3 py-2 text-sm text-[#e8f0fe] focus:border-cyan-500/50 focus:outline-none"
+                  className="rounded-lg border border-border bg-primary px-3 py-2 text-sm text-foreground focus:border-cyan-500/50 focus:outline-none"
                 >
                   <option value="all">{lang === "ar" ? "كل الفئات" : "All categories"}</option>
                   {(categories || []).map((cat: string) => (
@@ -451,17 +451,17 @@ function UploadDropzone({ file, lang, disabled, onPick, formatFileSize }: Dropzo
       onClick={() => !disabled && onPick()}
       disabled={disabled}
       aria-label={lang === "ar" ? "اختيار ملف للرفع" : "Select a file to upload"}
-      className="flex w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#1e2d3d] bg-[#0a0e17] px-4 py-8 text-center transition-colors hover:border-cyan-500/40 focus:outline-none focus:ring-2 focus:ring-cyan-500/40 disabled:cursor-not-allowed disabled:opacity-50"
+      className="flex w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-background px-4 py-8 text-center transition-colors hover:border-cyan-500/40 focus:outline-none focus:ring-2 focus:ring-cyan-500/40 disabled:cursor-not-allowed disabled:opacity-50"
     >
       {file ? (
         <>
           <FileText className="mb-2 h-10 w-10 text-cyan-400" />
-          <p className="text-sm text-[#e8f0fe]">{file.name}</p>
-          <p className="text-xs text-slate-500">{formatFileSize(file.size)}</p>
+          <p className="text-sm text-foreground">{file.name}</p>
+          <p className="text-xs text-text-faint">{formatFileSize(file.size)}</p>
         </>
       ) : (
         <>
-          <Upload className="mb-2 h-10 w-10 text-slate-500" />
+          <Upload className="mb-2 h-10 w-10 text-text-faint" />
           <p className="text-sm text-slate-400">
             {lang === "ar" ? "اضغط لاختيار ملف" : "Click to select a file"}
           </p>
@@ -482,7 +482,7 @@ function UploadProgressBar({ progress, lang }: { readonly progress: number; read
         <span>{lang === "ar" ? "جارٍ الرفع..." : "Uploading..."}</span>
         <span>{progress}%</span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-[#1a2434]">
+      <div className="h-2 overflow-hidden rounded-full bg-background">
         <div
           className="h-full bg-gradient-to-r from-cyan-500 to-blue-600 transition-all duration-300"
           style={{ width: `${progress}%` }}
@@ -592,7 +592,7 @@ function UploadModal({ lang, onClose, onUploaded, getUploadUrl, createReference 
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="w-full max-w-lg rounded-2xl border border-[#1e2d3d] bg-[#0d1521] p-6 shadow-2xl">
+      <div className="w-full max-w-lg rounded-2xl border border-border bg-primary p-6 shadow-2xl">
         {/* Header */}
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-white">
@@ -644,7 +644,7 @@ function UploadModal({ lang, onClose, onUploaded, getUploadUrl, createReference 
               onChange={(e) => setTitle(e.target.value)}
               disabled={uploading}
               placeholder={lang === "ar" ? "مثال: دليل ETAP الكامل" : "e.g., Complete ETAP Guide"}
-              className="bg-[#0a0e17] border-[#1e2d3d] text-[#e8f0fe]"
+              className="bg-background border-border text-foreground"
             />
           </div>
 
@@ -660,7 +660,7 @@ function UploadModal({ lang, onClose, onUploaded, getUploadUrl, createReference 
               disabled={uploading}
               rows={2}
               placeholder={lang === "ar" ? "وصف مختصر للمحتوى..." : "Brief description of the content..."}
-              className="w-full rounded-lg border border-[#1e2d3d] bg-[#0a0e17] px-3 py-2 text-sm text-[#e8f0fe] placeholder:text-slate-500 focus:border-cyan-500/50 focus:outline-none resize-none"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-text-faint focus:border-cyan-500/50 focus:outline-none resize-none"
             />
           </div>
 
@@ -676,7 +676,7 @@ function UploadModal({ lang, onClose, onUploaded, getUploadUrl, createReference 
               onChange={(e) => setCategory(e.target.value)}
               disabled={uploading}
               placeholder={lang === "ar" ? "مثال: electrical, software, general" : "e.g., electrical, software, general"}
-              className="bg-[#0a0e17] border-[#1e2d3d] text-[#e8f0fe]"
+              className="bg-background border-border text-foreground"
             />
           </div>
 
@@ -690,7 +690,7 @@ function UploadModal({ lang, onClose, onUploaded, getUploadUrl, createReference 
             onClick={onClose}
             disabled={uploading}
             variant="outline"
-            className="flex-1 border-[#1e2d3d] text-slate-400 hover:bg-white/5"
+            className="flex-1 border-border text-slate-400 hover:bg-white/5"
           >
             {lang === "ar" ? "إلغاء" : "Cancel"}
           </Button>

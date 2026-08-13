@@ -15,13 +15,7 @@ interface SocialLink {
   readonly label: string;
 }
 
-function pushIfValid(
-  out: SocialLink[],
-  url: string | null | undefined,
-  icon: React.ReactNode,
-  label: string,
-  hrefTransform?: (url: string) => string,
-): void {
+function pushIfValid(out: SocialLink[], url: string | null | undefined, icon: React.ReactNode, label: string, hrefTransform?: (url: string) => string): void {
   if (!url || url === "#") return;
   out.push({ icon, href: hrefTransform ? hrefTransform(url) : url, label });
 }
@@ -47,13 +41,13 @@ function buildSocialLinks(contact: {
 }
 
 const BRAND_COLORS: Record<string, string> = {
-  YouTube: "hover:border-[#FF0000] hover:text-[#FF0000] hover:bg-[rgba(255,0,0,0.1)] hover:shadow-[0_0_15px_rgba(255,0,0,0.3)]",
-  LinkedIn: "hover:border-[#0A66C2] hover:text-[#0A66C2] hover:bg-[rgba(10,102,194,0.1)] hover:shadow-[0_0_15px_rgba(10,102,194,0.3)]",
-  Facebook: "hover:border-[#1877F2] hover:text-[#1877F2] hover:bg-[rgba(24,119,242,0.1)] hover:shadow-[0_0_15px_rgba(24,119,242,0.3)]",
-  Instagram: "hover:border-[#E1306C] hover:text-[#E1306C] hover:bg-[rgba(225,48,108,0.1)] hover:shadow-[0_0_15px_rgba(225,48,108,0.3)]",
-  Twitter: "hover:border-[#e8f0fe] hover:text-[#e8f0fe] hover:bg-[rgba(232,240,254,0.1)] hover:shadow-[0_0_15px_rgba(232,240,254,0.3)]",
-  TikTok: "hover:border-[#00f2fe] hover:text-[#00f2fe] hover:bg-[rgba(0,242,254,0.1)] hover:shadow-[0_0_15px_rgba(0,242,254,0.3)]",
-  Email: "hover:border-accent hover:text-accent hover:bg-accent/10 hover:shadow-[0_0_15px_rgba(249,115,22,0.3)]",
+  YouTube: "hover:border-[#FF0000] hover:text-[#FF0000] hover:bg-[rgba(255,0,0,0.08)] hover:shadow-[0_0_18px_rgba(255,0,0,0.25)]",
+  LinkedIn: "hover:border-[#0A66C2] hover:text-[#0A66C2] hover:bg-[rgba(10,102,194,0.08)] hover:shadow-[0_0_18px_rgba(10,102,194,0.25)]",
+  Facebook: "hover:border-[#1877F2] hover:text-[#1877F2] hover:bg-[rgba(24,119,242,0.08)] hover:shadow-[0_0_18px_rgba(24,119,242,0.25)]",
+  Instagram: "hover:border-[#E1306C] hover:text-[#E1306C] hover:bg-[rgba(225,48,108,0.08)] hover:shadow-[0_0_18px_rgba(225,48,108,0.25)]",
+  Twitter: "hover:border-[#e8f0fe] hover:text-[#e8f0fe] hover:bg-[rgba(232,240,254,0.08)] hover:shadow-[0_0_18px_rgba(232,240,254,0.25)]",
+  TikTok: "hover:border-[#00f2fe] hover:text-[#00f2fe] hover:bg-[rgba(0,242,254,0.08)] hover:shadow-[0_0_18px_rgba(0,242,254,0.25)]",
+  Email: "hover:border-accent hover:text-accent hover:bg-accent/10 hover:shadow-[0_0_18px_rgba(249,115,22,0.25)]",
 };
 
 export default function Footer() {
@@ -76,32 +70,34 @@ export default function Footer() {
     ],
   };
 
-  // Build social links from dynamic settings — only include non-empty, non-"#" URLs
   const socialLinks = buildSocialLinks(contact);
 
   return (
-    <footer className="relative border-t border-border bg-background">
+    <footer className="relative border-t border-border bg-background overflow-hidden">
       {/* Top ambient glow */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 h-px w-1/2 bg-gradient-to-r from-transparent via-[rgba(249,115,22,0.3)] to-transparent" />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 h-px w-1/2 bg-gradient-to-r from-transparent via-accent/40 to-transparent" />
 
-      <div className="mx-auto max-w-7xl px-4 lg:px-6">
+      {/* Background subtle pattern */}
+      <div className="absolute inset-0 opacity-[0.02]" style={{ backgroundImage: 'radial-gradient(circle at 25% 50%, rgba(255,255,255,0.1) 0%, transparent 50%), radial-gradient(circle at 75% 50%, rgba(255,255,255,0.05) 0%, transparent 50%)' }} />
+
+      <div className="relative mx-auto max-w-7xl px-4 lg:px-6">
         {/* ── Main grid ── */}
         <div className="grid gap-10 py-16 sm:grid-cols-2 lg:grid-cols-4">
           {/* Brand column */}
           <div className="lg:col-span-1">
-            <Link to="/" className="flex items-center gap-2.5">
-              <img src="/logo.svg" alt="Eng. Ahmed Elbaz Logo" className="h-12 w-auto object-contain rounded-xl" />
+            <Link to="/" className="group flex items-center gap-2.5">
+              <img src="/logo.svg" alt="Eng. Ahmed Elbaz Logo" className="h-12 w-auto object-contain rounded-xl transition-transform duration-300 group-hover:scale-105" />
               <div>
-                <div className="footer-glow-text text-[13px] font-extrabold text-foreground">
+                <div className="text-[13px] font-extrabold text-foreground tracking-tight">
                   {lang === "ar" ? "أحمد الباز" : "Eng. Ahmed Elbaz"}
                 </div>
-                <div className="footer-glow-text text-[10px] font-medium uppercase tracking-widest text-accent text-neon">
+                <div className="text-[10px] font-medium uppercase tracking-widest text-accent">
                   {lang === "ar" ? "هندسة كهربية" : "Electrical Engineering"}
                 </div>
               </div>
             </Link>
 
-            <p className="footer-glow-text mt-4 text-[13px] leading-relaxed text-secondary">
+            <p className="mt-4 text-[13px] leading-relaxed text-text-secondary">
               {lang === "ar"
                 ? "منصة تعليمية متخصصة في برامج تصميم الطاقة الكهربية للمهندسين العرب."
                 : "Specialized platform for power system design software, built for serious electrical engineers."}
@@ -116,7 +112,7 @@ export default function Footer() {
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label={s.label}
-                  className={`flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-primary text-secondary transition-all duration-300 ${BRAND_COLORS[s.label] || "hover:border-accent hover:text-accent"}`}
+                  className={`flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-primary text-text-secondary transition-all duration-300 ${BRAND_COLORS[s.label] || "hover:border-accent hover:text-accent"}`}
                 >
                   {s.icon}
                 </a>
@@ -126,16 +122,13 @@ export default function Footer() {
 
           {/* Platform links */}
           <div>
-            <h4 className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-secondary">
+            <h4 className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-text-muted">
               {lang === "ar" ? "المنصة" : "Platform"}
             </h4>
             <ul className="space-y-3">
               {links.platform.map((l) => (
                 <li key={l.to}>
-                  <Link
-                    to={l.to}
-                    className="text-[13px] text-secondary transition-colors hover:text-accent"
-                  >
+                  <Link to={l.to} className="text-[13px] text-text-secondary transition-colors duration-200 hover:text-accent">
                     {l.label}
                   </Link>
                 </li>
@@ -145,16 +138,13 @@ export default function Footer() {
 
           {/* Legal links */}
           <div>
-            <h4 className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-secondary">
+            <h4 className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-text-muted">
               {lang === "ar" ? "قانوني" : "Legal"}
             </h4>
             <ul className="space-y-3">
               {links.legal.map((l) => (
                 <li key={l.label}>
-                  <Link
-                    to={l.to}
-                    className="text-[13px] text-secondary transition-colors hover:text-foreground"
-                  >
+                  <Link to={l.to} className="text-[13px] text-text-secondary transition-colors duration-200 hover:text-foreground">
                     {l.label}
                   </Link>
                 </li>
@@ -164,14 +154,14 @@ export default function Footer() {
 
           {/* Tools */}
           <div>
-            <h4 className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-secondary">
+            <h4 className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-text-muted">
               {lang === "ar" ? "البرامج التي ستتعلمها" : "Tools You'll Master"}
             </h4>
             <div className="flex flex-wrap gap-2">
               {tools.map((tool) => (
                 <span
                   key={tool}
-                  className="rounded-md border border-border bg-primary px-2.5 py-1 text-[11px] font-medium text-secondary transition-colors hover:border-accent hover:text-foreground"
+                  className="rounded-lg border border-border bg-primary px-2.5 py-1 text-[11px] font-medium text-text-secondary transition-all duration-200 hover:border-accent hover:text-foreground hover:shadow-[0_0_12px_rgba(249,115,22,0.15)]"
                 >
                   {tool}
                 </span>
@@ -182,15 +172,15 @@ export default function Footer() {
 
         {/* ── Bottom bar ── */}
         <div className="flex flex-col items-center justify-between gap-3 border-t border-border py-6 sm:flex-row">
-          <p className="footer-glow-text text-[12px] text-secondary">
+          <p className="text-[12px] text-text-secondary">
             © {currentYear}{" "}
-            <span className="text-foreground">
+            <span className="text-foreground font-medium">
               {lang === "ar" ? "أحمد الباز" : "Ahmed Elbaz"}
             </span>
             {lang === "ar" ? " — جميع الحقوق محفوظة" : " — All rights reserved."}
           </p>
-          <div className="flex items-center gap-2 text-[11px] text-secondary">
-            <div className="h-1.5 w-1.5 rounded-full bg-[#10b981] animate-pulse" />
+          <div className="flex items-center gap-2 text-[11px] text-text-muted">
+            <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
             {lang === "ar" ? "جميع الأنظمة تعمل" : "All systems operational"}
           </div>
         </div>

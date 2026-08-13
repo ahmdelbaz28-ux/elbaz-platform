@@ -144,30 +144,30 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
   // Status badge colour lookup maps — replace multi-branch ternaries that
   // SonarCloud S3358 flags.
   const ticketStatusBadgeClass: Record<string, string> = {
-    open: "bg-[rgba(16,185,129,0.15)] text-[#10b981]",
-    in_progress: "bg-[rgba(6,182,212,0.15)] text-[#06b6d4]",
+    open: "bg-[rgba(16,185,129,0.15)] text-emerald-500",
+    in_progress: "bg-accent-secondary/15 text-accent-secondary",
     resolved: "bg-[rgba(34,211,238,0.15)] text-[#22d3ee]",
   };
   const paymentStatusBadgeClass: Record<string, string> = {
-    completed: "bg-[rgba(16,185,129,0.15)] text-[#10b981]",
-    pending: "bg-[rgba(245,158,11,0.15)] text-[#f59e0b]",
+    completed: "bg-[rgba(16,185,129,0.15)] text-emerald-500",
+    pending: "bg-[rgba(245,158,11,0.15)] text-amber-500",
   };
 
-  if (isLoading) return <div className="flex min-h-screen items-center justify-center bg-[#0a0e17]"><div className="h-10 w-10 animate-spin rounded-full border-4 border-[#1f2d44] border-t-[#06b6d4]" /></div>;
+  if (isLoading) return <div className="flex min-h-screen items-center justify-center bg-background"><div className="h-10 w-10 animate-spin rounded-full border-4 border-border border-t-[#06b6d4]" /></div>;
   if (!isAdmin) return null;
 
   return (
-    <div className="flex min-h-screen bg-[#0a0e17]">
+    <div className="flex min-h-screen bg-background">
       {/* Sidebar */}
       <motion.aside initial={{ width: sidebarCollapsed ? 64 : 240 }} animate={{ width: sidebarCollapsed ? 64 : 240 }} transition={{ type: "spring", stiffness: 300, damping: 30 }} className="admin-sidebar fixed left-0 top-0 z-50 h-screen flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b border-[#1f2d44]">
+        <div className="flex items-center justify-between p-4 border-b border-border">
           {!sidebarCollapsed && (
             <div className="flex items-center gap-2">
-              <Shield className="h-5 w-5 text-[#06b6d4]" />
-              <span className="text-sm font-bold text-[#f0f4f8]">{t("adminPanel")}</span>
+              <Shield className="h-5 w-5 text-accent-secondary" />
+              <span className="text-sm font-bold text-foreground">{t("adminPanel")}</span>
             </div>
           )}
-          <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)} className="p-1.5 rounded-lg hover:bg-[#1f2d44] text-[#94a3b8] transition-colors">
+          <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)} className="p-1.5 rounded-lg hover:bg-[#1f2d44] text-text-muted transition-colors">
             {sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
           </button>
         </div>
@@ -183,8 +183,8 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
             );
           })}
         </nav>
-        <div className="p-3 border-t border-[#1f2d44]">
-          <button onClick={() => navigate("/")} className="admin-sidebar-item w-full text-[#f43f5e] hover:bg-[rgba(244,63,94,0.08)]">
+        <div className="p-3 border-t border-border">
+          <button onClick={() => navigate("/")} className="admin-sidebar-item w-full text-destructive hover:bg-[rgba(244,63,94,0.08)]">
             <LogOut className="h-4 w-4 shrink-0" />
             {!sidebarCollapsed && <span>{isRTL ? "خروج" : "Exit Admin"}</span>}
           </button>
@@ -201,8 +201,8 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
               {activeTab === "dashboard" && (
                 <div className="space-y-8">
                   <div>
-                    <h1 className="text-2xl font-bold text-[#f0f4f8]">{isRTL ? "لوحة التحكم" : "Dashboard"}</h1>
-                    <p className="text-sm text-[#94a3b8] mt-1">{isRTL ? "نظرة عامة على أداء المنصة" : "Platform performance overview"}</p>
+                    <h1 className="text-2xl font-bold text-foreground">{isRTL ? "لوحة التحكم" : "Dashboard"}</h1>
+                    <p className="text-sm text-text-muted mt-1">{isRTL ? "نظرة عامة على أداء المنصة" : "Platform performance overview"}</p>
                   </div>
 
                   {/* Stats Grid */}
@@ -220,13 +220,13 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                             <stat.icon className="h-5 w-5" style={{ color: stat.color }} />
                           </div>
                           {stat.change !== undefined && stat.change > 0 && (
-                            <span className="flex items-center gap-0.5 text-xs font-medium text-[#10b981]">
+                            <span className="flex items-center gap-0.5 text-xs font-medium text-emerald-500">
                               <ArrowUpRight className="h-3 w-3" />+{stat.change}
                             </span>
                           )}
                         </div>
-                        <p className="mt-3 text-2xl font-bold text-[#f0f4f8]">{stat.value}</p>
-                        <p className="mt-1 text-xs text-[#94a3b8]">{stat.label}</p>
+                        <p className="mt-3 text-2xl font-bold text-foreground">{stat.value}</p>
+                        <p className="mt-1 text-xs text-text-muted">{stat.label}</p>
                       </motion.div>
                     ))}
                   </div>
@@ -239,30 +239,30 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                       { icon: FileText, label: isRTL ? "تعديل المحتوى" : "Edit Content", tab: "cms", color: "#f59e0b" },
                       { icon: Palette, label: isRTL ? "تخصيص الثيم" : "Customize Theme", tab: "themes", color: "#8b5cf6" },
                     ].map((action) => (
-                      <motion.button key={action.tab} whileHover={{ y: -4, scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setActiveTab(action.tab)} className="rounded-xl border border-[#1f2d44] bg-[#111827] p-6 text-start hover:border-[rgba(6,182,212,0.3)] transition-all">
+                      <motion.button key={action.tab} whileHover={{ y: -4, scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setActiveTab(action.tab)} className="rounded-xl border border-border bg-primary p-6 text-start hover:border-[rgba(6,182,212,0.3)] transition-all">
                         <div className="flex h-12 w-12 items-center justify-center rounded-lg mb-4" style={{ background: `rgba(${hexToRgb(action.color)}, 0.1)` }}>
                           <action.icon className="h-6 w-6" style={{ color: action.color }} />
                         </div>
-                        <p className="text-sm font-semibold text-[#f0f4f8]">{action.label}</p>
+                        <p className="text-sm font-semibold text-foreground">{action.label}</p>
                       </motion.button>
                     ))}
                   </div>
 
                   {/* Recent Activity */}
-                  <div className="rounded-xl border border-[#1f2d44] bg-[#111827] p-6">
-                    <h3 className="text-lg font-semibold text-[#f0f4f8] mb-4">{isRTL ? "النشاط الأخير" : "Recent Activity"}</h3>
+                  <div className="rounded-xl border border-border bg-primary p-6">
+                    <h3 className="text-lg font-semibold text-foreground mb-4">{isRTL ? "النشاط الأخير" : "Recent Activity"}</h3>
                     <div className="space-y-3">
                       {allUsers.slice(0, 5).map((u: any) => (
-                        <div key={u.id} className="flex items-center gap-3 py-2 border-b border-[#1f2d44]/50 last:border-0">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[rgba(6,182,212,0.1)] text-xs font-bold text-[#06b6d4]">{(u.name || u.username || "?").charAt(0).toUpperCase()}</div>
+                        <div key={u.id} className="flex items-center gap-3 py-2 border-b border-border/50 last:border-0">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[rgba(6,182,212,0.1)] text-xs font-bold text-accent-secondary">{(u.name || u.username || "?").charAt(0).toUpperCase()}</div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm text-[#f0f4f8] truncate">{u.name || u.username}</p>
-                            <p className="text-xs text-[#64748b]">{u.email || "—"}</p>
+                            <p className="text-sm text-foreground truncate">{u.name || u.username}</p>
+                            <p className="text-xs text-text-faint">{u.email || "—"}</p>
                           </div>
-                          <Badge variant="outline" className="border-[#1f2d44] text-[10px] text-[#64748b]">{u.role}</Badge>
+                          <Badge variant="outline" className="border-border text-[10px] text-text-faint">{u.role}</Badge>
                         </div>
                       ))}
-                      {allUsers.length === 0 && <p className="text-sm text-[#64748b] text-center py-8">{isRTL ? "لا يوجد نشاط بعد" : "No activity yet"}</p>}
+                      {allUsers.length === 0 && <p className="text-sm text-text-faint text-center py-8">{isRTL ? "لا يوجد نشاط بعد" : "No activity yet"}</p>}
                     </div>
                   </div>
                 </div>
@@ -273,48 +273,48 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                 <div className="space-y-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h1 className="text-2xl font-bold text-[#f0f4f8]">{t("totalUsers")}</h1>
-                      <p className="text-sm text-[#94a3b8] mt-1">{allUsers.length} {isRTL ? "مستخدم" : "users"}</p>
+                      <h1 className="text-2xl font-bold text-foreground">{t("totalUsers")}</h1>
+                      <p className="text-sm text-text-muted mt-1">{allUsers.length} {isRTL ? "مستخدم" : "users"}</p>
                     </div>
                   </div>
-                  <div className="rounded-xl border border-[#1f2d44] bg-[#111827] overflow-hidden">
+                  <div className="rounded-xl border border-border bg-primary overflow-hidden">
                     <table className="w-full text-start text-sm">
                       <thead>
-                        <tr className="border-b border-[#1f2d44] bg-[#0d1117]">
-                          <th className="p-4 text-[#94a3b8] text-start font-medium">{isRTL ? "المستخدم" : "User"}</th>
-                          <th className="p-4 text-[#94a3b8] text-start font-medium">{t("email")}</th>
-                          <th className="p-4 text-[#94a3b8] text-start font-medium">{t("role")}</th>
-                          <th className="p-4 text-[#94a3b8] text-start font-medium">{isRTL ? "تاريخ التسجيل" : "Joined"}</th>
-                          <th className="p-4 text-[#94a3b8] text-start font-medium">{isRTL ? "إجراءات" : "Actions"}</th>
+                        <tr className="border-b border-border bg-[#0d1117]">
+                          <th className="p-4 text-text-muted text-start font-medium">{isRTL ? "المستخدم" : "User"}</th>
+                          <th className="p-4 text-text-muted text-start font-medium">{t("email")}</th>
+                          <th className="p-4 text-text-muted text-start font-medium">{t("role")}</th>
+                          <th className="p-4 text-text-muted text-start font-medium">{isRTL ? "تاريخ التسجيل" : "Joined"}</th>
+                          <th className="p-4 text-text-muted text-start font-medium">{isRTL ? "إجراءات" : "Actions"}</th>
                         </tr>
                       </thead>
                       <tbody>
                         {(allUsers || []).map((u: any) => (
-                          <tr key={u.id} className="border-b border-[#1f2d44]/50 hover:bg-[rgba(6,182,212,0.02)] transition-colors">
+                          <tr key={u.id} className="border-b border-border/50 hover:bg-[rgba(6,182,212,0.02)] transition-colors">
                             <td className="p-4">
                               <div className="flex items-center gap-3">
-                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[rgba(6,182,212,0.1)] text-xs font-bold text-[#06b6d4]">{(u.name || u.username || "?").charAt(0).toUpperCase()}</div>
+                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[rgba(6,182,212,0.1)] text-xs font-bold text-accent-secondary">{(u.name || u.username || "?").charAt(0).toUpperCase()}</div>
                                 <div>
-                                  <p className="text-sm font-medium text-[#f0f4f8]">{u.name || u.username}</p>
-                                  <p className="text-xs text-[#64748b]">@{u.username}</p>
+                                  <p className="text-sm font-medium text-foreground">{u.name || u.username}</p>
+                                  <p className="text-xs text-text-faint">@{u.username}</p>
                                 </div>
                               </div>
                             </td>
-                            <td className="p-4 text-[#94a3b8]">{u.email || "—"}</td>
+                            <td className="p-4 text-text-muted">{u.email || "—"}</td>
                             <td className="p-4">
                               <Select value={u.role} onValueChange={(val) => updateUserRole.mutate({ userId: u.id, role: val as "user" | "admin" })}>
-                                <SelectTrigger className="w-28 border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8] text-xs">
+                                <SelectTrigger className="w-28 border-border bg-background text-foreground text-xs">
                                   <SelectValue />
                                 </SelectTrigger>
-                                <SelectContent className="border-[#1f2d44] bg-[#111827]">
-                                  <SelectItem value="user" className="text-[#f0f4f8]">{isRTL ? "مستخدم" : "User"}</SelectItem>
-                                  <SelectItem value="admin" className="text-[#f0f4f8]">{isRTL ? "أدمن" : "Admin"}</SelectItem>
+                                <SelectContent className="border-border bg-primary">
+                                  <SelectItem value="user" className="text-foreground">{isRTL ? "مستخدم" : "User"}</SelectItem>
+                                  <SelectItem value="admin" className="text-foreground">{isRTL ? "أدمن" : "Admin"}</SelectItem>
                                 </SelectContent>
                               </Select>
                             </td>
-                            <td className="p-4 text-[#64748b] text-xs">{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—"}</td>
+                            <td className="p-4 text-text-faint text-xs">{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—"}</td>
                             <td className="p-4">
-                              <Badge variant="outline" className={`border-[#1f2d44] text-xs ${u.role === "admin" ? "text-[#06b6d4] border-[#06b6d4]/30" : "text-[#94a3b8]"}`}>
+                              <Badge variant="outline" className={`border-border text-xs ${u.role === "admin" ? "text-accent-secondary border-[#06b6d4]/30" : "text-text-muted"}`}>
                                 {u.role === "admin" ? <Shield className="h-3 w-3 mr-1" /> : <Users className="h-3 w-3 mr-1" />}
                                 {u.role}
                               </Badge>
@@ -331,38 +331,38 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
               {activeTab === "courses" && (
                 <div className="space-y-6">
                   <div>
-                    <h1 className="text-2xl font-bold text-[#f0f4f8]">{isRTL ? "إدارة الكورسات" : "Course Management"}</h1>
-                    <p className="text-sm text-[#94a3b8] mt-1">{allCourses.length} {isRTL ? "كورس" : "courses"}</p>
+                    <h1 className="text-2xl font-bold text-foreground">{isRTL ? "إدارة الكورسات" : "Course Management"}</h1>
+                    <p className="text-sm text-text-muted mt-1">{allCourses.length} {isRTL ? "كورس" : "courses"}</p>
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {(allCourses || []).map((course: CourseItem) => (
-                      <motion.div key={course.id} whileHover={{ y: -4 }} className="rounded-xl border border-[#1f2d44] bg-[#111827] overflow-hidden">
-                        <div className="h-32 bg-[#0a0e17] relative">
+                      <motion.div key={course.id} whileHover={{ y: -4 }} className="rounded-xl border border-border bg-primary overflow-hidden">
+                        <div className="h-32 bg-background relative">
                           {course.thumbnailUrl ? (
                             <img src={course.thumbnailUrl} alt={lang === "en" ? course.titleEn : course.titleAr} className="w-full h-full object-cover" />
                           ) : (
                             <div className="flex items-center justify-center h-full"><BookOpen className="h-8 w-8 text-[#1f2d44]" /></div>
                           )}
                           <div className="absolute top-2 right-2 flex gap-1">
-                            {course.isPublished && <Badge className="bg-[rgba(16,185,129,0.15)] text-[#10b981] text-[10px]">{isRTL ? "منشور" : "Published"}</Badge>}
-                            {course.isFeatured && <Badge className="bg-[rgba(245,158,11,0.15)] text-[#f59e0b] text-[10px]">{isRTL ? "مميز" : "Featured"}</Badge>}
+                            {course.isPublished && <Badge className="bg-[rgba(16,185,129,0.15)] text-emerald-500 text-[10px]">{isRTL ? "منشور" : "Published"}</Badge>}
+                            {course.isFeatured && <Badge className="bg-[rgba(245,158,11,0.15)] text-amber-500 text-[10px]">{isRTL ? "مميز" : "Featured"}</Badge>}
                           </div>
                         </div>
                         <div className="p-4 space-y-3">
-                          <h3 className="text-sm font-semibold text-[#f0f4f8] truncate">{lang === "en" ? course.titleEn : course.titleAr}</h3>
-                          <div className="flex items-center justify-between text-xs text-[#94a3b8]">
+                          <h3 className="text-sm font-semibold text-foreground truncate">{lang === "en" ? course.titleEn : course.titleAr}</h3>
+                          <div className="flex items-center justify-between text-xs text-text-muted">
                             <span>{course.price} {course.currency}</span>
                             <span>{course.studentCount} {isRTL ? "طالب" : "students"}</span>
                           </div>
                           <div className="flex gap-2">
-                            <Button size="sm" variant="ghost" className="flex-1 text-xs text-[#06b6d4] hover:bg-[rgba(6,182,212,0.05)]" onClick={() => {
+                            <Button size="sm" variant="ghost" className="flex-1 text-xs text-accent-secondary hover:bg-[rgba(6,182,212,0.05)]" onClick={() => {
                               const newPublished = !course.isPublished;
                               updateCourse.mutate({ id: course.id, isPublished: newPublished });
                             }}>
                               <Eye className="h-3 w-3 mr-1" />
                               {course.isPublished ? bilingual("إخفاء", "Hide", isRTL) : bilingual("نشر", "Publish", isRTL)}
                             </Button>
-                            <Button size="sm" variant="ghost" className="flex-1 text-xs text-[#f59e0b] hover:bg-[rgba(245,158,11,0.05)]" onClick={() => {
+                            <Button size="sm" variant="ghost" className="flex-1 text-xs text-amber-500 hover:bg-[rgba(245,158,11,0.05)]" onClick={() => {
                               updateCourse.mutate({ id: course.id, isFeatured: !course.isFeatured });
                             }}>
                               <Zap className="h-3 w-3 mr-1" />
@@ -380,36 +380,36 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
               {activeTab === "tickets" && (
                 <div className="space-y-6">
                   <div>
-                    <h1 className="text-2xl font-bold text-[#f0f4f8]">{t("allTickets")}</h1>
-                    <p className="text-sm text-[#94a3b8] mt-1">{(allTickets || []).length} {isRTL ? "تذكرة" : "tickets"}</p>
+                    <h1 className="text-2xl font-bold text-foreground">{t("allTickets")}</h1>
+                    <p className="text-sm text-text-muted mt-1">{(allTickets || []).length} {isRTL ? "تذكرة" : "tickets"}</p>
                   </div>
                   <div className="space-y-4">
                     {(allTickets || []).map((ticket: any) => (
-                      <motion.div key={ticket.id} whileHover={{ y: -2 }} className="rounded-xl border border-[#1f2d44] bg-[#111827] p-5">
+                      <motion.div key={ticket.id} whileHover={{ y: -2 }} className="rounded-xl border border-border bg-primary p-5">
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <Badge className={`text-xs ${ticketStatusBadgeClass[ticket.status] ?? "bg-[#1a2233] text-[#64748b]"}`}>{ticket.status}</Badge>
-                              <Badge variant="outline" className="border-[#1f2d44] text-[10px] text-[#94a3b8]">{ticket.category}</Badge>
-                              <span className="text-xs text-[#64748b]">{ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString() : ""}</span>
+                              <Badge className={`text-xs ${ticketStatusBadgeClass[ticket.status] ?? "bg-[#1a2233] text-text-faint"}`}>{ticket.status}</Badge>
+                              <Badge variant="outline" className="border-border text-[10px] text-text-muted">{ticket.category}</Badge>
+                              <span className="text-xs text-text-faint">{ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString() : ""}</span>
                             </div>
-                            <h3 className="mt-2 font-medium text-[#f0f4f8]">{ticket.subject}</h3>
-                            <p className="mt-1 text-sm text-[#94a3b8] line-clamp-2">{ticket.message}</p>
+                            <h3 className="mt-2 font-medium text-foreground">{ticket.subject}</h3>
+                            <p className="mt-1 text-sm text-text-muted line-clamp-2">{ticket.message}</p>
                           </div>
                           <div className="flex gap-2 ml-4">
-                            {ticket.status === "open" && <Button size="sm" variant="ghost" onClick={() => updateTicket.mutate({ id: ticket.id, status: "in_progress" })} className="text-[#06b6d4] hover:bg-[rgba(6,182,212,0.05)]"><CheckCircle className="mr-1 h-4 w-4" />{isRTL ? "بدء" : "Start"}</Button>}
-                            {ticket.status === "in_progress" && <Button size="sm" variant="ghost" onClick={() => updateTicket.mutate({ id: ticket.id, status: "resolved" })} className="text-[#10b981] hover:bg-[rgba(16,185,129,0.05)]"><CheckCircle className="mr-1 h-4 w-4" />{isRTL ? "حل" : "Resolve"}</Button>}
+                            {ticket.status === "open" && <Button size="sm" variant="ghost" onClick={() => updateTicket.mutate({ id: ticket.id, status: "in_progress" })} className="text-accent-secondary hover:bg-[rgba(6,182,212,0.05)]"><CheckCircle className="mr-1 h-4 w-4" />{isRTL ? "بدء" : "Start"}</Button>}
+                            {ticket.status === "in_progress" && <Button size="sm" variant="ghost" onClick={() => updateTicket.mutate({ id: ticket.id, status: "resolved" })} className="text-emerald-500 hover:bg-[rgba(16,185,129,0.05)]"><CheckCircle className="mr-1 h-4 w-4" />{isRTL ? "حل" : "Resolve"}</Button>}
                           </div>
                         </div>
                         <div className="mt-3">
                           {replyingTo === ticket.id ? (
                             <div className="flex gap-2">
-                              <Input value={replyText} onChange={(e) => setReplyText(e.target.value)} placeholder={isRTL ? "اكتب رداً..." : "Write a reply..."} className="flex-1 border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" />
-                              <Button size="sm" onClick={() => replyMutation.mutate({ ticketId: ticket.id, message: replyText })} disabled={!replyText.trim()} className="bg-[#06b6d4] text-[#0a0e17]">{t("send")}</Button>
-                              <Button size="sm" variant="ghost" onClick={() => setReplyingTo(null)} className="text-[#94a3b8]">{t("cancel")}</Button>
+                              <Input value={replyText} onChange={(e) => setReplyText(e.target.value)} placeholder={isRTL ? "اكتب رداً..." : "Write a reply..."} className="flex-1 border-border bg-background text-foreground" />
+                              <Button size="sm" onClick={() => replyMutation.mutate({ ticketId: ticket.id, message: replyText })} disabled={!replyText.trim()} className="bg-[#06b6d4] text-background">{t("send")}</Button>
+                              <Button size="sm" variant="ghost" onClick={() => setReplyingTo(null)} className="text-text-muted">{t("cancel")}</Button>
                             </div>
                           ) : (
-                            <Button size="sm" variant="ghost" onClick={() => setReplyingTo(ticket.id)} className="text-xs text-[#06b6d4] hover:bg-[rgba(6,182,212,0.05)]">{isRTL ? "رد" : "Reply"}</Button>
+                            <Button size="sm" variant="ghost" onClick={() => setReplyingTo(ticket.id)} className="text-xs text-accent-secondary hover:bg-[rgba(6,182,212,0.05)]">{isRTL ? "رد" : "Reply"}</Button>
                           )}
                         </div>
                       </motion.div>
@@ -422,28 +422,28 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
               {activeTab === "payments" && (
                 <div className="space-y-6">
                   <div>
-                    <h1 className="text-2xl font-bold text-[#f0f4f8]">{isRTL ? "سجل المدفوعات" : "Payment History"}</h1>
-                    <p className="text-sm text-[#94a3b8] mt-1">{allPayments.length} {isRTL ? "معاملة" : "transactions"}</p>
+                    <h1 className="text-2xl font-bold text-foreground">{isRTL ? "سجل المدفوعات" : "Payment History"}</h1>
+                    <p className="text-sm text-text-muted mt-1">{allPayments.length} {isRTL ? "معاملة" : "transactions"}</p>
                   </div>
-                  <div className="rounded-xl border border-[#1f2d44] bg-[#111827] overflow-hidden">
+                  <div className="rounded-xl border border-border bg-primary overflow-hidden">
                     <table className="w-full text-start text-sm">
                       <thead>
-                        <tr className="border-b border-[#1f2d44] bg-[#0d1117]">
-                          <th className="p-4 text-[#94a3b8] text-start font-medium">ID</th>
-                          <th className="p-4 text-[#94a3b8] text-start font-medium">{isRTL ? "المبلغ" : "Amount"}</th>
-                          <th className="p-4 text-[#94a3b8] text-start font-medium">{isRTL ? "الطريقة" : "Method"}</th>
-                          <th className="p-4 text-[#94a3b8] text-start font-medium">{t("status")}</th>
-                          <th className="p-4 text-[#94a3b8] text-start font-medium">{isRTL ? "التاريخ" : "Date"}</th>
+                        <tr className="border-b border-border bg-[#0d1117]">
+                          <th className="p-4 text-text-muted text-start font-medium">ID</th>
+                          <th className="p-4 text-text-muted text-start font-medium">{isRTL ? "المبلغ" : "Amount"}</th>
+                          <th className="p-4 text-text-muted text-start font-medium">{isRTL ? "الطريقة" : "Method"}</th>
+                          <th className="p-4 text-text-muted text-start font-medium">{t("status")}</th>
+                          <th className="p-4 text-text-muted text-start font-medium">{isRTL ? "التاريخ" : "Date"}</th>
                         </tr>
                       </thead>
                       <tbody>
                         {(allPayments || []).map((p: any) => (
-                          <tr key={p.id} className="border-b border-[#1f2d44]/50 hover:bg-[rgba(6,182,212,0.02)] transition-colors">
-                            <td className="p-4 text-[#f0f4f8] font-mono text-xs">#{p.id}</td>
-                            <td className="p-4 font-semibold text-[#06b6d4]">{p.amount} {p.currency}</td>
-                            <td className="p-4 text-[#94a3b8]">{p.paymentMethod}</td>
-                            <td className="p-4"><Badge className={`text-xs ${paymentStatusBadgeClass[p.status] ?? "bg-[rgba(244,63,94,0.15)] text-[#f43f5e]"}`}>{p.status}</Badge></td>
-                            <td className="p-4 text-[#64748b] text-xs">{p.createdAt ? new Date(p.createdAt).toLocaleDateString() : "—"}</td>
+                          <tr key={p.id} className="border-b border-border/50 hover:bg-[rgba(6,182,212,0.02)] transition-colors">
+                            <td className="p-4 text-foreground font-mono text-xs">#{p.id}</td>
+                            <td className="p-4 font-semibold text-accent-secondary">{p.amount} {p.currency}</td>
+                            <td className="p-4 text-text-muted">{p.paymentMethod}</td>
+                            <td className="p-4"><Badge className={`text-xs ${paymentStatusBadgeClass[p.status] ?? "bg-[rgba(244,63,94,0.15)] text-destructive"}`}>{p.status}</Badge></td>
+                            <td className="p-4 text-text-faint text-xs">{p.createdAt ? new Date(p.createdAt).toLocaleDateString() : "—"}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -456,35 +456,35 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
               {activeTab === "contact" && (
                 <div className="space-y-6">
                   <div>
-                    <h1 className="text-2xl font-bold text-[#f0f4f8]">{isRTL ? "معلومات التواصل" : "Contact Information"}</h1>
-                    <p className="text-sm text-[#94a3b8] mt-1">{isRTL ? "تحديث معلومات الاتصال وروابط التواصل الاجتماعي" : "Update contact info and social media links"}</p>
+                    <h1 className="text-2xl font-bold text-foreground">{isRTL ? "معلومات التواصل" : "Contact Information"}</h1>
+                    <p className="text-sm text-text-muted mt-1">{isRTL ? "تحديث معلومات الاتصال وروابط التواصل الاجتماعي" : "Update contact info and social media links"}</p>
                   </div>
-                  {contactLoading ? <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-[#1f2d44] border-t-[#06b6d4]" /></div> : (
-                    <div className="rounded-xl border border-[#1f2d44] bg-[#111827] p-6 space-y-8">
+                  {contactLoading ? <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-[#06b6d4]" /></div> : (
+                    <div className="rounded-xl border border-border bg-primary p-6 space-y-8">
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div className="grid gap-1.5">
-                          <Label className="text-sm text-[#94a3b8]">{isRTL ? "رقم واتساب" : "WhatsApp Number"}</Label>
-                          <Input value={contactValues.whatsappNumber || ""} onChange={(e) => setContactValues((p) => ({ ...p, whatsappNumber: e.target.value }))} placeholder="201061857305" className="border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" dir="ltr" />
+                          <Label className="text-sm text-text-muted">{isRTL ? "رقم واتساب" : "WhatsApp Number"}</Label>
+                          <Input value={contactValues.whatsappNumber || ""} onChange={(e) => setContactValues((p) => ({ ...p, whatsappNumber: e.target.value }))} placeholder="201061857305" className="border-border bg-background text-foreground" dir="ltr" />
                         </div>
                         <div className="grid gap-1.5">
-                          <Label className="text-sm text-[#94a3b8]">{isRTL ? "رقم الهاتف" : "Phone Number"}</Label>
-                          <Input value={contactValues.phone || ""} onChange={(e) => setContactValues((p) => ({ ...p, phone: e.target.value }))} placeholder="01061857305" className="border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" dir="ltr" />
+                          <Label className="text-sm text-text-muted">{isRTL ? "رقم الهاتف" : "Phone Number"}</Label>
+                          <Input value={contactValues.phone || ""} onChange={(e) => setContactValues((p) => ({ ...p, phone: e.target.value }))} placeholder="01061857305" className="border-border bg-background text-foreground" dir="ltr" />
                         </div>
                       </div>
                       <div className="grid gap-1.5 sm:max-w-md">
-                        <Label className="text-sm text-[#94a3b8]">{isRTL ? "البريد الإلكتروني" : "Email Address"}</Label>
-                        <Input value={contactValues.email || ""} onChange={(e) => setContactValues((p) => ({ ...p, email: e.target.value }))} placeholder="contact@example.com" className="border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" dir="ltr" />
+                        <Label className="text-sm text-text-muted">{isRTL ? "البريد الإلكتروني" : "Email Address"}</Label>
+                        <Input value={contactValues.email || ""} onChange={(e) => setContactValues((p) => ({ ...p, email: e.target.value }))} placeholder="contact@example.com" className="border-border bg-background text-foreground" dir="ltr" />
                       </div>
                       <div className="grid gap-4 sm:grid-cols-2">
                         {(["youtubeUrl", "linkedinUrl", "facebookUrl", "instagramUrl", "tiktokUrl", "twitterUrl"] as const).map((key) => (
                           <div key={key} className="grid gap-1.5">
-                            <Label className="text-sm text-[#94a3b8]">{key.replaceAll("Url", "").charAt(0).toUpperCase() + key.replaceAll("Url", "").slice(1)}</Label>
-                            <Input value={contactValues[key] || ""} onChange={(e) => setContactValues((p) => ({ ...p, [key]: e.target.value }))} placeholder="https://..." className="border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" dir="ltr" />
+                            <Label className="text-sm text-text-muted">{key.replaceAll("Url", "").charAt(0).toUpperCase() + key.replaceAll("Url", "").slice(1)}</Label>
+                            <Input value={contactValues[key] || ""} onChange={(e) => setContactValues((p) => ({ ...p, [key]: e.target.value }))} placeholder="https://..." className="border-border bg-background text-foreground" dir="ltr" />
                           </div>
                         ))}
                       </div>
-                      <div className="flex justify-end pt-4 border-t border-[#1f2d44]">
-                        <Button onClick={handleContactSave} disabled={contactSave.isPending} className="bg-[#06b6d4] text-[#0a0e17] hover:bg-[#22d3ee]">
+                      <div className="flex justify-end pt-4 border-t border-border">
+                        <Button onClick={handleContactSave} disabled={contactSave.isPending} className="bg-[#06b6d4] text-background hover:bg-[#22d3ee]">
                           {contactSave.isPending ? <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-[#0a0e17] border-t-transparent" /> : <Save className="mr-2 h-4 w-4" />}
                           {isRTL ? "حفظ التغييرات" : "Save Changes"}
                         </Button>
@@ -499,48 +499,48 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                 <div className="space-y-6">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <h1 className="text-2xl font-bold text-[#f0f4f8]">{isRTL ? "إدارة المحتوى" : "Content Management"}</h1>
-                      <p className="text-sm text-[#94a3b8] mt-1">{isRTL ? "تعديل نصوص ومحتوى صفحات الموقع" : "Edit texts and content across the site"}</p>
+                      <h1 className="text-2xl font-bold text-foreground">{isRTL ? "إدارة المحتوى" : "Content Management"}</h1>
+                      <p className="text-sm text-text-muted mt-1">{isRTL ? "تعديل نصوص ومحتوى صفحات الموقع" : "Edit texts and content across the site"}</p>
                     </div>
                     <Select value={cmsSection} onValueChange={setCmsSection}>
-                      <SelectTrigger className="w-full border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8] sm:w-64">
+                      <SelectTrigger className="w-full border-border bg-background text-foreground sm:w-64">
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent className="border-[#1f2d44] bg-[#111827]">
+                      <SelectContent className="border-border bg-primary">
                         {Object.entries(CMS_SECTIONS).map(([key, sec]) => (
-                          <SelectItem key={key} value={key} className="text-[#f0f4f8] focus:bg-[#1f2d44]">{isRTL ? sec.labelAr : sec.labelEn}</SelectItem>
+                          <SelectItem key={key} value={key} className="text-foreground focus:bg-[#1f2d44]">{isRTL ? sec.labelAr : sec.labelEn}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
-                  {cmsLoading ? <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-[#1f2d44] border-t-[#06b6d4]" /></div> : (
-                    <div className="rounded-xl border border-[#1f2d44] bg-[#111827] p-6 space-y-4">
+                  {cmsLoading ? <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-[#06b6d4]" /></div> : (
+                    <div className="rounded-xl border border-border bg-primary p-6 space-y-4">
                       {CMS_SECTIONS[cmsSection]?.keys.map((key) => {
                         const type = inferSettingType(key);
                         const label = key.replaceAll(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase());
                         const textInputDir = key.endsWith("Ar") ? "rtl" : "ltr";
                         const textInputElement = type === "textarea" ? (
-                          <Textarea value={cmsValues[key] || ""} onChange={(e) => setCmsValues((p) => ({ ...p, [key]: e.target.value }))} className="min-h-24 border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" dir={textInputDir} />
+                          <Textarea value={cmsValues[key] || ""} onChange={(e) => setCmsValues((p) => ({ ...p, [key]: e.target.value }))} className="min-h-24 border-border bg-background text-foreground" dir={textInputDir} />
                         ) : (
-                          <Input value={cmsValues[key] || ""} onChange={(e) => setCmsValues((p) => ({ ...p, [key]: e.target.value }))} className="border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" dir={textInputDir} />
+                          <Input value={cmsValues[key] || ""} onChange={(e) => setCmsValues((p) => ({ ...p, [key]: e.target.value }))} className="border-border bg-background text-foreground" dir={textInputDir} />
                         );
                         return (
                           <div key={key} className="grid gap-1.5">
                             <div className="flex items-center gap-2">
-                              <Label className="text-sm text-[#94a3b8]">{label}</Label>
-                              <Badge variant="outline" className="border-[#1f2d44] text-[10px] text-[#64748b]">{type}</Badge>
+                              <Label className="text-sm text-text-muted">{label}</Label>
+                              <Badge variant="outline" className="border-border text-[10px] text-text-faint">{type}</Badge>
                             </div>
                             {type === "color" ? (
                               <div className="flex items-center gap-3">
-                                <input type="color" value={cmsValues[key] || "#000000"} onChange={(e) => setCmsValues((p) => ({ ...p, [key]: e.target.value }))} className="h-10 w-14 cursor-pointer rounded border border-[#1f2d44] bg-[#0a0e17]" />
-                                <Input value={cmsValues[key] || ""} onChange={(e) => setCmsValues((p) => ({ ...p, [key]: e.target.value }))} className="flex-1 border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" dir="ltr" />
+                                <input type="color" value={cmsValues[key] || "#000000"} onChange={(e) => setCmsValues((p) => ({ ...p, [key]: e.target.value }))} className="h-10 w-14 cursor-pointer rounded border border-border bg-background" />
+                                <Input value={cmsValues[key] || ""} onChange={(e) => setCmsValues((p) => ({ ...p, [key]: e.target.value }))} className="flex-1 border-border bg-background text-foreground" dir="ltr" />
                               </div>
                             ) : textInputElement}
                           </div>
                         );
                       })}
-                      <div className="flex justify-end pt-4 border-t border-[#1f2d44]">
-                        <Button onClick={handleCmsSave} disabled={cmsSave.isPending} className="bg-[#06b6d4] text-[#0a0e17] hover:bg-[#22d3ee]">
+                      <div className="flex justify-end pt-4 border-t border-border">
+                        <Button onClick={handleCmsSave} disabled={cmsSave.isPending} className="bg-[#06b6d4] text-background hover:bg-[#22d3ee]">
                           {cmsSave.isPending ? <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-[#0a0e17] border-t-transparent" /> : <Save className="mr-2 h-4 w-4" />}
                           {isRTL ? "حفظ التغييرات" : "Save Changes"}
                         </Button>
@@ -555,18 +555,18 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                 <div className="space-y-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h1 className="text-2xl font-bold text-[#f0f4f8]">{isRTL ? "الثيمات" : "Themes"}</h1>
-                      <p className="text-sm text-[#94a3b8] mt-1">{isRTL ? "تخصيص مظهر الموقع" : "Customize site appearance"}</p>
+                      <h1 className="text-2xl font-bold text-foreground">{isRTL ? "الثيمات" : "Themes"}</h1>
+                      <p className="text-sm text-text-muted mt-1">{isRTL ? "تخصيص مظهر الموقع" : "Customize site appearance"}</p>
                     </div>
                     <div className="flex gap-2">
-                      {(!themes || themes.length === 0) && <Button onClick={() => seedThemes.mutate()} variant="outline" className="border-[#1f2d44] hover:bg-[#1f2d44]" disabled={seedThemes.isPending}>{isRTL ? "تحميل الثيمات الافتراضية" : "Load Default Themes"}</Button>}
-                      <Button onClick={() => { setEditingTheme({ ...blankTheme }); setThemeDialogOpen(true); }} className="bg-[#06b6d4] text-[#0a0e17] hover:bg-[#22d3ee]"><Plus className="mr-2 h-4 w-4" />{isRTL ? "إنشاء ثيم" : "Create Theme"}</Button>
+                      {(!themes || themes.length === 0) && <Button onClick={() => seedThemes.mutate()} variant="outline" className="border-border hover:bg-[#1f2d44]" disabled={seedThemes.isPending}>{isRTL ? "تحميل الثيمات الافتراضية" : "Load Default Themes"}</Button>}
+                      <Button onClick={() => { setEditingTheme({ ...blankTheme }); setThemeDialogOpen(true); }} className="bg-[#06b6d4] text-background hover:bg-[#22d3ee]"><Plus className="mr-2 h-4 w-4" />{isRTL ? "إنشاء ثيم" : "Create Theme"}</Button>
                     </div>
                   </div>
-                  {themesLoading ? <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-[#1f2d44] border-t-[#06b6d4]" /></div> : (
+                  {themesLoading ? <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-[#06b6d4]" /></div> : (
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                       {(themes as ThemeItem[] | undefined)?.map((theme) => (
-                        <motion.div key={theme.id} whileHover={{ y: -4 }} className="rounded-xl border border-[#1f2d44] bg-[#111827] overflow-hidden">
+                        <motion.div key={theme.id} whileHover={{ y: -4 }} className="rounded-xl border border-border bg-primary overflow-hidden">
                           <div className="flex h-16">
                             <div className="flex-1" style={{ backgroundColor: theme.primaryColor }} />
                             <div className="flex-1" style={{ backgroundColor: theme.secondaryColor }} />
@@ -576,13 +576,13 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                           </div>
                           <div className="p-4">
                             <div className="flex items-center justify-between">
-                              <h3 className="font-medium text-[#f0f4f8]">{theme.name}</h3>
-                              {theme.isActive && <Badge className="bg-[rgba(16,185,129,0.15)] text-[#10b981] border-[#10b981]/30"><Zap className="mr-1 h-3 w-3" />{isRTL ? "نشط" : "Active"}</Badge>}
+                              <h3 className="font-medium text-foreground">{theme.name}</h3>
+                              {theme.isActive && <Badge className="bg-[rgba(16,185,129,0.15)] text-emerald-500 border-[#10b981]/30"><Zap className="mr-1 h-3 w-3" />{isRTL ? "نشط" : "Active"}</Badge>}
                             </div>
                             <div className="mt-3 flex gap-2">
-                              <Button size="sm" variant="ghost" onClick={() => openEditTheme(theme)} className="flex-1 border border-[#1f2d44] text-[#94a3b8] hover:bg-[#1f2d44] hover:text-[#f0f4f8]"><Pencil className="mr-1 h-3 w-3" />{isRTL ? "تعديل" : "Edit"}</Button>
-                              {!theme.isActive && <Button size="sm" variant="ghost" onClick={() => activateTheme.mutate({ id: Number(theme.id) })} className="border border-[#06b6d4]/30 text-[#06b6d4] hover:bg-[rgba(6,182,212,0.1)]"><Zap className="h-3 w-3" /></Button>}
-                              {!theme.isActive && <Button size="sm" variant="ghost" onClick={() => setDeleteConfirmId(theme.id)} className="border border-[#f43f5e]/30 text-[#f43f5e] hover:bg-[rgba(244,63,94,0.1)]"><Trash2 className="h-3 w-3" /></Button>}
+                              <Button size="sm" variant="ghost" onClick={() => openEditTheme(theme)} className="flex-1 border border-border text-text-muted hover:bg-[#1f2d44] hover:text-foreground"><Pencil className="mr-1 h-3 w-3" />{isRTL ? "تعديل" : "Edit"}</Button>
+                              {!theme.isActive && <Button size="sm" variant="ghost" onClick={() => activateTheme.mutate({ id: Number(theme.id) })} className="border border-[#06b6d4]/30 text-accent-secondary hover:bg-[rgba(6,182,212,0.1)]"><Zap className="h-3 w-3" /></Button>}
+                              {!theme.isActive && <Button size="sm" variant="ghost" onClick={() => setDeleteConfirmId(theme.id)} className="border border-[#f43f5e]/30 text-destructive hover:bg-[rgba(244,63,94,0.1)]"><Trash2 className="h-3 w-3" /></Button>}
                             </div>
                           </div>
                         </motion.div>
@@ -597,33 +597,33 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                 <div className="space-y-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h1 className="text-2xl font-bold text-[#f0f4f8]">{isRTL ? "أكواد الخصم" : "Promo Codes"}</h1>
-                      <p className="text-sm text-[#94a3b8] mt-1">{(promoCodes || []).length} {isRTL ? "كود" : "codes"}</p>
+                      <h1 className="text-2xl font-bold text-foreground">{isRTL ? "أكواد الخصم" : "Promo Codes"}</h1>
+                      <p className="text-sm text-text-muted mt-1">{(promoCodes || []).length} {isRTL ? "كود" : "codes"}</p>
                     </div>
-                    <Button onClick={() => { setEditingPromo({ code: "", discount: 10, type: "percentage", maxUses: 100, status: "active", validFrom: "", validUntil: "" }); setShowPromoForm(true); }} className="bg-[#06b6d4] text-[#0a0e17] hover:bg-[#22d3ee]"><Plus className="mr-2 h-4 w-4" />{isRTL ? "إنشاء كود" : "Create Code"}</Button>
+                    <Button onClick={() => { setEditingPromo({ code: "", discount: 10, type: "percentage", maxUses: 100, status: "active", validFrom: "", validUntil: "" }); setShowPromoForm(true); }} className="bg-[#06b6d4] text-background hover:bg-[#22d3ee]"><Plus className="mr-2 h-4 w-4" />{isRTL ? "إنشاء كود" : "Create Code"}</Button>
                   </div>
-                  <div className="rounded-xl border border-[#1f2d44] bg-[#111827] overflow-hidden">
+                  <div className="rounded-xl border border-border bg-primary overflow-hidden">
                     <table className="w-full text-start text-sm">
                       <thead>
-                        <tr className="border-b border-[#1f2d44] bg-[#0d1117]">
-                          <th className="p-4 text-[#94a3b8] text-start font-medium">{isRTL ? "الكود" : "Code"}</th>
-                          <th className="p-4 text-[#94a3b8] text-start font-medium">{isRTL ? "الخصم" : "Discount"}</th>
-                          <th className="p-4 text-[#94a3b8] text-start font-medium">{isRTL ? "الاستخدامات" : "Uses"}</th>
-                          <th className="p-4 text-[#94a3b8] text-start font-medium">{t("status")}</th>
-                          <th className="p-4 text-[#94a3b8] text-start font-medium">{isRTL ? "إجراءات" : "Actions"}</th>
+                        <tr className="border-b border-border bg-[#0d1117]">
+                          <th className="p-4 text-text-muted text-start font-medium">{isRTL ? "الكود" : "Code"}</th>
+                          <th className="p-4 text-text-muted text-start font-medium">{isRTL ? "الخصم" : "Discount"}</th>
+                          <th className="p-4 text-text-muted text-start font-medium">{isRTL ? "الاستخدامات" : "Uses"}</th>
+                          <th className="p-4 text-text-muted text-start font-medium">{t("status")}</th>
+                          <th className="p-4 text-text-muted text-start font-medium">{isRTL ? "إجراءات" : "Actions"}</th>
                         </tr>
                       </thead>
                       <tbody>
                         {(promoCodes || []).map((p: any) => (
-                          <tr key={p.id} className="border-b border-[#1f2d44]/50 hover:bg-[rgba(6,182,212,0.02)] transition-colors">
-                            <td className="p-4 font-mono text-sm text-[#06b6d4]">{p.code}</td>
-                            <td className="p-4 text-[#f0f4f8]">{p.discount}{p.type === "percentage" ? "%" : " EGP"}</td>
-                            <td className="p-4 text-[#94a3b8]">{p.usedCount}/{p.maxUses}</td>
-                            <td className="p-4"><Badge className={`text-xs ${p.status === "active" ? "bg-[rgba(16,185,129,0.15)] text-[#10b981]" : "bg-[#1a2233] text-[#64748b]"}`}>{p.status}</Badge></td>
+                          <tr key={p.id} className="border-b border-border/50 hover:bg-[rgba(6,182,212,0.02)] transition-colors">
+                            <td className="p-4 font-mono text-sm text-accent-secondary">{p.code}</td>
+                            <td className="p-4 text-foreground">{p.discount}{p.type === "percentage" ? "%" : " EGP"}</td>
+                            <td className="p-4 text-text-muted">{p.usedCount}/{p.maxUses}</td>
+                            <td className="p-4"><Badge className={`text-xs ${p.status === "active" ? "bg-[rgba(16,185,129,0.15)] text-emerald-500" : "bg-[#1a2233] text-text-faint"}`}>{p.status}</Badge></td>
                             <td className="p-4">
                               <div className="flex gap-1">
-                                <Button size="sm" variant="ghost" onClick={() => { setEditingPromo(p); setShowPromoForm(true); }} className="text-[#06b6d4] hover:bg-[rgba(6,182,212,0.05)]"><Pencil className="h-3 w-3" /></Button>
-                                <Button size="sm" variant="ghost" onClick={() => { if (confirm(isRTL ? "هل أنت متأكد؟" : "Are you sure?")) deletePromo.mutate({ id: p.id }); }} className="text-[#f43f5e] hover:bg-[rgba(244,63,94,0.05)]"><Trash2 className="h-3 w-3" /></Button>
+                                <Button size="sm" variant="ghost" onClick={() => { setEditingPromo(p); setShowPromoForm(true); }} className="text-accent-secondary hover:bg-[rgba(6,182,212,0.05)]"><Pencil className="h-3 w-3" /></Button>
+                                <Button size="sm" variant="ghost" onClick={() => { if (confirm(isRTL ? "هل أنت متأكد؟" : "Are you sure?")) deletePromo.mutate({ id: p.id }); }} className="text-destructive hover:bg-[rgba(244,63,94,0.05)]"><Trash2 className="h-3 w-3" /></Button>
                               </div>
                             </td>
                           </tr>
@@ -639,24 +639,24 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                 <div className="space-y-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h1 className="text-2xl font-bold text-[#f0f4f8]">{isRTL ? "العروض الترويجية" : "Promotions"}</h1>
-                      <p className="text-sm text-[#94a3b8] mt-1">{(promotions || []).length} {isRTL ? "عرض" : "promotions"}</p>
+                      <h1 className="text-2xl font-bold text-foreground">{isRTL ? "العروض الترويجية" : "Promotions"}</h1>
+                      <p className="text-sm text-text-muted mt-1">{(promotions || []).length} {isRTL ? "عرض" : "promotions"}</p>
                     </div>
-                    <Button onClick={() => { setEditingPromotion({ titleEn: "", titleAr: "", subtitleEn: "", subtitleAr: "", discountText: "", ctaTextEn: "", ctaTextAr: "", ctaUrl: "", startDate: "", endDate: "", bgColor: "#06b6d4", textColor: "#ffffff", buttonColor: "#0a0e17", position: "top", showCountdown: true, isActive: true }); setShowPromotionForm(true); }} className="bg-[#06b6d4] text-[#0a0e17] hover:bg-[#22d3ee]"><Plus className="mr-2 h-4 w-4" />{isRTL ? "إنشاء عرض" : "Create Promotion"}</Button>
+                    <Button onClick={() => { setEditingPromotion({ titleEn: "", titleAr: "", subtitleEn: "", subtitleAr: "", discountText: "", ctaTextEn: "", ctaTextAr: "", ctaUrl: "", startDate: "", endDate: "", bgColor: "#06b6d4", textColor: "#ffffff", buttonColor: "#0a0e17", position: "top", showCountdown: true, isActive: true }); setShowPromotionForm(true); }} className="bg-[#06b6d4] text-background hover:bg-[#22d3ee]"><Plus className="mr-2 h-4 w-4" />{isRTL ? "إنشاء عرض" : "Create Promotion"}</Button>
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2">
                     {(promotions || []).map((p: any) => (
-                      <motion.div key={p.id} whileHover={{ y: -4 }} className="rounded-xl border border-[#1f2d44] bg-[#111827] p-5">
+                      <motion.div key={p.id} whileHover={{ y: -4 }} className="rounded-xl border border-border bg-primary p-5">
                         <div className="flex items-start justify-between">
                           <div>
-                            <h3 className="font-semibold text-[#f0f4f8]">{lang === "en" ? p.titleEn : p.titleAr}</h3>
-                            <p className="text-sm text-[#94a3b8] mt-1">{lang === "en" ? p.subtitleEn : p.subtitleAr}</p>
+                            <h3 className="font-semibold text-foreground">{lang === "en" ? p.titleEn : p.titleAr}</h3>
+                            <p className="text-sm text-text-muted mt-1">{lang === "en" ? p.subtitleEn : p.subtitleAr}</p>
                           </div>
-                          <Badge className={p.isActive ? "bg-[rgba(16,185,129,0.15)] text-[#10b981]" : "bg-[#1a2233] text-[#64748b]"}>{p.isActive ? bilingual("نشط", "Active", isRTL) : bilingual("غير نشط", "Inactive", isRTL)}</Badge>
+                          <Badge className={p.isActive ? "bg-[rgba(16,185,129,0.15)] text-emerald-500" : "bg-[#1a2233] text-text-faint"}>{p.isActive ? bilingual("نشط", "Active", isRTL) : bilingual("غير نشط", "Inactive", isRTL)}</Badge>
                         </div>
                         <div className="mt-3 flex gap-2">
-                          <Button size="sm" variant="ghost" onClick={() => { setEditingPromotion(p); setShowPromotionForm(true); }} className="text-[#06b6d4] hover:bg-[rgba(6,182,212,0.05)]"><Pencil className="mr-1 h-3 w-3" />{isRTL ? "تعديل" : "Edit"}</Button>
-                          <Button size="sm" variant="ghost" onClick={() => { if (confirm(isRTL ? "هل أنت متأكد؟" : "Are you sure?")) deletePromotion.mutate({ id: p.id }); }} className="text-[#f43f5e] hover:bg-[rgba(244,63,94,0.05)]"><Trash2 className="h-3 w-3" /></Button>
+                          <Button size="sm" variant="ghost" onClick={() => { setEditingPromotion(p); setShowPromotionForm(true); }} className="text-accent-secondary hover:bg-[rgba(6,182,212,0.05)]"><Pencil className="mr-1 h-3 w-3" />{isRTL ? "تعديل" : "Edit"}</Button>
+                          <Button size="sm" variant="ghost" onClick={() => { if (confirm(isRTL ? "هل أنت متأكد؟" : "Are you sure?")) deletePromotion.mutate({ id: p.id }); }} className="text-destructive hover:bg-[rgba(244,63,94,0.05)]"><Trash2 className="h-3 w-3" /></Button>
                         </div>
                       </motion.div>
                     ))}
@@ -673,36 +673,36 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
 
       {/* Theme Dialog */}
       <Dialog open={themeDialogOpen} onOpenChange={setThemeDialogOpen}>
-        <DialogContent className="border-[#1f2d44] bg-[#111827] sm:max-w-2xl">
-          <DialogHeader><DialogTitle className="text-[#f0f4f8]">{editingTheme?.id ? bilingual("تعديل الثيم", "Edit Theme", isRTL) : bilingual("إنشاء ثيم جديد", "Create New Theme", isRTL)}</DialogTitle></DialogHeader>
+        <DialogContent className="border-border bg-primary sm:max-w-2xl">
+          <DialogHeader><DialogTitle className="text-foreground">{editingTheme?.id ? bilingual("تعديل الثيم", "Edit Theme", isRTL) : bilingual("إنشاء ثيم جديد", "Create New Theme", isRTL)}</DialogTitle></DialogHeader>
           <div className="space-y-4 max-h-[60vh] overflow-y-auto">
             <div className="grid gap-1.5">
-              <Label className="text-[#94a3b8]">{isRTL ? "اسم الثيم" : "Theme Name"}</Label>
-              <Input value={editingTheme?.name || ""} onChange={(e) => setEditingTheme((prev) => (prev ? { ...prev, name: e.target.value } : prev))} className="border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" />
+              <Label className="text-text-muted">{isRTL ? "اسم الثيم" : "Theme Name"}</Label>
+              <Input value={editingTheme?.name || ""} onChange={(e) => setEditingTheme((prev) => (prev ? { ...prev, name: e.target.value } : prev))} className="border-border bg-background text-foreground" />
             </div>
             {(["primaryColor", "secondaryColor", "accentColor", "bgColor", "textColor", "cardBgColor", "borderColor"] as const).map((field) => (
               <div key={field} className="grid gap-1.5">
-                <Label className="text-[#94a3b8]">{field.replaceAll(/([A-Z])/g, " $1")}</Label>
+                <Label className="text-text-muted">{field.replaceAll(/([A-Z])/g, " $1")}</Label>
                 <div className="flex items-center gap-3">
-                  <input type="color" value={editingTheme?.[field] || "#000000"} onChange={(e) => setEditingTheme((prev) => (prev ? { ...prev, [field]: e.target.value } : prev))} className="h-10 w-14 cursor-pointer rounded border border-[#1f2d44] bg-[#0a0e17]" />
-                  <Input value={editingTheme?.[field] || ""} onChange={(e) => setEditingTheme((prev) => (prev ? { ...prev, [field]: e.target.value } : prev))} className="flex-1 border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" dir="ltr" />
+                  <input type="color" value={editingTheme?.[field] || "#000000"} onChange={(e) => setEditingTheme((prev) => (prev ? { ...prev, [field]: e.target.value } : prev))} className="h-10 w-14 cursor-pointer rounded border border-border bg-background" />
+                  <Input value={editingTheme?.[field] || ""} onChange={(e) => setEditingTheme((prev) => (prev ? { ...prev, [field]: e.target.value } : prev))} className="flex-1 border-border bg-background text-foreground" dir="ltr" />
                 </div>
               </div>
             ))}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setThemeDialogOpen(false)} className="border-[#1f2d44] text-[#94a3b8]">{isRTL ? "إلغاء" : "Cancel"}</Button>
-            <Button onClick={() => { if (editingTheme?.id) updateTheme.mutate(editingTheme as any); else createTheme.mutate(editingTheme as any); }} className="bg-[#06b6d4] text-[#0a0e17]">{isRTL ? "حفظ" : "Save"}</Button>
+            <Button variant="outline" onClick={() => setThemeDialogOpen(false)} className="border-border text-text-muted">{isRTL ? "إلغاء" : "Cancel"}</Button>
+            <Button onClick={() => { if (editingTheme?.id) updateTheme.mutate(editingTheme as any); else createTheme.mutate(editingTheme as any); }} className="bg-[#06b6d4] text-background">{isRTL ? "حفظ" : "Save"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Delete Theme Confirmation */}
       <Dialog open={!!deleteConfirmId} onOpenChange={() => setDeleteConfirmId(null)}>
-        <DialogContent className="border-[#1f2d44] bg-[#111827] sm:max-w-md">
-          <DialogHeader><DialogTitle className="text-[#f0f4f8]">{isRTL ? "حذف الثيم" : "Delete Theme"}</DialogTitle><DialogDescription className="text-[#94a3b8]">{isRTL ? "هل أنت متأكد من حذف هذا الثيم؟" : "Are you sure you want to delete this theme?"}</DialogDescription></DialogHeader>
+        <DialogContent className="border-border bg-primary sm:max-w-md">
+          <DialogHeader><DialogTitle className="text-foreground">{isRTL ? "حذف الثيم" : "Delete Theme"}</DialogTitle><DialogDescription className="text-text-muted">{isRTL ? "هل أنت متأكد من حذف هذا الثيم؟" : "Are you sure you want to delete this theme?"}</DialogDescription></DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteConfirmId(null)} className="border-[#1f2d44] text-[#94a3b8]">{isRTL ? "إلغاء" : "Cancel"}</Button>
+            <Button variant="outline" onClick={() => setDeleteConfirmId(null)} className="border-border text-text-muted">{isRTL ? "إلغاء" : "Cancel"}</Button>
             <Button variant="destructive" onClick={() => deleteTheme.mutate({ id: Number(deleteConfirmId) })} className="bg-[#f43f5e] text-white">{isRTL ? "حذف" : "Delete"}</Button>
           </DialogFooter>
         </DialogContent>
@@ -710,42 +710,42 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
 
       {/* Promo Form Dialog */}
       <Dialog open={showPromoForm} onOpenChange={setShowPromoForm}>
-        <DialogContent className="border-[#1f2d44] bg-[#111827] sm:max-w-lg">
-          <DialogHeader><DialogTitle className="text-[#f0f4f8]">{editingPromo?.id ? bilingual("تعديل الكود", "Edit Promo", isRTL) : bilingual("إنشاء كود جديد", "Create Promo", isRTL)}</DialogTitle></DialogHeader>
+        <DialogContent className="border-border bg-primary sm:max-w-lg">
+          <DialogHeader><DialogTitle className="text-foreground">{editingPromo?.id ? bilingual("تعديل الكود", "Edit Promo", isRTL) : bilingual("إنشاء كود جديد", "Create Promo", isRTL)}</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <div className="grid gap-1.5"><Label className="text-[#94a3b8]">{isRTL ? "الكود" : "Code"}</Label><Input value={editingPromo?.code || ""} onChange={(e) => setEditingPromo((p) => (p ? { ...p, code: e.target.value } : p))} className="border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" dir="ltr" /></div>
+            <div className="grid gap-1.5"><Label className="text-text-muted">{isRTL ? "الكود" : "Code"}</Label><Input value={editingPromo?.code || ""} onChange={(e) => setEditingPromo((p) => (p ? { ...p, code: e.target.value } : p))} className="border-border bg-background text-foreground" dir="ltr" /></div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-1.5"><Label className="text-[#94a3b8]">{isRTL ? "الخصم" : "Discount"}</Label><Input type="number" value={editingPromo?.discount || 0} onChange={(e) => setEditingPromo((p) => (p ? { ...p, discount: Number(e.target.value) } : p))} className="border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" /></div>
-              <div className="grid gap-1.5"><Label className="text-[#94a3b8]">{isRTL ? "النوع" : "Type"}</Label><Select value={editingPromo?.type || "percentage"} onValueChange={(v) => setEditingPromo((p) => (p ? { ...p, type: v as "percentage" | "fixed" } : p))}><SelectTrigger className="border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]"><SelectValue /></SelectTrigger><SelectContent className="border-[#1f2d44] bg-[#111827]"><SelectItem value="percentage" className="text-[#f0f4f8]">{isRTL ? "نسبة مئوية" : "Percentage"}</SelectItem><SelectItem value="fixed" className="text-[#f0f4f8]">{isRTL ? "مبلغ ثابت" : "Fixed"}</SelectItem></SelectContent></Select></div>
+              <div className="grid gap-1.5"><Label className="text-text-muted">{isRTL ? "الخصم" : "Discount"}</Label><Input type="number" value={editingPromo?.discount || 0} onChange={(e) => setEditingPromo((p) => (p ? { ...p, discount: Number(e.target.value) } : p))} className="border-border bg-background text-foreground" /></div>
+              <div className="grid gap-1.5"><Label className="text-text-muted">{isRTL ? "النوع" : "Type"}</Label><Select value={editingPromo?.type || "percentage"} onValueChange={(v) => setEditingPromo((p) => (p ? { ...p, type: v as "percentage" | "fixed" } : p))}><SelectTrigger className="border-border bg-background text-foreground"><SelectValue /></SelectTrigger><SelectContent className="border-border bg-primary"><SelectItem value="percentage" className="text-foreground">{isRTL ? "نسبة مئوية" : "Percentage"}</SelectItem><SelectItem value="fixed" className="text-foreground">{isRTL ? "مبلغ ثابت" : "Fixed"}</SelectItem></SelectContent></Select></div>
             </div>
-            <div className="grid gap-1.5"><Label className="text-[#94a3b8]">{isRTL ? "الحد الأقصى للاستخدامات" : "Max Uses"}</Label><Input type="number" value={editingPromo?.maxUses || 100} onChange={(e) => setEditingPromo((p) => (p ? { ...p, maxUses: Number(e.target.value) } : p))} className="border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" /></div>
+            <div className="grid gap-1.5"><Label className="text-text-muted">{isRTL ? "الحد الأقصى للاستخدامات" : "Max Uses"}</Label><Input type="number" value={editingPromo?.maxUses || 100} onChange={(e) => setEditingPromo((p) => (p ? { ...p, maxUses: Number(e.target.value) } : p))} className="border-border bg-background text-foreground" /></div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowPromoForm(false)} className="border-[#1f2d44] text-[#94a3b8]">{isRTL ? "إلغاء" : "Cancel"}</Button>
-            <Button onClick={() => { if (editingPromo?.id) updatePromo.mutate({ id: Number(editingPromo.id), code: editingPromo.code!, discount: editingPromo.discount!, type: editingPromo.type!, maxUses: editingPromo.maxUses!, expiresAt: editingPromo.validUntil || undefined, validFrom: editingPromo.validFrom || undefined, isActive: editingPromo.status === "active" }); else createPromo.mutate({ code: editingPromo!.code!, discount: editingPromo!.discount!, type: editingPromo!.type!, maxUses: editingPromo!.maxUses!, expiresAt: editingPromo!.validUntil || undefined, validFrom: editingPromo!.validFrom || undefined }); }} className="bg-[#06b6d4] text-[#0a0e17]">{isRTL ? "حفظ" : "Save"}</Button>
+            <Button variant="outline" onClick={() => setShowPromoForm(false)} className="border-border text-text-muted">{isRTL ? "إلغاء" : "Cancel"}</Button>
+            <Button onClick={() => { if (editingPromo?.id) updatePromo.mutate({ id: Number(editingPromo.id), code: editingPromo.code!, discount: editingPromo.discount!, type: editingPromo.type!, maxUses: editingPromo.maxUses!, expiresAt: editingPromo.validUntil || undefined, validFrom: editingPromo.validFrom || undefined, isActive: editingPromo.status === "active" }); else createPromo.mutate({ code: editingPromo!.code!, discount: editingPromo!.discount!, type: editingPromo!.type!, maxUses: editingPromo!.maxUses!, expiresAt: editingPromo!.validUntil || undefined, validFrom: editingPromo!.validFrom || undefined }); }} className="bg-[#06b6d4] text-background">{isRTL ? "حفظ" : "Save"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Promotion Form Dialog */}
       <Dialog open={showPromotionForm} onOpenChange={setShowPromotionForm}>
-        <DialogContent className="border-[#1f2d44] bg-[#111827] sm:max-w-lg max-h-[80vh] overflow-y-auto">
-          <DialogHeader><DialogTitle className="text-[#f0f4f8]">{editingPromotion?.id ? bilingual("تعديل العرض", "Edit Promotion", isRTL) : bilingual("إنشاء عرض جديد", "Create Promotion", isRTL)}</DialogTitle></DialogHeader>
+        <DialogContent className="border-border bg-primary sm:max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="text-foreground">{editingPromotion?.id ? bilingual("تعديل العرض", "Edit Promotion", isRTL) : bilingual("إنشاء عرض جديد", "Create Promotion", isRTL)}</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <div className="grid gap-1.5"><Label className="text-[#94a3b8]">{isRTL ? "العنوان (إنجليزي)" : "Title (English)"}</Label><Input value={editingPromotion?.titleEn || ""} onChange={(e) => setEditingPromotion((p) => (p ? { ...p, titleEn: e.target.value } : p))} className="border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" dir="ltr" /></div>
-            <div className="grid gap-1.5"><Label className="text-[#94a3b8]">{isRTL ? "العنوان (عربي)" : "Title (Arabic)"}</Label><Input value={editingPromotion?.titleAr || ""} onChange={(e) => setEditingPromotion((p) => (p ? { ...p, titleAr: e.target.value } : p))} className="border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" dir="rtl" /></div>
-            <div className="grid gap-1.5"><Label className="text-[#94a3b8]">{isRTL ? "الوصف (إنجليزي)" : "Subtitle (English)"}</Label><Input value={editingPromotion?.subtitleEn || ""} onChange={(e) => setEditingPromotion((p) => (p ? { ...p, subtitleEn: e.target.value } : p))} className="border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" dir="ltr" /></div>
-            <div className="grid gap-1.5"><Label className="text-[#94a3b8]">{isRTL ? "نص الخصم" : "Discount Text"}</Label><Input value={editingPromotion?.discountText || ""} onChange={(e) => setEditingPromotion((p) => (p ? { ...p, discountText: e.target.value } : p))} className="border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" dir="ltr" /></div>
+            <div className="grid gap-1.5"><Label className="text-text-muted">{isRTL ? "العنوان (إنجليزي)" : "Title (English)"}</Label><Input value={editingPromotion?.titleEn || ""} onChange={(e) => setEditingPromotion((p) => (p ? { ...p, titleEn: e.target.value } : p))} className="border-border bg-background text-foreground" dir="ltr" /></div>
+            <div className="grid gap-1.5"><Label className="text-text-muted">{isRTL ? "العنوان (عربي)" : "Title (Arabic)"}</Label><Input value={editingPromotion?.titleAr || ""} onChange={(e) => setEditingPromotion((p) => (p ? { ...p, titleAr: e.target.value } : p))} className="border-border bg-background text-foreground" dir="rtl" /></div>
+            <div className="grid gap-1.5"><Label className="text-text-muted">{isRTL ? "الوصف (إنجليزي)" : "Subtitle (English)"}</Label><Input value={editingPromotion?.subtitleEn || ""} onChange={(e) => setEditingPromotion((p) => (p ? { ...p, subtitleEn: e.target.value } : p))} className="border-border bg-background text-foreground" dir="ltr" /></div>
+            <div className="grid gap-1.5"><Label className="text-text-muted">{isRTL ? "نص الخصم" : "Discount Text"}</Label><Input value={editingPromotion?.discountText || ""} onChange={(e) => setEditingPromotion((p) => (p ? { ...p, discountText: e.target.value } : p))} className="border-border bg-background text-foreground" dir="ltr" /></div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-1.5"><Label className="text-[#94a3b8]">{isRTL ? "تاريخ البداية" : "Start Date"}</Label><Input type="date" value={editingPromotion?.startDate || ""} onChange={(e) => setEditingPromotion((p) => (p ? { ...p, startDate: e.target.value } : p))} className="border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" /></div>
-              <div className="grid gap-1.5"><Label className="text-[#94a3b8]">{isRTL ? "تاريخ النهاية" : "End Date"}</Label><Input type="date" value={editingPromotion?.endDate || ""} onChange={(e) => setEditingPromotion((p) => (p ? { ...p, endDate: e.target.value } : p))} className="border-[#1f2d44] bg-[#0a0e17] text-[#f0f4f8]" /></div>
+              <div className="grid gap-1.5"><Label className="text-text-muted">{isRTL ? "تاريخ البداية" : "Start Date"}</Label><Input type="date" value={editingPromotion?.startDate || ""} onChange={(e) => setEditingPromotion((p) => (p ? { ...p, startDate: e.target.value } : p))} className="border-border bg-background text-foreground" /></div>
+              <div className="grid gap-1.5"><Label className="text-text-muted">{isRTL ? "تاريخ النهاية" : "End Date"}</Label><Input type="date" value={editingPromotion?.endDate || ""} onChange={(e) => setEditingPromotion((p) => (p ? { ...p, endDate: e.target.value } : p))} className="border-border bg-background text-foreground" /></div>
             </div>
-            <div className="flex items-center gap-3"><Switch checked={editingPromotion?.showCountdown ?? true} onCheckedChange={(v) => setEditingPromotion((p) => (p ? { ...p, showCountdown: v } : p))} /><Label className="text-[#94a3b8]">{isRTL ? "إظهار العد التنازلي" : "Show Countdown"}</Label></div>
-            <div className="flex items-center gap-3"><Switch checked={editingPromotion?.isActive ?? true} onCheckedChange={(v) => setEditingPromotion((p) => (p ? { ...p, isActive: v } : p))} /><Label className="text-[#94a3b8]">{isRTL ? "نشط" : "Active"}</Label></div>
+            <div className="flex items-center gap-3"><Switch checked={editingPromotion?.showCountdown ?? true} onCheckedChange={(v) => setEditingPromotion((p) => (p ? { ...p, showCountdown: v } : p))} /><Label className="text-text-muted">{isRTL ? "إظهار العد التنازلي" : "Show Countdown"}</Label></div>
+            <div className="flex items-center gap-3"><Switch checked={editingPromotion?.isActive ?? true} onCheckedChange={(v) => setEditingPromotion((p) => (p ? { ...p, isActive: v } : p))} /><Label className="text-text-muted">{isRTL ? "نشط" : "Active"}</Label></div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowPromotionForm(false)} className="border-[#1f2d44] text-[#94a3b8]">{isRTL ? "إلغاء" : "Cancel"}</Button>
-            <Button onClick={() => { if (editingPromotion?.id) updatePromotion.mutate(editingPromotion as any); else createPromotion.mutate({ ...editingPromotion!, startsAt: editingPromotion!.startDate, endsAt: editingPromotion!.endDate } as any); }} className="bg-[#06b6d4] text-[#0a0e17]">{isRTL ? "حفظ" : "Save"}</Button>
+            <Button variant="outline" onClick={() => setShowPromotionForm(false)} className="border-border text-text-muted">{isRTL ? "إلغاء" : "Cancel"}</Button>
+            <Button onClick={() => { if (editingPromotion?.id) updatePromotion.mutate(editingPromotion as any); else createPromotion.mutate({ ...editingPromotion!, startsAt: editingPromotion!.startDate, endsAt: editingPromotion!.endDate } as any); }} className="bg-[#06b6d4] text-background">{isRTL ? "حفظ" : "Save"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
