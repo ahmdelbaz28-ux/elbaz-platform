@@ -112,7 +112,7 @@ export default function BackgroundLogoWatermark() {
         >
           {/* Logo image */}
           <img
-            src="/logo.svg"
+            src="/logo.jpg"
             alt=""
             draggable={false}
             loading="lazy"

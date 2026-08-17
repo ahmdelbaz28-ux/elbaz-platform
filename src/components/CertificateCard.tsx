@@ -140,7 +140,7 @@ export default function CertificateCard({ data }: CertificateCardProps) {
         <div className="cert-logo-area">
           <div className="cert-logo-ring">
             <img
-              src="/logo.svg"
+              src="/logo.jpg"
               alt="Elbaz Platform Logo"
               width={120}
               height={120}

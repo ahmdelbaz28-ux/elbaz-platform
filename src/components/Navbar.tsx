@@ -113,7 +113,7 @@ export default function Navbar() {
         >
           {/* ── Brand Mark ── */}
           <Link to="/" className="group flex items-center gap-3 outline-none">
-            <img src="/logo.svg" alt="Eng. Ahmed Elbaz Logo" className="h-10 w-auto object-contain rounded-lg transition-transform duration-300 group-hover:scale-105" />
+            <img src="/logo.jpg" alt="Eng. Ahmed Elbaz Logo" className="h-10 w-auto object-contain rounded-lg transition-transform duration-300 group-hover:scale-105" />
             <div className="flex flex-col leading-none">
               <span className="text-[13px] font-extrabold tracking-tight text-foreground">
                 {lang === "ar" ? "أحمد الباز" : "Eng. Ahmed Elbaz"}
