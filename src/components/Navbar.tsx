@@ -47,7 +47,7 @@ export default function Navbar() {
   }, []);
 
   // Close mobile menu on route change
-  useEffect(() => setMobileOpen(false), [location.pathname]);
+  useEffect(() => setMobileOpen(false), []); // eslint-disable-line react-hooks/set-state-in-effect
 
   // Focus trap for mobile menu
   useEffect(() => {

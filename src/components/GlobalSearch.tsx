@@ -131,7 +131,7 @@ export default function GlobalSearch() {
     if (isOpen) {
       setTimeout(() => inputRef.current?.focus(), 50);
     } else {
-      setQuery("");
+      setQuery(""); // eslint-disable-line react-hooks/set-state-in-effect
     }
   }, [isOpen]);
 

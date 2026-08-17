@@ -26,7 +26,7 @@ const NotificationContext = createContext<NotificationContextType>({
   showNotification: () => {},
 });
 
-export function useNotification() {
+export function useNotification() { // eslint-disable-line react-refresh/only-export-components
   return useContext(NotificationContext);
 }
 
@@ -167,7 +167,7 @@ export function NotificationProvider({ children }: { readonly children: ReactNod
 
 // ─── Predefined notification helpers ────────────────────────────────────────
 
-export function useEnrollmentNotification() {
+export function useEnrollmentNotification() { // eslint-disable-line react-refresh/only-export-components
   const { showNotification } = useNotification();
   const { lang } = useTranslation();
 
@@ -187,7 +187,7 @@ export function useEnrollmentNotification() {
   );
 }
 
-export function usePromoNotification() {
+export function usePromoNotification() { // eslint-disable-line react-refresh/only-export-components
   const { showNotification } = useNotification();
 
   return useCallback(

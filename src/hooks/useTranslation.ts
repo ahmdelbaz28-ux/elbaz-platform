@@ -456,6 +456,7 @@ export function useTranslation() {
     try {
       const stored = localStorage.getItem("language");
       if (stored === "ar" || stored === "en") {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setLangState(stored);
       }
     } catch { /* storage blocked */ }

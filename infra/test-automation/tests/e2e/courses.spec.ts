@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { test, expect } from "@playwright/test";
 import { CoursesPage } from "../../page-objects/CoursesPage";
 import { CourseDetailPage } from "../../page-objects/CourseDetailPage";

@@ -6,7 +6,7 @@ interface SEOProps {
   readonly image?: string;
   readonly url?: string;
   readonly type?: 'website' | 'article' | 'course';
-  readonly jsonLd?: Record<string, any>;
+  readonly jsonLd?: Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 }
 
 export default function SEO({ title, description, image, url, type = 'website', jsonLd }: SEOProps) {

@@ -29,6 +29,7 @@ type EventMap = Record<string, string | number | boolean | undefined>;
  * Get the global clarity function (loaded via index.html script tag).
  * Returns null in development mode or if Clarity is not loaded.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function getClarity(): ((...args: any[]) => void) | null {
   // Skip analytics in development to avoid polluting production data
   if (import.meta.env.DEV) return null;

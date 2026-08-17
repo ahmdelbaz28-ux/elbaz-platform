@@ -94,7 +94,8 @@ export default function BentoCard({
           // values are always numbers because `mouseXSpring`/`mouseYSpring`
           // are springs over numeric state.
           background: useTransform(
-            [mouseXSpring, mouseYSpring] as any,
+            [mouseXSpring, mouseYSpring] as any, // eslint-disable-line @typescript-eslint/no-explicit-any -- framer-motion useTransform overload resolution issue
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- framer-motion useTransform overload resolution issue
             ([mx, my]: any) => {
               if (!ref.current) return "transparent";
               const rect = ref.current.getBoundingClientRect();
@@ -102,6 +103,7 @@ export default function BentoCard({
               const y = (my as number) * rect.height + rect.height / 2;
               return `radial-gradient(300px circle at ${x}px ${y}px, ${glowColor}, transparent 60%)`;
             }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- framer-motion useTransform overload resolution issue
           ) as any,
         }}
       />

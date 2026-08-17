@@ -210,7 +210,7 @@ export const settingsRouter = createRouter({
     .mutation(async ({ input }) => {
       const db = getDb();
       const { id, ...updates } = input;
-      const cleanUpdates = Object.fromEntries(Object.entries(updates).filter(([_, v]) => v !== undefined));
+      const cleanUpdates = Object.fromEntries(Object.entries(updates).filter(([, v]) => v !== undefined));
       if (Object.keys(cleanUpdates).length === 0) return { success: true };
       await db.update(themes).set(cleanUpdates).where(eq(themes.id, id));
       await invalidateSettingsCache();
@@ -320,10 +320,11 @@ export const settingsRouter = createRouter({
     .mutation(async ({ input }) => {
       const db = getDb();
       const { id, startsAt, endsAt, ...rest } = input;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const updates: any = { ...rest };
       if (startsAt) updates.startsAt = new Date(startsAt);
       if (endsAt) updates.endsAt = new Date(endsAt);
-      const cleanUpdates = Object.fromEntries(Object.entries(updates).filter(([_, v]) => v !== undefined));
+      const cleanUpdates = Object.fromEntries(Object.entries(updates).filter(([, v]) => v !== undefined));
       if (Object.keys(cleanUpdates).length === 0) return { success: true };
       await db.update(promotions).set(cleanUpdates).where(eq(promotions.id, id));
       await invalidateSettingsCache();

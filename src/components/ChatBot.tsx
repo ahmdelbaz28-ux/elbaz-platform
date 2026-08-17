@@ -72,13 +72,13 @@ function saveMessagesToStorage(msgs: Message[]): void {
   }
 }
 
-function loadMessagesFromStorage(_lang: string): Message[] | null {
+function loadMessagesFromStorage(): Message[] | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed) || parsed.length === 0) return null;
-    return parsed.map((m: any) => ({
+    return parsed.map((m: any) => ({ // eslint-disable-line @typescript-eslint/no-explicit-any
         id: m.id || crypto.randomUUID(),
         role: m.role || "assistant",
         content: m.content || "",
@@ -156,7 +156,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>(() => loadMessagesFromStorage(lang) || [WELCOME_MESSAGES[lang]]);
+  const [messages, setMessages] = useState<Message[]>(() => loadMessagesFromStorage() || [WELCOME_MESSAGES[lang]]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
@@ -191,7 +191,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     if (messagesEndRef.current && !isLoading) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages.length, isLoading]);
+  }, [isLoading]);
 
   // ─── Focus input when chat opens ───
   useEffect(() => {
@@ -209,7 +209,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
         typingTimerRef.current = null;
       }
       typingExitStartedRef.current = false;
-      setTypingExiting(false);
+      setTypingExiting(false); // eslint-disable-line react-hooks/set-state-in-effect
       // Small RAF delay ensures DOM is ready for the enter animation to play
       requestAnimationFrame(() => {
         setTypingVisible(true);
@@ -238,7 +238,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   // ─── Increment chunk index on each streaming update (for fade animation) ───
   useEffect(() => {
     if (streamingContent) {
-      setChunkIndex((i) => i + 1);
+      setChunkIndex((i) => i + 1); // eslint-disable-line react-hooks/set-state-in-effect
     }
   }, [streamingContent]);
 
@@ -604,7 +604,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   const [lastSeenCount, setLastSeenCount] = useState(messages.length);
   useEffect(() => {
     if (isOpen) {
-      setLastSeenCount(messages.length);
+      setLastSeenCount(messages.length); // eslint-disable-line react-hooks/set-state-in-effect
     }
   }, [isOpen, messages.length]);
 

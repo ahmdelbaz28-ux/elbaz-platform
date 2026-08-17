@@ -148,7 +148,7 @@ export default function CertificateVerify() {
 }
 
 interface ValidCertificateViewProps {
-  readonly cert: any;
+  readonly cert: any; // eslint-disable-line @typescript-eslint/no-explicit-any
   readonly gradeColorClass: string;
   readonly t: (key: string) => string;
   readonly lang: "ar" | "en";

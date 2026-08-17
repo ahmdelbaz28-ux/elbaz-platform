@@ -89,8 +89,10 @@ class MemoryLRUCache {
 // ─── Redis Cache ─────────────────────────────────────────────────────────────
 
 class RedisCache {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private client: any = null;
   private connected = false;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async getClient(): Promise<any> {
     if (this.client && this.connected) return this.client;
 
@@ -182,6 +184,7 @@ class RedisCache {
 // ─── Unified Cache API ───────────────────────────────────────────────────────
 
 let cacheInstance: MemoryLRUCache | RedisCache | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const inflightRequests = new Map<string, Promise<any>>();
 
 export function getCache(): MemoryLRUCache | RedisCache {

@@ -285,6 +285,7 @@ export async function initiateEmailVerification(userId: number): Promise<{
 
 export async function completeEmailVerification(
   userId: number,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _token: string,
 ): Promise<{ success: boolean; message: string }> {
   const db = getDb();

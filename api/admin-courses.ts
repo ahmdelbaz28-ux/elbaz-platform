@@ -64,7 +64,7 @@ export const adminCoursesProcedures = {
     .mutation(async ({ input }) => {
       const db = getDb();
       const { id, ...updates } = input;
-      const cleanUpdates = Object.fromEntries(Object.entries(updates).filter(([_, v]) => v !== undefined));
+      const cleanUpdates = Object.fromEntries(Object.entries(updates).filter(([, v]) => v !== undefined));
       if (Object.keys(cleanUpdates).length === 0) return { success: true };
       await db.update(courses).set({ ...cleanUpdates, updatedAt: new Date() }).where(eq(courses.id, id));
       return { success: true };

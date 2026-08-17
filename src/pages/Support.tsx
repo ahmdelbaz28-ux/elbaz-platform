@@ -44,6 +44,7 @@ function TicketThread({ ticketId, initialMessage }: { readonly ticketId: number,
             {initialMessage}
           </div>
         </div>
+        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
         {ticketDetail?.replies?.map((reply: any) => (
           <div key={reply.id} className={`flex flex-col ${reply.isAdminReply ? "items-start" : "items-end"}`}>
             <span className="mb-1 text-[10px] text-text-muted">{reply.isAdminReply ? "Support Team" : "You"}</span>

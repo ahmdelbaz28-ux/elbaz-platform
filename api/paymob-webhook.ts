@@ -105,6 +105,7 @@ async function createEnrollmentIfMissing(
  * Returns the JSON response to send to Paymob.
  */
 async function processWebhookInTransaction(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   c: any,
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
   obj: PaymobWebhookPayload["obj"],

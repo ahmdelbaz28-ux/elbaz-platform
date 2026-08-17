@@ -82,6 +82,7 @@ export const adminPaymentsProcedures = {
       newEnrollments30d: recentEnrollments?.value ?? 0,
       revenue30d: Number.parseFloat(recentRevenue?.total ?? "0"),
       totalLessons: totalLessons?.value ?? 0,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       revenueByDay: recentPayments.map((p: any) => ({ date: p.date, amount: Number.parseFloat(p.amount) })),
     };
   }),

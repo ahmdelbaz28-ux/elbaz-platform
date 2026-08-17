@@ -605,6 +605,7 @@ export async function tryAllModelsAsLastResort(
 export async function openRouterFallback(
   messages: { role: string; content: string }[],
   systemPrompt: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _language?: string
 ): Promise<{ reply: string; model: string } | null> {
   if (!chatHealth.openrouterKeyValidated) {

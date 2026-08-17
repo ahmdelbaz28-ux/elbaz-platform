@@ -16,6 +16,7 @@ class DatabaseQueryCache {
 
   async query<T = unknown>(sql: string, params?: unknown[]): Promise<T[]> {
     if (!this.pool) throw new Error('DatabaseQueryCache not initialized');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [rows] = await this.pool.execute(sql, params as any);
     return rows as T[];
   }

@@ -210,6 +210,7 @@ export const paymentRouter = createRouter({
             input.phoneNumber || "",
             input.paymentMethod, // ✅ Pass payment method to select correct Integration ID
           );
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } catch (error: any) {
           // Paymob API failed — mark payment as failed
           await tx

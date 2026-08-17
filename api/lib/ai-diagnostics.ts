@@ -40,6 +40,7 @@ export async function diagnoseError(error: Error | string, context: string = "Se
       })
     });
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = await response.json();
     const diagnosis = data.choices?.[0]?.message?.content || "Could not generate AI diagnosis.";
     

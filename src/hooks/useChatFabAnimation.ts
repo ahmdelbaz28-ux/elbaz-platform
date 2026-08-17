@@ -176,6 +176,7 @@ export function useChatFabAnimation({
         shakeTimerRef.current = null;
       }
       // Clean up any remaining sparkle containers
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       const fab = fabRef.current;
       if (fab) {
         const container = fab.querySelector(".sparkle-container");

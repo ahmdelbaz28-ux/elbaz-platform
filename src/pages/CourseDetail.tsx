@@ -83,7 +83,7 @@ interface ProtectedVideoPlayerHandle {
 }
 
 const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVideoPlayerProps>(
-  function ProtectedVideoPlayerInner({ videoUrl, hlsUrl, username, lessonTitle, lessonId, courseId, isTrackingEnabled, lang }, _) {
+  function ProtectedVideoPlayerInner({ videoUrl, hlsUrl, username, lessonTitle, lessonId, courseId, isTrackingEnabled, lang }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -486,7 +486,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
   const [showPayment, setShowPayment] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
   const [paymentStep, setPaymentStep] = useState<"idle" | "redirecting" | "processing" | "success" | "error">("idle");
-  const [_lastTransactionId, setLastTransactionId] = useState<string | null>(null); // NOSONAR — already destructured with value (unused, prefixed with _) and setter
+  const [, setLastTransactionId] = useState<string | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
   // Promo code states
@@ -540,7 +540,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
     if (course?.id) {
       trackLearning("course_view", { courseId: course.id, slug: slug, isPremium: course.isPremium ?? false });
     }
-  }, [course?.id, slug, course?.isPremium]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [course?.id, slug, course?.isPremium]);  
 
   const { data: enrollmentStatus } = trpc.course.checkEnrollment.useQuery(
     { courseId: course?.id || 0 },

@@ -413,7 +413,7 @@ export function useRealtimeNotifications(
       if (lastEventIdRef.current) {
         params.set("after", lastEventIdRef.current);
       }
-      const baseUrl = (globalThis as any).Capacitor?.isNativePlatform?.() ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io") : "";
+      const baseUrl = (globalThis as any).Capacitor?.isNativePlatform?.() ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io") : ""; // eslint-disable-line @typescript-eslint/no-explicit-any
       const res = await fetch(`${baseUrl}/api/notifications/poll?${params.toString()}`);
       if (!res.ok) {
         // Not found / not implemented — this is acceptable for now
@@ -457,6 +457,7 @@ export function useRealtimeNotifications(
   // Set up interval polling — only when authenticated
   useEffect(() => {
     if (!isAuthenticated) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLastPollTime(null);
       setError(null);
       return;

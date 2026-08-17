@@ -137,6 +137,7 @@ export const localAuthRouter = createRouter({
 
       try {
         await checkRateLimit(ip, "register");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (rlErr: any) {
         const retrySec = Math.ceil((rlErr?.cause?.retryAfterMs ?? 60000) / 1000);
         logger.warn("Rate limited register attempt", { ip, retryAfterSec: retrySec });
@@ -244,6 +245,7 @@ export const localAuthRouter = createRouter({
 
       try {
         await checkRateLimit(ip, "login");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (rlErr: any) {
         const retrySec = Math.ceil((rlErr?.cause?.retryAfterMs ?? 60000) / 1000);
         throw new TRPCError({

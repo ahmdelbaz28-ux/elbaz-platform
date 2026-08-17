@@ -74,6 +74,7 @@ export function useWatchTracker({
 
   useEffect(() => {
     if (savedProgress) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setResumePosition(savedProgress.lastPosition || 0);
       setSavedWatchTime(savedProgress.watchedSeconds || 0);
     }
@@ -223,6 +224,7 @@ export function useWatchTracker({
             watchedSeconds: Math.min(watchedSeconds, 120),
             lastPosition: currentPosition,
           })], { type: "application/json" });
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const baseUrl = (globalThis as any).Capacitor?.isNativePlatform?.() ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io") : "";
           navigator.sendBeacon?.(`${baseUrl}/api/trpc/course.heartbeat`, blob);
         }
