@@ -88,17 +88,17 @@ const categoryIcons: Record<string, React.ReactNode> = {
 
 // Official software logos — downloaded from each vendor's official source and
 // stored locally in /public/software-logos/ to prevent broken external hotlinks.
-// Sources verified via VLM:
-//   ETAP          — official ETAP red wordmark logo (etap.com)
+// Sources:
+//   ETAP          — official ETAP red wordmark logo from etap.com/logo
 //   SKM           — official SKM Systems Analysis, Inc. corporate logo (skm.com)
-//   PowerFactory  — official DIgSILENT logo (red text + red triangle)
+//   PowerFactory  — official DIgSILENT logo from digsilent.de/files/pictures/logo.svg
 //   PVSyst        — official PVsyst logo (yellow sun + blue solar panel + wordmark)
 //   AutoCAD       — official AutoCAD logo by Autodesk (Wikimedia Commons)
 //   MATLAB        — official MATLAB logo by MathWorks (Wikimedia Commons)
 const SOFTWARE_LOGOS = [
-  { name: "ETAP", logo: "/software-logos/etap.svg", logoFallback: "/software-logos/etap.svg" },
+  { name: "ETAP", logo: "/software-logos/etap.png", logoFallback: "/software-logos/etap.png" },
   { name: "SKM", logo: "/software-logos/skm.png", logoFallback: "/software-logos/skm.png" },
-  { name: "PowerFactory", logo: "/software-logos/powerfactory.svg", logoFallback: "/software-logos/powerfactory.svg" },
+  { name: "PowerFactory", logo: "/software-logos/powerfactory.svg", logoFallback: "/software-logos/powerfactory.png" },
   { name: "PVSyst", logo: "/software-logos/pvsyst.png", logoFallback: "/software-logos/pvsyst.png" },
   { name: "AutoCAD", logo: "/software-logos/autocad.png", logoFallback: "/software-logos/autocad.png" },
   { name: "MATLAB", logo: "/software-logos/matlab.png", logoFallback: "/software-logos/matlab.png" },
