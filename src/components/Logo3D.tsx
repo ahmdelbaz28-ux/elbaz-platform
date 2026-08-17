@@ -166,9 +166,9 @@ export default function Logo3D({
             zIndex: 2,
           }}
         >
-          {/* SVG works natively in all modern browsers — crisp at any size */}
+          {/* JPG logo — optimized for fast rendering */}
           <img
-            src="/logo.svg"
+            src="/logo.jpg"
             alt="Elbaz Platform Logo"
             draggable={false}
             loading="eager"
