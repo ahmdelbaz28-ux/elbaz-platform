@@ -102,7 +102,7 @@ export default function StarfieldBackground() {
         gradientTo: 'rgba(49,46,129,0.03)',
       };
     };
-    let themeColors = getThemeColors();
+    const themeColors = getThemeColors();
 
     let particles: Particle[] = [];
     const shootings: Shooting[] = [];

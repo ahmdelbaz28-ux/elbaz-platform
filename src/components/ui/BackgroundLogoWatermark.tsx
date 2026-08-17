@@ -37,6 +37,7 @@ export default function BackgroundLogoWatermark() {
   /* ── Reduced motion ── */
   useEffect(() => {
     const mq = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setReducedMotion(mq?.matches ?? false);
     const handler = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
     mq?.addEventListener("change", handler);

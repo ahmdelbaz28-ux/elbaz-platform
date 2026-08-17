@@ -61,6 +61,7 @@ function classifySeverity(statusCode: number, responseTime: number): "info" | "w
   return "info";
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function determineComplianceTags(path: string, method: string, statusCode: number, _userId: string | null): string[] {
   const tags: string[] = [];
 

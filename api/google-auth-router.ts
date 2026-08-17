@@ -41,6 +41,7 @@ function getOAuthRedirectUri(): string {
 }
 
 // ─── Helper: set both auth cookies on a Hono response ───
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function setAuthCookies(c: any, token: string): void {
   const headers = c.req.raw.headers as Headers;
   const authCookie = serializeAuthCookie(headers, token);
@@ -75,6 +76,7 @@ async function verifyGoogleToken(idToken: string): Promise<Record<string, unknow
   const kid = headerJson.kid as string | undefined;
 
   // Step 3: Find the matching signing key
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const key = (jwks as any).keys?.find((k: Record<string, unknown>) => k.kid === kid);
   if (!key) {
     throw new Error(`No matching Google key found for kid: ${kid}`);
@@ -85,6 +87,7 @@ async function verifyGoogleToken(idToken: string): Promise<Record<string, unknow
   const n = key.n as string;
   const e = key.e as string;
   const publicKey = crypto.createPublicKey({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     key: { kty: "RSA", n, e, alg: "RS256" } as any,
     format: "jwk",
   });
@@ -117,6 +120,7 @@ async function verifyGoogleToken(idToken: string): Promise<Record<string, unknow
 /**
  * Build a success response with auth cookies
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function successResponse(c: any, userData: Record<string, unknown>) {
   return c.json({ success: true, user: userData });
 }
@@ -192,6 +196,7 @@ function parseCookieHeader(cookieHeader: string): Map<string, string> {
  * Verify the OAuth state parameter against the cookie-stored value (CSRF protection).
  * Returns an error redirect string if validation fails, or null on success.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function verifyOAuthState(c: any, state: string): string | null {
   const cookieHeader = c.req.header("cookie") || "";
   const cookieMap = parseCookieHeader(cookieHeader);
@@ -427,6 +432,7 @@ function buildUserResponseData(user: { id: number; username: string; name: strin
 }
 
 // ─── Helper: issue a JWT + set auth cookies for an existing user record ───
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function issueSessionForUser(c: any, user: { id: number; username: string; role: string; tokenVersion: number }, logLabel: string): Promise<string> {
   const token = await createToken({
     userId: user.id,

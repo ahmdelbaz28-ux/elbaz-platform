@@ -7,6 +7,7 @@
 const TOKEN_KEY = 'elbaz_auth_token';
 
 export function isNativePlatform(): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return !!(globalThis as any).Capacitor?.isNativePlatform?.();
 }
 

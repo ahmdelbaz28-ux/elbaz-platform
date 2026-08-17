@@ -60,6 +60,7 @@ function describeBadRequestMessage(msg: string, lang: "ar" | "en"): string {
   return lang === "ar" ? "بيانات غير صالحة. تحقق من الحقول وحاول مرة أخرى." : "Invalid data. Please check the fields and try again.";
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function describeRegistrationError(err: any, lang: "ar" | "en"): string {
   const errorCode = (err.data as { code?: string })?.code;
   if (errorCode === "TOO_MANY_REQUESTS") return lang === "ar" ? "محاولات كثيرة. انتظر قليلاً ثم حاول مرة أخرى." : "Too many attempts. Please wait a moment and try again.";
@@ -82,7 +83,9 @@ export default function Register() {
   const [googleClientId, setGoogleClientId] = useState("");
 
   useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const injected = (globalThis as any).__ENV__ as Record<string, string> | undefined;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (injected?.GOOGLE_CLIENT_ID) { setGoogleClientId(injected.GOOGLE_CLIENT_ID); return; }
     console.warn("[GoogleAuth] globalThis.__ENV__ not found, falling back to /api/health fetch");
     fetch("/api/health", { cache: "no-store" })
@@ -121,6 +124,7 @@ export default function Register() {
       if (globalThis.google?.accounts?.id) {
         globalThis.google.accounts.id.initialize({ client_id: googleClientId, callback: handleGoogleCallback, auto_select: false, cancel_on_tap_outside: true });
       } else if (!document.querySelector('script[src*="accounts.google.com/gsi/client"]')) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (typeof (globalThis as any).__loadGsi === 'function') (globalThis as any).__loadGsi();
         else {
           const s = document.createElement('script');

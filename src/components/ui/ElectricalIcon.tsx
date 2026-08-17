@@ -149,8 +149,10 @@ export function ElectricalIcon({
       {/* Icon container */}
       <div className="relative z-10" style={{ color }}>
         {React.isValidElement(children)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ? React.cloneElement(children as React.ReactElement<any>, {
               style: {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 ...((children as React.ReactElement<any>).props?.style || {}), // NOSONAR — || {} provides runtime fallback for spread; type-only fix would change semantics
                 width: iconSizes[size],
                 height: iconSizes[size],

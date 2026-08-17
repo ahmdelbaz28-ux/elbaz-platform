@@ -19,6 +19,7 @@ export default function WhatsAppButton() {
   const isAuthPage = location.pathname === "/login" || location.pathname === "/register" || location.pathname === "/forgot-password" || location.pathname === "/reset-password" || location.pathname === "/verify-email";
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsVisible(!isAuthPage);
   }, [isAuthPage]);
 

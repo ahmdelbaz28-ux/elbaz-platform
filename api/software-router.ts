@@ -48,7 +48,7 @@ export const softwareRouter = createRouter({
     .mutation(async ({ input }) => {
       const db = getDb();
       const { id, ...updates } = input;
-      const cleanUpdates = Object.fromEntries(Object.entries(updates).filter(([_, v]) => v !== undefined));
+      const cleanUpdates = Object.fromEntries(Object.entries(updates).filter(([, v]) => v !== undefined));
       if (Object.keys(cleanUpdates).length === 0) return { success: true };
       await db.update(softwareDownloads).set(cleanUpdates).where(eq(softwareDownloads.id, id));
       return { success: true };

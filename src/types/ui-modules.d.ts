@@ -1,5 +1,6 @@
 // Type stubs for UI dependencies with incomplete or missing TypeScript definitions
 // These declarations use `any` where precise types are unknown to keep the build green.
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 declare module 'react-day-picker' {
   import * as React from 'react';

@@ -74,6 +74,7 @@ export default function Logo3D({
   /* ── Render ───────────────────────────────────────────────────────────── */
   return (
     <div
+      role="img"
       className={`logo-3d-container select-none ${className}`}
       style={{
         width: outerSize,
@@ -154,7 +155,6 @@ export default function Logo3D({
 
         {/* ── Logo image — loaded from SVG for instant, crisp rendering ─── */}
         <picture
-          aria-hidden="true"
           style={{
             display: 'flex',
             alignItems: 'center',

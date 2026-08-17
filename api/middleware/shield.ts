@@ -20,6 +20,7 @@ const RATE_LIMIT_MAX_REQUESTS = 200;
 const MEMORY_PRESSURE_LIMIT_MB = 800;
 const RATE_LIMIT_MAP_MAX_SIZE = 5000;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function checkRateLimit(c: any, ip: string, path: string): Response | null {
   const now = Date.now();
   let record = rateLimitMap.get(ip);
@@ -40,6 +41,7 @@ function checkRateLimit(c: any, ip: string, path: string): Response | null {
   return null;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function checkPayloadSize(c: any, ip: string, path: string): Response | null {
   const method = c.req.method;
   if (method !== "POST" && method !== "PUT" && method !== "PATCH") return null;
@@ -64,6 +66,7 @@ function isSuspiciousBotRequest(ua: string, path: string): boolean {
   return isSuspiciousAgent;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function checkMemoryPressure(c: any, path: string): Response | null {
   const mem = process.memoryUsage();
   const memoryUsageMB = mem.heapUsed / 1024 / 1024;

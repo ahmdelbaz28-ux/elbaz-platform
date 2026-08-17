@@ -79,7 +79,10 @@ export default function Courses() {
   });
 
   const { data: categories } = trpc.course.categories.useQuery<Category[]>();
-  const allCourses = Array.isArray(coursesResponse?.items) ? coursesResponse.items : [];
+  const allCourses = useMemo(
+    () => (Array.isArray(coursesResponse?.items) ? coursesResponse.items : []),
+    [coursesResponse]
+  );
   const freeCount = allCourses.filter((c) => !c.isPremium).length;
   const premiumCount = allCourses.filter((c) => c.isPremium).length;
 

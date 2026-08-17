@@ -65,6 +65,7 @@ healthRouter.get("/health", async (c) => {
     const val = await cache.get(testKey);
     await cache.del(testKey);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const isRedis = typeof (cache as any).getClient === "function";
     const cacheType = isRedis ? (env.REDIS_URL ? "redis" : "memory_fallback") : "memory";
     checks.cache = {
@@ -73,7 +74,7 @@ healthRouter.get("/health", async (c) => {
       type: cacheType,
       detail: cacheType === "redis" ? "Redis distributed cache" : "In-memory LRU cache (max 500 entries)",
     };
-  } catch (error) {
+  } catch {
     checks.cache = { status: "degraded", latency_ms: 0, error: "Cache check failed", type: "unknown" };
   }
 

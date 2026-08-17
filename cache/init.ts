@@ -1,4 +1,5 @@
 import ElbazCache from './index';
+import type { AlertRule, AggregatedMetrics } from './monitoring/cache-monitor';
 
 async function warmUpEssentialData(): Promise<void> {
   ElbazCache.engine.set('config:platform_name', 'Elbaz Platform', { ttl: ElbazCache.ttl.DAY, tags: [ElbazCache.tags.CONFIG_ALL] });
@@ -9,7 +10,7 @@ async function warmUpEssentialData(): Promise<void> {
 
 async function initCache(): Promise<void> {
   console.log('Initializing Elbaz Platform Cache Layer...');
-  ElbazCache.monitor.onAlert((rule: any, metrics: any) => {
+  ElbazCache.monitor.onAlert((rule: AlertRule, metrics: AggregatedMetrics) => {
     console.warn(`[CACHE ALERT] ${rule.severity.toUpperCase()}: ${rule.name}`, { hitRate: `${(metrics.overallHitRate * 100).toFixed(2)}%`, size: metrics.overallSize });
   });
   await warmUpEssentialData();

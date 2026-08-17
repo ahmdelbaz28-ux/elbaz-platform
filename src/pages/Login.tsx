@@ -46,8 +46,10 @@ export default function Login() {
   const [googleClientId, setGoogleClientId] = useState("");
 
   useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const injected = (globalThis as any).__ENV__ as Record<string, string> | undefined;
     if (injected?.GOOGLE_CLIENT_ID) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setGoogleClientId(injected.GOOGLE_CLIENT_ID);
       return;
     }
@@ -80,6 +82,7 @@ export default function Login() {
       if (googleError === "token_exchange_failed" && googleDetail) {
         msg += lang === "ar" ? ` (تفاصيل الخطأ من Google: ${googleDetail})` : ` (Google error detail: ${googleDetail})`;
       }
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setError(msg);
       toast.error(msg, { duration: 10000 });
       globalThis.history.replaceState({}, "", globalThis.location.pathname);
@@ -118,6 +121,7 @@ export default function Login() {
       if (globalThis.google?.accounts?.id) {
         globalThis.google.accounts.id.initialize({ client_id: googleClientId, callback: handleGoogleCallback, auto_select: false, cancel_on_tap_outside: true });
       } else if (!document.querySelector('script[src*="accounts.google.com/gsi/client"]')) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (typeof (globalThis as any).__loadGsi === 'function') (globalThis as any).__loadGsi();
         else {
           const s = document.createElement('script');

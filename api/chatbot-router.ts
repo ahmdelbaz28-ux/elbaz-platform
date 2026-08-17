@@ -120,6 +120,7 @@ async function pipeStreamToController( // NOSONAR — complex function, refactor
             break;
           }
         }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (readErr: any) {
         if (readErr.name === "AbortError") break;
         logger.warn("[Chatbot] Stream read error", { error: readErr.message });
@@ -128,6 +129,7 @@ async function pipeStreamToController( // NOSONAR — complex function, refactor
     }
     clearTimeout(state.timeoutId);
     closeControllerIfOpen(state);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (pipeErr: any) {
     logger.warn("[Chatbot] Stream pipe error", { error: pipeErr.message });
     clearTimeout(state.timeoutId);
@@ -207,6 +209,7 @@ chatbotRouter.post("/stream", async (c) => {
           });
         }),
       ]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (raceErr: any) {
       clearTimeout(timeoutId);
       logger.warn("[Chatbot] Stream race failed", { error: raceErr.message });

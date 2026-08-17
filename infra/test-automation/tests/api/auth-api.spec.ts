@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { test, expect, } from "@playwright/test";
 
 const BASE_URL = process.env.TEST_BASE_URL || "https://ahmedelbaz.qzz.io";

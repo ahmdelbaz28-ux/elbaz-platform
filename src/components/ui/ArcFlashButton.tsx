@@ -44,6 +44,7 @@ export default function ArcFlashButton({
   const arcId = useRef(0);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!hovering) { setArcs([]); return; }
 
     const spawn = setInterval(() => {

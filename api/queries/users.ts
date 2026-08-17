@@ -27,6 +27,7 @@ export async function upsertUser(data: InsertUser) {
   // passwordHash: prevents overwriting existing password
   // role: prevents privilege escalation via OAuth
   // tokenVersion: prevents invalidating existing sessions
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { passwordHash, role, tokenVersion, ...safeData } = data;
   const updateSet: Partial<InsertUser> = {
     lastSignInAt: new Date(),

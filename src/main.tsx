@@ -18,6 +18,7 @@ import App from './App.tsx'
  * The session guard 'elbaz-cache-nuke-reloading' is SET by cache-nuke.js
  * when it triggers a reload. We check it here to avoid racing with cache-nuke.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 if ('serviceWorker' in navigator && !(globalThis as any).Capacitor?.isNativePlatform?.()) {
   try {
     const { registerSW }: {

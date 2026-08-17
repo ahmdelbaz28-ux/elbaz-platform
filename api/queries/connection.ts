@@ -113,6 +113,7 @@ const drizzleDb = drizzle(pool);
 const db = new Proxy(drizzleDb, {
   get(target, prop, receiver) {
     if (isMockMode) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
       return (..._args: any[]) => {
         logger.info(`[Sandbox] Intercepted DB call: ${String(prop)}`);
         return buildMockQueryResult();

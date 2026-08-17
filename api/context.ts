@@ -107,6 +107,7 @@ async function loadUserFromDb(
   }
 
   // ✅ SECURITY FIX: Strip passwordHash before putting user in context
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { passwordHash: _ph, ...safeUser } = user;
 
   evictOldestCacheEntries();

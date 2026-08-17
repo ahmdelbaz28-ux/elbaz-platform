@@ -111,6 +111,7 @@ const FALLBACK_STATS = { totalStudents: 390, satisfactionRate: 96, totalCourses:
 // the file. The component now uses `framer-motion`'s `whileInView` for the
 // same reveal-on-scroll behaviour. Removed (SonarCloud S2933 / tsc TS6133).
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function PromoBanner({ promotion }: { readonly promotion: any }) {
   const { lang } = useTranslation();
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
@@ -375,7 +376,7 @@ export default function Home() { // NOSONAR — landing page with hero + feature
             <motion.div initial={{ opacity: 0, scale: 0.9, x: 50 }} animate={{ opacity: 1, scale: 1, x: 0 }} transition={{ duration: 0.8, type: "spring", stiffness: 100, damping: 20 }} className="relative w-full max-w-2xl lg:max-w-[600px] xl:max-w-[700px]">
               <motion.div animate={{ opacity: [0.4, 0.7, 0.4], scale: [1, 1.05, 1] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }} className="absolute -inset-6 rounded-[2rem] bg-gradient-to-br from-accent-secondary/20 via-accent/10 to-transparent blur-3xl" />
               <motion.div animate={{ boxShadow: ["0 0 30px rgba(6,182,212,0.3)", "0 0 50px rgba(6,182,212,0.5)", "0 0 30px rgba(6,182,212,0.3)"] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }} className="relative z-10 overflow-hidden rounded-[1.5rem] border border-border bg-background shadow-2xl">
-                <ParallaxHeroImage src="hero-main.svg" alt="Master Electrical Engineering with Eng. Ahmed Elbaz" />
+                <ParallaxHeroImage src="hero-main.jpg" alt="Master Electrical Engineering with Eng. Ahmed Elbaz" />
                 <div className="absolute inset-0 bg-gradient-to-t from-background/40 via-transparent to-white/5 pointer-events-none" />
               </motion.div>
 

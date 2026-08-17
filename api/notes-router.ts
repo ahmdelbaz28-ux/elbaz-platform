@@ -34,6 +34,7 @@ function buildNoteUpdates(note: {
   tags?: string[];
   isPinned: boolean;
 }) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const updates: any = {
     title: note.title || null,
     content: note.content,
@@ -129,6 +130,7 @@ export const notesRouter = createRouter({
         .limit(1);
       if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Note not found" });
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const cleanUpdates: any = { ...updates };
       if (updates.tags) cleanUpdates.tags = JSON.stringify(updates.tags);
       delete cleanUpdates.id;

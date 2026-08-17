@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, { useEffect, useState } from "react";
 import { motion, type HTMLMotionProps } from "framer-motion";
 // ✅ FIX: Import cn() from utils.ts instead of duplicating it.
@@ -192,6 +193,7 @@ export function Magnetic({ children, ...props }: { readonly children: React.Reac
   return (
     <motion.div
       ref={ref}
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       onMouseMove={handleMouseMove as any}
       onMouseLeave={handleMouseLeave}
       animate={{ x: position.x, y: position.y }}

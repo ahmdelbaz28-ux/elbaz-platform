@@ -94,10 +94,7 @@ export default defineConfig({
       // CRITICAL: 'prompt' means VitePWA only generates the SW file.
       // We register it manually in main.tsx to avoid double-registration.
       registerType: 'prompt',
-      injectManifest: {
-        // 🛡️ Elite: Disable CSS inlining to avoid the proxy error.
-        inlineCSS: false,
-      },
+      injectManifest: {},
       workbox: {
         // 🚀 PERFORMANCE: Only precache critical assets (JS, CSS, HTML).
         // Images and fonts are cached on-demand via runtimeCaching (CacheFirst).
