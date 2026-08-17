@@ -55,6 +55,9 @@
       },
       "complexity": {
         "useOptionalChain": "off"
+      },
+      "security": {
+        "noDangerouslySetInnerHtml": "warn"
       }
     }
   }
