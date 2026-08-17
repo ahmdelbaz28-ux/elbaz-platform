@@ -14,6 +14,7 @@ import { NotificationProvider } from "@/components/NotificationToast";
 import ThemeProvider from "@/components/ThemeProvider";
 import { EngineeringModeProvider } from "@/components/ui/EngineeringMode";
 import AmbientOrbs from "@/components/ui/AmbientOrbs";
+import SmoothScrollProvider from "@/components/ui/SmoothScrollProvider";
 import { useTranslation } from "@/hooks/useTranslation";
 import "@/engineering-mode.css";
 
@@ -94,9 +95,10 @@ export default function App() {
         <EngineeringModeProvider>
           <ThemeProvider>
             <Toaster theme="dark" richColors position="top-center" />
-            <Layout>
-              <Routes>
-                {/* ── Public Routes ── */}
+            <SmoothScrollProvider>
+              <Layout>
+                <Routes>
+                  {/* ── Public Routes ── */}
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/verify-email" element={<VerifyEmail />} />
@@ -142,8 +144,9 @@ export default function App() {
                 } />
 
                 <Route path="*" element={<NotFound />} />
-              </Routes>
-            </Layout>
+               </Routes>
+              </Layout>
+            </SmoothScrollProvider>
           </ThemeProvider>
         </EngineeringModeProvider>
       </NotificationProvider>
