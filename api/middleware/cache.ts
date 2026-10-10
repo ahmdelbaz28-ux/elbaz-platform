@@ -58,10 +58,18 @@ export const cacheMiddleware = createMiddleware(async (c, next) => {
     c.header("Expires", "0");
   } else if (LONG_CACHE_EXTENSIONS.has(ext) && pathname.startsWith("/assets/")) {
     // 🚀 Hashed assets in /assets/ → 1 year cache (immutable)
+    // SAFE: Vite rewrites these filenames with a content hash, so new content
+    // always gets a new URL. Old cached copies can never mask new content.
     c.header("Cache-Control", "public, max-age=31536000, immutable");
   } else if (LONG_CACHE_EXTENSIONS.has(ext)) {
-    // 🚀 Other static files (images, fonts in /public/) → 1 year cache
-    c.header("Cache-Control", "public, max-age=31536000, immutable");
+    // Files in /public/ (logos, course images, icons...) keep STABLE filenames,
+    // so new deployments change their content under the same URL. Caching them
+    // for a year with `immutable` (the previous behavior) made broken/outdated
+    // images stick in returning visitors' browsers for up to a year — e.g. the
+    // PowerFactory logo fix was invisible to anyone who had cached the old SVG.
+    // 1 day + stale-while-revalidate: fast repeat visits, fresh content within
+    // a day, and revalidation (Last-Modified via serveStatic) after expiry.
+    c.header("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800, must-revalidate");
   }
 
   await next();
