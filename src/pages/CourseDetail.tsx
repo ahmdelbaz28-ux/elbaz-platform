@@ -1,4 +1,4 @@
-import { useParams, useNavigate, useSearchParams } from "react-router";
+import { useParams, useNavigate, useSearchParams, Link } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useAuth } from "@/hooks/useAuth";
 import { trpc } from "@/providers/trpc";
@@ -937,17 +937,34 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                   )}
 
                   {activeLesson && !!activeLessonData && canAccessLesson(activeLessonData) && !videoLoading && !videoData?.videoUrl && (
-                    <div className="flex aspect-video items-center justify-center bg-gradient-to-br from-[#0f172a] to-[#1e293b]">
-                      <div className="text-center">
-                        <PlayCircle className="mx-auto h-12 w-12 text-[#06b6d4]" />
-                        <p className="mt-3 text-sm text-[#94a3b8]">
-                          {lang === "en" ? "No video available for this lesson" : "لا يوجد فيديو متاح لهذا الدرس"}
-                        </p>
+                    isAuthenticated ? (
+                      <div className="flex aspect-video items-center justify-center bg-gradient-to-br from-[#0f172a] to-[#1e293b]">
+                        <div className="text-center">
+                          <PlayCircle className="mx-auto h-12 w-12 text-[#06b6d4]" />
+                          <p className="mt-3 text-sm text-[#94a3b8]">
+                            {lang === "en" ? "No video available for this lesson" : "لا يوجد فيديو متاح لهذا الدرس"}
+                          </p>
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="flex aspect-video items-center justify-center bg-gradient-to-br from-[#0f172a] to-[#1e293b]">
+                        <div className="text-center">
+                          <PlayCircle className="mx-auto h-12 w-12 text-[#06b6d4]" />
+                          <p className="mt-3 text-sm text-[#94a3b8]">
+                            {lang === "en" ? "Sign in to watch this free preview" : "سجّل الدخول لمشاهدة المعاينة المجانية"}
+                          </p>
+                          <Link
+                            to="/login"
+                            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#06b6d4] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#0891b2]"
+                          >
+                            {lang === "en" ? "Sign In to Watch" : "سجّل الدخول للمشاهدة"}
+                          </Link>
+                        </div>
+                      </div>
+                    )
                   )}
 
-                  {!activeLesson || !activeLessonData || canAccessLesson(activeLessonData) ? null : (
+                  {!(activeLesson && !!activeLessonData && canAccessLesson(activeLessonData)) && (
                     <div className="relative">
                       <CourseThumbnailWithFallback thumbnail={course.thumbnail} title={title} />
                       <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-t from-[#0a0e17]/90 via-[#0a0e17]/40 to-transparent">

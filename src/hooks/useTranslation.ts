@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 type Translations = Record<string, Record<string, string>>;
 
@@ -449,26 +449,63 @@ const translations: Translations = {
   },
 };
 
+// ─── Global shared language store ───
+// Previously each useTranslation() caller owned an independent useState that was
+// synced from localStorage in an effect. That caused two real bugs:
+//   1. Live language switching only re-rendered the component that called
+//      setLang (e.g. Navbar switched to Arabic while the Home hero stayed
+//      English until a full reload).
+//   2. A mount-order race: every instance wrote its initial "en" to
+//      localStorage before reading the stored value, so late-mounting lazy
+//      chunks could read the transient "en" and permanently revert the UI.
+// A module-level store + useSyncExternalStore gives every consumer the same
+// synchronously-initialized value and live updates on switch.
+type Lang = "en" | "ar";
+
+function readStoredLang(): Lang {
+  try {
+    const stored = localStorage.getItem("language");
+    return stored === "ar" ? "ar" : "en";
+  } catch {
+    return "en";
+  }
+}
+
+let currentLang: Lang = readStoredLang();
+const langListeners = new Set<() => void>();
+
+function applyDocumentLang(lang: Lang): void {
+  document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
+  document.documentElement.lang = lang;
+}
+
+// Apply the persisted language to <html> once at module load so first paint
+// already has the correct direction/attribute.
+if (typeof document !== "undefined") {
+  applyDocumentLang(currentLang);
+}
+
+function setGlobalLang(newLang: Lang): void {
+  if (newLang === currentLang) return;
+  currentLang = newLang;
+  try {
+    localStorage.setItem("language", newLang);
+  } catch { /* storage blocked */ }
+  applyDocumentLang(newLang);
+  langListeners.forEach(fn => fn());
+}
+
+function subscribeLang(callback: () => void): () => void {
+  langListeners.add(callback);
+  return () => { langListeners.delete(callback); };
+}
+
 export function useTranslation() {
-  const [lang, setLangState] = useState<"en" | "ar">("en"); // NOSONAR — already destructured with value and setter
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem("language");
-      if (stored === "ar" || stored === "en") {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setLangState(stored);
-      }
-    } catch { /* storage blocked */ }
-  }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("language", lang);
-    } catch { /* storage blocked */ }
-    document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
-    document.documentElement.lang = lang;
-  }, [lang]);
+  const lang = useSyncExternalStore(
+    subscribeLang,
+    () => currentLang,
+    () => "en" as Lang
+  );
 
   const t = useCallback(
     (key: string): string => {
@@ -478,7 +515,7 @@ export function useTranslation() {
   );
 
   const setLang = useCallback((newLang: "en" | "ar") => {
-    setLangState(newLang);
+    setGlobalLang(newLang);
   }, []);
 
   return { t, lang, setLang };
