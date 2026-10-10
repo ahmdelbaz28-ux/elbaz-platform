@@ -99,13 +99,17 @@ const categoryIcons: Record<string, React.ReactNode> = {
 //   AutoCAD       — official AutoCAD logo by Autodesk (Wikimedia Commons)
 //   MATLAB        — official MATLAB logo by MathWorks (Wikimedia Commons)
 // `wide` renders a wider pill for long wordmark logos so they stay legible.
+// ?v=20261010 busts browsers that cached the previous (broken 0x0) SVG under
+// the old 1-year immutable Cache-Control policy; /public/ assets now use a
+// 1-day policy (api/middleware/cache.ts) so future updates need no bump.
+const LOGO_V = "?v=20261010";
 const SOFTWARE_LOGOS: { name: string; logo: string; logoFallback: string; wide?: boolean }[] = [
-  { name: "ETAP", logo: "/software-logos/etap.png", logoFallback: "/software-logos/etap.png" },
-  { name: "SKM", logo: "/software-logos/skm.png", logoFallback: "/software-logos/skm.png" },
-  { name: "PowerFactory", logo: "/software-logos/powerfactory.svg", logoFallback: "/software-logos/powerfactory.png", wide: true },
-  { name: "PVSyst", logo: "/software-logos/pvsyst.png", logoFallback: "/software-logos/pvsyst.png" },
-  { name: "AutoCAD", logo: "/software-logos/autocad.png", logoFallback: "/software-logos/autocad.png" },
-  { name: "MATLAB", logo: "/software-logos/matlab.png", logoFallback: "/software-logos/matlab.png" },
+  { name: "ETAP", logo: `/software-logos/etap.png${LOGO_V}`, logoFallback: `/software-logos/etap.png${LOGO_V}` },
+  { name: "SKM", logo: `/software-logos/skm.png${LOGO_V}`, logoFallback: `/software-logos/skm.png${LOGO_V}` },
+  { name: "PowerFactory", logo: `/software-logos/powerfactory.svg${LOGO_V}`, logoFallback: `/software-logos/powerfactory.png${LOGO_V}`, wide: true },
+  { name: "PVSyst", logo: `/software-logos/pvsyst.png${LOGO_V}`, logoFallback: `/software-logos/pvsyst.png${LOGO_V}` },
+  { name: "AutoCAD", logo: `/software-logos/autocad.png${LOGO_V}`, logoFallback: `/software-logos/autocad.png${LOGO_V}` },
+  { name: "MATLAB", logo: `/software-logos/matlab.png${LOGO_V}`, logoFallback: `/software-logos/matlab.png${LOGO_V}` },
 ];
 
 // Realistic fallback stats — updated to match actual platform data
