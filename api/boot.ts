@@ -127,6 +127,9 @@ app.get("/api/debug-headers", (c) => {
     xForwardedHost: c.req.header("x-forwarded-host") ?? null,
     xForwardedProto: c.req.header("x-forwarded-proto") ?? null,
     secFetchDest: c.req.header("sec-fetch-dest") ?? null,
+    // non-sensitive rollout flag (value is 1 or null) — for live verification
+    edgeHostEnforce: process.env.EDGE_HOST_ENFORCE ?? null,
+    frontendUrl: process.env.FRONTEND_URL ?? null,
   });
 });
 
