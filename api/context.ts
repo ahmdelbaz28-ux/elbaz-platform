@@ -101,7 +101,10 @@ async function loadUserFromDb(
   if (!user) return null;
 
   // ✅ SECURITY FIX: Verify tokenVersion to support token revocation
-  if (payload.tokenVersion !== undefined && payload.tokenVersion !== user.tokenVersion) {
+  // ✅ SECURITY FIX (audit run-1): comparison is now unconditional — a minted
+  // token without the claim (future caller bug) must fail closed, not skip
+  // revocation entirely.
+  if (payload.tokenVersion !== user.tokenVersion) {
     // Token has been revoked — do not authenticate
     return null;
   }

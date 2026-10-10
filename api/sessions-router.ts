@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { desc, eq, and } from "drizzle-orm";
+import { desc, eq, and, sql } from "drizzle-orm";
 import { createRouter, authQuery, authMutation } from "./middleware";
 import { getDb } from "./queries/connection";
-import { userSessions } from "@db/schema";
+import { userSessions, users } from "@db/schema";
 
 export const sessionsRouter = createRouter({
   list: authQuery.query(async ({ ctx }) => {
@@ -84,6 +84,13 @@ export const sessionsRouter = createRouter({
       .update(userSessions)
       .set({ isRevoked: true })
       .where(eq(userSessions.userId, ctx.user.id));
+    // ✅ SECURITY FIX (audit run-1): the state the auth boundary actually
+    // checks is users.tokenVersion — without bumping it, "log out everywhere"
+    // left every held JWT fully valid until expiry.
+    await db
+      .update(users)
+      .set({ tokenVersion: sql`${users.tokenVersion} + 1` })
+      .where(eq(users.id, ctx.user.id));
     return { success: true };
   }),
 

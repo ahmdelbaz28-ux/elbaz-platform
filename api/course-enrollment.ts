@@ -6,11 +6,12 @@
  */
 
 import { z } from "zod";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { courses, enrollments } from "@db/schema";
 import { getCourseProgressDetail } from "./lib/progress";
+import { activeEnrollmentWhere } from "./lib/enrollment";
 
 export const courseEnrollmentProcedures = {
   enrollments: authedQuery.query(async ({ ctx }) => {
@@ -53,10 +54,7 @@ export const courseEnrollmentProcedures = {
           progress: enrollments.progress,
         })
         .from(enrollments)
-        .where(and(
-          eq(enrollments.userId, ctx.user.id),
-          eq(enrollments.courseId, input.courseId)
-        ))
+        .where(activeEnrollmentWhere(ctx.user.id, input.courseId))
         .limit(1);
       return {
         enrolled: !!enrollment,

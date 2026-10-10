@@ -55,7 +55,17 @@ chatbotRouter.post("/", async (c) => {
     }
 
     // Limit message count to prevent abuse
-    const messages = body.messages.slice(-50);
+    // ✅ SECURITY FIX (audit run-1): cap per-message content (previously a
+    // single 1MB request could ship ~250k tokens to paid providers).
+    const MAX_MESSAGE_CHARS = 8_000;
+    const MAX_TOTAL_CHARS = 60_000;
+    const messages = body.messages
+      .slice(-50)
+      .map((m) => ({ role: String(m?.role ?? "user"), content: String(m?.content ?? "").slice(0, MAX_MESSAGE_CHARS) }));
+    const totalChars = messages.reduce((sum, m) => sum + m.content.length, 0);
+    if (totalChars > MAX_TOTAL_CHARS) {
+      return c.json({ success: false, error: "Conversation too long. Please start a new chat." }, 413);
+    }
 
     const result = await getChatResponse({
       messages,
@@ -188,7 +198,17 @@ chatbotRouter.post("/stream", async (c) => {
       return c.json({ success: false, error: "Messages array is required" }, 400);
     }
 
-    const messages = body.messages.slice(-50);
+    // ✅ SECURITY FIX (audit run-1): per-message + total content caps (stream path).
+    const MAX_MESSAGE_CHARS = 8_000;
+    const MAX_TOTAL_CHARS = 60_000;
+    const messages = body.messages
+      .slice(-50)
+      .map((m) => ({ role: String(m?.role ?? "user"), content: String(m?.content ?? "").slice(0, MAX_MESSAGE_CHARS) }));
+    const totalChars = messages.reduce((sum, m) => sum + m.content.length, 0);
+    if (totalChars > MAX_TOTAL_CHARS) {
+      clearTimeout(timeoutId);
+      return c.json({ success: false, error: "Conversation too long. Please start a new chat." }, 413);
+    }
 
     // Create promise that rejects on timeout
     const streamPromise = getStreamResponse({

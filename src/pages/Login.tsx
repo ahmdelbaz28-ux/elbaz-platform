@@ -42,6 +42,10 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState("");
+  // ✅ SECURITY FIX (audit run-1): 2FA code input — revealed after the first
+  // login attempt when the account has 2FA enabled.
+  const [totpCode, setTotpCode] = useState("");
+  const [showTotpInput, setShowTotpInput] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleClientId, setGoogleClientId] = useState("");
 
@@ -167,7 +171,14 @@ export default function Login() {
       let errorMsg: string;
       const errorCode = (err.data as { code?: string })?.code;
       if (errorCode === "TOO_MANY_REQUESTS") errorMsg = lang === "ar" ? "محاولات كثيرة. انتظر قليلاً ثم حاول مرة أخرى." : "Too many login attempts. Please wait a moment and try again.";
-      else if (errorCode === "UNAUTHORIZED") errorMsg = lang === "ar" ? "اسم المستخدم أو كلمة المرور غير صحيح" : "Invalid username or password";
+      else if (errorCode === "UNAUTHORIZED") {
+        // ✅ SECURITY FIX (audit run-1): surface the 2FA step — accounts with
+        // 2FA enabled now require a TOTP/backup code at login.
+        setShowTotpInput(true);
+        errorMsg = lang === "ar"
+          ? (totpCode.trim() ? "اسم المستخدم أو كلمة المرور أو رمز التحقق غير صحيح" : "هذا الحساب محمي بالتحقق بخطوتين — أدخل رمز التحقق")
+          : (totpCode.trim() ? "Invalid username, password, or verification code" : "This account is protected with 2FA — enter your verification code");
+      }
       else errorMsg = lang === "ar" ? "حدث خطأ في النظام. يرجى المحاولة مرة أخرى لاحقاً." : "A system error occurred. Please try again later.";
       setError(errorMsg); toast.error(errorMsg);
     },
@@ -180,7 +191,13 @@ export default function Login() {
       const msg = lang === "en" ? "Please fill in all fields" : "يرجى ملء جميع الحقول";
       setError(msg); toast.error(msg); return;
     }
-    loginMutation.mutate({ username: username.trim(), password, remember });
+    // ✅ SECURITY FIX (audit run-1): send the optional 2FA code with the login.
+    loginMutation.mutate({
+      username: username.trim(),
+      password,
+      remember,
+      ...(totpCode.trim() ? { totpCode: totpCode.trim() } : {}),
+    });
   };
 
   return (
@@ -289,6 +306,27 @@ export default function Login() {
                   </button>
                 </div>
               </div>
+
+              {/* ✅ SECURITY FIX (audit run-1): 2FA verification code field */}
+              {showTotpInput && (
+                <div>
+                  <Label htmlFor="login-totp" className="text-sm text-text-muted">
+                    {lang === "ar" ? "رمز التحقق بخطوتين (TOTP أو رمز نسخ احتياطي)" : "Two-factor code (TOTP or backup code)"}
+                  </Label>
+                  <Input
+                    id="login-totp"
+                    name="totpCode"
+                    type="text"
+                    inputMode="numeric"
+                    value={totpCode}
+                    onChange={(e) => setTotpCode(e.target.value)}
+                    placeholder={lang === "ar" ? "6 أرقام أو رمز نسخ احتياطي" : "6 digits or backup code"}
+                    className="mt-1 border-border bg-background text-foreground placeholder:text-text-faint focus:border-accent-secondary focus:ring-accent-secondary"
+                    autoComplete="one-time-code"
+                    maxLength={8}
+                  />
+                </div>
+              )}
 
               {/* Remember me */}
               <div className="flex items-center gap-2">

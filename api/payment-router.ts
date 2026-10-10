@@ -2,7 +2,7 @@ import { z } from "zod";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { createRouter, authedQuery, publicQuery } from "./middleware";
 import { getDb, withTransaction } from "./queries/connection";
-import { payments, enrollments, courses, promoCodes } from "@db/schema";
+import { payments, enrollments, courses, promoCodes, promoCodeUsage } from "@db/schema";
 import { TRPCError } from "@trpc/server";
 import { nanoid } from "nanoid";
 import { initiatePaymobPayment, isPaymobConfigured } from "./lib/paymob";
@@ -11,11 +11,17 @@ import { invalidateCourseCache, invalidateStatsCache } from "./lib/cache";
 /**
  * Apply a promo code to compute the discount amount, final amount, and applied promo id.
  * Returns null if the promo code is invalid/expired/over-used; otherwise the computed values.
+ * ✅ SECURITY FIX (audit run-1): this is the ONLY path that grants a real discount,
+ * so it must enforce the SAME controls as the /api/promo apply path — course scoping
+ * and per-user usage caps — otherwise any active code can be reused unlimited times
+ * per user and applied to any course.
  */
 async function applyPromoCode(
   tx: Parameters<Parameters<typeof withTransaction>[0]>[0],
   promoCodeId: number,
   amount: string,
+  userId: number,
+  courseId: number,
 ): Promise<{ discountAmount: number; finalAmount: string; appliedPromoCodeId: number } | null> {
   const [promo] = await tx
     .select()
@@ -28,6 +34,20 @@ async function applyPromoCode(
   if (now < promo.validFrom) return null;
   if (promo.validUntil !== null && now > promo.validUntil) return null;
   if (promo.maxUses !== null && promo.usedCount >= promo.maxUses) return null;
+
+  // ✅ Course scoping (previously only enforced on the unused /api/promo path)
+  if (!promo.isValidForAllCourses) {
+    const scoped = Array.isArray(promo.courseIds) ? promo.courseIds : [];
+    if (!scoped.includes(courseId)) return null;
+  }
+
+  // ✅ Per-user usage cap (previously only enforced on the unused /api/promo path)
+  const maxPerUser = promo.maxUsesPerUser ?? 1;
+  const userUsageRows = await tx
+    .select({ id: promoCodeUsage.id })
+    .from(promoCodeUsage)
+    .where(and(eq(promoCodeUsage.promoCodeId, promo.id), eq(promoCodeUsage.userId, userId)));
+  if (userUsageRows.length >= maxPerUser) return null;
 
   let discountAmount: number;
   if (promo.discountType === "percentage") {
@@ -161,7 +181,7 @@ export const paymentRouter = createRouter({
         let appliedPromoCodeId: number | null = null;
 
         if (input.promoCodeId && !isFree) {
-          const promoResult = await applyPromoCode(tx, input.promoCodeId, amount);
+          const promoResult = await applyPromoCode(tx, input.promoCodeId, amount, ctx.user.id, input.courseId);
           if (promoResult) {
             discountAmount = promoResult.discountAmount;
             finalAmount = promoResult.finalAmount;
@@ -198,6 +218,22 @@ export const paymentRouter = createRouter({
           discountAmount: discountAmount > 0 ? discountAmount.toFixed(2) : null,
           finalAmount: discountAmount > 0 ? finalAmount : null,
         });
+
+        // ✅ SECURITY FIX (audit run-1): record promo usage and advance the
+        // global counter in the SAME transaction as the discounted payment.
+        // Previously the purchase path never wrote promoCodeUsage nor bumped
+        // usedCount, so both caps could never trip.
+        if (appliedPromoCodeId !== null) {
+          await tx.insert(promoCodeUsage).values({
+            promoCodeId: appliedPromoCodeId,
+            userId: ctx.user.id,
+            paymentId: Number(payment.insertId),
+          });
+          await tx
+            .update(promoCodes)
+            .set({ usedCount: sql`${promoCodes.usedCount} + 1` })
+            .where(eq(promoCodes.id, appliedPromoCodeId));
+        }
 
         // Call Paymob API: Auth → Create Order → Generate Payment Key
         let paymobResult: { paymentUrl: string; paymobOrderId: number };

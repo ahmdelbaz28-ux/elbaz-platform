@@ -12,6 +12,8 @@ import { initiatePasswordReset, completePasswordReset, initiateEmailVerification
 import { serializeAuthCookie, serializeAuthFlagCookie, clearAuthCookies } from "./lib/cookies";
 import { logger } from "./lib/logger";
 import { getClientIpFromHeaders } from "./lib/client-ip";
+// ✅ SECURITY FIX (audit run-1): enforce the enrolled second factor at login.
+import { verifyTotp, hashToken } from "./twofa-router";
 
 // ─── Dummy hash for constant-time login ───────────────────────────────────────
 // To prevent username enumeration via response timing, when a login attempt
@@ -33,6 +35,24 @@ function getDummyHash(): Promise<string> {
     });
   }
   return _dummyHashPromise;
+}
+
+// ─── 2FA backup-code consumption (audit run-1) ───────────────────────────────
+// Single-use redemption of an 8-hex backup code during login. Mirrors the
+// hashing used by twofa-router (HMAC with an APP_SECRET-derived key) and
+// splices the used code so it can never be replayed.
+async function consumeTotpBackupCode(userId: number, stored: unknown, code: string): Promise<boolean> {
+  if (!code) return false;
+  const codes = Array.isArray(stored) ? (stored as string[]) : [];
+  const tokenHash = hashToken(code);
+  const idx = codes.indexOf(tokenHash);
+  if (idx === -1) return false;
+  codes.splice(idx, 1);
+  await getDb()
+    .update(users)
+    .set({ totpBackupCodes: JSON.stringify(codes) })
+    .where(eq(users.id, userId));
+  return true;
 }
 
 // ─── Shared Response Types ─────────────────────────────────────────────────────
@@ -238,6 +258,9 @@ export const localAuthRouter = createRouter({
         // 30-day maxAge. When false, no maxAge is set so the cookie becomes
         // a session cookie that's deleted when the browser closes.
         remember: z.boolean().optional().default(true),
+        // ✅ SECURITY FIX (audit run-1): second factor for users with 2FA enabled.
+        // Accepts both the 6-digit TOTP and the 8-hex backup codes the system issues.
+        totpCode: z.string().min(6).max(8).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -297,6 +320,24 @@ export const localAuthRouter = createRouter({
           code: "UNAUTHORIZED",
           message: "Invalid username or password",
         });
+      }
+
+      // ✅ SECURITY FIX (audit run-1): ENFORCE THE ENROLLED SECOND FACTOR.
+      // Previously login issued the session JWT without ever reading
+      // users.totpEnabled — password alone granted a full 7-day session even
+      // for accounts that completed 2FA enrollment. The same generic
+      // "Invalid username or password" is returned when a code is missing or
+      // wrong so this endpoint does not become a 2FA-state oracle.
+      if (user.totpEnabled) {
+        const code = input.totpCode?.replaceAll(/\s/g, "") ?? "";
+        const totpOk = code.length > 0 && !!user.totpSecret && verifyTotp(user.totpSecret, code);
+        const backupOk = totpOk ? false : await consumeTotpBackupCode(user.id, user.totpBackupCodes, code);
+        if (!totpOk && !backupOk) {
+          throw new TRPCError({
+            code: "UNAUTHORIZED",
+            message: "Invalid username or password",
+          });
+        }
       }
 
       // ✅ SECURITY: Increment tokenVersion on every login (Single Device Policy)
@@ -520,6 +561,13 @@ export const localAuthRouter = createRouter({
   // ✅ SECURITY FIX: Logout mutation — clears httpOnly auth cookie properly
   // Uses clearAuthCookies() which returns an array so each Set-Cookie is sent separately (RFC 7230)
   logout: authedQuery.mutation(async ({ ctx }) => {
+    // ✅ SECURITY FIX (audit run-1): server-side invalidation. Clearing the
+    // cookie alone left the JWT fully valid until its 7-day expiry (and
+    // self-renewing) — logout must mutate the state the auth boundary checks.
+    await getDb()
+      .update(users)
+      .set({ tokenVersion: sql`${users.tokenVersion} + 1` })
+      .where(eq(users.id, ctx.user.id));
     const clearedCookies = clearAuthCookies(ctx.req.headers);
     for (const c of clearedCookies) {
       ctx.resHeaders.append("set-cookie", c);

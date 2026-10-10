@@ -6,6 +6,8 @@ import { getDb } from "./queries/connection";
 import { quizQuestions, lessonProgress, enrollments, lessons } from "@db/schema";
 import { TRPCError } from "@trpc/server";
 import { recalcEnrollmentProgress } from "./lib/progress";
+import { activeEnrollmentWhere } from "./lib/enrollment";
+import { checkRateLimit } from "./lib/rate-limiter";
 
 export const quizRouter = createRouter({
   // ✅ SECURITY FIX: byLesson now uses authedQuery to prevent answer leaking
@@ -31,10 +33,7 @@ export const quizRouter = createRouter({
         const [enrollment] = await db
           .select({ id: enrollments.id })
           .from(enrollments)
-          .where(and(
-            eq(enrollments.userId, ctx.user.id),
-            eq(enrollments.courseId, lesson.courseId)
-          ))
+          .where(activeEnrollmentWhere(ctx.user.id, lesson.courseId))
           .limit(1);
 
         if (!enrollment) {
@@ -125,15 +124,27 @@ export const quizRouter = createRouter({
         const [enrollment] = await db
           .select({ id: enrollments.id })
           .from(enrollments)
-          .where(and(
-            eq(enrollments.userId, userId),
-            eq(enrollments.courseId, lesson.courseId)
-          ))
+          .where(activeEnrollmentWhere(userId, lesson.courseId))
           .limit(1);
 
         if (!enrollment) {
           throw new TRPCError({ code: "FORBIDDEN", message: "You must be enrolled to submit quizzes" });
         }
+      }
+
+      // ✅ SECURITY FIX (audit run-1): actually implement the documented
+      // anti-cheat quota — max 3 submissions per 10 minutes per user per
+      // lesson (previously only a comment; combined with per-answer feedback
+      // this allowed deterministic answer-key extraction).
+      try {
+        await checkRateLimit(`quiz:${userId}:${input.lessonId}`, "quizAttempt");
+      } catch (err) {
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message: "Too many quiz attempts. Please wait before trying again.",
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          cause: { retryAfterMs: (err as any)?.cause?.retryAfterMs },
+        });
       }
 
       const questions = await db

@@ -3,9 +3,10 @@ import { eq, and, desc } from "drizzle-orm";
 // ✅ SECURITY FIX: Use authedQuery instead of manual token verification
 import { createRouter, authedQuery, publicQuery } from "./middleware";
 import { getDb } from "./queries/connection";
-import { certificates, enrollments, courses, lessonProgress, lessons, users } from "@db/schema";
+import { certificates, enrollments, courses, lessonProgress, lessons, users, quizQuestions } from "@db/schema";
 import { TRPCError } from "@trpc/server";
 import { nanoid } from "nanoid";
+import { activeEnrollmentWhere } from "./lib/enrollment";
 
 /**
  * ✅ CRITICAL FIX: Calculate certificate grade from actual quiz scores
@@ -32,14 +33,15 @@ export const certificateRouter = createRouter({
       const db = getDb();
       const userId = ctx.user.id;
 
-      // Check enrollment
+      // Check enrollment — ✅ SECURITY FIX (audit run-1): require an ACTIVE,
+      // unexpired enrollment (refunded students previously kept certificate
+      // access because the gate tested row existence only).
       const [enrollment] = await db
         .select()
         .from(enrollments)
         .where(
           and(
-            eq(enrollments.userId, userId),
-            eq(enrollments.courseId, input.courseId),
+            activeEnrollmentWhere(userId, input.courseId),
             eq(enrollments.isCompleted, true)
           )
         )
@@ -85,6 +87,25 @@ export const certificateRouter = createRouter({
       const avgScore = progressRows.length > 0
         ? Math.round(progressRows.reduce((sum, r) => sum + (r.quizScore ?? 0), 0) / progressRows.length)
         : 0;
+
+      // ✅ SECURITY FIX (audit run-1): enforce the documented contract
+      // "< 70% → No certificate (quiz not passed yet)" for courses that have
+      // quizzes. Previously calculateGrade(0) returned "Pass", so a student
+      // who claimed completion via the API without passing anything could
+      // mint a publicly verifiable certificate with grade Pass / score 0.
+      const quizRows = await db
+        .select({ id: quizQuestions.id })
+        .from(quizQuestions)
+        .innerJoin(lessons, eq(quizQuestions.lessonId, lessons.id))
+        .where(eq(lessons.courseId, input.courseId))
+        .limit(1);
+      const courseHasQuizzes = quizRows.length > 0;
+      if (courseHasQuizzes && avgScore < 70) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Assessment score below the certification threshold — pass the course quizzes first",
+        });
+      }
 
       const grade = calculateGrade(avgScore);
 

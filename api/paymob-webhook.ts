@@ -154,6 +154,23 @@ async function processWebhookInTransaction(
 
   logger.info(`[Paymob Webhook] Payment status updated`, { merchantOrderId, newStatus });
 
+  // ✅ SECURITY FIX (audit run-1): propagate revocation to the enrollment on
+  // refund/void. Previously only payments.status changed — the enrollment row
+  // kept satisfying the row-existence gate in course-watching.ts forever, so
+  // refunded students retained full premium video access indefinitely.
+  if (isRefunded || isVoided) {
+    await tx
+      .update(enrollments)
+      .set({ status: "refunded" })
+      .where(
+        and(
+          eq(enrollments.userId, Number(paymentRecord.userId)),
+          eq(enrollments.courseId, Number(paymentRecord.courseId)),
+        ),
+      );
+    logger.info(`[Paymob Webhook] Enrollment revoked after refund/void`, { merchantOrderId, newStatus });
+  }
+
   // ── Step 6: Create enrollment if payment successful ──
   if (isSuccess && newStatus === "completed") {
     await createEnrollmentIfMissing(tx, paymentRecord);

@@ -75,7 +75,7 @@ async function rateLimit(
 // use the shared rateLimiter via checkRateLimit() which uses a single instance
 // with automatic cleanup of expired entries.
 
-type RateLimitAction = "login" | "register" | "forgotPassword" | "resetPassword" | "sendVerification" | "verifyEmail" | "api";
+type RateLimitAction = "login" | "register" | "forgotPassword" | "resetPassword" | "sendVerification" | "verifyEmail" | "quizAttempt" | "api";
 
 // 🔒 SECURITY FIX (Task ID 6): Per-action rate limits for sensitive auth flows.
 // These are SEPARATE from the global API rate limit (300 req / 60s) — each auth
@@ -93,6 +93,7 @@ type RateLimitAction = "login" | "register" | "forgotPassword" | "resetPassword"
 // On top of this per-action limit, the existing shieldMiddleware caps all HTTP
 // requests at 200 / 10s per IP (DoS protection).
 const AUTH_ACTION_LIMITS: Record<Exclude<RateLimitAction, "api">, { points: number; durationSec: number; blockSec: number }> = {
+  quizAttempt:        { points: 3,  durationSec: 600, blockSec: 600 },
   login:            { points: 10, durationSec: 900, blockSec: 900 },
   register:         { points: 10, durationSec: 900, blockSec: 900 },
   forgotPassword:   { points: 5,  durationSec: 900, blockSec: 1800 },
