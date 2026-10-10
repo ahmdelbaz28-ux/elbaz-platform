@@ -1,5 +1,4 @@
 import { createMiddleware } from "hono/factory";
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { getClientIpFromHono as getClientIp } from "../lib/client-ip.js";
 import { logger } from "../lib/logger.js";
 
@@ -89,38 +88,54 @@ function cleanupRateLimitMap(): void {
 }
 
 export const shieldMiddleware = createMiddleware(async (c, next) => {
-  // ✅ SECURITY FIX (audit run-1) + POST-AUDIT ENFORCEMENT:
-  // The production origin (*.hf.space) is publicly reachable and cannot
-  // distinguish worker-proxied traffic from direct requests, so every
-  // edge-only control (WAF stages, ASN/UA blocks, header normalization) is
-  // bypassable. When EDGE_ORIGIN_SECRET is configured (on BOTH the worker and
-  // the origin), requests lacking a fresh HMAC of the timestamp are rejected.
+  // ✅ SECURITY (post-audit, MEASURED not assumed): host-allowlist at the origin.
   //
-  // The secret is now ACTUALLY provisioned (worker binding + Space secret), so
-  // enforcement is live. Sole exception: `Sec-Fetch-Dest: iframe` requests,
-  // which keep the Hugging Face Space page (huggingface.co embeds the app in
-  // an iframe) functional. Sec-Fetch-* headers are set by the browser and
-  // cannot be forged by page JavaScript; a scripted HTTP client CAN still
-  // spoof them, so this exception is a functionality trade-off, documented
-  // here, not an absolute guarantee. Core controls (auth, rate limits,
-  // validation) live in the app itself and are unaffected by this door.
-  const edgeSecret = process.env.EDGE_ORIGIN_SECRET;
-  if (edgeSecret) {
+  // Why not the HMAC edge signature? Live verification proved the production
+  // domain ahmedelbaz.qzz.io is NOT a Cloudflare zone on this account and is
+  // NOT routed through the worker: it is an external DNS record pointing at
+  // *.hf.space, and Cloudflare in the response headers is Hugging Face's own
+  // edge. The worker only ever served workers.dev (behind Access). So an
+  // origin-side HMAC requirement blocks the real domain too — there is no
+  // signer in the request path (measured, then rolled back).
+  //
+  // What IS reliably distinguishable at the origin (via HF's proxy) is the
+  // original Host: domain traffic arrives with x-forwarded-host: ahmedelbaz.qzz.io,
+  // while direct *.hf.space visitors arrive with the space host. This middleware
+  // therefore enforces a host allowlist when EDGE_HOST_ENFORCE=1:
+  //   allowed: x-forwarded-host/Host ∈ {FRONTEND_URL host, qzz.io, CORS origins}
+  //   exception: Sec-Fetch-Dest: iframe (keeps the HF Space page embed working —
+  //   browser-controlled header; a scripted client CAN spoof it, documented
+  //   trade-off). Core controls (auth, rate limits, validation) live below and
+  //   are unaffected.
+  // Without the flag (default) behavior is unchanged, so rollouts are safe.
+  if (process.env.EDGE_HOST_ENFORCE === "1") {
     const isEmbedFrame = c.req.header("sec-fetch-dest") === "iframe";
-    const ts = c.req.header("x-edge-ts") ?? "";
-    const sig = c.req.header("x-edge-sig") ?? "";
-    const tsNum = Number.parseInt(ts, 10);
-    const fresh = Number.isFinite(tsNum) && Math.abs(Date.now() - tsNum) < 30_000;
-    let ok = false;
-    if (fresh) {
-      const expected = createHmac("sha256", edgeSecret).update(ts).digest("hex");
-      const a = Buffer.from(sig);
-      const b = Buffer.from(expected);
-      ok = a.length === b.length && timingSafeEqual(a, b);
-    }
-    if (!ok && !isEmbedFrame) {
-      logger.warn("[Shield] Rejected request without valid edge signature", { path: c.req.path });
-      return c.json({ error: "Not Found" }, 404);
+    if (!isEmbedFrame) {
+      const xfHost = (c.req.header("x-forwarded-host") ?? "").split(",")[0].trim().toLowerCase();
+      const host = (c.req.header("host") ?? "").trim().toLowerCase();
+      const effective = xfHost || host;
+      const allowed = new Set<string>(
+        [
+          process.env.FRONTEND_URL ?? "",
+          ...(process.env.CORS_ORIGINS ?? "").split(","),
+        ]
+          .filter((u): u is string => Boolean(u && u.trim()))
+          .map((u) => {
+            try {
+              return new URL(u).host.toLowerCase();
+            } catch {
+              return u.trim().toLowerCase();
+            }
+          }),
+      );
+      allowed.add("ahmedelbaz.qzz.io");
+      if (!effective || !allowed.has(effective)) {
+        logger.warn("[Shield] Rejected request with disallowed host", {
+          path: c.req.path,
+          host: effective || "(none)",
+        });
+        return c.json({ error: "Not Found" }, 404);
+      }
     }
   }
 
