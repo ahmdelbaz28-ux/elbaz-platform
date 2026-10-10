@@ -19,6 +19,13 @@
 
 const ORIGIN = 'https://ahmdelbaz28-ahmdrtap.hf.space';
 const ALLOWED_DOMAIN = 'ahmedelbaz.qzz.io';
+// ✅ SECURITY (post-audit fix): module-scoped holder for the edge→origin HMAC
+// secret. It MUST be declared — assigning an undeclared identifier inside an
+// ES module (strict mode) throws ReferenceError, and `typeof` then reports
+// 'undefined', silently disabling request signing while the origin enforces
+// it (result: every worker-proxied request 404s). Populated from env in
+// handleRequest before any proxying happens.
+let EDGE_ORIGIN_SECRET;
 
 // ─── IP Ranges ───────────────────────────────────────────────────────────────
 // Cloudflare's published IPv4/IPv6 CIDR blocks, used to allowlist
