@@ -52,6 +52,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           WORKER_NAME: ahmedelbaz
           WORKER_FILE: infra/security-audit/worker-v7-hardened.js
+          EDGE_ORIGIN_SECRET: ${{ secrets.EDGE_ORIGIN_SECRET }}
         run: |
           set -euo pipefail
           echo "=== Deploying Worker '${WORKER_NAME}' to account ${CLOUDFLARE_ACCOUNT_ID} ==="
@@ -76,6 +77,20 @@ jobs:
               "compatibility_date": "2025-09-23",
               "compatibility_flags": []
           }
+
+          # ✅ SECURITY (post-audit): provision the edge→origin HMAC secret as a
+          # binding so every proxied request carries x-edge-ts/x-edge-sig and the
+          # origin's shield middleware rejects direct-to-origin traffic. Fail
+          # LOUDLY when missing — deploying without it silently re-opens the
+          # direct-to-origin bypass door.
+          edge_secret = os.environ.get('EDGE_ORIGIN_SECRET', '').strip()
+          if not edge_secret or len(edge_secret) < 32:
+              print("  ❌ EDGE_ORIGIN_SECRET missing or shorter than 32 chars — refusing to deploy an unprotected edge")
+              exit(1)
+          metadata['bindings'] = [
+              {"name": "EDGE_ORIGIN_SECRET", "type": "secret_text", "text": edge_secret}
+          ]
+          print("  → EDGE_ORIGIN_SECRET binding present (value hidden)")
 
           files = {
               'metadata': (None, json.dumps(metadata), 'application/json'),

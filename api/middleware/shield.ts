@@ -89,15 +89,24 @@ function cleanupRateLimitMap(): void {
 }
 
 export const shieldMiddleware = createMiddleware(async (c, next) => {
-  // ✅ SECURITY FIX (audit run-1): optional edge→origin authentication.
+  // ✅ SECURITY FIX (audit run-1) + POST-AUDIT ENFORCEMENT:
   // The production origin (*.hf.space) is publicly reachable and cannot
   // distinguish worker-proxied traffic from direct requests, so every
   // edge-only control (WAF stages, ASN/UA blocks, header normalization) is
   // bypassable. When EDGE_ORIGIN_SECRET is configured (on BOTH the worker and
   // the origin), requests lacking a fresh HMAC of the timestamp are rejected.
-  // Unset (default) = behavior unchanged, so this deploy is safe.
+  //
+  // The secret is now ACTUALLY provisioned (worker binding + Space secret), so
+  // enforcement is live. Sole exception: `Sec-Fetch-Dest: iframe` requests,
+  // which keep the Hugging Face Space page (huggingface.co embeds the app in
+  // an iframe) functional. Sec-Fetch-* headers are set by the browser and
+  // cannot be forged by page JavaScript; a scripted HTTP client CAN still
+  // spoof them, so this exception is a functionality trade-off, documented
+  // here, not an absolute guarantee. Core controls (auth, rate limits,
+  // validation) live in the app itself and are unaffected by this door.
   const edgeSecret = process.env.EDGE_ORIGIN_SECRET;
   if (edgeSecret) {
+    const isEmbedFrame = c.req.header("sec-fetch-dest") === "iframe";
     const ts = c.req.header("x-edge-ts") ?? "";
     const sig = c.req.header("x-edge-sig") ?? "";
     const tsNum = Number.parseInt(ts, 10);
@@ -109,7 +118,7 @@ export const shieldMiddleware = createMiddleware(async (c, next) => {
       const b = Buffer.from(expected);
       ok = a.length === b.length && timingSafeEqual(a, b);
     }
-    if (!ok) {
+    if (!ok && !isEmbedFrame) {
       logger.warn("[Shield] Rejected request without valid edge signature", { path: c.req.path });
       return c.json({ error: "Not Found" }, 404);
     }
