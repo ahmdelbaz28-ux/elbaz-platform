@@ -110,25 +110,30 @@ export const shieldMiddleware = createMiddleware(async (c, next) => {
   // Without the flag (default) behavior is unchanged, so rollouts are safe.
   if (process.env.EDGE_HOST_ENFORCE === "1") {
     const isEmbedFrame = c.req.header("sec-fetch-dest") === "iframe";
-    if (!isEmbedFrame) {
+    // Container-internal healthcheck (Dockerfile: wget localhost:7860/api/health)
+    // reaches the app through the same middleware stack — never block it.
+    const host0 = (c.req.header("host") ?? "").trim().toLowerCase();
+    const isInternal = host0.startsWith("localhost") || host0.startsWith("127.0.0.1") || host0 === "0.0.0.0:7860";
+    // Paymob server-to-server webhook: arrives with whatever host is registered
+    // in the Paymob dashboard (may be the direct hf.space host) and is already
+    // HMAC-verified fail-closed inside paymob-webhook.ts — exempt from the
+    // host gate so payments keep working regardless of the registered host.
+    const isPaymobWebhook = c.req.path.startsWith("/api/paymob");
+    if (!isEmbedFrame && !isInternal && !isPaymobWebhook) {
       const xfHost = (c.req.header("x-forwarded-host") ?? "").split(",")[0].trim().toLowerCase();
-      const host = (c.req.header("host") ?? "").trim().toLowerCase();
-      const effective = xfHost || host;
-      const allowed = new Set<string>(
-        [
-          process.env.FRONTEND_URL ?? "",
-          ...(process.env.CORS_ORIGINS ?? "").split(","),
-        ]
-          .filter((u): u is string => Boolean(u && u.trim()))
-          .map((u) => {
-            try {
-              return new URL(u).host.toLowerCase();
-            } catch {
-              return u.trim().toLowerCase();
-            }
-          }),
-      );
-      allowed.add("ahmedelbaz.qzz.io");
+      const effective = xfHost || host0;
+      // EXPLICIT allowlist — deliberately NOT built from CORS_ORIGINS: measured
+      // live, it contains the hf.space host itself, which would re-open the
+      // very door this gate closes.
+      const allowed = new Set<string>(["ahmedelbaz.qzz.io"]);
+      const fe = process.env.FRONTEND_URL ?? "";
+      if (fe) {
+        try {
+          allowed.add(new URL(fe).host.toLowerCase());
+        } catch {
+          allowed.add(fe.trim().toLowerCase());
+        }
+      }
       if (!effective || !allowed.has(effective)) {
         logger.warn("[Shield] Rejected request with disallowed host", {
           path: c.req.path,
