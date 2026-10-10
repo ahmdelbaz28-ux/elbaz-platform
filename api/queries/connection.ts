@@ -21,7 +21,13 @@ function createPoolConfig(): mysql.PoolOptions {
     namedPlaceholders: true,
     maxIdle: 5,
     idleTimeout: 60000,
-    multipleStatements: true,
+    // ✅ SECURITY HARDENING (post-audit): multi-statement capability is NOT
+    // needed by any application query (all Drizzle/SQL calls are single
+    // statements) and it widens the blast radius of any future SQLi from one
+    // statement to arbitrary stacked statements. It stays enabled ONLY on the
+    // dedicated schema-init pool (see getRawConnection) which must run
+    // db/init-schema.sql as one batch on first boot.
+    multipleStatements: false,
   };
 
   if (env.NODE_ENV === "production" || env.DATABASE_URL?.includes("aivencloud.com")) {
@@ -56,6 +62,9 @@ const poolConfig = createPoolConfig();
 // binding cannot be accidentally re-bound elsewhere (SonarCloud S6861:
 // mutable `let` exports are a code smell).
 const pool: mysql.Pool = mysql.createPool(poolConfig);
+// Dedicated pool for schema initialization only (multipleStatements enabled).
+// Created lazily on first getRawConnection call (first boot runs db-init).
+let initPool: mysql.Pool | null = null;
 let isMockMode = false;
 
 async function testConnection(retries = 3, delay = 1000): Promise<void> {
@@ -128,7 +137,15 @@ function getDb() {
 }
 
 export async function getRawConnection(): Promise<mysql.PoolConnection> {
-  const conn = await pool.getConnection();
+  // ✅ SECURITY HARDENING (post-audit): db-init is the ONLY consumer of raw
+  // connections and the ONLY code path that needs multipleStatements (it runs
+  // db/init-schema.sql as a single batch on first boot). Give it its own pool
+  // so the shared application pool can keep multipleStatements disabled.
+  if (!initPool) {
+    const initConfig: mysql.PoolOptions = { ...poolConfig, multipleStatements: true };
+    initPool = mysql.createPool(initConfig);
+  }
+  const conn = await initPool.getConnection();
   try {
     return conn;
   } catch (err) {

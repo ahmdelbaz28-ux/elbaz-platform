@@ -3,6 +3,7 @@ import { getPublicEnvKeys, env } from "./lib/env.js";
 import { db, pool } from "./queries/connection.js";
 import { sql } from "drizzle-orm";
 import { getCache, cacheKeys, CACHE_TTL } from "./lib/cache.js";
+import { logger } from "./lib/logger.js";
 
 const healthRouter = new Hono({ strict: false });
 
@@ -50,10 +51,14 @@ healthRouter.get("/health", async (c) => {
       detail: `pool=${poolStatus}, connectionLimit=10`,
     };
   } catch (error) {
+    // ✅ SECURITY HARDENING (post-audit): never echo raw driver errors
+    // (mysql2 messages include host/port/protocol details) to unauthenticated
+    // callers. Full detail goes to structured logs only.
+    logger.error("[Health] Database check failed", { error: error instanceof Error ? error.message : String(error) });
     checks.database = {
       status: "unhealthy",
       latency_ms: Date.now() - startTime,
-      error: error instanceof Error ? error.message : "Unknown error",
+      error: "database unavailable",
     };
   }
 

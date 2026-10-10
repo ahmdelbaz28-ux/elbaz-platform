@@ -110,46 +110,23 @@ export async function getSecureVideoUrl(options: VideoAccessOptions): Promise<Vi
       expiresAt: new Date(Date.now() + VIDEO_URL_EXPIRY_SECONDS * 1000).toISOString(),
       watermarkToken: generateWatermarkToken(userId, username, lessonId),
     };
-  } catch {
-    // ─── Strategy 2: HMAC-signed fallback ───
-    const fallbackResult = generateHmacSignedUrl(videoUrl, userId, lessonId);
-    return {
-      videoUrl: fallbackResult.signedUrl,
-      hlsUrl: isHlsSource ? fallbackResult.signedUrl : null,
-      expiresAt: new Date(fallbackResult.expiresAt).toISOString(),
-      watermarkToken: generateWatermarkToken(userId, username, lessonId),
+  } catch (err) {
+    // ✅ SECURITY FIX (post-audit): FAIL CLOSED. The previous fallback returned
+    // the raw videoUrl wrapped in _expires/_sig parameters that NOTHING on the
+    // network path verifies — a silent downgrade to an unprotected URL whenever
+    // R2 presigning hiccuped. Never hand out an unguarded link: log the failure
+    // and surface a clear temporary error to the client instead.
+    logger.error("[VideoProtection] R2 presign failed — refusing unsigned fallback", {
+      lessonId,
+      userId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    const trpcError = new Error("Video temporarily unavailable — please retry in a moment.") as Error & {
+      status?: number;
     };
+    trpcError.status = 503;
+    throw trpcError;
   }
-}
-
-// ─── HMAC Fallback ───────────────────────────────────────────────────────────
-
-function generateHmacSignedUrl(
-  videoUrl: string,
-  userId: number,
-  lessonId: number,
-): { signedUrl: string; expiresAt: number } {
-  if (!WATERMARK_SECRET) {
-    // No secret configured — return unsigned URL with expiry hint
-    const expiresAt = Date.now() + VIDEO_URL_EXPIRY_SECONDS * 1000;
-    const separator = videoUrl.includes("?") ? "&" : "?";
-    const signedUrl = `${videoUrl}${separator}_expires=${expiresAt}&_uid=${userId}&_lid=${lessonId}`;
-    return { signedUrl, expiresAt };
-  }
-
-  const expiresAt = Date.now() + VIDEO_URL_EXPIRY_SECONDS * 1000;
-  const nonce = crypto.randomBytes(8).toString("hex");
-
-  const payload = `${userId}:${lessonId}:${expiresAt}:${nonce}`;
-  const signature = crypto
-    .createHmac("sha256", WATERMARK_SECRET)
-    .update(payload)
-    .digest("hex");
-
-  const separator = videoUrl.includes("?") ? "&" : "?";
-  const signedUrl = `${videoUrl}${separator}_expires=${expiresAt}&_uid=${userId}&_lid=${lessonId}&_nonce=${nonce}&_sig=${signature}`;
-
-  return { signedUrl, expiresAt };
 }
 
 // ─── Watermark Token ─────────────────────────────────────────────────────────
