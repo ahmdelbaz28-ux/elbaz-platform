@@ -117,58 +117,37 @@ jobs:
               exit(1)
           PYEOF
 
-      - name: Bind custom domain to Worker route (fail loudly if perms missing)
+      - name: Check custom domain -> worker route (warning-only)
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           WORKER_NAME: ahmedelbaz
           DOMAIN: ahmedelbaz.qzz.io
         run: |
           set -euo pipefail
-          # ✅ SECURITY (post-audit): the production domain was NEVER routed
-          # through the worker — every WAF stage and the origin-signing step were
-          # dead code on ahmedelbaz.qzz.io. This step idempotently creates the
-          # workers route `ahmedelbaz.qzz.io/*` -> worker `ahmedelbaz`.
+          # POST-AUDIT FINDING (measured): qzz.io is NOT a zone on this CF
+          # account (GET /zones returns []) — the domain is an external DNS
+          # record pointing at *.hf.space, and the "cloudflare" in its response
+          # headers is HF's own edge. The worker therefore never served domain
+          # traffic, and a workers route CANNOT be created without the zone.
+          # This step documents the gap loudly; it does not fail the deploy.
+          # To truly route the domain through the worker: add qzz.io as a zone
+          # on the CF account (or move DNS), then create a route manually or
+          # restore the binding step.
           python3 << 'PYEOF'
           import os, json, requests
-
           token = os.environ['CLOUDFLARE_API_TOKEN']
-          worker_name = os.environ['WORKER_NAME']
-          domain = os.environ['DOMAIN']
-          H = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-          base = "https://api.cloudflare.com/client/v4"
-
-          zr = requests.get(f"{base}/zones?name=qzz.io", headers=H).json()
-          if not zr.get('success') or not zr.get('result'):
-              print("  ❌ Cannot read zone qzz.io (token permissions?). Response:")
-              print(json.dumps(zr, indent=2)[:800])
-              raise SystemExit(1)
-          zone_id = zr['result'][0]['id']
-          print(f"  → zone qzz.io = {zone_id}")
-
-          rr = requests.get(f"{base}/zones/{zone_id}/workers/routes", headers=H).json()
-          if not rr.get('success'):
-              print("  ❌ Cannot read workers routes (token needs Zone:Read + Workers Routes:Edit). Response:")
-              print(json.dumps(rr, indent=2)[:800])
-              raise SystemExit(1)
-
-          pattern = f"{domain}/*"
-          existing = [r for r in rr['result'] if r.get('pattern') == pattern]
-          if existing:
-              if existing[0].get('script') == worker_name:
-                  print(f"  ✅ Route already bound: {pattern} -> {worker_name}")
-              else:
-                  rid = existing[0]['id']
-                  pr = requests.put(f"{base}/zones/{zone_id}/workers/routes/{rid}", headers=H,
-                                    data=json.dumps({"pattern": pattern, "script": worker_name})).json()
-                  print("  ✅ Route re-bound:", json.dumps(pr.get('success')))
+          H = {"Authorization": f"Bearer {token}"}
+          zr = requests.get("https://api.cloudflare.com/client/v4/zones?name=qzz.io", headers=H).json()
+          zones = zr.get('result') or []
+          if not zr.get('success') or not zones:
+              print("  ⚠️ qzz.io is NOT a zone on this CF account — worker route CANNOT exist for it.")
+              print("  ⚠️ Edge worker stages (WAF/signing) are NOT in the domain's request path.")
+              print("  ⚠️ Origin-side host allowlist (EDGE_HOST_ENFORCE) is the active edge control.")
           else:
-              cr = requests.post(f"{base}/zones/{zone_id}/workers/routes", headers=H,
-                                 data=json.dumps({"pattern": pattern, "script": worker_name})).json()
-              if not cr.get('success'):
-                  print("  ❌ Route creation failed:")
-                  print(json.dumps(cr, indent=2)[:800])
-                  raise SystemExit(1)
-              print(f"  ✅ Route created: {pattern} -> {worker_name}")
+              zone_id = zones[0]['id']
+              rr = requests.get(f"https://api.cloudflare.com/client/v4/zones/{zone_id}/workers/routes", headers=H).json()
+              if rr.get('success'):
+                  print("  Current workers routes:", json.dumps(rr['result'], indent=2)[:500])
           PYEOF
 
       - name: Verify deployment

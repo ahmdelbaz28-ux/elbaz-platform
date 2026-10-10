@@ -117,6 +117,19 @@ app.get("/api/env", async (c) => {
   return c.json(getPublicEnvKeys());
 });
 
+// ⚠️ TEMPORARY measurement endpoint (post-audit host-allowlist rollout).
+// Returns ONLY non-sensitive hop metadata so we can verify what HF's proxy
+// forwards (host / x-forwarded-host / proto / sec-fetch-dest) before enabling
+// EDGE_HOST_ENFORCE. DELETE after enforcement is verified live.
+app.get("/api/debug-headers", (c) => {
+  return c.json({
+    host: c.req.header("host") ?? null,
+    xForwardedHost: c.req.header("x-forwarded-host") ?? null,
+    xForwardedProto: c.req.header("x-forwarded-proto") ?? null,
+    secFetchDest: c.req.header("sec-fetch-dest") ?? null,
+  });
+});
+
 // ── Dynamic Sitemap ──
 // Generates sitemap.xml from live DB data so URLs + lastmod are always accurate.
 // Cached for 1 hour to avoid DB query on every request.
