@@ -55,7 +55,10 @@ function generateTotpCode(secret: string, timeStep: number): string {
   return (code % 1000000).toString().padStart(6, "0");
 }
 
-function verifyTotp(secret: string, token: string, window: number = 1): boolean {
+// ✅ SECURITY FIX (audit run-1): exported so local-auth-router can enforce the
+// enrolled second factor at the login boundary (previously 2FA was enrollable
+// but never checked at login — password alone issued a full session).
+export function verifyTotp(secret: string, token: string, window: number = 1): boolean {
   const timeStep = Math.floor(Date.now() / 30000);
   const cleanToken = token.replaceAll(/\s/g, "");
   for (let i = -window; i <= window; i++) {
@@ -80,7 +83,7 @@ function getBackupCodeHmacKey(): string {
   return createHmac("sha256", base).update("elbaz-2fa-backup-codes-v1").digest("hex");
 }
 
-function hashToken(token: string): string {
+export function hashToken(token: string): string {
   return createHmac("sha256", getBackupCodeHmacKey()).update(token.toLowerCase()).digest("hex").substring(0, 32);
 }
 
@@ -105,7 +108,9 @@ export const twoFaRouter = createRouter({
   }),
 
   verify: authMutation
-    .input(z.object({ token: z.string().length(6) }))
+    // ✅ SECURITY FIX (audit run-1): accept the 8-hex backup codes this system
+    // itself issues (previously z.string().length(6) made them unredeemable).
+    .input(z.object({ token: z.string().min(6).max(8) }))
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
       const [user] = await db
@@ -138,7 +143,7 @@ export const twoFaRouter = createRouter({
     }),
 
   disable: authMutation
-    .input(z.object({ token: z.string().length(6) }))
+    .input(z.object({ token: z.string().min(6).max(8) }))
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
       const [user] = await db

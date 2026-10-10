@@ -13,6 +13,7 @@ import { getDb } from "./queries/connection";
 import { lessons, enrollments, lessonProgress } from "@db/schema";
 import { recalcEnrollmentProgress, markLessonWatched } from "./lib/progress";
 import { getSecureVideoUrl } from "./lib/video-protection";
+import { activeEnrollmentWhere } from "./lib/enrollment";
 
 export const courseWatchingProcedures = {
   lessonVideo: authedQuery
@@ -39,13 +40,12 @@ export const courseWatchingProcedures = {
       }
 
       // Premium lessons — must be enrolled
+      // ✅ SECURITY FIX (audit run-1): require an ACTIVE, unexpired enrollment
+      // (previously row existence only — refunded/expired students kept access).
       const [enrollment] = await db
         .select({ id: enrollments.id })
         .from(enrollments)
-        .where(and(
-          eq(enrollments.userId, ctx.user.id),
-          eq(enrollments.courseId, lesson.courseId)
-        ))
+        .where(activeEnrollmentWhere(ctx.user.id, lesson.courseId))
         .limit(1);
 
       if (!enrollment) {
@@ -82,10 +82,7 @@ export const courseWatchingProcedures = {
         const [enrollment] = await db
           .select({ id: enrollments.id })
           .from(enrollments)
-          .where(and(
-            eq(enrollments.userId, ctx.user.id),
-            eq(enrollments.courseId, lesson.courseId),
-          ))
+          .where(activeEnrollmentWhere(ctx.user.id, lesson.courseId))
           .limit(1);
 
         if (!enrollment) {
@@ -121,10 +118,7 @@ export const courseWatchingProcedures = {
         const [enrollment] = await db
           .select({ id: enrollments.id })
           .from(enrollments)
-          .where(and(
-            eq(enrollments.userId, ctx.user.id),
-            eq(enrollments.courseId, lesson.courseId),
-          ))
+          .where(activeEnrollmentWhere(ctx.user.id, lesson.courseId))
           .limit(1);
 
         if (!enrollment) {

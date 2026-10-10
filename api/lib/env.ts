@@ -83,6 +83,15 @@ const envSchema = z.object({
   WATERMARK_SECRET: z.string().min(32, "WATERMARK_SECRET must be at least 32 characters").optional(),
   WEBHOOK_SECRET: z.string().optional(),
   EMAIL_PROVIDER: z.string().default("console").optional(),
+
+  // ✅ SECURITY FIX (audit run-1): edge→origin authentication. When set on BOTH
+  // the Cloudflare worker (as a worker secret/var) and this origin, shield
+  // rejects any request that does not carry a fresh HMAC edge signature —
+  // closing the public direct-to-origin bypass of the edge security pipeline.
+  EDGE_ORIGIN_SECRET: z.string().min(32, "EDGE_ORIGIN_SECRET must be at least 32 characters").optional(),
+  // Legitimate Space hostname (e.g. ahmdelbaz28-ahmdrtap.hf.space) allowed for
+  // request-derived frontend URLs alongside FRONTEND_URL/CORS_ORIGINS.
+  HF_SPACE_HOST: z.string().optional(),
 });
 
 type EnvWithMeta = z.infer<typeof envSchema> & { isProduction: boolean };
@@ -127,13 +136,42 @@ const env = validateEnv();
  * 🚀 Elite: Smart URL Detection
  * If the configured FRONTEND_URL doesn't match the current request (detected at runtime),
  * this helper allows the system to adapt.
+ *
+ * ✅ SECURITY FIX (audit run-1): the request-derived host is now accepted ONLY
+ * when it exactly matches an operator-owned hostname (FRONTEND_URL, CORS_ORIGINS,
+ * or the optional HF_SPACE_HOST env). The previous substring check —
+ * hostname.includes("hf.space") || includes("qzz.io") — trusted ANY host
+ * containing those substrings (including attacker-registered names), letting an
+ * unauthenticated forgotPassword call choose the origin of the password-reset /
+ * email-verification links sent to victims. Unmatched hosts now fail safe to
+ * the configured FRONTEND_URL.
  */
+function getAllowedFrontendHosts(): string[] {
+  const hosts = new Set<string>();
+  try {
+    hosts.add(new URL(env.FRONTEND_URL).hostname);
+  } catch { /* ignore */ }
+  const corsRaw: unknown = (env as { CORS_ORIGINS?: string | string[] }).CORS_ORIGINS;
+  const corsList = Array.isArray(corsRaw) ? corsRaw : typeof corsRaw === "string" ? corsRaw.split(",") : [];
+  for (const originRaw of corsList) {
+    const origin = String(originRaw).trim();
+    if (!origin) continue;
+    try {
+      hosts.add(new URL(origin).hostname);
+    } catch {
+      hosts.add(origin.replace(/^https?:\/\//, "").replace(/\/.*$/, ""));
+    }
+  }
+  const spaceHost = process.env.HF_SPACE_HOST?.trim();
+  if (spaceHost) hosts.add(spaceHost);
+  return [...hosts];
+}
+
 function getActiveFrontendUrl(currentRequestUrl?: string): string {
   if (!currentRequestUrl) return env.FRONTEND_URL;
   try {
     const url = new URL(currentRequestUrl);
-    // If we're on a .hf.space or .qzz.io domain, trust the current host over the hardcoded secret
-    if (url.hostname.includes("hf.space") || url.hostname.includes("qzz.io")) {
+    if (getAllowedFrontendHosts().includes(url.hostname)) {
       return `${url.protocol}//${url.host}`;
     }
   } catch { /* ignore */ }

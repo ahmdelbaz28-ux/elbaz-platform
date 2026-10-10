@@ -125,6 +125,14 @@ function successResponse(c: any, userData: Record<string, unknown>) {
   return c.json({ success: true, user: userData });
 }
 
+/**
+ * Build a JSON error response (audit run-1 helper for the GIS flow).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function errorResponse(c: any, status: number, code: string, message: string) {
+  return c.json({ success: false, code, error: message }, status);
+}
+
 googleAuthRouter.options("/", (c) => c.body(null, 204));
 
 /**
@@ -305,11 +313,15 @@ googleAuthRouter.get("/callback", async (c) => { // NOSONAR — complex function
     // If Google returned an error (user denied, etc.)
     if (error) {
       logger.warn("Google OAuth callback: Google returned error", { error });
+      // ✅ SECURITY FIX (audit run-1): consume the state cookie on EVERY exit
+      // so a state value cannot be reused after an error round-trip.
+      c.header("Set-Cookie", "google_oauth_state=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0");
       return c.redirect(`/?google_error=${encodeURIComponent(error)}`);
     }
 
     if (!code || !state) {
       logger.warn("Google OAuth callback: missing code or state", { hasCode: !!code, hasState: !!state });
+      c.header("Set-Cookie", "google_oauth_state=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0");
       return c.redirect("/?google_error=missing_params");
     }
 
@@ -348,6 +360,11 @@ googleAuthRouter.get("/callback", async (c) => { // NOSONAR — complex function
     const googleEmail = (googleUser.email as string) || "";
     const googleName = (googleUser.name as string) || "";
     const googlePicture = (googleUser.picture as string) || "";
+    // ✅ SECURITY FIX (audit run-1): Google only guarantees the email claim
+    // when email_verified is true. Linking an existing local account purely by
+    // an unverified email claim would let an attacker-controlled Google account
+    // take over that local account.
+    const emailVerified = googleUser.email_verified === true;
 
     if (!googleId || !googleEmail) {
       return c.redirect("/?google_error=invalid_user_info");
@@ -361,6 +378,10 @@ googleAuthRouter.get("/callback", async (c) => { // NOSONAR — complex function
     let userId: number;
     let username: string;
     let userRole: string;
+    // ✅ SECURITY FIX (audit run-1): issue sessions with the user's CURRENT
+    // tokenVersion (was hardcoded 0 — every user with ≥1 local login got a
+    // cookie that failed the DB tokenVersion check, breaking Google login).
+    let tokenVersionForSession = 0;
     // Note: `userName`, `userEmail`, `userAvatar` were previously declared
     // and assigned in each branch below but never read after the if/else —
     // SonarCloud S1854 (dead stores). Removed; only `userId`, `username`,
@@ -372,16 +393,23 @@ googleAuthRouter.get("/callback", async (c) => { // NOSONAR — complex function
       userId = user.id;
       username = user.username;
       userRole = user.role;
+      tokenVersionForSession = user.tokenVersion;
     } else {
       // Check by email
       const existingByEmail = googleEmail ? await db.select().from(users).where(eq(users.email, googleEmail)).limit(1) : [];
 
-      if (existingByEmail.length > 0) {
+      if (existingByEmail.length > 0 && emailVerified) {
         const user = existingByEmail[0];
         await db.update(users).set({ googleId: googleId, lastSignInAt: new Date(), ...(googlePicture && !user.avatar && { avatar: googlePicture }) }).where(eq(users.id, user.id));
         userId = user.id;
         username = user.username;
         userRole = user.role;
+        tokenVersionForSession = user.tokenVersion;
+      } else if (existingByEmail.length > 0) {
+        // ✅ SECURITY FIX (audit run-1): an unverified Google email matching an
+        // existing local account must NOT link or sign in — fail closed.
+        logger.warn("[GoogleAuth/OAuth] Refused to link existing account: email_verified=false", { googleEmail });
+        return c.redirect("/?google_error=email_not_verified");
       } else {
         // Create new user
         let baseUsername = googleEmail.split("@")[0].replaceAll(/\W/g, "_").toLowerCase();
@@ -406,7 +434,7 @@ googleAuthRouter.get("/callback", async (c) => { // NOSONAR — complex function
     }
 
     // Create JWT + set cookies
-    const token = await createToken({ userId, username, role: userRole, tokenVersion: 0 });
+    const token = await createToken({ userId, username, role: userRole, tokenVersion: tokenVersionForSession });
     setAuthCookies(c, token);
 
     logger.info(`[GoogleAuth/OAuth] User signed in: ${username} (id=${userId})`);
@@ -482,6 +510,9 @@ googleAuthRouter.post("/", async (c) => {
     const googleEmail = (googleUser.email as string) || "";
     const googleName = (googleUser.name as string) || "";
     const googlePicture = (googleUser.picture as string) || "";
+    // ✅ SECURITY FIX (audit run-1): require Google to attest the email before
+    // any account linking in the GIS flow.
+    const emailVerified = googleUser.email_verified === true;
 
     if (!googleId || !googleEmail) {
       return c.json({ success: false, error: "Invalid Google token: missing user info" }, 400);
@@ -511,6 +542,12 @@ googleAuthRouter.post("/", async (c) => {
 
     // ── Step 2: Check if a user with this email exists (link accounts) ──
     if (googleEmail) {
+      // ✅ SECURITY FIX (audit run-1): require email_verified before linking —
+      // an unverified email claim is not proof of ownership of the account.
+      if (!emailVerified) {
+        logger.warn("[GoogleAuth/GIS] Refused to link existing account: email_verified=false", { googleEmail });
+        return errorResponse(c, 403, "EMAIL_NOT_VERIFIED", "Google email is not verified — cannot link this account.");
+      }
       const existingByEmail = await db
         .select()
         .from(users)

@@ -33,8 +33,14 @@ export function getClientIpFromHeaders(headers: Headers): string {
 
   const forwarded = headers.get("x-forwarded-for");
   if (forwarded) {
-    const first = forwarded.split(",")[0]?.trim();
-    if (first) return first;
+    // ✅ SECURITY FIX (audit run-1): use the RIGHTMOST XFF entry. Appending
+    // proxies add the observed client to the END of the chain, so the leftmost
+    // entry is the one the CLIENT chose (fully spoofable — rotating it reset
+    // every rate-limit bucket). The last entry is the closest-trusted-proxy
+    // view of the peer.
+    const entries = forwarded.split(",").map((s) => s.trim()).filter(Boolean);
+    const last = entries[entries.length - 1];
+    if (last) return last;
   }
 
   return "unknown";
@@ -55,8 +61,10 @@ export function getClientIpFromHono(c: { req: { header: (name: string) => string
 
   const forwarded = c.req.header("x-forwarded-for");
   if (forwarded) {
-    const first = forwarded.split(",")[0]?.trim();
-    if (first) return first;
+    // ✅ SECURITY FIX (audit run-1): rightmost XFF entry — see getClientIpFromHeaders.
+    const entries = forwarded.split(",").map((s) => s.trim()).filter(Boolean);
+    const last = entries[entries.length - 1];
+    if (last) return last;
   }
 
   return "unknown";

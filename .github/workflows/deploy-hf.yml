@@ -31,14 +31,14 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
-
       - name: Update lockfile (if needed)
         run: |
           if ! npm ci --dry-run 2>/dev/null; then
             npm install --package-lock-only --no-audit --no-fund
           fi
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
 
       - name: Run unit tests with coverage
         env:
@@ -143,12 +143,18 @@ jobs:
           git config --global lfs.locksverify false
           
           # Push commit history first
-          git push hf-space main --force || echo "Push to HF failed. Make sure HF_TOKEN secret is valid."
-          
+          # ✅ SECURITY FIX (audit run-1): failures are now FATAL. The previous
+          # `|| echo` swallowed auth/push errors and printed "Deploy complete!"
+          # while production kept running stale (possibly vulnerable) code.
+          git push hf-space main --force
+
           # Push LFS objects to HF's Xet storage
-          git lfs push hf-space --all || echo "LFS push to HF failed."
-          
+          git lfs push hf-space --all
+
           echo "Deploy complete! SHA: ${SHA}"
+
+          # Scrub the credential helper from the runner config
+          git config --global --unset-all credential.helper || true
 
       - name: Deployment Status
         if: always()

@@ -11,8 +11,15 @@ const MAX_EXPORT_ROWS = 10_000;
 
 function escapeCsv(value: string | number | boolean | null | undefined): string {
   if (value === null || value === undefined) return "";
-  const str = String(value);
-  if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+  let str = String(value);
+  // ✅ SECURITY FIX (audit run-1): neutralize spreadsheet formula injection
+  // (OWASP CSV injection). User-controlled fields (e.g. the free-form display
+  // name) previously reached admin-opened spreadsheets unescaped — a cell
+  // beginning with = + - @ or a tab executes as a formula in Excel/Sheets.
+  if (/^[=+\-@\t\r]/.test(str)) {
+    str = "'" + str;
+  }
+  if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {
     return `"${str.replaceAll("\"", '""')}"`;
   }
   return str;

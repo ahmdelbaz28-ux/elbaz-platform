@@ -1,4 +1,5 @@
 import { createMiddleware } from "hono/factory";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { getClientIpFromHono as getClientIp } from "../lib/client-ip.js";
 import { logger } from "../lib/logger.js";
 
@@ -88,6 +89,32 @@ function cleanupRateLimitMap(): void {
 }
 
 export const shieldMiddleware = createMiddleware(async (c, next) => {
+  // ✅ SECURITY FIX (audit run-1): optional edge→origin authentication.
+  // The production origin (*.hf.space) is publicly reachable and cannot
+  // distinguish worker-proxied traffic from direct requests, so every
+  // edge-only control (WAF stages, ASN/UA blocks, header normalization) is
+  // bypassable. When EDGE_ORIGIN_SECRET is configured (on BOTH the worker and
+  // the origin), requests lacking a fresh HMAC of the timestamp are rejected.
+  // Unset (default) = behavior unchanged, so this deploy is safe.
+  const edgeSecret = process.env.EDGE_ORIGIN_SECRET;
+  if (edgeSecret) {
+    const ts = c.req.header("x-edge-ts") ?? "";
+    const sig = c.req.header("x-edge-sig") ?? "";
+    const tsNum = Number.parseInt(ts, 10);
+    const fresh = Number.isFinite(tsNum) && Math.abs(Date.now() - tsNum) < 30_000;
+    let ok = false;
+    if (fresh) {
+      const expected = createHmac("sha256", edgeSecret).update(ts).digest("hex");
+      const a = Buffer.from(sig);
+      const b = Buffer.from(expected);
+      ok = a.length === b.length && timingSafeEqual(a, b);
+    }
+    if (!ok) {
+      logger.warn("[Shield] Rejected request without valid edge signature", { path: c.req.path });
+      return c.json({ error: "Not Found" }, 404);
+    }
+  }
+
   const ip = getClientIp(c);
   const path = c.req.path;
 

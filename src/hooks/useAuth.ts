@@ -1,12 +1,14 @@
 import { trpc } from "@/providers/trpc";
 import { useCallback, useMemo, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { identifyUser } from "@/lib/clarity";
 import { hasStoredAuth, removeStoredToken } from "@/lib/auth-storage";
 
 
 export function useAuth() {
   const utils = trpc.useUtils();
+  const queryClient = useQueryClient();
   const clarityIdentified = useRef(false);
   
   const [hasMounted, setHasMounted] = useState(false);
@@ -61,8 +63,17 @@ export function useAuth() {
       // Ignore errors — still proceed to clear local auth
     }
     removeStoredToken();
+    // ✅ SECURITY FIX (audit run-1): purge the persisted React-Query cache.
+    // The whole authenticated tRPC cache (identity, payments, tickets,
+    // enrollments) is persisted to localStorage under ELBAZ_QUERY_CACHE with a
+    // 24h maxAge and was never removed on logout — the next account on a
+    // shared browser rehydrated the previous account's private data.
+    try {
+      localStorage.removeItem("ELBAZ_QUERY_CACHE");
+    } catch { /* ignore */ }
+    queryClient.clear();
     navigate("/login", { replace: true });
-  }, [logoutMutation, navigate]);
+  }, [logoutMutation, navigate, queryClient]);
 
   const isLoading = !hasMounted || queryLoading;
 

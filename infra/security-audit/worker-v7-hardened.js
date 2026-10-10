@@ -134,7 +134,7 @@ const API_PATHS = [
   '/api/health',
   '/api/trpc/ping',
   '/api/trpc/',
-  '/api/webhooks/',
+  '/api/paymob',
   '/api/chatbot',
 ];
 
@@ -373,12 +373,30 @@ function addCORSHeaders(response) {
 
 // ─── Request Transformation ─────────────────────────────────────────────────
 
-function addRequestHeaders(request) {
+async function addRequestHeaders(request) {
   const headers = new Headers(request.headers);
   headers.set('X-Forwarded-Host', ALLOWED_DOMAIN);
   headers.set('X-Real-IP', request.headers.get('CF-Connecting-IP') || '');
   headers.set('X-Security-Worker', 'ahmedelbaz-v7');
   headers.delete('CF-Connecting-IP');
+  // ✅ SECURITY FIX (audit run-1): optional edge→origin authentication.
+  // When the worker var EDGE_ORIGIN_SECRET is configured, every proxied request
+  // carries a fresh HMAC-SHA256 of the timestamp; the origin's shield middleware
+  // rejects any request without it (closing the public direct-to-origin door).
+  // Configure the SAME secret as a Space secret. Unset = unchanged behavior.
+  if (typeof EDGE_ORIGIN_SECRET === 'string' && EDGE_ORIGIN_SECRET.length > 0) {
+    try {
+      const ts = String(Date.now());
+      const enc = new TextEncoder();
+      const key = await crypto.subtle.importKey('raw', enc.encode(EDGE_ORIGIN_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+      const sigBuf = await crypto.subtle.sign('HMAC', key, enc.encode(ts));
+      const sig = [...new Uint8Array(sigBuf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+      headers.set('x-edge-ts', ts);
+      headers.set('x-edge-sig', sig);
+    } catch {
+      // Signature is best-effort; origin enforcement only activates when the secret exists there too.
+    }
+  }
 
   const newUrl = new URL(request.url);
   newUrl.hostname = new URL(ORIGIN).hostname;
@@ -395,6 +413,8 @@ function addRequestHeaders(request) {
 // ─── Main Handler ───────────────────────────────────────────────────────────
 
 async function handleRequest(request, _env, ctx) {
+  // ✅ SECURITY FIX (audit run-1): read the worker var from the module scope or env binding.
+  try { EDGE_ORIGIN_SECRET = (typeof EDGE_ORIGIN_SECRET !== 'undefined' && EDGE_ORIGIN_SECRET) ? EDGE_ORIGIN_SECRET : ((_env && _env.EDGE_ORIGIN_SECRET) || undefined); } catch { /* not configured */ }
   const requestUrl = new URL(request.url);
   const pathname = requestUrl.pathname;
   const ext = pathname.substring(pathname.lastIndexOf('.') + 1).toLowerCase();
@@ -408,7 +428,13 @@ async function handleRequest(request, _env, ctx) {
   // 🚀 PERFORMANCE: Edge caching for static assets using Cache API
   // This gives us FULL control over cache TTL at the Cloudflare edge,
   // overriding any stale cache from the origin's old Cache-Control headers.
+  // ✅ SECURITY FIX (audit run-1): restricted to the origin's own immutable
+  // namespace (/assets/, content-hashed) — the extension-only match previously
+  // let ANY path ending in a static extension skip the entire WAF pipeline and
+  // pinned non-200 responses at the PoP for a year. Cached responses are now
+  // normalized through addSecurityHeaders/addCORSHeaders like every other path.
   const isCacheableAsset =
+    requestUrl.pathname.startsWith('/assets/') &&
     ['js', 'css', 'mjs', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'avif', 'ico', 'woff', 'woff2', 'ttf', 'eot', 'otf'].includes(ext) &&
     !['sw.js', 'cache-nuke.js', 'rtl-detect.js', 'clarity.js', 'pii-mask.js', 'build-id.json'].includes(filename) &&
     !filename.startsWith('workbox-');
@@ -421,13 +447,17 @@ async function handleRequest(request, _env, ctx) {
     const cachedResponse = await cache.match(cacheKey);
     if (cachedResponse) {
       // Serve from edge cache — instant!
-      return cachedResponse;
+      return addSecurityHeaders(addCORSHeaders(cachedResponse, requestUrl), requestUrl);
     }
 
     // Not cached → fetch from origin, cache it, then serve
     const originRequest = addRequestHeaders(request);
     try {
       const originResponse = await fetch(originRequest);
+      // ✅ SECURITY FIX (audit run-1): never pin non-success responses at the edge.
+      if (!originResponse.ok) {
+        return addSecurityHeaders(addCORSHeaders(originResponse, requestUrl), requestUrl);
+      }
       // Clone and add proper headers
       const newHeaders = new Headers(originResponse.headers);
       newHeaders.set('Cache-Control', 'public, max-age=31536000, immutable');
@@ -440,9 +470,10 @@ async function handleRequest(request, _env, ctx) {
       });
 
       // Store in edge cache for 1 year (ctx.waitUntil ensures it completes)
-      ctx.waitUntil(cache.put(cacheKey, responseToCache.clone()));
+      const normalized = addSecurityHeaders(addCORSHeaders(responseToCache, requestUrl), requestUrl);
+      ctx.waitUntil(cache.put(cacheKey, normalized.clone()));
 
-      return responseToCache;
+      return normalized;
     } catch {
       // Intentionally ignored: best-effort edge-cache write — fall through to normal proxy on error. — SonarCloud S2486
     }
