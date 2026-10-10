@@ -72,7 +72,10 @@ const PRECACHE_EXCLUDE = [
 // https://vite.dev/config/
 export default defineConfig({
   root: __dirname,
-  base: './',
+  // Absolute base — CRITICAL for SPA deep links: with './' any nested route
+  // (/courses/:slug, /certificate/:num, /verify/:num) resolves assets against
+  // the current path (e.g. /courses/assets/*.js) and 404s into a blank page.
+  base: '/',
   plugins: [
     devServer({ entry: "api/boot.ts", exclude: [/^\/(?!api\/).*$/] }),
     react(),
@@ -85,7 +88,7 @@ export default defineConfig({
       name: 'elbaz-exclude-pwa-scripts',
       transformIndexHtml(html: string) {
         // Add data-pwa="exclude" to cache-nuke.js and rtl-detect.js to prevent PWA processing
-        return html.replace(/<script src="(cache-nuke|rtl-detect)\.js\?v=%%CACHE_BUST%%"><\/script>/g, (match) => {
+        return html.replace(/<script src="\/?(cache-nuke|rtl-detect)\.js\?v=%%CACHE_BUST%%"><\/script>/g, (match) => {
           return match.replace('<script', '<script data-pwa="exclude"');
         });
       },
