@@ -91,14 +91,18 @@ const categoryIcons: Record<string, React.ReactNode> = {
 // Sources:
 //   ETAP          — official ETAP red wordmark logo from etap.com/logo
 //   SKM           — official SKM Systems Analysis, Inc. corporate logo (skm.com)
-//   PowerFactory  — official DIgSILENT logo from digsilent.de/files/pictures/logo.svg
+//   PowerFactory  — official DIgSILENT PowerFactory product logo (digsilent.de,
+//                   "PowerFactory-Bereichslogo"): official #0075BF blue badge with
+//                   the official white letterforms, re-oriented horizontally for
+//                   the marquee strip (built from the vendor's own SVG paths).
 //   PVSyst        — official PVsyst logo (yellow sun + blue solar panel + wordmark)
 //   AutoCAD       — official AutoCAD logo by Autodesk (Wikimedia Commons)
 //   MATLAB        — official MATLAB logo by MathWorks (Wikimedia Commons)
-const SOFTWARE_LOGOS = [
+// `wide` renders a wider pill for long wordmark logos so they stay legible.
+const SOFTWARE_LOGOS: { name: string; logo: string; logoFallback: string; wide?: boolean }[] = [
   { name: "ETAP", logo: "/software-logos/etap.png", logoFallback: "/software-logos/etap.png" },
   { name: "SKM", logo: "/software-logos/skm.png", logoFallback: "/software-logos/skm.png" },
-  { name: "PowerFactory", logo: "/software-logos/powerfactory.svg", logoFallback: "/software-logos/powerfactory.png" },
+  { name: "PowerFactory", logo: "/software-logos/powerfactory.svg", logoFallback: "/software-logos/powerfactory.png", wide: true },
   { name: "PVSyst", logo: "/software-logos/pvsyst.png", logoFallback: "/software-logos/pvsyst.png" },
   { name: "AutoCAD", logo: "/software-logos/autocad.png", logoFallback: "/software-logos/autocad.png" },
   { name: "MATLAB", logo: "/software-logos/matlab.png", logoFallback: "/software-logos/matlab.png" },
@@ -427,8 +431,8 @@ export default function Home() { // NOSONAR — landing page with hero + feature
             <div className="absolute end-0 top-0 bottom-0 w-20 bg-gradient-to-l from-primary to-transparent z-10 pointer-events-none shrink-0" />
             <div className="flex gap-10" style={{ animation: "scrollLogos 20s linear infinite", minWidth: "max-content" }}>
               {[...SOFTWARE_LOGOS, ...SOFTWARE_LOGOS].map((tool, i) => (
-                <motion.div key={`${tool.name}-${i}`} className="software-logo-pill group flex flex-col items-center gap-2 cursor-default shrink-0" whileHover={{ y: -6, scale: 1.05 }} title={tool.name}>
-                  <div className="flex h-16 w-32 items-center justify-center rounded-xl border border-border bg-background px-4 py-3 transition-all group-hover:border-accent-secondary/60 group-hover:bg-accent-secondary/5 shadow-lg">
+                <motion.div key={`${tool.name}-${i}`} className={`software-logo-pill group flex flex-col items-center gap-2 cursor-default shrink-0 ${tool.wide ? "min-w-56" : "min-w-32"}`} whileHover={{ y: -6, scale: 1.05 }} title={tool.name}>
+                  <div className={`flex h-16 items-center justify-center rounded-xl border border-border bg-background px-3 py-3 transition-all group-hover:border-accent-secondary/60 group-hover:bg-accent-secondary/5 shadow-lg ${tool.wide ? "w-52" : "w-32"}`}>
                     <picture>
                       <source srcSet={tool.logo} type="image/svg+xml" />
                       <source srcSet={tool.logoFallback} type="image/webp" />
