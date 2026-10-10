@@ -33,7 +33,9 @@ const ALLOWED_CONTENT_TYPES = new Set([
   "text/plain",
   "application/json",
   "application/zip",
-  "application/x-rar-compressed",
+  "application/x-zip-compressed", // Windows browsers report .zip as this
+  "application/x-rar-compressed", // legacy RAR MIME
+  "application/vnd.rar",          // modern IANA RAR MIME (Chrome/Firefox/Edge)
   "application/x-7z-compressed",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -69,17 +71,25 @@ export const REFERENCE_ALLOWED_CONTENT_TYPES = new Set([
   "image/svg+xml",
   "image/bmp",
   "image/tiff",
-  // Archives
+  // Archives — include both legacy and modern IANA MIME variants browsers send
   "application/zip",
-  "application/x-rar-compressed",
+  "application/x-zip-compressed", // Windows browsers report .zip as this
+  "application/x-rar-compressed", // legacy RAR MIME
+  "application/vnd.rar",          // modern IANA RAR MIME (Chrome/Firefox/Edge)
   "application/x-7z-compressed",
   "application/x-tar",
   "application/gzip",
-  // Engineering / technical
+  "application/x-gzip",
+  "application/x-gtar",
+  // Engineering / technical — cover every MIME variant browsers report for CAD files
   "application/dwg",
   "application/dxf",
   "application/acad",
   "application/x-autocad",
+  "image/vnd.dwg",
+  "image/vnd.dxf",
+  "image/x-dwg",
+  "image/x-dxf",
   // CAD / 3D
   "model/stl",
   "application/sla",

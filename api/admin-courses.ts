@@ -227,7 +227,8 @@ export const adminCoursesProcedures = {
     .mutation(async ({ input }) => {
       const db = getDb();
       const { id, videoUrl, ...updates } = input;
-      const cleanUpdates = Object.fromEntries(Object.entries(updates).filter(([, v]) => v !== undefined));
+      // Explicit type: videoUrl can legitimately be set to null (clears the lesson video).
+      const cleanUpdates: Record<string, string | number | boolean | null> = Object.fromEntries(Object.entries(updates).filter(([, v]) => v !== undefined));
       if (videoUrl !== undefined) cleanUpdates.videoUrl = videoUrl && videoUrl.trim() ? videoUrl.trim() : null;
       if (Object.keys(cleanUpdates).length === 0) return { success: true };
       await db.update(lessons).set(cleanUpdates).where(eq(lessons.id, id));

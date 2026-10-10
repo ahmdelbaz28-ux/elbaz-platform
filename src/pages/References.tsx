@@ -545,6 +545,16 @@ function UploadModal({ lang, onClose, onUploaded, getUploadUrl, createReference 
       toast.error(lang === "ar" ? "أدخل عنواناً للملف" : "Please enter a title");
       return;
     }
+    // Fail-fast client-side size check — must match REFERENCE_MAX_FILE_SIZE (50 MB) in api/lib/r2.ts
+    const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+    if (file.size > MAX_UPLOAD_BYTES) {
+      toast.error(
+        lang === "ar"
+          ? `حجم الملف ${(file.size / 1024 / 1024).toFixed(1)} ميغابايت يتجاوز الحد الأقصى 50 ميغابايت`
+          : `File size ${(file.size / 1024 / 1024).toFixed(1)} MB exceeds the 50 MB limit`,
+      );
+      return;
+    }
 
     setUploading(true);
     setProgress(0);

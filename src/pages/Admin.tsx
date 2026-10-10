@@ -87,6 +87,9 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
   const { data: adminCategories } = trpc.course.categories.useQuery(undefined, { enabled: !!isAdmin && activeTab === "courses" });
   const createCourse = trpc.admin.createCourse.useMutation({ onSuccess: () => { utils.admin.listCourses.invalidate(); setShowCourseForm(false); toast.success(lang === "en" ? "Course created" : "تم إنشاء الكورس"); }, onError: (err) => toast.error(err.message) });
   const deleteCourse = trpc.admin.deleteCourse.useMutation({ onSuccess: () => { utils.admin.listCourses.invalidate(); toast.success(lang === "en" ? "Course deleted" : "تم حذف الكورس"); }, onError: (err) => toast.error(err.message) });
+  // NOTE: lessonsCourse state must be declared BEFORE the listLessons useQuery below —
+  // it previously lived after it, causing a TDZ ReferenceError that crashed the Admin page on every render.
+  const [lessonsCourse, setLessonsCourse] = useState<CourseItem | null>(null);
   const { data: lessonsData } = trpc.admin.listLessons.useQuery({ courseId: lessonsCourse?.id ?? 0 }, { enabled: !!isAdmin && !!lessonsCourse });
   const createLesson = trpc.admin.createLesson.useMutation({ onSuccess: () => { utils.admin.listLessons.invalidate(); setShowLessonForm(false); toast.success(lang === "en" ? "Lesson added" : "تمت إضافة الدرس"); }, onError: (err) => toast.error(err.message) });
   const updateLesson = trpc.admin.updateLesson.useMutation({ onSuccess: () => { utils.admin.listLessons.invalidate(); setShowLessonForm(false); toast.success(lang === "en" ? "Lesson updated" : "تم تحديث الدرس"); }, onError: (err) => toast.error(err.message) });
@@ -95,7 +98,6 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
   /* Course & lesson management state */
   const [showCourseForm, setShowCourseForm] = useState(false);
   const [courseForm, setCourseForm] = useState({ slug: "", categoryId: 0, titleEn: "", titleAr: "", shortDescEn: "", shortDescAr: "", descriptionEn: "", descriptionAr: "", thumbnailUrl: "/course-etap.jpg", level: "beginner", isPremium: false, price: 0, isPublished: false, isFeatured: false });
-  const [lessonsCourse, setLessonsCourse] = useState<CourseItem | null>(null);
   const [showLessonForm, setShowLessonForm] = useState(false);
   const [editingLesson, setEditingLesson] = useState<LessonItem | null>(null);
   const [lessonForm, setLessonForm] = useState({ titleEn: "", titleAr: "", descriptionEn: "", descriptionAr: "", videoUrl: "", durationMinutes: 30, isFree: false, isPublished: true });

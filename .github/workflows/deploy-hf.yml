@@ -48,8 +48,11 @@ jobs:
           DATABASE_URL: mysql2://test:test@localhost:3306/test
         run: npx vitest run --coverage --reporter=verbose
 
-      - name: TypeScript type-check (strict mode)
-        run: npx tsc --noEmit
+      # tsc -b builds ALL project references (app src/ strict + node + server api/).
+      # The previous `tsc --noEmit` was a NO-OP: root tsconfig.json has files: [] —
+      # it type-checked zero files and let a TDZ crash ship to production.
+      - name: TypeScript type-check (strict, all project references)
+        run: npx tsc -b
 
       - name: Build frontend (verify no compilation errors)
         run: npm run build -- --logLevel error
