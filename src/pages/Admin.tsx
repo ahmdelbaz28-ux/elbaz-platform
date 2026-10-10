@@ -8,7 +8,7 @@ import "@/elite-animations.css";
 import {
   LayoutDashboard, Users, BookOpen, Headphones, DollarSign, Phone, FileText, Palette, Tag, Megaphone,
   Plus, Pencil, Trash2, Save, Eye, Zap, TrendingUp, CheckCircle, ChevronLeft, ChevronRight,
-  LogOut, ArrowUpRight, Shield,
+  LogOut, ArrowUpRight, Shield, PlayCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,7 +26,9 @@ interface SettingItem { id?: string; key: string; value: string; section: string
 interface ThemeItem { id: string; name: string; primaryColor: string; secondaryColor: string; accentColor: string; bgColor: string; textColor: string; cardBgColor: string; borderColor: string; isActive: boolean; createdAt: string; }
 interface PromoItem { id: string; code: string; discount: number; type: "percentage" | "fixed"; maxUses: number; usedCount: number; status: "active" | "expired" | "used_up"; validFrom: string; validUntil: string; createdAt: string; }
 interface PromotionItem { id: string; titleEn: string; titleAr: string; subtitleEn: string; subtitleAr: string; discountText: string; ctaTextEn: string; ctaTextAr: string; ctaUrl: string; startDate: string; endDate: string; bgColor: string; textColor: string; buttonColor: string; position: "top" | "bottom"; showCountdown: boolean; isActive: boolean; createdAt: string; }
-interface CourseItem { id: number; slug: string; titleEn: string; titleAr: string; descriptionEn: string | null; descriptionAr: string | null; thumbnailUrl: string | null; price: number; currency: string; isFeatured: boolean; isPublished: boolean; level: string; category: number | null; studentCount: number; createdAt: Date; updatedAt: Date; }
+interface CourseItem { id: number; slug: string; titleEn: string; titleAr: string; descriptionEn: string | null; descriptionAr: string | null; shortDescEn?: string | null; shortDescAr?: string | null; thumbnailUrl: string | null; price: number; currency: string; isFeatured: boolean; isPublished: boolean; level: string; category: number | null; studentCount: number; createdAt: Date; updatedAt: Date; }
+interface LessonItem { id: number; courseId: number; titleEn: string; titleAr: string; descriptionEn: string | null; descriptionAr: string | null; videoUrl: string | null; durationMinutes: number | null; sortOrder: number; isFree: boolean; isPublished: boolean; }
+interface CategoryItem { id: number; slug: string; nameEn: string; nameAr: string; icon?: string; sortOrder?: number; }
 
 const CMS_SECTIONS: Record<string, { labelEn: string; labelAr: string; keys: string[] }> = {
   hero: { labelEn: "Hero Section", labelAr: "قسم البطل", keys: ["titleEn", "titleAr", "subtitleEn", "subtitleAr", "ctaTextEn", "ctaTextAr", "backgroundImage"] },
@@ -82,6 +84,63 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
   const replyMutation = trpc.admin.replyTicket.useMutation({ onSuccess: () => { setReplyText(""); setReplyingTo(null); utils.admin.tickets.invalidate(); toast.success(lang === "en" ? "Reply sent" : "تم إرسال الرد"); }, onError: (err) => toast.error(err.message) });
   const updateUserRole = trpc.admin.updateUserRole.useMutation({ onSuccess: () => { utils.admin.users.invalidate(); toast.success(lang === "en" ? "Role updated" : "تم تحديث الدور"); }, onError: (err) => toast.error(err.message) });
   const updateCourse = trpc.admin.updateCourse.useMutation({ onSuccess: () => { utils.admin.listCourses.invalidate(); toast.success(lang === "en" ? "Course updated" : "تم تحديث الكورس"); }, onError: (err) => toast.error(err.message) });
+  const { data: adminCategories } = trpc.course.categories.useQuery(undefined, { enabled: !!isAdmin && activeTab === "courses" });
+  const createCourse = trpc.admin.createCourse.useMutation({ onSuccess: () => { utils.admin.listCourses.invalidate(); setShowCourseForm(false); toast.success(lang === "en" ? "Course created" : "تم إنشاء الكورس"); }, onError: (err) => toast.error(err.message) });
+  const deleteCourse = trpc.admin.deleteCourse.useMutation({ onSuccess: () => { utils.admin.listCourses.invalidate(); toast.success(lang === "en" ? "Course deleted" : "تم حذف الكورس"); }, onError: (err) => toast.error(err.message) });
+  const { data: lessonsData } = trpc.admin.listLessons.useQuery({ courseId: lessonsCourse?.id ?? 0 }, { enabled: !!isAdmin && !!lessonsCourse });
+  const createLesson = trpc.admin.createLesson.useMutation({ onSuccess: () => { utils.admin.listLessons.invalidate(); setShowLessonForm(false); toast.success(lang === "en" ? "Lesson added" : "تمت إضافة الدرس"); }, onError: (err) => toast.error(err.message) });
+  const updateLesson = trpc.admin.updateLesson.useMutation({ onSuccess: () => { utils.admin.listLessons.invalidate(); setShowLessonForm(false); toast.success(lang === "en" ? "Lesson updated" : "تم تحديث الدرس"); }, onError: (err) => toast.error(err.message) });
+  const deleteLesson = trpc.admin.deleteLesson.useMutation({ onSuccess: () => { utils.admin.listLessons.invalidate(); toast.success(lang === "en" ? "Lesson deleted" : "تم حذف الدرس"); }, onError: (err) => toast.error(err.message) });
+
+  /* Course & lesson management state */
+  const [showCourseForm, setShowCourseForm] = useState(false);
+  const [courseForm, setCourseForm] = useState({ slug: "", categoryId: 0, titleEn: "", titleAr: "", shortDescEn: "", shortDescAr: "", descriptionEn: "", descriptionAr: "", thumbnailUrl: "/course-etap.jpg", level: "beginner", isPremium: false, price: 0, isPublished: false, isFeatured: false });
+  const [lessonsCourse, setLessonsCourse] = useState<CourseItem | null>(null);
+  const [showLessonForm, setShowLessonForm] = useState(false);
+  const [editingLesson, setEditingLesson] = useState<LessonItem | null>(null);
+  const [lessonForm, setLessonForm] = useState({ titleEn: "", titleAr: "", descriptionEn: "", descriptionAr: "", videoUrl: "", durationMinutes: 30, isFree: false, isPublished: true });
+
+  const openLessonForm = (lesson?: LessonItem) => {
+    if (lesson) {
+      setEditingLesson(lesson);
+      setLessonForm({ titleEn: lesson.titleEn, titleAr: lesson.titleAr, descriptionEn: lesson.descriptionEn ?? "", descriptionAr: lesson.descriptionAr ?? "", videoUrl: lesson.videoUrl ?? "", durationMinutes: lesson.durationMinutes ?? 30, isFree: lesson.isFree, isPublished: lesson.isPublished });
+    } else {
+      setEditingLesson(null);
+      setLessonForm({ titleEn: "", titleAr: "", descriptionEn: "", descriptionAr: "", videoUrl: "", durationMinutes: 30, isFree: false, isPublished: true });
+    }
+    setShowLessonForm(true);
+  };
+
+  const submitCourseForm = () => {
+    if (!courseForm.slug.trim() || !courseForm.titleEn.trim() || !courseForm.titleAr.trim()) {
+      toast.error(lang === "en" ? "Slug and titles are required" : "الـ slug والعناوين مطلوبة");
+      return;
+    }
+    createCourse.mutate({
+      slug: courseForm.slug.trim().toLowerCase(),
+      categoryId: courseForm.categoryId || (adminCategories as unknown as CategoryItem[] | undefined)?.[0]?.id || 1,
+      titleEn: courseForm.titleEn, titleAr: courseForm.titleAr,
+      shortDescEn: courseForm.shortDescEn || undefined, shortDescAr: courseForm.shortDescAr || undefined,
+      descriptionEn: courseForm.descriptionEn || undefined, descriptionAr: courseForm.descriptionAr || undefined,
+      thumbnailUrl: courseForm.thumbnailUrl || undefined,
+      level: courseForm.level as "beginner" | "intermediate" | "advanced",
+      isPremium: courseForm.isPremium, price: courseForm.price,
+      isPublished: courseForm.isPublished, isFeatured: courseForm.isFeatured,
+    });
+  };
+
+  const submitLessonForm = () => {
+    if (!lessonsCourse) return;
+    if (!lessonForm.titleEn.trim() || !lessonForm.titleAr.trim()) {
+      toast.error(lang === "en" ? "Lesson titles are required" : "عنوان الدرس مطلوب");
+      return;
+    }
+    if (editingLesson) {
+      updateLesson.mutate({ id: editingLesson.id, ...lessonForm, videoUrl: lessonForm.videoUrl || null });
+    } else {
+      createLesson.mutate({ courseId: lessonsCourse.id, ...lessonForm, videoUrl: lessonForm.videoUrl || undefined });
+    }
+  };
 
   /* CMS */
   const [cmsSection, setCmsSection] = useState("hero");
@@ -338,9 +397,14 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
               {/* ═══════════════════ COURSES ═══════════════════ */}
               {activeTab === "courses" && (
                 <div className="space-y-6">
-                  <div>
-                    <h1 className="text-2xl font-bold text-foreground">{isRTL ? "إدارة الكورسات" : "Course Management"}</h1>
-                    <p className="text-sm text-text-muted mt-1">{allCourses.length} {isRTL ? "كورس" : "courses"}</p>
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div>
+                      <h1 className="text-2xl font-bold text-foreground">{isRTL ? "إدارة الكورسات" : "Course Management"}</h1>
+                      <p className="text-sm text-text-muted mt-1">{allCourses.length} {isRTL ? "كورس" : "courses"}</p>
+                    </div>
+                    <Button onClick={() => setShowCourseForm(true)} className="bg-[#06b6d4] text-background hover:bg-[#0891b2]">
+                      <Plus className="h-4 w-4 mr-1" />{isRTL ? "كورس جديد" : "New Course"}
+                    </Button>
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {(allCourses || []).map((course: CourseItem) => (
@@ -375,6 +439,20 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                             }}>
                               <Zap className="h-3 w-3 mr-1" />
                               {course.isFeatured ? bilingual("إزالة التميز", "Unfeature", isRTL) : bilingual("تمييز", "Feature", isRTL)}
+                            </Button>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="ghost" className="flex-1 text-xs text-emerald-500 hover:bg-[rgba(16,185,129,0.05)]" onClick={() => setLessonsCourse(course)}>
+                              <PlayCircle className="h-3 w-3 mr-1" />
+                              {isRTL ? "الدروس" : "Lessons"}
+                            </Button>
+                            <Button size="sm" variant="ghost" className="flex-1 text-xs text-destructive hover:bg-[rgba(244,63,94,0.08)]" onClick={() => {
+                              if (window.confirm(isRTL ? "⚠️ حذف الكورس سيحذف كل دروسه وتسجيلاته. متأكد؟" : "⚠️ Deleting this course removes all its lessons and enrollments. Continue?")) {
+                                deleteCourse.mutate({ id: course.id });
+                              }
+                            }}>
+                              <Trash2 className="h-3 w-3 mr-1" />
+                              {isRTL ? "حذف" : "Delete"}
                             </Button>
                           </div>
                         </div>
@@ -760,6 +838,134 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
             <Button variant="outline" onClick={() => setShowPromotionForm(false)} className="border-border text-text-muted">{isRTL ? "إلغاء" : "Cancel"}</Button>
             {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
             <Button onClick={() => { if (editingPromotion?.id) updatePromotion.mutate(editingPromotion as any); else createPromotion.mutate({ ...editingPromotion!, startsAt: editingPromotion!.startDate, endsAt: editingPromotion!.endDate } as any); }} className="bg-[#06b6d4] text-background">{isRTL ? "حفظ" : "Save"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══════════════ NEW COURSE DIALOG ═══════════════ */}
+      <Dialog open={showCourseForm} onOpenChange={setShowCourseForm}>
+        <DialogContent className="bg-[#0d1420] border-border max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">{isRTL ? "إنشاء كورس جديد" : "Create New Course"}</DialogTitle>
+            <DialogDescription className="text-text-muted">{isRTL ? "أضف كورساً جديداً ثم أضف دروسه من زر الدروس" : "Create a course, then add lessons via the Lessons button"}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-text-muted">{isRTL ? "الـ Slug (رابط)" : "Slug (URL)"}</Label>
+                <Input value={courseForm.slug} onChange={(e) => setCourseForm((f) => ({ ...f, slug: e.target.value }))} placeholder="etap-basics" className="border-border bg-background text-foreground" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-text-muted">{isRTL ? "التصنيف" : "Category"}</Label>
+                <Select value={courseForm.categoryId ? String(courseForm.categoryId) : undefined} onValueChange={(v) => setCourseForm((f) => ({ ...f, categoryId: Number(v) }))}>
+                  <SelectTrigger className="border-border bg-background text-foreground"><SelectValue placeholder={isRTL ? "اختر" : "Select"} /></SelectTrigger>
+                  <SelectContent>
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    {((adminCategories as unknown as CategoryItem[] | undefined) ?? []).map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>{lang === "en" ? c.nameEn : c.nameAr}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "العنوان (إنجليزي)" : "Title (EN)"}</Label><Input value={courseForm.titleEn} onChange={(e) => setCourseForm((f) => ({ ...f, titleEn: e.target.value }))} className="border-border bg-background text-foreground" /></div>
+              <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "العنوان (عربي)" : "Title (AR)"}</Label><Input value={courseForm.titleAr} onChange={(e) => setCourseForm((f) => ({ ...f, titleAr: e.target.value }))} dir="rtl" className="border-border bg-background text-foreground" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "وصف قصير (إنجليزي)" : "Short desc (EN)"}</Label><Input value={courseForm.shortDescEn} onChange={(e) => setCourseForm((f) => ({ ...f, shortDescEn: e.target.value }))} className="border-border bg-background text-foreground" /></div>
+              <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "وصف قصير (عربي)" : "Short desc (AR)"}</Label><Input value={courseForm.shortDescAr} onChange={(e) => setCourseForm((f) => ({ ...f, shortDescAr: e.target.value }))} dir="rtl" className="border-border bg-background text-foreground" /></div>
+            </div>
+            <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "الوصف الكامل (إنجليزي)" : "Full description (EN)"}</Label><Textarea rows={3} value={courseForm.descriptionEn} onChange={(e) => setCourseForm((f) => ({ ...f, descriptionEn: e.target.value }))} className="border-border bg-background text-foreground" /></div>
+            <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "الوصف الكامل (عربي)" : "Full description (AR)"}</Label><Textarea rows={3} value={courseForm.descriptionAr} onChange={(e) => setCourseForm((f) => ({ ...f, descriptionAr: e.target.value }))} dir="rtl" className="border-border bg-background text-foreground" /></div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "السعر (EGP)" : "Price (EGP)"}</Label><Input type="number" min={0} value={courseForm.price} onChange={(e) => setCourseForm((f) => ({ ...f, price: Number(e.target.value) }))} className="border-border bg-background text-foreground" /></div>
+              <div className="space-y-1">
+                <Label className="text-text-muted">{isRTL ? "المستوى" : "Level"}</Label>
+                <Select value={courseForm.level} onValueChange={(v) => setCourseForm((f) => ({ ...f, level: v }))}>
+                  <SelectTrigger className="border-border bg-background text-foreground"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="beginner">{isRTL ? "مبتدئ" : "Beginner"}</SelectItem>
+                    <SelectItem value="intermediate">{isRTL ? "متوسط" : "Intermediate"}</SelectItem>
+                    <SelectItem value="advanced">{isRTL ? "متقدم" : "Advanced"}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "رابط الصورة" : "Thumbnail URL"}</Label><Input value={courseForm.thumbnailUrl} onChange={(e) => setCourseForm((f) => ({ ...f, thumbnailUrl: e.target.value }))} placeholder="/course-etap.jpg" className="border-border bg-background text-foreground" /></div>
+            </div>
+            <div className="flex items-center gap-6 pt-1">
+              <div className="flex items-center gap-2"><Switch checked={courseForm.isPremium} onCheckedChange={(v) => setCourseForm((f) => ({ ...f, isPremium: v }))} /><Label className="text-text-muted">{isRTL ? "مدفوع" : "Premium"}</Label></div>
+              <div className="flex items-center gap-2"><Switch checked={courseForm.isPublished} onCheckedChange={(v) => setCourseForm((f) => ({ ...f, isPublished: v }))} /><Label className="text-text-muted">{isRTL ? "منشور" : "Published"}</Label></div>
+              <div className="flex items-center gap-2"><Switch checked={courseForm.isFeatured} onCheckedChange={(v) => setCourseForm((f) => ({ ...f, isFeatured: v }))} /><Label className="text-text-muted">{isRTL ? "مميز" : "Featured"}</Label></div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCourseForm(false)} className="border-border text-text-muted">{isRTL ? "إلغاء" : "Cancel"}</Button>
+            <Button onClick={submitCourseForm} disabled={createCourse.isPending} className="bg-[#06b6d4] text-background">{createCourse.isPending ? (isRTL ? "جارٍ الإنشاء..." : "Creating...") : (isRTL ? "إنشاء" : "Create")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══════════════ LESSONS MANAGER DIALOG ═══════════════ */}
+      <Dialog open={!!lessonsCourse} onOpenChange={(open) => { if (!open) setLessonsCourse(null); }}>
+        <DialogContent className="bg-[#0d1420] border-border max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">{isRTL ? `دروس: ${lessonsCourse?.titleAr ?? ""}` : `Lessons: ${lessonsCourse?.titleEn ?? ""}`}</DialogTitle>
+            <DialogDescription className="text-text-muted">{(lessonsData?.items as LessonItem[] | undefined)?.length ?? 0} {isRTL ? "درس — أضف رابط الفيديو (R2 أو URL خارجي) لكل درس" : "lessons — add a video URL (R2 key or external URL) per lesson"}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            {((lessonsData?.items as LessonItem[] | undefined) ?? []).length === 0 && (
+              <p className="text-sm text-text-muted text-center py-6">{isRTL ? "لا توجد دروس بعد — اضغط إضافة درس" : "No lessons yet — click Add Lesson"}</p>
+            )}
+            {((lessonsData?.items as LessonItem[] | undefined) ?? []).map((lesson, idx) => (
+              <div key={lesson.id} className="flex items-center gap-3 rounded-lg border border-border bg-background p-3">
+                <span className="w-6 h-6 shrink-0 rounded-full bg-[#1f2d44] text-accent-secondary text-xs flex items-center justify-center">{idx + 1}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{lang === "en" ? lesson.titleEn : lesson.titleAr}</p>
+                  <p className="text-xs text-text-muted truncate">{lesson.durationMinutes ?? 0} min · {lesson.videoUrl ? (isRTL ? "فيديو ✔" : "video ✔") : (isRTL ? "بدون فيديو" : "no video")}</p>
+                </div>
+                <div className="flex gap-1">
+                  {lesson.isFree && <Badge className="bg-[rgba(16,185,129,0.15)] text-emerald-500 text-[10px]">{isRTL ? "مجاني" : "Free"}</Badge>}
+                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-accent-secondary" onClick={() => openLessonForm(lesson)}><Pencil className="h-3.5 w-3.5" /></Button>
+                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive" onClick={() => { if (window.confirm(isRTL ? "حذف هذا الدرس؟" : "Delete this lesson?")) deleteLesson.mutate({ id: lesson.id }); }}><Trash2 className="h-3.5 w-3.5" /></Button>
+                </div>
+              </div>
+            ))}
+            <Button variant="outline" className="w-full border-dashed border-border text-accent-secondary hover:bg-[rgba(6,182,212,0.05)]" onClick={() => openLessonForm()}>
+              <Plus className="h-4 w-4 mr-1" />{isRTL ? "إضافة درس" : "Add Lesson"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══════════════ LESSON FORM DIALOG ═══════════════ */}
+      <Dialog open={showLessonForm} onOpenChange={setShowLessonForm}>
+        <DialogContent className="bg-[#0d1420] border-border max-w-xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">{editingLesson ? (isRTL ? "تعديل الدرس" : "Edit Lesson") : (isRTL ? "درس جديد" : "New Lesson")}</DialogTitle>
+            <DialogDescription className="text-text-muted">{isRTL ? "رابط الفيديو: مفتاح R2 (مثل etap/lesson01.mp4) أو رابط مباشر" : "Video URL: an R2 object key (e.g. etap/lesson01.mp4) or a direct URL"}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "العنوان (إنجليزي)" : "Title (EN)"}</Label><Input value={lessonForm.titleEn} onChange={(e) => setLessonForm((f) => ({ ...f, titleEn: e.target.value }))} className="border-border bg-background text-foreground" /></div>
+              <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "العنوان (عربي)" : "Title (AR)"}</Label><Input value={lessonForm.titleAr} onChange={(e) => setLessonForm((f) => ({ ...f, titleAr: e.target.value }))} dir="rtl" className="border-border bg-background text-foreground" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "الوصف (إنجليزي)" : "Description (EN)"}</Label><Textarea rows={2} value={lessonForm.descriptionEn} onChange={(e) => setLessonForm((f) => ({ ...f, descriptionEn: e.target.value }))} className="border-border bg-background text-foreground" /></div>
+              <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "الوصف (عربي)" : "Description (AR)"}</Label><Textarea rows={2} value={lessonForm.descriptionAr} onChange={(e) => setLessonForm((f) => ({ ...f, descriptionAr: e.target.value }))} dir="rtl" className="border-border bg-background text-foreground" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "رابط الفيديو" : "Video URL"}</Label><Input value={lessonForm.videoUrl} onChange={(e) => setLessonForm((f) => ({ ...f, videoUrl: e.target.value }))} placeholder="etap/lesson01.mp4" className="border-border bg-background text-foreground" /></div>
+              <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "المدة (دقائق)" : "Duration (min)"}</Label><Input type="number" min={0} max={1440} value={lessonForm.durationMinutes} onChange={(e) => setLessonForm((f) => ({ ...f, durationMinutes: Number(e.target.value) }))} className="border-border bg-background text-foreground" /></div>
+            </div>
+            <div className="flex items-center gap-6 pt-1">
+              <div className="flex items-center gap-2"><Switch checked={lessonForm.isFree} onCheckedChange={(v) => setLessonForm((f) => ({ ...f, isFree: v }))} /><Label className="text-text-muted">{isRTL ? "معاينة مجانية" : "Free preview"}</Label></div>
+              <div className="flex items-center gap-2"><Switch checked={lessonForm.isPublished} onCheckedChange={(v) => setLessonForm((f) => ({ ...f, isPublished: v }))} /><Label className="text-text-muted">{isRTL ? "منشور" : "Published"}</Label></div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowLessonForm(false)} className="border-border text-text-muted">{isRTL ? "إلغاء" : "Cancel"}</Button>
+            <Button onClick={submitLessonForm} disabled={createLesson.isPending || updateLesson.isPending} className="bg-[#06b6d4] text-background">{isRTL ? "حفظ" : "Save"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

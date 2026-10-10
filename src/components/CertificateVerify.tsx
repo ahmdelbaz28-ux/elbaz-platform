@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
 import { trpc } from "@/providers/trpc";
 import {
@@ -15,8 +15,9 @@ import {
 export default function CertificateVerify() {
   const { t, lang } = useTranslation();
   const navigate = useNavigate();
-  const [certNumber, setCertNumber] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
+  const { certificateNumber } = useParams();
+  const [certNumber, setCertNumber] = useState(certificateNumber ?? "");
+  const [searchQuery, setSearchQuery] = useState(certificateNumber ?? "");
 
   const { data: cert, isLoading } = trpc.certificate.verify.useQuery(
     { certificateNumber: searchQuery },

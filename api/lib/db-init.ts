@@ -283,34 +283,17 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
       }
 
       // ── Course thumbnail fix ─────────────────────────────────────────────
-      // Ensure each course uses the correct, matching thumbnail image.
-      // Some courses had old placeholder thumbnails or mismatched images.
-      // This UPDATE runs on every boot to keep thumbnails in sync with
-      // the professional AI-generated images in /public/course-*.jpg
+      // Ensure the ETAP course uses the correct, matching thumbnail image.
+      // This UPDATE runs on every boot to keep the thumbnail in sync with
+      // the professional AI-generated image in /public/course-etap.jpg
       try {
         logger.info("[DB] Fixing course thumbnails...");
         await conn.execute(
-          `UPDATE courses SET thumbnail = '/course-cable.jpg' WHERE slug = 'power-systems-basics'`
-        );
-        await conn.execute(
           `UPDATE courses SET thumbnail = '/course-etap.jpg' WHERE slug = 'etap-complete-course'`
-        );
-        await conn.execute(
-          `UPDATE courses SET thumbnail = '/course-skm.jpg' WHERE slug = 'protection-relay-coordination'`
-        );
-        await conn.execute(
-          `UPDATE courses SET thumbnail = '/course-pvsyst.jpg' WHERE slug = 'renewable-energy-design'`
-        );
-        // Also fix any courses with old placeholder thumbnails
-        await conn.execute(
-          `UPDATE courses SET thumbnail = '/course-powerfactory.jpg' WHERE thumbnail LIKE '%/images/courses/%' AND slug NOT IN ('power-systems-basics','etap-complete-course','protection-relay-coordination','renewable-energy-design')`
         );
         // Fix remaining old-format thumbnails
         await conn.execute(
           `UPDATE courses SET thumbnail = REPLACE(thumbnail, '/images/courses/etap-thumb.jpg', '/course-etap.jpg') WHERE thumbnail LIKE '%etap-thumb%'`
-        );
-        await conn.execute(
-          `UPDATE courses SET thumbnail = REPLACE(thumbnail, '/images/courses/power-basics-thumb.jpg', '/course-cable.jpg') WHERE thumbnail LIKE '%power-basics-thumb%'`
         );
         logger.info("[DB] Course thumbnails fixed");
       } catch (err) {
@@ -630,54 +613,21 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
 
     const seedSql = [
 
-      // Categories
+      // Categories — single category: ETAP (platform focuses on the ETAP course)
       `INSERT IGNORE INTO categories (slug, nameEn, nameAr, icon, sortOrder, createdAt) VALUES
-       ('electrical-power', 'Electrical Power Systems', 'أنظمة الطاقة الكهربائية', 'Zap', 1, NOW()),
-       ('etap', 'ETAP Software', 'برنامج ETAP', 'Monitor', 2, NOW()),
-       ('power-protection', 'Protection & Relay', 'الحماية والريليه', 'Shield', 3, NOW()),
-       ('renewable-energy', 'Renewable Energy', 'الطاقة المتجددة', 'Sun', 4, NOW())`,
+       ('etap', 'ETAP Software', 'برنامج ETAP', 'Monitor', 1, NOW())`,
 
       // Courses
-      `SET @cat1 = (SELECT id FROM categories WHERE slug = 'electrical-power' LIMIT 1)`,
       `SET @cat2 = (SELECT id FROM categories WHERE slug = 'etap' LIMIT 1)`,
-      `SET @cat3 = (SELECT id FROM categories WHERE slug = 'power-protection' LIMIT 1)`,
-      `SET @cat4 = (SELECT id FROM categories WHERE slug = 'renewable-energy' LIMIT 1)`,
 
-      // Course 1: Power Systems Basics (FREE)
-      `INSERT IGNORE INTO courses (slug, categoryId, titleEn, titleAr, descriptionEn, descriptionAr, shortDescEn, shortDescAr, thumbnail, level, isPremium, price, durationHours, rating, reviewCount, studentCount, instructorName, isPublished, isFeatured, sortOrder, createdAt, updatedAt)
-       VALUES ('power-systems-basics', @cat1,
-         'Power Systems Fundamentals', 'أساسيات أنظمة الطاقة الكهربائية',
-         'A comprehensive introduction to electrical power systems covering generation, transmission, distribution, and load analysis fundamentals.',
-         'مقدمة شاملة لأنظمة الطاقة الكهربائية تغطي التوليد والنقل والتوزيع وأساسيات تحليل الأحمال.',
-         'Learn power system basics from scratch', 'تعلم أساسيات أنظمة الطاقة من الصفر',
-          '/course-cable.jpg', 'beginner', 0, '0.00', 8, 4.8, 24, 156, 'Eng Ahmed Elbaz', 1, 1, 1, NOW(), NOW())`,
-
-      // Course 2: ETAP Full Course (PREMIUM)
+      // Course: ETAP Complete Course (PREMIUM) — the platform's single course
       `INSERT IGNORE INTO courses (slug, categoryId, titleEn, titleAr, descriptionEn, descriptionAr, shortDescEn, shortDescAr, thumbnail, level, isPremium, price, originalPrice, durationHours, rating, reviewCount, studentCount, instructorName, isPublished, isFeatured, sortOrder, createdAt, updatedAt)
        VALUES ('etap-complete-course', @cat2,
          'ETAP Complete Course — From Zero to Expert', 'كورس ETAP الشامل — من الصفر للاحتراف',
          'Master ETAP software for power system analysis including load flow, short circuit, arc flash, relay coordination, and harmonic analysis.',
          'أتقن برنامج ETAP لتحليل أنظمة الطاقة بما في ذلك تدفق الأحمال والدوائر القصيرة وقوس الكهرباء وتنسيق الريليه.',
          'Become an ETAP expert', 'أصبح خبير ETAP',
-          '/course-etap.jpg', 'intermediate', 1, '1999.00', '3499.00', 40, 4.9, 42, 234, 'Eng Ahmed Elbaz', 1, 1, 2, NOW(), NOW())`,
-
-      // Course 3: Protection & Relay (PREMIUM)
-      `INSERT IGNORE INTO courses (slug, categoryId, titleEn, titleAr, descriptionEn, descriptionAr, shortDescEn, shortDescAr, thumbnail, level, isPremium, price, originalPrice, durationHours, rating, reviewCount, studentCount, instructorName, isPublished, isFeatured, sortOrder, createdAt, updatedAt)
-       VALUES ('protection-relay-coordination', @cat3,
-         'Protection Systems & Relay Coordination', 'أنظمة الحماية وتنسيق الريليه',
-         'Learn power system protection design: relay coordination, protective device settings, fault calculations, and IEEE/IEC standards application.',
-         'تعلم تصميم حماية أنظمة الطاقة: تنسيق الريليه وإعدادات أجهزة الحماية وحسابات الأعطال وتطبيق معايير IEEE/IEC.',
-         'Master protection engineering', 'أتقن هندسة الحماية',
-          '/course-skm.jpg', 'advanced', 1, '1499.00', '2499.00', 30, 4.7, 18, 98, 'Eng Ahmed Elbaz', 1, 0, 3, NOW(), NOW())`,
-
-      // Course 4: Renewable Energy (PREMIUM)
-      `INSERT IGNORE INTO courses (slug, categoryId, titleEn, titleAr, descriptionEn, descriptionAr, shortDescEn, shortDescAr, thumbnail, level, isPremium, price, originalPrice, durationHours, rating, reviewCount, studentCount, instructorName, isPublished, isFeatured, sortOrder, createdAt, updatedAt)
-       VALUES ('renewable-energy-design', @cat4,
-         'Solar & Renewable Energy Systems Design', 'تصميم أنظمة الطاقة الشمسية والمتجددة',
-         'Design grid-connected and off-grid solar PV systems, perform energy yield calculations, and understand inverter selection and battery sizing.',
-         'تصميم أنظمة الطاقة الشمسية الكهروضوئية المتصلة بالشبكة والمستقلة، حسابات إنتاج الطاقة، واختيار الانفرتر وحجم البطاريات.',
-         'Design solar systems professionally', 'صمم أنظمة طاقة شمسية باحتراف',
-          '/course-pvsyst.jpg', 'intermediate', 1, '999.00', '1799.00', 25, 4.6, 15, 67, 'Eng Ahmed Elbaz', 1, 0, 4, NOW(), NOW())`,
+          '/course-etap.jpg', 'intermediate', 1, '1999.00', '3499.00', 13, 4.9, 42, 234, 'Eng Ahmed Elbaz', 1, 1, 2, NOW(), NOW())`,
 
       // Testimonials — 6 realistic, varied reviews from named engineers.
       // Written to sound like real people: each has a specific situation,

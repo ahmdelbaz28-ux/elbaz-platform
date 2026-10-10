@@ -189,10 +189,17 @@ export default function Navbar() {
                         { to: "/support", icon: <Headphones className="h-4 w-4" />, label: lang === "ar" ? "الدعم الفني" : "Support", variant: "default" as const },
                         { to: "#", icon: <LogOut className="h-4 w-4" />, label: lang === "ar" ? "تسجيل الخروج" : "Sign Out", variant: "destructive" as const, onClick: () => { logout(); setUserMenuOpen(false); } },
                       ].map((item, idx) => (
-                        <Link key={idx} to={item.to} role="menuitem" onClick={item.onClick} className={`flex items-center gap-2 px-4 py-3 text-[13px] transition-colors ${item.variant === "destructive" ? "text-destructive hover:bg-destructive/10" : "text-text-secondary hover:text-accent hover:bg-accent/5"}`}>
-                          {item.icon}
-                          {item.label}
-                        </Link>
+                        item.to === "#" ? (
+                          <button key={idx} role="menuitem" onClick={item.onClick} className={`flex w-full items-center gap-2 px-4 py-3 text-start text-[13px] transition-colors ${item.variant === "destructive" ? "text-destructive hover:bg-destructive/10" : "text-text-secondary hover:text-accent hover:bg-accent/5"}`}>
+                            {item.icon}
+                            {item.label}
+                          </button>
+                        ) : (
+                          <Link key={idx} to={item.to} role="menuitem" onClick={item.onClick} className={`flex items-center gap-2 px-4 py-3 text-[13px] transition-colors ${item.variant === "destructive" ? "text-destructive hover:bg-destructive/10" : "text-text-secondary hover:text-accent hover:bg-accent/5"}`}>
+                            {item.icon}
+                            {item.label}
+                          </Link>
+                        )
                       ))}
                     </motion.div>
                   )}

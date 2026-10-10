@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useContactSettings } from "@/hooks/useContactSettings";
@@ -54,6 +55,21 @@ export default function Footer() {
   const { lang } = useTranslation();
   const { data: contact } = useContactSettings();
   const currentYear = new Date().getFullYear();
+  const [systemStatus, setSystemStatus] = useState<"checking" | "ok" | "down">("checking");
+
+  // Live backend health check — powers the "All systems operational" badge
+  useEffect(() => {
+    let cancelled = false;
+    const check = () => {
+      fetch("/api/health", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+        .then(() => { if (!cancelled) setSystemStatus("ok"); })
+        .catch(() => { if (!cancelled) setSystemStatus("down"); });
+    };
+    check();
+    const interval = setInterval(check, 60_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
 
   const tools = ["ETAP", "SKM PowerTools", "PowerFactory", "PVSyst", "AutoCAD Electrical", "MATLAB"];
 
@@ -180,8 +196,10 @@ export default function Footer() {
             {lang === "ar" ? " — جميع الحقوق محفوظة" : " — All rights reserved."}
           </p>
           <div className="flex items-center gap-2 text-[11px] text-text-muted">
-            <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            {lang === "ar" ? "جميع الأنظمة تعمل" : "All systems operational"}
+            <div className={`h-1.5 w-1.5 rounded-full ${systemStatus === "ok" ? "bg-emerald-500 animate-pulse" : systemStatus === "down" ? "bg-amber-500" : "bg-text-faint"}`} />
+            {lang === "ar"
+              ? (systemStatus === "down" ? "بعض الأنظمة تعاني من بطء — تحاول مجدداً" : "جميع الأنظمة تعمل")
+              : (systemStatus === "down" ? "Degraded — retrying" : "All systems operational")}
           </div>
         </div>
       </div>

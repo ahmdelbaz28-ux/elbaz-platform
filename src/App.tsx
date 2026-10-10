@@ -117,6 +117,7 @@ export default function App() {
                 {/* ── Certificate Routes (public) ── */}
                 <Route path="/certificate/:certificateNumber" element={<CertificateView />} />
                 <Route path="/verify" element={<CertificateVerify />} />
+                <Route path="/verify/:certificateNumber" element={<CertificateVerify />} />
 
                 {/* ── Protected Routes (requires login) ── */}
                 <Route path="/dashboard" element={
