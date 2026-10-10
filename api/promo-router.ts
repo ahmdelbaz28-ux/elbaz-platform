@@ -238,6 +238,7 @@ promoRouter.get("/validate/:code", async (c) => {
 
   return c.json({
     valid: true,
+    promoId: promo.id,
     discount: Number.parseFloat(promo.discountValue),
     remainingUses,
     expiresAt: promo.validUntil,

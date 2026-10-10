@@ -24,7 +24,6 @@ export default function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [step, setStep] = useState<Step>("enterEmail");
-  const [recoveryLink, setRecoveryLink] = useState<string | null>(null);
   const [deliveryWarning, setDeliveryWarning] = useState<string | null>(null);
 
   const forgotMutation = trpc.auth.forgotPassword.useMutation({
@@ -33,7 +32,6 @@ export default function ForgotPassword() {
       setStep("sent");
       toast.success(data.message);
       if (data.deliveryWarning) setDeliveryWarning(data.deliveryWarning);
-      if (data.recoveryLink) setRecoveryLink(data.recoveryLink);
     },
     onError: (err) => {
       trackPlatform("forgot_password_error");
@@ -181,27 +179,12 @@ export default function ForgotPassword() {
               </div>
 
               <div className="rounded-xl border border-border bg-primary p-5">
-                {recoveryLink && (
+                {deliveryWarning && (
                   <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
                     <p className="text-sm font-medium text-amber-500">
-                      {lang === "ar" ? "⚠️ لم يتم إرسال البريد الإلكتروني" : "⚠️ Email could not be delivered"}
+                      {lang === "ar" ? "⚠️ ملاحظة حول البريد الإلكتروني" : "⚠️ Email delivery notice"}
                     </p>
-                    <p className="mt-2 text-xs leading-relaxed text-text-muted">
-                      {deliveryWarning || (lang === "ar"
-                        ? "نظام البريد الإلكتروني غير مُهيأ بالكامل بعد. استخدم الرابط أدناه لإعادة تعيين كلمة المرور مباشرة:"
-                        : "Email delivery is not fully set up yet. Use the link below to reset your password directly:")}
-                    </p>
-                    <a
-                      href={recoveryLink}
-                      className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-accent-secondary px-4 py-2.5 text-sm font-semibold text-background transition-all hover:bg-accent-secondary/80"
-                    >
-                      {lang === "ar" ? "إعادة تعيين كلمة المرور الآن" : "Reset Password Now"}
-                    </a>
-                    <p className="mt-2 text-xs text-text-muted">
-                      {lang === "ar"
-                        ? "الرابط صالح لمدة 15 دقيقة وللاستخدام مرة واحدة فقط"
-                        : "Link expires in 15 minutes and is single-use only"}
-                    </p>
+                    <p className="mt-2 text-xs leading-relaxed text-text-muted">{deliveryWarning}</p>
                   </div>
                 )}
 

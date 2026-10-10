@@ -572,6 +572,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
         const discountAmount = ((price * discountValue) / 100).toFixed(2);
         setPromoValidation({
           valid: true,
+          promoId: data.promoId,
           discountType: "percentage",
           discountValue: String(discountValue),
           discountAmount,
@@ -700,6 +701,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
         paymentMethod: "wallet",
         idempotencyKey: crypto.randomUUID(),
         phoneNumber: "",
+        promoCodeId: promoValidation?.valid && promoValidation.promoId ? promoValidation.promoId : undefined,
       });
     }
   };
@@ -723,6 +725,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
       paymentMethod: method,
       idempotencyKey: crypto.randomUUID(),
       phoneNumber: cleanPhone,
+      promoCodeId: promoValidation?.valid && promoValidation.promoId ? promoValidation.promoId : undefined,
     });
   };
 

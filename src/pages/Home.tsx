@@ -354,10 +354,12 @@ export default function Home() { // NOSONAR — landing page with hero + feature
                     {t("exploreCourses")}
                   </ArcFlashButton>
                 </Link>
-                <ArcFlashButton variant="outline" onClick={() => trackEvent("cta_click", { button: "watch_preview", page: "hero" })}>
-                  <PlayCircle className="h-4 w-4" />
-                  {t("watchFreePreview")}
-                </ArcFlashButton>
+                <Link to="/courses/etap-complete-course">
+                  <ArcFlashButton variant="outline" onClick={() => trackEvent("cta_click", { button: "watch_preview", page: "hero" })}>
+                    <PlayCircle className="h-4 w-4" />
+                    {t("watchFreePreview")}
+                  </ArcFlashButton>
+                </Link>
               </motion.div>
             </StaggerItem>
 
