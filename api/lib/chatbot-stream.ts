@@ -110,16 +110,19 @@ async function tryPickOpenRouterProvider(systemPrompt: string, tuning: ModeTunin
 
   const preferred = tuning.openRouterPreferredModel;
 
-  // Reuse the last working model only when it does not fight the mode's
-  // preferred model (instant must not inherit thinking's heavy model).
+  // Mode-scoped last-working shortcut: each mode only reuses a model that
+  // THIS mode previously succeeded with — thinking never inherits instant's
+  // fast-lane model and vice versa (no mode collapse in either direction).
+  const modeKey: "thinking" | "instant" = tuning === MODE_TUNING.instant ? "instant" : "thinking";
+  const lastEntry = chatHealth.lastWorkingByMode[modeKey];
   if (
-    chatHealth.lastWorkingModel &&
-    (Date.now() - chatHealth.lastWorkingTime) < 600000 &&
-    (modelFailCount[chatHealth.lastWorkingModel] || 0) < 3 &&
-    (!preferred || chatHealth.lastWorkingModel === preferred)
+    lastEntry?.model &&
+    (Date.now() - lastEntry.time) < 600000 &&
+    (modelFailCount[lastEntry.model] || 0) < 3 &&
+    (!preferred || lastEntry.model === preferred)
   ) {
-    logger.info("[Chatbot] Using last working OpenRouter model", { model: chatHealth.lastWorkingModel });
-    return { provider: "openrouter", modelId: chatHealth.lastWorkingModel, systemPrompt, tuning };
+    logger.info("[Chatbot] Using last working OpenRouter model", { model: lastEntry.model, mode: modeKey });
+    return { provider: "openrouter", modelId: lastEntry.model, systemPrompt, tuning };
   }
 
   // Mode's preferred fast model (instant), if healthy
