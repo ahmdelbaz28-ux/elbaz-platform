@@ -284,8 +284,11 @@ async function exchangeCodeForTokens(
     stateLength: state.length,
   });
 
-  const errorParam = encodeURIComponent(`${googleError}:${googleErrorDesc}`);
-  return { errorRedirect: `/?google_error=token_exchange_failed&google_detail=${errorParam}` };
+  // ✅ SECURITY FIX (S5146): the redirect target is now a compile-time
+  // constant. Google's error/error_description used to be reflected into the
+  // `google_detail` query param (attacker-influenced URL content, open-
+  // redirect taint) — they now live ONLY in the server-side log above.
+  return { errorRedirect: "/?google_error=token_exchange_failed" };
 }
 
 /**
@@ -332,10 +335,23 @@ googleAuthRouter.get("/callback", async (c) => { // NOSONAR — complex function
     // If Google returned an error (user denied, etc.)
     if (error) {
       logger.warn("Google OAuth callback: Google returned error", { error });
+      // ✅ SECURITY FIX (S5146): the raw `error` query value is
+      // attacker-controllable and used to be reflected into the redirect
+      // target. It is now only used as a LOOKUP KEY into a compile-time
+      // table — the redirect value itself is always a server-owned constant,
+      // so no user input can end up in the Location header. Unknown codes
+      // collapse to a generic enum; details stay in the server log above.
+      const REDIRECT_BY_GOOGLE_ERROR: Record<string, string> = {
+        access_denied: "/?google_error=access_denied",
+        origin_mismatch: "/?google_error=origin_mismatch",
+        redirect_uri_mismatch: "/?google_error=redirect_uri_mismatch",
+      };
+      const errorRedirectTarget: string =
+        REDIRECT_BY_GOOGLE_ERROR[error] ?? "/?google_error=google_returned_error";
       // ✅ SECURITY FIX (audit run-1): consume the state cookie on EVERY exit
       // so a state value cannot be reused after an error round-trip.
       c.header("Set-Cookie", "google_oauth_state=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0");
-      return c.redirect(safeInternalRedirect(`/?google_error=${encodeURIComponent(error)}`));
+      return c.redirect(errorRedirectTarget);
     }
 
     if (!code || !state) {

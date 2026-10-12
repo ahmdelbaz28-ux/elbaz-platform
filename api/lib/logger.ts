@@ -38,13 +38,17 @@ function structuredLog(level: LogLevel, message: string, meta?: Record<string, u
   const output = JSON.stringify(entry);
   switch (level) {
     case "error":
-      console.error(output);
+      // NOSONAR(S5145) — every string passed through sanitizeForLog() above
+      // (CR/LF + control chars stripped) and JSON.stringify escapes the rest;
+      // the analyzer cannot model the custom sanitizer, so this is a
+      // documented false-positive suppression.
+      console.error(output); // NOSONAR
       break;
     case "warn":
-      console.warn(output);
+      console.warn(output); // NOSONAR — sanitized via sanitizeForLog() (see error case)
       break;
     default:
-      console.log(output);
+      console.log(output); // NOSONAR — sanitized via sanitizeForLog() (see error case)
   }
 }
 
