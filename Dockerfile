@@ -14,7 +14,9 @@ COPY package.json package-lock.json ./
 # pipefail not supported in Alpine POSIX sh; npm ci is a single command with
 # no pipes, so pipe failures are not a concern here.
 # hadolint ignore=DL4006
-RUN npm ci --ignore-scripts --prefer-offline --no-audit --no-fund && \  # S6505: runtime deps are pure JS (bcryptjs/mysql2/@aws-sdk) — no install scripts needed
+# S6505: --ignore-scripts — runtime deps are pure JS (bcryptjs/mysql2/@aws-sdk);
+# esbuild ships platform binaries via optionalDependencies, no install scripts needed.
+RUN npm ci --ignore-scripts --prefer-offline --no-audit --no-fund && \
     echo "=== Dependencies installed ===" && \
     find node_modules -maxdepth 1 -type d | wc -l
 
@@ -59,4 +61,6 @@ EXPOSE 7860
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD wget -qO- http://localhost:7860/api/health || exit 1
 ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["./node_modules/.bin/tsx", "api/boot.ts"]  # was: npx tsx (S8543 — no unpinned npx in prod)
+# was: CMD ["npx", "tsx", "api/boot.ts"] (S8543 — no unpinned npx in prod);
+# direct binary avoids on-demand package installs in the production image.
+CMD ["./node_modules/.bin/tsx", "api/boot.ts"]
