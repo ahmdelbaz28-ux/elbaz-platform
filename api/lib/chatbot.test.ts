@@ -8,10 +8,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
  * we use vi.resetModules() + dynamic imports to get a fresh module instance per test.
  * We mock fetch globally and the env module so no real network calls are made.
  *
- * Cascade under test (Modal removed — service permanently 503):
- *   1. NVIDIA (MiniMax-M3)        — if NVIDIA_API_KEY set
- *   2. OpenRouter (22 free models, strongest tier first)
- *   3. Groq (5 ultra-fast models)
+ * Cascade under test (mode-aware, Modal removed — service permanently 503):
+ *   thinking (default) → NVIDIA (MiniMax-M3) → OpenRouter (tier1 first) → Groq
+ *   instant            → Groq (fastest) → NVIDIA → OpenRouter
+ *   Modes also differ in prompt + temperature + max_tokens (MODE_TUNING).
  */
 
 describe("Chatbot Module", () => {
@@ -35,13 +35,14 @@ describe("Chatbot Module", () => {
    * Helper: import the chatbot module with mocked env.
    * Must be called after vi.resetModules() so the module is freshly loaded.
    *
-   * By default NVIDIA_API_KEY and GROQ_API_KEY are empty so tests exercise the
-   * OpenRouter cascade. Pass { nvidia: true } / { groq: true } to enable them.
+   * By default NVIDIA_API_KEY and GROQ_API_KEY are empty and OpenRouter is
+   * enabled, so tests exercise the OpenRouter cascade. Pass { nvidia: true }
+   * / { groq: true } to enable them, or { openrouter: false } to disable it.
    */
-  async function importChatbot(opts?: { nvidia?: boolean; groq?: boolean }) {
+  async function importChatbot(opts?: { nvidia?: boolean; groq?: boolean; openrouter?: boolean }) {
     vi.doMock("../lib/env", () => ({
       env: {
-        OPENROUTER_API_KEY: "sk-or-v1-test-key-12345",
+        OPENROUTER_API_KEY: opts?.openrouter === false ? "" : "sk-or-v1-test-key-12345",
         CHATBOT_API_KEY: "",
         NVIDIA_API_KEY: opts?.nvidia ? "nvapi-test-key-12345" : "",
         GROQ_API_KEY: opts?.groq ? "groq-test-key-12345" : "",
@@ -481,6 +482,140 @@ describe("Chatbot Module", () => {
       expect(pick2?.provider).toBe("openrouter");
       // Best (strongest) tier-1 model chosen
       expect(pick2?.modelId).toBe("nvidia/nemotron-3-super-120b-a12b:free");
+    });
+  });
+
+  // ─── Mode differentiation (thinking vs instant) ───────────────────────
+
+  describe("mode differentiation", () => {
+    it("instant mode routes Groq FIRST even when NVIDIA is configured", async () => {
+      const calledUrls: string[] = [];
+      mockFetch.mockImplementation(async (url: string) => {
+        calledUrls.push(url);
+        if (url.includes("groq.com")) {
+          return {
+            ok: true,
+            json: async () => ({ choices: [{ message: { content: "Fast Groq reply!" } }] }),
+          };
+        }
+        // NVIDIA / OpenRouter would also succeed — they must NOT be reached first
+        return {
+          ok: true,
+          json: async () => ({ choices: [{ message: { content: "WRONG PROVIDER" } }] }),
+        };
+      });
+
+      const { getChatResponse } = await importChatbot({ nvidia: true, groq: true });
+      const result = await getChatResponse({
+        messages: [{ role: "user", content: "hi" }],
+        mode: "instant",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.reply).toBe("Fast Groq reply!");
+      expect(result.model).toBe("llama-3.3-70b-versatile");
+      const firstProviderCall = calledUrls.find((u) => !u.includes("/auth/key"));
+      expect(firstProviderCall).toContain("groq.com");
+    });
+
+    it("thinking mode routes NVIDIA FIRST even when Groq is configured", async () => {
+      const calledUrls: string[] = [];
+      mockFetch.mockImplementation(async (url: string) => {
+        calledUrls.push(url);
+        if (url.includes("integrate.api.nvidia.com")) {
+          return {
+            ok: true,
+            json: async () => ({ choices: [{ message: { content: "Deep NVIDIA reply!" } }] }),
+          };
+        }
+        return {
+          ok: true,
+          json: async () => ({ choices: [{ message: { content: "WRONG PROVIDER" } }] }),
+        };
+      });
+
+      const { getChatResponse } = await importChatbot({ nvidia: true, groq: true });
+      const result = await getChatResponse({
+        messages: [{ role: "user", content: "hi" }],
+        mode: "thinking",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.reply).toBe("Deep NVIDIA reply!");
+      expect(result.model).toBe("minimaxai/minimax-m3");
+      const firstProviderCall = calledUrls.find((u) => !u.includes("/auth/key"));
+      expect(firstProviderCall).toContain("integrate.api.nvidia.com");
+    });
+
+    it("pickWorkingModel: instant → groq, thinking → nvidia (both keys configured)", async () => {
+      mockFetch.mockImplementation(async () => ({ ok: true, json: async () => ({}) }));
+
+      const mod = await importChatbot({ nvidia: true, groq: true });
+      const instantPick = await mod.pickWorkingModel([{ role: "user", content: "hi" }], "en", "instant");
+      expect(instantPick?.provider).toBe("groq");
+
+      vi.resetModules();
+      const mod2 = await importChatbot({ nvidia: true, groq: true });
+      const thinkingPick = await mod2.pickWorkingModel([{ role: "user", content: "hi" }], "en", "thinking");
+      expect(thinkingPick?.provider).toBe("nvidia");
+    });
+
+    it("modes send different generation params: instant 0.7/1024 vs thinking 0.3/4096", async () => {
+      const capturedBodies: any[] = [];
+      mockFetch.mockImplementation(async (url: string, options: any) => {
+        if (url.includes("/auth/key")) return { ok: true, json: async () => ({}) };
+        if (url.includes("groq.com")) {
+          capturedBodies.push(JSON.parse(options.body));
+          return { ok: true, json: async () => ({ choices: [{ message: { content: "ok" } }] }) };
+        }
+        return { ok: false, status: 429, json: async () => ({}) };
+      });
+
+      // Groq-only (OpenRouter disabled) so the Groq call carries the mode params
+      const mod = await importChatbot({ groq: true, openrouter: false });
+      await mod.getChatResponse({ messages: [{ role: "user", content: "hi" }], mode: "instant" });
+      await mod.getChatResponse({ messages: [{ role: "user", content: "hi" }], mode: "thinking" });
+
+      expect(capturedBodies).toHaveLength(2);
+      expect(capturedBodies[0].temperature).toBe(0.7);
+      expect(capturedBodies[0].max_tokens).toBe(1024);
+      expect(capturedBodies[1].temperature).toBe(0.3);
+      expect(capturedBodies[1].max_tokens).toBe(4096);
+    });
+
+    it("modes send different system prompts: instant concise vs thinking deep", async () => {
+      const capturedPrompts: string[] = [];
+      mockFetch.mockImplementation(async (url: string, options: any) => {
+        if (url.includes("/auth/key")) return { ok: true, json: async () => ({}) };
+        if (url.includes("groq.com")) {
+          const body = JSON.parse(options.body);
+          capturedPrompts.push(body.messages.find((m: any) => m.role === "system").content);
+          return { ok: true, json: async () => ({ choices: [{ message: { content: "ok" } }] }) };
+        }
+        return { ok: false, status: 429, json: async () => ({}) };
+      });
+
+      const mod = await importChatbot({ groq: true, openrouter: false });
+      await mod.getChatResponse({ messages: [{ role: "user", content: "hi" }], language: "en", mode: "instant" });
+      await mod.getChatResponse({ messages: [{ role: "user", content: "hi" }], language: "en", mode: "thinking" });
+
+      expect(capturedPrompts).toHaveLength(2);
+      const instantPrompt = capturedPrompts[0];
+      const thinkingPrompt = capturedPrompts[1];
+
+      // Distinct mode markers
+      expect(instantPrompt).toContain("INSTANT MODE");
+      expect(thinkingPrompt).toContain("DEEP THINKING MODE");
+      // Instant carries the condensed core only — no deep-analysis protocol, no output templates
+      expect(instantPrompt).not.toContain("DEEP-ANALYSIS PROTOCOL");
+      expect(instantPrompt).not.toContain("INTERNAL 6-STEP WORKFLOW");
+      expect(instantPrompt).not.toContain("Template A"); // exact output templates removed
+      // Thinking carries the full deep-analysis protocol
+      expect(thinkingPrompt).toContain("DEEP-ANALYSIS PROTOCOL");
+      expect(thinkingPrompt).toContain("INTERNAL 6-STEP WORKFLOW");
+      // Persona shared by both (tests above assert it too, kept here for isolation)
+      expect(instantPrompt.toLowerCase()).toMatch(/elbaz/);
+      expect(thinkingPrompt.toLowerCase()).toMatch(/elbaz/);
     });
   });
 });

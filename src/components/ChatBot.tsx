@@ -171,6 +171,10 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const chatIdRef = useRef<string>(crypto.randomUUID());
   const abortControllerRef = useRef<AbortController | null>(null);
+  // Bumped on clearChat — any in-flight sendMessage with an older generation
+  // becomes stale and must NOT touch state afterwards (prevents the cleared
+  // conversation from being partially re-populated by a late stream).
+  const generationRef = useRef(0);
   const fabRef = useChatFabAnimation();
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingExitStartedRef = useRef(false);
@@ -287,6 +291,9 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     const trimmed = (overrideInput || input).trim();
     if (!trimmed || isLoading) return;
 
+    const generation = generationRef.current;
+    const isStale = () => generationRef.current !== generation;
+
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: "user",
@@ -353,6 +360,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
             let receivedModel = "";
 
             while (true) {
+              if (isStale()) break; // chat was cleared mid-stream — stop consuming
               const result = await reader.read();
               if (result.done) break;
 
@@ -406,23 +414,25 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
               }
             }
 
-            if (streamError || !accumulated.trim()) {
-              // Both error and empty-response branches share the same
-              // user-facing message (SonarCloud S1871 — merged with `||`).
-              addErrorMessage(
-                lang === "ar"
-                  ? "يبدو أن هناك ضغط على الشبكة، حاول إرسال رسالتك مرة أخرى ⚡"
-                  : "The network seems busy. Please try sending your message again ⚡"
-              );
-            } else {
-              const botMessage: Message = {
-                id: crypto.randomUUID(),
-                role: "assistant",
-                content: accumulated.trim(),
-                timestamp: new Date(),
-                model: receivedModel || undefined,
-              };
-              setMessages((prev) => [...prev, botMessage]);
+            if (!isStale()) {
+              if (streamError || !accumulated.trim()) {
+                // Both error and empty-response branches share the same
+                // user-facing message (SonarCloud S1871 — merged with `||`).
+                addErrorMessage(
+                  lang === "ar"
+                    ? "يبدو أن هناك ضغط على الشبكة، حاول إرسال رسالتك مرة أخرى ⚡"
+                    : "The network seems busy. Please try sending your message again ⚡"
+                );
+              } else {
+                const botMessage: Message = {
+                  id: crypto.randomUUID(),
+                  role: "assistant",
+                  content: accumulated.trim(),
+                  timestamp: new Date(),
+                  model: receivedModel || undefined,
+                };
+                setMessages((prev) => [...prev, botMessage]);
+              }
             }
             streamSuccess = true;
           }
@@ -456,7 +466,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
           let displayed = "";
 
           for (const word of words) {
-            if (abortControllerRef.current?.signal.aborted) break;
+            if (isStale() || abortControllerRef.current?.signal.aborted) break;
             displayed += word;
             setStreamingContent(displayed);
 
@@ -481,15 +491,17 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
             });
           }
 
-          const botMsg: Message = {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            content: fullReply,
-            timestamp: new Date(),
-            model: data.model || undefined,
-          };
-          setMessages((prev) => [...prev, botMsg]);
-        } else {
+          if (!isStale()) {
+            const botMsg: Message = {
+              id: crypto.randomUUID(),
+              role: "assistant",
+              content: fullReply,
+              timestamp: new Date(),
+              model: data.model || undefined,
+            };
+            setMessages((prev) => [...prev, botMsg]);
+          }
+        } else if (!isStale()) {
           addErrorMessage(
             lang === "ar"
               ? "يبدو أن هناك ضغط على الشبكة، حاول إرسال رسالتك مرة أخرى ⚡"
@@ -499,11 +511,15 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
       }
     } catch (error) {
       console.warn("ChatBot send failed:", error);
-      addErrorMessage(
-        lang === "ar"
-          ? "يبدو أن هناك ضغط على الشبكة، حاول إرسال رسالتك مرة أخرى ⚡"
-          : "The network seems busy. Please try sending your message again ⚡"
-      );
+      // After clearChat the aborted request lands here — never surface an
+      // error bubble into the freshly cleared conversation.
+      if (!isStale()) {
+        addErrorMessage(
+          lang === "ar"
+            ? "يبدو أن هناك ضغط على الشبكة، حاول إرسال رسالتك مرة أخرى ⚡"
+            : "The network seems busy. Please try sending your message again ⚡"
+        );
+      }
     } finally {
       setIsLoading(false);
       setStreamingContent("");
@@ -535,11 +551,19 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   }, [messages, isLoading]);
 
   // ─── Clear chat ───
+  // Must fully reset the conversation even while a response is streaming:
+  // 1) bump generation → any in-flight sendMessage becomes stale and can no
+  //    longer append messages/errors or resurrect old streamed text
+  // 2) abort the active fetch → the SSE reader/typewriter stops immediately
+  // 3) wipe state + storage
   const clearChat = () => {
+    generationRef.current += 1;
+    abortControllerRef.current?.abort();
     chatIdRef.current = crypto.randomUUID();
     setMessages([WELCOME_MESSAGES[lang]]);
     setStreamingContent("");
     setActiveModel("");
+    setCopiedId("");
     try { localStorage.removeItem(STORAGE_KEY); } catch { /* Intentionally ignored: clearChat must proceed even if localStorage is unavailable. — SonarCloud S2486 */ }
   };
 
@@ -742,8 +766,8 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                           : "text-slate-500 hover:text-slate-300 border border-transparent")
                       }
                       title={lang === "ar"
-                        ? "\u0648\u0636\u0639 \u0627\u0644\u062a\u0641\u0643\u064a\u0631: \u0646\u0645\u0648\u0630\u062c GLM 5.1 (\u0623\u0641\u0636\u0644 \u062c\u0648\u062f\u0629\u060c \u0623\u0637\u0648\u0644 \u0648\u0642\u062a \u0627\u0633\u062a\u062c\u0627\u0628\u0629)"
-                        : "Thinking mode: GLM 5.1 model (best quality, longer response time)"}
+                        ? "وضع التفكير: أعمق تحليل وأعلى دقة — مثالي للحسابات والأسئلة المعقدة (أبطأ قليلاً)"
+                        : "Thinking mode: deeper analysis & higher accuracy — ideal for complex calculations (slower)"}
                     >
                       <Brain className="w-3.5 h-3.5" />
                       <span>{lang === "ar" ? "\u062a\u0641\u0643\u064a\u0631" : "Thinking"}</span>
@@ -760,8 +784,8 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                           : "text-slate-500 hover:text-slate-300 border border-transparent")
                       }
                       title={lang === "ar"
-                        ? "\u0648\u0636\u0639 \u0627\u0644\u0633\u0631\u0639\u0629: \u0646\u0645\u0627\u0630\u062c OpenRouter \u0648 Groq (\u0623\u0633\u0631\u0639 \u0627\u0633\u062a\u062c\u0627\u0628\u0629)"
-                        : "Instant mode: OpenRouter & Groq models (fastest response)"}
+                        ? "وضع السرعة: أسرع رد وإجابات مختصرة للأسئلة المباشرة"
+                        : "Instant mode: fastest replies, concise answers for direct questions"}
                     >
                       <Rocket className="w-3.5 h-3.5" />
                       <span>{lang === "ar" ? "\u0633\u0631\u064a\u0639" : "Instant"}</span>
@@ -770,11 +794,11 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                   {/* Mode description */}
                   {(() => {
                     const thinkingDesc = lang === "ar"
-                      ? "نموذج GLM 5.1 — تحليل عميق وأسئلة معقدة"
-                      : "GLM 5.1 model — deep reasoning for complex questions";
+                      ? "أعمق نموذج + تحليل هندسي دقيق ومُتحقق منه — للمسائل والحسابات المعقدة"
+                      : "Strongest model + verified deep engineering analysis — for complex problems";
                     const instantDesc = lang === "ar"
-                      ? "نماذج Groq — ردود سريعة للأسئلة البسيطة"
-                      : "Groq models — fast responses for simple questions";
+                      ? "أسرع نموذج + ردود مختصرة فورية — للأسئلة السريعة"
+                      : "Fastest model + instant concise replies — for quick questions";
                     const modeDesc = chatMode === "thinking" ? thinkingDesc : instantDesc;
                     return (
                       <p className="text-[10px] text-slate-600 mt-1.5 text-center">
