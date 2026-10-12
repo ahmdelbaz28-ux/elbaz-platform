@@ -43,6 +43,18 @@ export default function SEO({ title, description, image, url, type = 'website', 
     if (image) setMetaTag('name', 'twitter:image', image);
     setMetaTag('name', 'twitter:card', 'summary_large_image');
 
+    // 4b. Canonical link (ported from branch `cleaned`, commit ebde9e8 —
+    // hreflang part intentionally NOT ported: the app has no /ar routes,
+    // and that implementation had a broken selector + inverted logic).
+    const canonicalHref = url || window.location.origin + window.location.pathname;
+    let canonicalLink = document.querySelector('link[rel="canonical"]');
+    if (!canonicalLink) {
+      canonicalLink = document.createElement('link');
+      canonicalLink.setAttribute('rel', 'canonical');
+      document.head.appendChild(canonicalLink);
+    }
+    canonicalLink.setAttribute('href', canonicalHref);
+
     // 5. Inject JSON-LD if provided
     let script: HTMLScriptElement | null = null;
     if (jsonLd) {
