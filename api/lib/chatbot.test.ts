@@ -654,5 +654,30 @@ describe("Chatbot Module", () => {
       expect(instantPick?.provider).toBe("openrouter");
       expect(instantPick?.modelId).toBe("google/gemma-4-26b-a4b-it:free");
     });
+
+    it("instant fast lane: skips dead fast models and never falls straight to thinking's tier-1", async () => {
+      const calledModels: string[] = [];
+      mockFetch.mockImplementation(async (url: string, options: any) => {
+        if (url.includes("/auth/key")) return { ok: true, json: async () => ({}) };
+        const model = JSON.parse(options.body).model;
+        calledModels.push(model);
+        // gemma (preferred) is dead, qwen3-next (2nd fast) works,
+        // nemotron (thinking tier-1) would also work but must not be reached first
+        if (model === "google/gemma-4-26b-a4b-it:free") {
+          return { ok: false, status: 429, json: async () => ({ error: "rate limited" }) };
+        }
+        return { ok: true, json: async () => ({ choices: [{ message: { content: `reply from ${model}` } }] }) };
+      });
+
+      const mod = await importChatbot();
+      const res = await mod.getChatResponse({
+        messages: [{ role: "user", content: "quick" }],
+        mode: "instant",
+      });
+
+      expect(res.model).toBe("qwen/qwen3-next-80b-a3b-instruct:free");
+      // The thinking tier-1 model was never attempted — the fast lane caught it
+      expect(calledModels).not.toContain("nvidia/nemotron-3-super-120b-a12b:free");
+    });
   });
 });
