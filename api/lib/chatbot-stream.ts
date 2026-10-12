@@ -32,6 +32,7 @@ import {
   GROQ_MODELS,
   OPENROUTER_API_KEY,
   AI_MODELS,
+  INSTANT_FAST_MODELS,
 
   // ── Health state (mutable via properties; direct scalar reassignments crash in ESM) ──
   chatHealth,
@@ -490,7 +491,7 @@ async function streamGroqProvider(
   picked: PickedProvider,
   encoder: TextEncoder,
 ): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
-  const timeouts: number[] = [picked.tuning.groqStreamTimeouts[0], picked.tuning.groqStreamTimeouts[1]];
+  const timeouts: number[] = picked.tuning.groqStreamTimeouts;
 
   for (let i = 0; i < GROQ_MODELS.length; i++) {
     const modelId = GROQ_MODELS[i];
@@ -541,6 +542,13 @@ async function streamOpenRouterProvider(
   encoder: TextEncoder,
 ): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
   const candidates: string[] = [picked.modelId];
+  // Instant mode: fast MoE lane comes right after the preferred model —
+  // the thinking tier-1 model is tried only after every fast option.
+  if (picked.tuning.openRouterPreferredModel) {
+    for (const fastModel of INSTANT_FAST_MODELS) {
+      if (!candidates.includes(fastModel) && (modelFailCount[fastModel] || 0) < 3) candidates.push(fastModel);
+    }
+  }
   for (const m of AI_MODELS) {
     if (!candidates.includes(m.id) && (modelFailCount[m.id] || 0) < 3) candidates.push(m.id);
   }

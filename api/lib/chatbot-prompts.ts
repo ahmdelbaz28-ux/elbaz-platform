@@ -35,8 +35,8 @@ export interface ModeTuning {
   openRouterStreamTimeoutMs: number;
   /** Streaming NVIDIA per-fetch timeout (ms) */
   nvidiaStreamTimeoutMs: number;
-  /** Streaming Groq per-attempt timeouts (ms) — 2 attempts per model */
-  groqStreamTimeouts: [number, number];
+  /** Streaming Groq per-attempt timeouts (ms) — one entry per attempt */
+  groqStreamTimeouts: number[];
   /**
    * When instant mode falls through to OpenRouter it starts from this FAST
    * model (small active-parameter MoE) instead of the thinking tier-1 model,
@@ -62,12 +62,14 @@ export const MODE_TUNING: Record<ChatbotMode, ModeTuning> = {
   instant: {
     temperature: 0.7,
     maxTokens: 1024,
-    groqAttemptTimeouts: [12000, 20000],
+    groqAttemptTimeouts: [10000, 15000],
     openRouterTierTimeouts: { 1: 12000, 2: 10000, 3: 8000, 4: 8000 },
     openRouterGlobalTimeoutMs: 30000,
-    openRouterStreamTimeoutMs: 45000,
+    openRouterStreamTimeoutMs: 30000,
     nvidiaStreamTimeoutMs: 60000,
-    groqStreamTimeouts: [12000, 20000],
+    // Single short attempt: a healthy Groq answers a short prompt in <1s.
+    // If it cannot in 10s, instant must move on — no retry burns.
+    groqStreamTimeouts: [10000],
     // Fastest capable OpenRouter model (MoE, ~4B active params) — a different
     // model from the thinking tier so the modes stay visibly distinct even
     // when Groq is unavailable and instant lands on OpenRouter.

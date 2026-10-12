@@ -352,6 +352,19 @@ export async function nvidiaFallback(
 }
 
 // ════════════════════════════════════════════════════════════════════════
+// INSTANT FAST MODEL LANE — small-active-param MoE models (a3b/a4b), tried
+// in order when instant mode lands on OpenRouter. Deliberately disjoint
+// from thinking's tier-1 so the modes stay on different models.
+// ════════════════════════════════════════════════════════════════════════
+
+export const INSTANT_FAST_MODELS = [
+  "google/gemma-4-26b-a4b-it:free",                    // MoE A4B — fastest capable
+  "qwen/qwen3-next-80b-a3b-instruct:free",             // MoE A3B
+  "nvidia/nemotron-3-nano-30b-a3b:free",               // MoE A3B
+  "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", // MoE A3B
+];
+
+// ════════════════════════════════════════════════════════════════════════
 // OPENROUTER (TIER 3) — non-streaming
 // ════════════════════════════════════════════════════════════════════════
 
@@ -550,11 +563,16 @@ export async function openRouterFallback(
   const lastResult = await tryLastWorkingModel(messages, systemPrompt, t.openRouterTierTimeouts, t);
   if (lastResult) return lastResult;
 
-  // Mode's preferred fast model (instant) before the generic tier sweep —
-  // keeps instant on its own fast model instead of thinking's tier-1.
-  if (t.openRouterPreferredModel && (modelFailCount[t.openRouterPreferredModel] || 0) < 3) {
-    const prefResult = await tryModel(t.openRouterPreferredModel, messages, systemPrompt, t.openRouterTierTimeouts[1], t);
-    if (prefResult) return prefResult;
+  // Mode's fast lane (instant): try every fast MoE model with a SHORT
+  // timeout before the generic tier sweep — one hanging model costs 8s,
+  // not the request, and instant never lands on thinking's tier-1 model
+  // while any fast model is alive.
+  if (t.openRouterPreferredModel) {
+    for (const fastModel of INSTANT_FAST_MODELS) {
+      if ((modelFailCount[fastModel] || 0) >= 3) continue;
+      const fastResult = await tryModel(fastModel, messages, systemPrompt, 8000, t);
+      if (fastResult) return fastResult;
+    }
   }
 
   const tierResult = await tryModelsByTier(messages, systemPrompt, t.openRouterTierTimeouts, globalStartTime, t.openRouterGlobalTimeoutMs, t);
