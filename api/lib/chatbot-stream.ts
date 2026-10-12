@@ -3,8 +3,8 @@
  *
  * Contains:
  *   - Provider selection for streaming (pickWorkingModel) — mode-aware routing:
- *       thinking → NVIDIA → OpenRouter → Groq (strongest first)
- *       instant  → Groq → NVIDIA → OpenRouter (fastest first)
+ *       thinking → NVIDIA → OpenRouter (tier-1) → Groq (strongest first)
+ *       instant  → Groq → OpenRouter (preferred fast model) → NVIDIA (fastest first)
  *   - SSE stream processing helpers
  *   - NVIDIA streaming (MiniMax-M3, strongest free model)
  *   - Groq streaming with model cascade
@@ -96,6 +96,10 @@ async function tryPickGroqProvider(systemPrompt: string, tuning: ModeTuning): Pr
 
 /**
  * Try to pick an OpenRouter provider (last working model or best tier-1).
+ *
+ * Mode-aware: instant mode starts from its preferred FAST model and never
+ * reuses a last-working model that belongs to the thinking tier, so the two
+ * modes stay on visibly different models even when both land on OpenRouter.
  */
 async function tryPickOpenRouterProvider(systemPrompt: string, tuning: ModeTuning): Promise<PickedProvider | null> {
   if (!chatHealth.openrouterKeyValidated) {
@@ -103,12 +107,24 @@ async function tryPickOpenRouterProvider(systemPrompt: string, tuning: ModeTunin
   }
   if (chatHealth.openrouterKeyValid === false) return null;
 
-  // Use last working model or best tier-1 model — NO PROBING (saves 30s)
-  if (chatHealth.lastWorkingModel && (Date.now() - chatHealth.lastWorkingTime) < 600000) {
-    if ((modelFailCount[chatHealth.lastWorkingModel] || 0) < 3) {
-      logger.info("[Chatbot] Using last working OpenRouter model", { model: chatHealth.lastWorkingModel });
-      return { provider: "openrouter", modelId: chatHealth.lastWorkingModel, systemPrompt, tuning };
-    }
+  const preferred = tuning.openRouterPreferredModel;
+
+  // Reuse the last working model only when it does not fight the mode's
+  // preferred model (instant must not inherit thinking's heavy model).
+  if (
+    chatHealth.lastWorkingModel &&
+    (Date.now() - chatHealth.lastWorkingTime) < 600000 &&
+    (modelFailCount[chatHealth.lastWorkingModel] || 0) < 3 &&
+    (!preferred || chatHealth.lastWorkingModel === preferred)
+  ) {
+    logger.info("[Chatbot] Using last working OpenRouter model", { model: chatHealth.lastWorkingModel });
+    return { provider: "openrouter", modelId: chatHealth.lastWorkingModel, systemPrompt, tuning };
+  }
+
+  // Mode's preferred fast model (instant), if healthy
+  if (preferred && (modelFailCount[preferred] || 0) < 3 && AI_MODELS.some(m => m.id === preferred)) {
+    logger.info("[Chatbot] Using preferred fast OpenRouter model", { model: preferred });
+    return { provider: "openrouter", modelId: preferred, systemPrompt, tuning };
   }
 
   // Use best tier-1 model directly — no probing needed
@@ -130,16 +146,16 @@ export async function pickWorkingModel(
   const systemPrompt = getSystemPrompt(language, mode);
 
   if (mode === "instant") {
-    // ─── INSTANT: fastest first — Groq → NVIDIA → OpenRouter ───
+    // ─── INSTANT: fastest first — Groq → OpenRouter (fast model) → NVIDIA ───
     const groqPick = await tryPickGroqProvider(systemPrompt, tuning);
     if (groqPick) return groqPick;
 
-    const nvidiaPick = await tryPickNvidiaProvider(systemPrompt, tuning);
-    if (nvidiaPick) return nvidiaPick;
-
-    logger.warn("[Chatbot] Groq + NVIDIA unavailable — using OpenRouter for instant mode");
     const openRouterPick = await tryPickOpenRouterProvider(systemPrompt, tuning);
     if (openRouterPick) return openRouterPick;
+
+    logger.warn("[Chatbot] Groq + OpenRouter unavailable — using NVIDIA for instant mode");
+    const nvidiaPick = await tryPickNvidiaProvider(systemPrompt, tuning);
+    if (nvidiaPick) return nvidiaPick;
 
     return null;
   }

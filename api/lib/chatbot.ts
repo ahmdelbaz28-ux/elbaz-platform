@@ -13,9 +13,11 @@
  *
  * MODES (thinking | instant) are now genuinely different:
  *   thinking → DEEP prompt + temp 0.3 + 4096 tokens + strongest-first routing
- *              (NVIDIA → OpenRouter → Groq)
+ *              (NVIDIA → OpenRouter tier-1 → Groq)
  *   instant  → CONCISE prompt + temp 0.7 + 1024 tokens + fastest-first routing
- *              (Groq → NVIDIA → OpenRouter) + short fail-fast timeouts
+ *              (Groq → OpenRouter preferred-fast model → NVIDIA) + short
+ *              fail-fast timeouts. The modes never collapse onto the same
+ *              model: instant skips thinking's last-working-model shortcut.
  *   Tuning table: MODE_TUNING in chatbot-prompts.ts.
  *
  * The user never sees which provider answered, never sees any error, and never
@@ -473,6 +475,10 @@ export async function tryLastWorkingModel(
   if (!chatHealth.lastWorkingModel) return null;
   if ((Date.now() - chatHealth.lastWorkingTime) >= 300000) return null;
   if ((modelFailCount[chatHealth.lastWorkingModel] || 0) >= 3) return null;
+  // Mode-aware: instant never reuses a last-working model that belongs to
+  // the thinking tier — it starts from its own preferred fast model instead.
+  const preferred = tuning?.openRouterPreferredModel;
+  if (preferred && chatHealth.lastWorkingModel !== preferred) return null;
   return await tryModel(chatHealth.lastWorkingModel, messages, systemPrompt, tierTimeouts[1], tuning);
 }
 
@@ -543,6 +549,13 @@ export async function openRouterFallback(
 
   const lastResult = await tryLastWorkingModel(messages, systemPrompt, t.openRouterTierTimeouts, t);
   if (lastResult) return lastResult;
+
+  // Mode's preferred fast model (instant) before the generic tier sweep —
+  // keeps instant on its own fast model instead of thinking's tier-1.
+  if (t.openRouterPreferredModel && (modelFailCount[t.openRouterPreferredModel] || 0) < 3) {
+    const prefResult = await tryModel(t.openRouterPreferredModel, messages, systemPrompt, t.openRouterTierTimeouts[1], t);
+    if (prefResult) return prefResult;
+  }
 
   const tierResult = await tryModelsByTier(messages, systemPrompt, t.openRouterTierTimeouts, globalStartTime, t.openRouterGlobalTimeoutMs, t);
   if (tierResult) return tierResult;
@@ -627,8 +640,8 @@ export async function tryGroqTier(
  *
  *   instant — FASTEST first (latency matters most):
  *     1. Groq: ultra-fast models with short 12s/20s timeouts
- *     2. NVIDIA MiniMax-M3
- *     3. OpenRouter sweep (short fail-fast timeouts)
+ *     2. OpenRouter sweep starting from its preferred FAST model
+ *     3. NVIDIA MiniMax-M3
  *
  * Each mode gets its own system prompt + generation params (MODE_TUNING).
  * If every provider fails, a friendly error is returned. As long as ANY of the
@@ -644,9 +657,12 @@ export async function getChatResponse(request: {
   const systemPrompt = getSystemPrompt(request.language, mode);
 
   if (mode === "instant") {
-    // INSTANT — fastest provider first: Groq → NVIDIA → OpenRouter
+    // INSTANT — fastest provider first: Groq → OpenRouter (fast model) → NVIDIA
     const groqResult = await tryGroqTier(request.messages, systemPrompt, tuning);
     if (groqResult) return groqResult;
+
+    const orResult = await openRouterFallback(request.messages, systemPrompt, request.language, tuning);
+    if (orResult) return buildSuccessResult(orResult);
 
     if (nvidiaIsAvailable()) {
       if (chatHealth.nvidiaKeyValid === null) await validateNvidiaKey();
@@ -655,9 +671,6 @@ export async function getChatResponse(request: {
         if (nvidiaResult) return buildSuccessResult(nvidiaResult);
       }
     }
-
-    const orResult = await openRouterFallback(request.messages, systemPrompt, request.language, tuning);
-    if (orResult) return buildSuccessResult(orResult);
   } else {
     // THINKING — strongest provider first: NVIDIA → OpenRouter → Groq
     if (nvidiaIsAvailable()) {
