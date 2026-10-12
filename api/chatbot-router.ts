@@ -176,9 +176,9 @@ function createCombinedStream(modelEvent: Uint8Array, state: StreamPipeState): R
 }
 
 chatbotRouter.post("/stream", async (c) => {
-  // GLM-5.1-FP8 is a REASONING model - needs 60-120s to think before generating
-  // 180s timeout: 2 minutes for reasoning models (Modal GLM)
-  const timeoutMs = 180_000; // 3 minutes - give GLM time to think
+  // Cascade may reach NVIDIA MiniMax-M3 (reasoning model) — needs 60-120s
+  // 180s timeout: 2 minutes for reasoning models
+  const timeoutMs = 180_000; // 3 minutes - give reasoning models time to think
   const timeoutController = new AbortController();
   const timeoutId = setTimeout(() => {
     logger.warn("[Chatbot] Stream timeout (180s) - aborting request");
@@ -233,7 +233,7 @@ chatbotRouter.post("/stream", async (c) => {
     } catch (raceErr: any) {
       clearTimeout(timeoutId);
       logger.warn("[Chatbot] Stream race failed", { error: raceErr.message });
-      return c.json({ success: false, error: "Request timeout. GLM is thinking, please try again.", chatId: body.chatId }, 504);
+      return c.json({ success: false, error: "Request timeout. The assistant is thinking, please try again.", chatId: body.chatId }, 504);
     }
 
     if ("error" in result) {

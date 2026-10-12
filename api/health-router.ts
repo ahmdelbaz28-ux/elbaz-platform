@@ -145,11 +145,13 @@ healthRouter.get("/health", async (c) => {
     checks.email = { status: "unhealthy", latency_ms: 0, error: "Resend endpoint unreachable" };
   }
 
-  // 5. OpenRouter / AI Check — verify API key is set
+  // 5. AI Check — verify at least one chatbot provider key is set
   if (env.OPENROUTER_API_KEY) {
     checks.ai = { status: "healthy", latency_ms: 0, detail: "OPENROUTER_API_KEY configured" };
-  } else if (env.MODAL_API_KEY) {
-    checks.ai = { status: "healthy", latency_ms: 0, detail: "MODAL_API_KEY configured" };
+  } else if (env.NVIDIA_API_KEY) {
+    checks.ai = { status: "healthy", latency_ms: 0, detail: "NVIDIA_API_KEY configured" };
+  } else if (env.GROQ_API_KEY) {
+    checks.ai = { status: "healthy", latency_ms: 0, detail: "GROQ_API_KEY configured" };
   } else {
     checks.ai = { status: "degraded", latency_ms: 0, detail: "No AI provider configured" };
   }

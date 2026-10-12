@@ -37,13 +37,11 @@ const envSchema = z.object({
   PAYMOB_BASE_URL: z.string().default("https://accept.paymob.com"),
 
   // ── AI Chatbot providers ──────────────────────────────────────
-  // MODAL_API_KEY is the PRIMARY provider (zai-org/GLM-5.1-FP8 via Modal).
-  // GROQ_API_KEY is the SECONDARY provider (Llama, Qwen, Mistral on Groq).
-  // NVIDIA_API_KEY is TIER 2.5 (MiniMax-M3 on NVIDIA NGC).
-  // OPENROUTER_API_KEY is the FALLBACK provider (free model cascade).
-  MODAL_API_KEY: z.string().optional(),
-  GROQ_API_KEY: z.string().optional(),
+  // NVIDIA_API_KEY is the PRIMARY provider (minimaxai/minimax-m3 on NVIDIA NGC, free).
+  // OPENROUTER_API_KEY is the SECONDARY provider (22-model free cascade).
+  // GROQ_API_KEY is the TERTIARY provider (ultra-fast Llama/Qwen on Groq, free).
   NVIDIA_API_KEY: z.string().optional(),
+  GROQ_API_KEY: z.string().optional(),
   OPENROUTER_API_KEY: z.string().optional(),
 
   GOOGLE_CLIENT_ID: z.string().min(1, "GOOGLE_CLIENT_ID is required"),
