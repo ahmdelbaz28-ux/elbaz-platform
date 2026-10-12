@@ -38,19 +38,31 @@ const AI_ICONS: string[] = [
 ];
 
 function generateParticles(count: number): IconParticle[] {
+  // Deterministic seeded PRNG (mulberry32) instead of Math.random
+  // (SonarCloud S2245): the layout is purely decorative, so a fixed seed is
+  // strictly better — stable visuals across reloads and no
+  // crypto-strength expectations on a background animation.
+  let seed = 0x9e3779b9;
+  const rnd = (): number => {
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
   const particles: IconParticle[] = [];
   for (let i = 0; i < count; i++) {
     particles.push({
       id: i,
-      svg: AI_ICONS[Math.floor(Math.random() * AI_ICONS.length)],
-      size: Math.random() * 20 + 16,
-      x: Math.random() * 100,
-      y: Math.random() * 100,
-      duration: Math.random() * 25 + 15,
-      delay: Math.random() * -15,
-      opacity: Math.random() * 0.1 + 0.03,
-      amplitude: Math.random() * 40 + 30,
-      hue: Math.random() * 40 + 180,
+      svg: AI_ICONS[Math.floor(rnd() * AI_ICONS.length)],
+      size: rnd() * 20 + 16,
+      x: rnd() * 100,
+      y: rnd() * 100,
+      duration: rnd() * 25 + 15,
+      delay: rnd() * -15,
+      opacity: rnd() * 0.1 + 0.03,
+      amplitude: rnd() * 40 + 30,
+      hue: rnd() * 40 + 180,
     });
   }
   return particles;

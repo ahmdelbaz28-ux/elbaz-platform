@@ -454,7 +454,7 @@ async function handleRequest(request, _env, ctx) {
     const cachedResponse = await cache.match(cacheKey);
     if (cachedResponse) {
       // Serve from edge cache — instant!
-      return addSecurityHeaders(addCORSHeaders(cachedResponse, requestUrl), requestUrl);
+      return addSecurityHeaders(addCORSHeaders(cachedResponse), requestUrl);
     }
 
     // Not cached → fetch from origin, cache it, then serve
@@ -463,7 +463,7 @@ async function handleRequest(request, _env, ctx) {
       const originResponse = await fetch(originRequest);
       // ✅ SECURITY FIX (audit run-1): never pin non-success responses at the edge.
       if (!originResponse.ok) {
-        return addSecurityHeaders(addCORSHeaders(originResponse, requestUrl), requestUrl);
+        return addSecurityHeaders(addCORSHeaders(originResponse), requestUrl);
       }
       // Clone and add proper headers
       const newHeaders = new Headers(originResponse.headers);
@@ -477,7 +477,7 @@ async function handleRequest(request, _env, ctx) {
       });
 
       // Store in edge cache for 1 year (ctx.waitUntil ensures it completes)
-      const normalized = addSecurityHeaders(addCORSHeaders(responseToCache, requestUrl), requestUrl);
+      const normalized = addSecurityHeaders(addCORSHeaders(responseToCache), requestUrl);
       ctx.waitUntil(cache.put(cacheKey, normalized.clone()));
 
       return normalized;

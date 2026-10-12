@@ -201,6 +201,25 @@ function parseCookieHeader(cookieHeader: string): Map<string, string> {
 }
 
 /**
+ * Sanitize a redirect target so it can only ever be a same-origin relative
+ * path. Blocks absolute URLs, protocol-relative URLs (//host), backslashes
+ * (\\host and /\/host tricks) and control characters — the standard fix for
+ * SonarCloud S5146 (Open Redirect via unsanitized user input). Anything that
+ * fails validation falls back to the safe root path.
+ */
+function safeInternalRedirect(target: string): string {
+  if (!target || target.length > 2048) return "/";
+  // Strip control characters (incl. CR/LF — header & redirect smuggling).
+  // eslint-disable-next-line no-control-regex
+  const cleaned = target.replace(/[\x00-\x1F\x7F]/g, "");
+  // Must start with exactly one "/" and must NOT start with "/" or "\" twice,
+  // must not contain "://", must not be scheme-relative.
+  if (!cleaned.startsWith("/") || cleaned.startsWith("//") || cleaned.startsWith("/\\")) return "/";
+  if (cleaned.includes("://") || cleaned.includes("\\") || /[\s"'<>]/.test(cleaned)) return "/";
+  return cleaned;
+}
+
+/**
  * Verify the OAuth state parameter against the cookie-stored value (CSRF protection).
  * Returns an error redirect string if validation fails, or null on success.
  */
@@ -316,7 +335,7 @@ googleAuthRouter.get("/callback", async (c) => { // NOSONAR — complex function
       // ✅ SECURITY FIX (audit run-1): consume the state cookie on EVERY exit
       // so a state value cannot be reused after an error round-trip.
       c.header("Set-Cookie", "google_oauth_state=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0");
-      return c.redirect(`/?google_error=${encodeURIComponent(error)}`);
+      return c.redirect(safeInternalRedirect(`/?google_error=${encodeURIComponent(error)}`));
     }
 
     if (!code || !state) {
@@ -327,7 +346,7 @@ googleAuthRouter.get("/callback", async (c) => { // NOSONAR — complex function
 
     // Verify state (CSRF protection)
     const stateError = verifyOAuthState(c, state);
-    if (stateError) return c.redirect(stateError);
+    if (stateError) return c.redirect(safeInternalRedirect(stateError));
 
     // Clear the state cookie
     c.header("Set-Cookie", "google_oauth_state=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0");
@@ -338,7 +357,7 @@ googleAuthRouter.get("/callback", async (c) => { // NOSONAR — complex function
     // Exchange authorization code for tokens
     const tokenResult = await exchangeCodeForTokens(code, state, redirectUri);
     if ("errorRedirect" in tokenResult) {
-      return c.redirect(tokenResult.errorRedirect);
+      return c.redirect(safeInternalRedirect(tokenResult.errorRedirect));
     }
 
     const tokens = tokenResult;
