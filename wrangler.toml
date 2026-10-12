@@ -1,0 +1,22 @@
+# Wrangler configuration for the Cloudflare Workers dashboard build
+# ("Workers Builds: ahmedelbaz" GitHub check).
+#
+# CONTEXT (see .github/workflows/deploy-cf-worker.yml):
+#   The primary deploy path is deploy-cf-worker.yml (Cloudflare REST API,
+#   full control over bindings incl. EDGE_ORIGIN_SECRET). The dashboard's
+#   git-integration build kept failing at the "Deploying" step because it
+#   runs `npx wrangler versions upload`, which requires this wrangler.toml.
+#   Adding it turns that redundant check green and makes it deploy the exact
+#   same single-source worker file.
+#
+# SAFETY:
+#   keep_vars = true  → existing bindings (EDGE_ORIGIN_SECRET secret_text,
+#   provisioned by the deploy workflow) are PRESERVED on dashboard builds;
+#   without it, a wrangler upload would silently drop the edge→origin HMAC
+#   binding and re-open the direct-to-origin bypass door.
+
+name = "ahmedelbaz"
+main = "infra/security-audit/worker-v7-hardened.js"
+compatibility_date = "2025-09-23"
+compatibility_flags = []
+keep_vars = true
