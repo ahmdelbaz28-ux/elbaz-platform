@@ -32,7 +32,8 @@
     "electron:start": "electron electron/main.cjs",
     "electron:build": "npm run build && electron-builder",
     "deploy:worker": "wrangler deploy --name ahmedelbaz --compatibility-date 2025-09-23 infra/security-audit/worker-v7-hardened.js",
-    "deploy:worker:dry": "wrangler deploy --dry-run --name ahmedelbaz --compatibility-date 2025-09-23 infra/security-audit/worker-v7-hardened.js"
+    "deploy:worker:dry": "wrangler deploy --dry-run --name ahmedelbaz --compatibility-date 2025-09-23 infra/security-audit/worker-v7-hardened.js",
+    "lint:json": "eslint . --format json --output-file eslint-report.json"
   },
   "main": "electron/main.cjs",
   "build": {

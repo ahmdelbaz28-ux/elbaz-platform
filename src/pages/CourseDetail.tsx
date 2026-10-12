@@ -200,7 +200,9 @@ const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVid
   const handleFullscreen = useCallback(() => {
     if (!containerRef.current) return;
     if (document.fullscreenElement) {
-      document.exitFullscreen();
+      document.exitFullscreen().catch(() => {
+        // Intentionally ignored: exiting fullscreen can reject if already exited (S9383).
+      });
     } else {
       containerRef.current.requestFullscreen();
     }
@@ -269,13 +271,18 @@ const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVid
     const sourceUrl = isHls ? hlsUrl! : videoUrl;
 
     if (isHls) {
-      import("@/lib/hls-loader").then(({ loadHlsVideo }) => {
-        hlsControllerRef.current = loadHlsVideo({
-          video,
-          sourceUrl,
-          fallbackUrl: videoUrl,
+      import("@/lib/hls-loader")
+        .then(({ loadHlsVideo }) => {
+          hlsControllerRef.current = loadHlsVideo({
+            video,
+            sourceUrl,
+            fallbackUrl: videoUrl,
+          });
+        })
+        .catch(() => {
+          // HLS module failed to load — fall back to native video playback (S9383).
+          video.src = videoUrl;
         });
-      });
     } else {
       video.src = sourceUrl;
     }

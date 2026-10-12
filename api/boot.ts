@@ -331,9 +331,14 @@ app.onError(async (err, c) => {
 
   // 🧠 Elite AI Diagnosis: Analyze the crash in background
   if (env.NODE_ENV === "production") {
-    import("./lib/ai-diagnostics.js").then(({ diagnoseError }) => {
-      diagnoseError(err, `Request ID: ${requestId} | Path: ${c.req.path}`);
-    });
+    import("./lib/ai-diagnostics.js")
+      .then(({ diagnoseError }) => {
+        // Diagnostics are best-effort — never let them crash the error path (S9383).
+        return diagnoseError(err, `Request ID: ${requestId} | Path: ${c.req.path}`).catch(() => {});
+      })
+      .catch(() => {
+        // Intentionally ignored: diagnostics module unavailable — error handling continues.
+      });
   }
 
   if (env.SENTRY_DSN && env.NODE_ENV === "production") {

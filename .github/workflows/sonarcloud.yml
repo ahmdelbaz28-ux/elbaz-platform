@@ -51,15 +51,15 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci --no-audit --no-fund
+        run: npm ci --ignore-scripts --no-audit --no-fund  # S6505: no lifecycle scripts in CI (esbuild uses optional-dep binaries)
 
       - name: Run TypeScript type check
-        run: npx tsc -b --noEmit
+        run: npm run check  # was: npx tsc -b --noEmit (S8543: no unpinned npx)
         continue-on-error: true
         id: tsc
 
       - name: Run ESLint (generate report)
-        run: npx eslint . --format json --output-file eslint-report.json || true
+        run: npm run lint:json || true  # was: npx eslint ... (S8543)
         continue-on-error: true
         id: eslint
 
@@ -69,7 +69,7 @@ jobs:
           APP_SECRET: test-secret-not-for-production-minimum-32-chars
           OPENROUTER_API_KEY: sk-or-v1-test-key-for-ci-only
           DATABASE_URL: mysql2://test:test@localhost:3306/test
-        run: npx vitest run --coverage --reporter=verbose
+        run: npm run test:coverage -- --reporter=verbose  # was: npx vitest ... (S8543)
         continue-on-error: true
         id: tests
 
@@ -83,7 +83,7 @@ jobs:
 
       - name: SonarCloud Scan
         if: env.SONAR_TOKEN != ''
-        uses: SonarSource/sonarqube-scan-action@master
+        uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0 — pinned by full SHA (S7637)
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

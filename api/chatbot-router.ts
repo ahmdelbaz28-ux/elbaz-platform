@@ -255,8 +255,12 @@ chatbotRouter.post("/stream", async (c) => {
 
     const combinedStream = createCombinedStream(modelEvent, state);
 
-    // Pipe the actual content stream in background (non-blocking)
-    pipeStreamToController(result.stream, state);
+    // Pipe the actual content stream in background (non-blocking).
+    // .catch: belt-and-braces — the piper handles its own errors internally,
+    // but an unhandled rejection here would crash the Node process (S9383).
+    pipeStreamToController(result.stream, state).catch(() => {
+      // Intentionally ignored: stream piper already finalizes `state` on error.
+    });
 
     return new Response(combinedStream, {
       status: 200,
