@@ -367,6 +367,8 @@ export const INSTANT_FAST_MODELS = [
   "google/gemma-4-26b-a4b-it:free",                    // MoE A4B — fastest capable
   "qwen/qwen3-next-80b-a3b-instruct:free",             // MoE A3B
   "nvidia/nemotron-3-nano-30b-a3b:free",               // MoE A3B (non-reasoning)
+  "z-ai/glm-4.5-air:free",                             // MoE air — lightweight
+  "minimax/minimax-m2.5:free",                         // MoE — light
   // NOTE: nemotron-3-nano-omni-...-reasoning is deliberately excluded —
   // reasoning models burn the whole 1024-token instant budget on internal
   // reasoning and can return zero content (observed live 2026-10-12).
