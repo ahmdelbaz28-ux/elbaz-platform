@@ -2,22 +2,25 @@
  * CHATBOT STREAMING — SSE streaming responses for all providers
  *
  * Contains:
- *   - Provider selection for streaming (pickWorkingModel)
+ *   - Provider selection for streaming (pickWorkingModel) — mode-aware routing:
+ *       thinking → NVIDIA → OpenRouter → Groq (strongest first)
+ *       instant  → Groq → NVIDIA → OpenRouter (fastest first)
  *   - SSE stream processing helpers
  *   - NVIDIA streaming (MiniMax-M3, strongest free model)
  *   - Groq streaming with model cascade
  *   - OpenRouter streaming
  *   - getStreamResponse() — main streaming entry point
  *
- * Cascade order mirrors chatbot.ts: NVIDIA → OpenRouter (tier 1) → Groq →
- * non-streaming fallback sweeps. Modal was removed (service permanently 503).
+ * Each mode carries its own ModeTuning (prompt, temperature, max_tokens,
+ * timeouts) from MODE_TUNING in chatbot-prompts.ts, threaded through every
+ * provider call and fallback chain.
  *
  * All non-streaming provider logic (config, health tracking, tryNvidia/tryGroq,
  * openRouterFallback, getChatResponse) lives in chatbot.ts.
  * System prompts live in chatbot-prompts.ts.
  */
 
-import { getSystemPrompt } from "./chatbot-prompts.js";
+import { getSystemPrompt, MODE_TUNING, type ModeTuning } from "./chatbot-prompts.js";
 import { logger } from "./logger.js";
 import {
   // ── Config constants ──
@@ -54,36 +57,47 @@ import {
 // ════════════════════════════════════════════════════════════════════════
 
 /**
+ * Provider selection result — carries the mode tuning so every provider
+ * call and fallback uses the same temperature / max_tokens / timeouts.
+ */
+type PickedProvider = {
+  provider: "nvidia" | "groq" | "openrouter";
+  modelId: string;
+  systemPrompt: string;
+  tuning: ModeTuning;
+};
+
+/**
  * Try to pick the NVIDIA provider if available (strongest free model).
  */
-async function tryPickNvidiaProvider(systemPrompt: string): Promise<{ provider: "nvidia"; modelId: string; systemPrompt: string } | null> {
+async function tryPickNvidiaProvider(systemPrompt: string, tuning: ModeTuning): Promise<PickedProvider | null> {
   if (!nvidiaIsAvailable()) return null;
   if (chatHealth.nvidiaKeyValid === null) {
     await validateNvidiaKey();
   }
   if (!nvidiaIsAvailable()) return null;
   logger.info(`[Chatbot] Using TIER 1: ${NVIDIA_MODEL} (NVIDIA)`);
-  return { provider: "nvidia", modelId: NVIDIA_MODEL, systemPrompt };
+  return { provider: "nvidia", modelId: NVIDIA_MODEL, systemPrompt, tuning };
 }
 
 /**
  * Try to pick the Groq provider if available.
  */
-async function tryPickGroqProvider(systemPrompt: string): Promise<{ provider: "groq"; modelId: string; systemPrompt: string } | null> {
+async function tryPickGroqProvider(systemPrompt: string, tuning: ModeTuning): Promise<PickedProvider | null> {
   if (!groqIsAvailable()) return null;
   if (chatHealth.groqKeyValid === null) {
     await validateGroqKey();
   }
   if (!groqIsAvailable()) return null;
   const modelId = GROQ_MODELS[chatHealth.groqCurrentModelIndex] || GROQ_MODELS[0];
-  logger.info(`[Chatbot] Using TIER 3: ${modelId} (Groq)`);
-  return { provider: "groq", modelId, systemPrompt };
+  logger.info(`[Chatbot] Using TIER: ${modelId} (Groq — fastest)`);
+  return { provider: "groq", modelId, systemPrompt, tuning };
 }
 
 /**
  * Try to pick an OpenRouter provider (last working model or best tier-1).
  */
-async function tryPickOpenRouterProvider(systemPrompt: string): Promise<{ provider: "openrouter"; modelId: string; systemPrompt: string } | null> {
+async function tryPickOpenRouterProvider(systemPrompt: string, tuning: ModeTuning): Promise<PickedProvider | null> {
   if (!chatHealth.openrouterKeyValidated) {
     await validateOpenRouterKey();
   }
@@ -93,7 +107,7 @@ async function tryPickOpenRouterProvider(systemPrompt: string): Promise<{ provid
   if (chatHealth.lastWorkingModel && (Date.now() - chatHealth.lastWorkingTime) < 600000) {
     if ((modelFailCount[chatHealth.lastWorkingModel] || 0) < 3) {
       logger.info("[Chatbot] Using last working OpenRouter model", { model: chatHealth.lastWorkingModel });
-      return { provider: "openrouter", modelId: chatHealth.lastWorkingModel, systemPrompt };
+      return { provider: "openrouter", modelId: chatHealth.lastWorkingModel, systemPrompt, tuning };
     }
   }
 
@@ -101,7 +115,7 @@ async function tryPickOpenRouterProvider(systemPrompt: string): Promise<{ provid
   const bestModel = AI_MODELS.find(m => m.tier === 1);
   if (bestModel) {
     logger.info("[Chatbot] Using best OpenRouter model", { model: bestModel.id });
-    return { provider: "openrouter", modelId: bestModel.id, systemPrompt };
+    return { provider: "openrouter", modelId: bestModel.id, systemPrompt, tuning };
   }
 
   return null;
@@ -110,26 +124,35 @@ async function tryPickOpenRouterProvider(systemPrompt: string): Promise<{ provid
 export async function pickWorkingModel(
   _messages: { role: string; content: string }[],
   language?: string,
-  _mode: "thinking" | "instant" = "thinking"
-): Promise<
-  | { provider: "nvidia"; modelId: string; systemPrompt: string }
-  | { provider: "groq"; modelId: string; systemPrompt: string }
-  | { provider: "openrouter"; modelId: string; systemPrompt: string }
-  | null
-> {
-  const systemPrompt = getSystemPrompt(language);
+  mode: "thinking" | "instant" = "thinking"
+): Promise<PickedProvider | null> {
+  const tuning = mode === "instant" ? MODE_TUNING.instant : MODE_TUNING.thinking;
+  const systemPrompt = getSystemPrompt(language, mode);
 
-  // ─── TIER 1: NVIDIA MiniMax-M3 — strongest free reasoning model ───
-  const nvidiaPick = await tryPickNvidiaProvider(systemPrompt);
+  if (mode === "instant") {
+    // ─── INSTANT: fastest first — Groq → NVIDIA → OpenRouter ───
+    const groqPick = await tryPickGroqProvider(systemPrompt, tuning);
+    if (groqPick) return groqPick;
+
+    const nvidiaPick = await tryPickNvidiaProvider(systemPrompt, tuning);
+    if (nvidiaPick) return nvidiaPick;
+
+    logger.warn("[Chatbot] Groq + NVIDIA unavailable — using OpenRouter for instant mode");
+    const openRouterPick = await tryPickOpenRouterProvider(systemPrompt, tuning);
+    if (openRouterPick) return openRouterPick;
+
+    return null;
+  }
+
+  // ─── THINKING: strongest first — NVIDIA → OpenRouter → Groq ───
+  const nvidiaPick = await tryPickNvidiaProvider(systemPrompt, tuning);
   if (nvidiaPick) return nvidiaPick;
 
-  // ─── TIER 2: OpenRouter — last-working model or best tier-1 free model ───
-  const openRouterPick = await tryPickOpenRouterProvider(systemPrompt);
+  const openRouterPick = await tryPickOpenRouterProvider(systemPrompt, tuning);
   if (openRouterPick) return openRouterPick;
 
-  // ─── TIER 3: Groq — ultra-fast models (absorbs rate limits) ───
-  logger.warn("[Chatbot] NVIDIA + OpenRouter unavailable — using TIER 3: Groq");
-  const groqPick = await tryPickGroqProvider(systemPrompt);
+  logger.warn("[Chatbot] NVIDIA + OpenRouter unavailable — using Groq for thinking mode");
+  const groqPick = await tryPickGroqProvider(systemPrompt, tuning);
   if (groqPick) return groqPick;
 
   return null;
@@ -224,7 +247,7 @@ async function pumpNvidiaStream(
   encoder: TextEncoder,
   controller: ReadableStreamDefaultController<Uint8Array>,
   request: { messages: { role: string; content: string }[]; language?: string },
-  picked: { systemPrompt: string },
+  picked: PickedProvider,
 ): Promise<void> {
   const reader = upstream.getReader();
   const state = { sawContent: false, streamClosed: false };
@@ -254,11 +277,11 @@ async function pumpNvidiaStream(
 
   if (!state.sawContent) {
     logger.warn("[Chatbot/Stream] NVIDIA returned no content — trying OpenRouter then Groq...");
-    const fbOR = await openRouterFallback(request.messages, picked.systemPrompt, request.language);
+    const fbOR = await openRouterFallback(request.messages, picked.systemPrompt, request.language, picked.tuning);
     if (fbOR) {
       try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: fbOR.reply })}\n\n`)); } catch { /* controller already closed */ }
     } else {
-      const fbGroq = await groqFallback(request.messages, picked.systemPrompt);
+      const fbGroq = await groqFallback(request.messages, picked.systemPrompt, picked.tuning);
       if (fbGroq) {
         try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: fbGroq.reply })}\n\n`)); } catch { /* controller already closed */ }
       }
@@ -280,7 +303,7 @@ async function pumpNvidiaStream(
  */
 async function streamNvidiaProvider(
   request: { messages: { role: string; content: string }[]; language?: string },
-  picked: { modelId: string; systemPrompt: string },
+  picked: PickedProvider,
   encoder: TextEncoder,
 ): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
   let response: Response | null = null;
@@ -297,11 +320,11 @@ async function streamNvidiaProvider(
           { role: "system", content: picked.systemPrompt },
           ...request.messages.map((m) => ({ role: m.role, content: m.content })),
         ],
-        temperature: 0.7,
-        max_tokens: 2048,
+        temperature: picked.tuning.temperature,
+        max_tokens: picked.tuning.maxTokens,
         stream: true,
       }),
-      signal: AbortSignal.timeout(120000),
+      signal: AbortSignal.timeout(picked.tuning.nvidiaStreamTimeoutMs),
     });
   } catch (e) {
     chatHealth.nvidiaConsecFails++;
@@ -318,11 +341,11 @@ async function streamNvidiaProvider(
       chatHealth.nvidiaLastFailTime = Date.now();
     }
     logger.warn(`[Chatbot/Stream/NVIDIA] failed (HTTP ${response?.status ?? "no-response"}) — falling back to OpenRouter stream.`);
-    const orPick = await tryPickOpenRouterProvider(picked.systemPrompt);
+    const orPick = await tryPickOpenRouterProvider(picked.systemPrompt, picked.tuning);
     if (orPick) {
       return await streamOpenRouterProvider(request, orPick, encoder);
     }
-    return await streamGroqProvider(request, { systemPrompt: picked.systemPrompt }, encoder);
+    return await streamGroqProvider(request, { provider: "groq", modelId: "", systemPrompt: picked.systemPrompt, tuning: picked.tuning }, encoder);
   }
 
   // SUCCESS
@@ -384,7 +407,7 @@ function buildSSEContentTransformStream(encoder: TextEncoder): TransformStream<U
  */
 async function tryGroqStreamFetch(
   request: { messages: { role: string; content: string }[] },
-  picked: { systemPrompt: string },
+  picked: PickedProvider,
   modelId: string,
   timeout: number,
   attempt: number,
@@ -403,8 +426,8 @@ async function tryGroqStreamFetch(
           { role: "system", content: picked.systemPrompt },
           ...request.messages.map((m) => ({ role: m.role, content: m.content })),
         ],
-        temperature: 0.7,
-        max_tokens: 2048,
+        temperature: picked.tuning.temperature,
+        max_tokens: picked.tuning.maxTokens,
         stream: true,
       }),
       signal: AbortSignal.timeout(timeout),
@@ -443,13 +466,15 @@ async function evaluateGroqStreamResponse(
 
 /**
  * Groq stream — try each Groq model in cascade.
+ * Per-attempt timeouts come from the mode tuning (instant: 12s/20s,
+ * thinking: 60s/90s).
  */
 async function streamGroqProvider(
   request: { messages: { role: string; content: string }[]; language?: string },
-  picked: { systemPrompt: string },
+  picked: PickedProvider,
   encoder: TextEncoder,
 ): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
-  const timeouts = [60000, 90000]; // 1min, 1.5min with backoff
+  const timeouts: number[] = [picked.tuning.groqStreamTimeouts[0], picked.tuning.groqStreamTimeouts[1]];
 
   for (let i = 0; i < GROQ_MODELS.length; i++) {
     const modelId = GROQ_MODELS[i];
@@ -483,7 +508,7 @@ async function streamGroqProvider(
 
   // All Groq models failed
   logger.error("[Chatbot/Stream] All Groq models exhausted — falling back to OpenRouter.");
-  return await streamOpenRouterFallback(request, picked.systemPrompt);
+  return await streamOpenRouterFallback(request, picked.systemPrompt, picked.tuning);
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -496,7 +521,7 @@ async function streamGroqProvider(
  */
 async function streamOpenRouterProvider(
   request: { messages: { role: string; content: string }[]; language?: string },
-  picked: { modelId: string; systemPrompt: string },
+  picked: PickedProvider,
   encoder: TextEncoder,
 ): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
   const candidates: string[] = [picked.modelId];
@@ -520,11 +545,11 @@ async function streamOpenRouterProvider(
             { role: "system", content: picked.systemPrompt },
             ...request.messages.map((m) => ({ role: m.role, content: m.content })),
           ],
-          temperature: 0.7,
-          max_tokens: 2048,
+          temperature: picked.tuning.temperature,
+          max_tokens: picked.tuning.maxTokens,
           stream: true,
         }),
-        signal: AbortSignal.timeout(120000),
+        signal: AbortSignal.timeout(picked.tuning.openRouterStreamTimeoutMs),
       });
 
       if (!response.ok || !response.body) {
@@ -569,19 +594,20 @@ function singleChunkStream(reply: string, encoder: TextEncoder): ReadableStream<
  */
 async function streamOpenRouterFallback(
   request: { messages: { role: string; content: string }[]; language?: string },
-  systemPrompt: string
+  systemPrompt: string,
+  tuning: ModeTuning = MODE_TUNING.thinking,
 ): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
   const encoder = new TextEncoder();
 
-  const orResult = await openRouterFallback(request.messages, systemPrompt, request.language);
+  const orResult = await openRouterFallback(request.messages, systemPrompt, request.language, tuning);
   if (orResult) return { stream: singleChunkStream(orResult.reply, encoder), model: orResult.model };
 
   logger.error("[Chatbot/Stream] OpenRouter fallback failed — trying Groq non-streaming.");
-  const groqResult = await groqFallback(request.messages, systemPrompt);
+  const groqResult = await groqFallback(request.messages, systemPrompt, tuning);
   if (groqResult) return { stream: singleChunkStream(groqResult.reply, encoder), model: groqResult.model };
 
   logger.error("[Chatbot/Stream] Groq also failed — trying NVIDIA non-streaming.");
-  const nvidiaResult = await nvidiaFallback(request.messages, systemPrompt);
+  const nvidiaResult = await nvidiaFallback(request.messages, systemPrompt, tuning);
   if (nvidiaResult) return { stream: singleChunkStream(nvidiaResult.reply, encoder), model: nvidiaResult.model };
 
   return {

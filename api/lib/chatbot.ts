@@ -1,19 +1,22 @@
 /**
- * GENIUS CHATBOT — FREE-provider cascade, strongest model first
+ * GENIUS CHATBOT — FREE-provider cascade, mode-aware routing
  *
  * Strategy (Modal removed 2026-10: service permanently 503 — replaced by
- * a fully-free, quality-ordered cascade over NVIDIA + OpenRouter + Groq):
- *   1. PRIMARY:   NVIDIA — minimaxai/minimax-m3 (230B MoE reasoning, strongest free)
- *   2. SECONDARY: OpenRouter — 22 free models, tier 1 (strongest) → tier 2, with
- *                 last-working-model shortcut and 3-strike model skipping
- *   3. TERTIARY:  Groq — llama-3.3-70b → qwen3-32b → llama-4-scout → llama-3.1-8b
- *                 (ultra-fast, absorbs OpenRouter free-tier rate limits)
+ * a fully-free cascade over NVIDIA + OpenRouter + Groq):
+ *   1. NVIDIA     — minimaxai/minimax-m3 (230B MoE reasoning, strongest free)
+ *   2. OpenRouter — 22 free models, tier 1 (strongest) → tier 2, with
+ *                   last-working-model shortcut and 3-strike model skipping
+ *   3. Groq       — llama-3.3-70b → qwen3-32b → llama-4-scout → llama-3.1-8b
+ *                   (ultra-fast, absorbs OpenRouter free-tier rate limits)
  *   4. SAFETY NET: full OpenRouter sweep ignoring per-model fail counters —
- *                 guarantees the user ALWAYS gets a reply if ANY model works.
+ *                   guarantees the user ALWAYS gets a reply if ANY model works.
  *
- * The "mode" parameter (thinking|instant) is accepted for API compatibility.
- * Both modes now use the same quality-first cascade — Modal was the only
- * provider that differed between them, and it is gone.
+ * MODES (thinking | instant) are now genuinely different:
+ *   thinking → DEEP prompt + temp 0.3 + 4096 tokens + strongest-first routing
+ *              (NVIDIA → OpenRouter → Groq)
+ *   instant  → CONCISE prompt + temp 0.7 + 1024 tokens + fastest-first routing
+ *              (Groq → NVIDIA → OpenRouter) + short fail-fast timeouts
+ *   Tuning table: MODE_TUNING in chatbot-prompts.ts.
  *
  * The user never sees which provider answered, never sees any error, and never
  * sees internal reasoning. If all tiers fail, a friendly error is shown.
@@ -21,11 +24,11 @@
  * ARCHITECTURE:
  *   chatbot.ts        — Config, health tracking, non-streaming provider functions, getChatResponse
  *   chatbot-stream.ts — SSE streaming for all providers, getStreamResponse, pickWorkingModel
- *   chatbot-prompts.ts — System prompt builder (getSystemPrompt)
+ *   chatbot-prompts.ts — System prompt builder (getSystemPrompt) + MODE_TUNING
  */
 
 import { env } from "../lib/env";
-import { getSystemPrompt } from "./chatbot-prompts.js";
+import { getSystemPrompt, MODE_TUNING, type ChatbotMode, type ModeTuning } from "./chatbot-prompts.js";
 import { logger } from "./logger.js";
 
 // ════════════════════════════════════════════════════════════════════════
@@ -159,7 +162,8 @@ export async function tryGroq(
   messages: { role: string; content: string }[],
   systemPrompt: string,
   modelId: string,
-  timeoutMs: number
+  timeoutMs: number,
+  tuning: ModeTuning = MODE_TUNING.thinking,
 ): Promise<{ reply: string; model: string } | null> {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   try {
@@ -179,8 +183,8 @@ export async function tryGroq(
           { role: "system", content: systemPrompt },
           ...messages.map((m) => ({ role: m.role, content: m.content })),
         ],
-        temperature: 0.7,
-        max_tokens: 2048,
+        temperature: tuning.temperature,
+        max_tokens: tuning.maxTokens,
       }),
     });
 
@@ -260,7 +264,8 @@ export function nvidiaIsAvailable(): boolean {
 export async function tryNvidia(
   messages: { role: string; content: string }[],
   systemPrompt: string,
-  timeoutMs: number
+  timeoutMs: number,
+  tuning: ModeTuning = MODE_TUNING.thinking,
 ): Promise<{ reply: string; model: string } | null> {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   try {
@@ -280,8 +285,8 @@ export async function tryNvidia(
           { role: "system", content: systemPrompt },
           ...messages.map((m) => ({ role: m.role, content: m.content })),
         ],
-        temperature: 0.7,
-        max_tokens: 2048,
+        temperature: tuning.temperature,
+        max_tokens: tuning.maxTokens,
       }),
     });
 
@@ -335,10 +340,12 @@ export async function tryNvidia(
 
 export async function nvidiaFallback(
   messages: { role: string; content: string }[],
-  systemPrompt: string
+  systemPrompt: string,
+  tuning?: ModeTuning
 ): Promise<{ reply: string; model: string } | null> {
   if (!nvidiaIsAvailable()) return null;
-  const result = await tryNvidia(messages, systemPrompt, 30000);
+  const t = tuning ?? MODE_TUNING.thinking;
+  const result = await tryNvidia(messages, systemPrompt, Math.max(30000, Math.round(t.nvidiaStreamTimeoutMs / 2)), t);
   return result;
 }
 
@@ -387,7 +394,8 @@ export async function tryModel(
   modelId: string,
   messages: { role: string; content: string }[],
   systemPrompt: string,
-  timeoutMs: number
+  timeoutMs: number,
+  tuning: ModeTuning = MODE_TUNING.thinking,
 ): Promise<{ reply: string; model: string } | null> {
   let controller: AbortController | null = null;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -411,8 +419,8 @@ export async function tryModel(
           { role: "system", content: systemPrompt },
           ...messages.map((m) => ({ role: m.role, content: m.content })),
         ],
-        temperature: 0.7,
-        max_tokens: 2048,
+        temperature: tuning.temperature,
+        max_tokens: tuning.maxTokens,
       }),
     });
 
@@ -460,11 +468,12 @@ export async function tryLastWorkingModel(
   messages: { role: string; content: string }[],
   systemPrompt: string,
   tierTimeouts: Record<number, number>,
+  tuning?: ModeTuning,
 ): Promise<{ reply: string; model: string } | null> {
   if (!chatHealth.lastWorkingModel) return null;
   if ((Date.now() - chatHealth.lastWorkingTime) >= 300000) return null;
   if ((modelFailCount[chatHealth.lastWorkingModel] || 0) >= 3) return null;
-  return await tryModel(chatHealth.lastWorkingModel, messages, systemPrompt, tierTimeouts[1]);
+  return await tryModel(chatHealth.lastWorkingModel, messages, systemPrompt, tierTimeouts[1], tuning);
 }
 
 export async function tryModelsByTier(
@@ -473,6 +482,7 @@ export async function tryModelsByTier(
   tierTimeouts: Record<number, number>,
   globalStartTime: number,
   globalTimeoutMs: number,
+  tuning?: ModeTuning,
 ): Promise<{ reply: string; model: string } | null> {
   for (let tier = 1; tier <= 4; tier++) {
     let tierTried = 0;
@@ -485,7 +495,7 @@ export async function tryModelsByTier(
         continue;
       }
       tierTried++;
-      const result = await tryModel(model.id, messages, systemPrompt, tierTimeouts[tier]);
+      const result = await tryModel(model.id, messages, systemPrompt, tierTimeouts[tier], tuning);
       if (result) return result;
     }
 
@@ -501,11 +511,12 @@ export async function tryModelsByTier(
 export async function tryAllModelsAsLastResort(
   messages: { role: string; content: string }[],
   systemPrompt: string,
+  tuning?: ModeTuning,
 ): Promise<{ reply: string; model: string } | null> {
   logger.warn("[Chatbot/OpenRouter] All tiers exhausted with skips. Trying all models as last resort...");
   for (const model of AI_MODELS) {
     modelFailCount[model.id] = 0;
-    const result = await tryModel(model.id, messages, systemPrompt, 10000);
+    const result = await tryModel(model.id, messages, systemPrompt, 10000, tuning);
     if (result) return result;
   }
   return null;
@@ -514,9 +525,10 @@ export async function tryAllModelsAsLastResort(
 export async function openRouterFallback(
   messages: { role: string; content: string }[],
   systemPrompt: string,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _language?: string
+  _language?: string,
+  tuning?: ModeTuning
 ): Promise<{ reply: string; model: string } | null> {
+  const t = tuning ?? MODE_TUNING.thinking;
   if (!chatHealth.openrouterKeyValidated) {
     await validateOpenRouterKey();
   }
@@ -528,22 +540,14 @@ export async function openRouterFallback(
   }
 
   const globalStartTime = Date.now();
-  const GLOBAL_TIMEOUT_MS = 60000;
 
-  const TIER_TIMEOUTS: Record<number, number> = {
-    1: 20000,
-    2: 15000,
-    3: 10000,
-    4: 8000,
-  };
-
-  const lastResult = await tryLastWorkingModel(messages, systemPrompt, TIER_TIMEOUTS);
+  const lastResult = await tryLastWorkingModel(messages, systemPrompt, t.openRouterTierTimeouts, t);
   if (lastResult) return lastResult;
 
-  const tierResult = await tryModelsByTier(messages, systemPrompt, TIER_TIMEOUTS, globalStartTime, GLOBAL_TIMEOUT_MS);
+  const tierResult = await tryModelsByTier(messages, systemPrompt, t.openRouterTierTimeouts, globalStartTime, t.openRouterGlobalTimeoutMs, t);
   if (tierResult) return tierResult;
 
-  const lastResort = await tryAllModelsAsLastResort(messages, systemPrompt);
+  const lastResort = await tryAllModelsAsLastResort(messages, systemPrompt, t);
   if (lastResort) return lastResort;
 
   return null;
@@ -582,7 +586,8 @@ function buildAllTiersFailedResponse(language?: string): { success: boolean; err
 
 export async function tryGroqTier(
   messages: { role: string; content: string }[],
-  systemPrompt: string
+  systemPrompt: string,
+  tuning: ModeTuning = MODE_TUNING.thinking
 ): Promise<{ success: boolean; reply?: string; model?: string } | null> {
   if (!groqIsAvailable()) {
     logger.info("[Chatbot] Groq not available (no key or cooldown).");
@@ -593,14 +598,15 @@ export async function tryGroqTier(
   }
   if (!groqIsAvailable()) return null;
 
+  const [firstTimeout, retryTimeout] = tuning.groqAttemptTimeouts;
   for (let i = 0; i < GROQ_MODELS.length; i++) {
     chatHealth.groqCurrentModelIndex = i;
     const modelId = GROQ_MODELS[i];
 
-    let result = await tryGroq(messages, systemPrompt, modelId, 45000);
+    let result = await tryGroq(messages, systemPrompt, modelId, firstTimeout, tuning);
     if (result) return buildSuccessResult(result);
 
-    result = await tryGroq(messages, systemPrompt, modelId, 60000);
+    result = await tryGroq(messages, systemPrompt, modelId, retryTimeout, tuning);
     if (result) return buildSuccessResult(result);
 
     logger.warn(`[Chatbot] Groq/${modelId} failed after 2 attempts — trying next model...`);
@@ -611,12 +617,20 @@ export async function tryGroqTier(
 }
 
 /**
- * MAIN non-streaming cascade — strongest free model first:
- *   1. NVIDIA MiniMax-M3 (230B MoE reasoning — skipped instantly if no key)
- *   2. OpenRouter: last-working shortcut → 22 models tier1→tier2 →
- *      full last-resort sweep (fail counters reset) — all inside openRouterFallback
- *   3. Groq: 5 ultra-fast models × 2 attempts
+ * MAIN non-streaming cascade — mode-aware routing:
  *
+ *   thinking (default) — STRONGEST first (accuracy matters most):
+ *     1. NVIDIA MiniMax-M3 (230B MoE reasoning — skipped instantly if no key)
+ *     2. OpenRouter: last-working shortcut → 22 models tier1→tier2 →
+ *        full last-resort sweep (fail counters reset) — all inside openRouterFallback
+ *     3. Groq: 5 ultra-fast models × 2 attempts
+ *
+ *   instant — FASTEST first (latency matters most):
+ *     1. Groq: ultra-fast models with short 12s/20s timeouts
+ *     2. NVIDIA MiniMax-M3
+ *     3. OpenRouter sweep (short fail-fast timeouts)
+ *
+ * Each mode gets its own system prompt + generation params (MODE_TUNING).
  * If every provider fails, a friendly error is returned. As long as ANY of the
  * three free providers has one working model, the user gets a reply.
  */
@@ -625,26 +639,41 @@ export async function getChatResponse(request: {
   language?: string;
   mode?: "thinking" | "instant";
 }): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
-  const systemPrompt = getSystemPrompt(request.language);
-  // `mode` is accepted for API compatibility; both modes share the same
-  // quality-first cascade since Modal (the only mode-differentiating tier) is gone.
+  const mode: ChatbotMode = request.mode === "instant" ? "instant" : "thinking";
+  const tuning = MODE_TUNING[mode];
+  const systemPrompt = getSystemPrompt(request.language, mode);
 
-  // TIER 1 — NVIDIA MiniMax-M3 (strongest free reasoning model)
-  if (nvidiaIsAvailable()) {
-    if (chatHealth.nvidiaKeyValid === null) await validateNvidiaKey();
+  if (mode === "instant") {
+    // INSTANT — fastest provider first: Groq → NVIDIA → OpenRouter
+    const groqResult = await tryGroqTier(request.messages, systemPrompt, tuning);
+    if (groqResult) return groqResult;
+
     if (nvidiaIsAvailable()) {
-      const nvidiaResult = await nvidiaFallback(request.messages, systemPrompt);
-      if (nvidiaResult) return buildSuccessResult(nvidiaResult);
+      if (chatHealth.nvidiaKeyValid === null) await validateNvidiaKey();
+      if (nvidiaIsAvailable()) {
+        const nvidiaResult = await nvidiaFallback(request.messages, systemPrompt, tuning);
+        if (nvidiaResult) return buildSuccessResult(nvidiaResult);
+      }
     }
+
+    const orResult = await openRouterFallback(request.messages, systemPrompt, request.language, tuning);
+    if (orResult) return buildSuccessResult(orResult);
+  } else {
+    // THINKING — strongest provider first: NVIDIA → OpenRouter → Groq
+    if (nvidiaIsAvailable()) {
+      if (chatHealth.nvidiaKeyValid === null) await validateNvidiaKey();
+      if (nvidiaIsAvailable()) {
+        const nvidiaResult = await nvidiaFallback(request.messages, systemPrompt, tuning);
+        if (nvidiaResult) return buildSuccessResult(nvidiaResult);
+      }
+    }
+
+    const orResult = await openRouterFallback(request.messages, systemPrompt, request.language, tuning);
+    if (orResult) return buildSuccessResult(orResult);
+
+    const groqResult = await tryGroqTier(request.messages, systemPrompt, tuning);
+    if (groqResult) return groqResult;
   }
-
-  // TIER 2 — OpenRouter (lastWorking → tier1 → tier2 → last-resort sweep)
-  const orResult = await openRouterFallback(request.messages, systemPrompt, request.language);
-  if (orResult) return buildSuccessResult(orResult);
-
-  // TIER 3 — Groq ultra-fast cascade (absorbs OpenRouter rate limits)
-  const groqResult = await tryGroqTier(request.messages, systemPrompt);
-  if (groqResult) return groqResult;
 
   return buildAllTiersFailedResponse(request.language);
 }
@@ -655,10 +684,14 @@ export async function getChatResponse(request: {
 
 export async function groqFallback(
   messages: { role: string; content: string }[],
-  systemPrompt: string
+  systemPrompt: string,
+  tuning: ModeTuning = MODE_TUNING.thinking
 ): Promise<{ reply: string; model: string } | null> {
+  const [firstTimeout, retryTimeout] = tuning.groqAttemptTimeouts;
   for (const modelId of GROQ_MODELS) {
-    const result = await tryGroq(messages, systemPrompt, modelId, 120000);
+    let result = await tryGroq(messages, systemPrompt, modelId, firstTimeout, tuning);
+    if (result) return result;
+    result = await tryGroq(messages, systemPrompt, modelId, retryTimeout, tuning);
     if (result) return result;
   }
   return null;
