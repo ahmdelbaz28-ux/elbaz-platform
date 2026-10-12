@@ -1,10 +1,19 @@
 /**
- * GENIUS CHATBOT — 3-tier provider cascade
+ * GENIUS CHATBOT — FREE-provider cascade, strongest model first
  *
- * Strategy:
- *   1. PRIMARY: Modal — zai-org/GLM-5.1-FP8 (reasoning model, best quality)
- *   2. SECONDARY: Groq — DeepSeek V4, MiMo, Big Pickle, North Mini Code (free, fast)
- *   3. FALLBACK: OpenRouter — free-model cascade (21 models)
+ * Strategy (Modal removed 2026-10: service permanently 503 — replaced by
+ * a fully-free, quality-ordered cascade over NVIDIA + OpenRouter + Groq):
+ *   1. PRIMARY:   NVIDIA — minimaxai/minimax-m3 (230B MoE reasoning, strongest free)
+ *   2. SECONDARY: OpenRouter — 22 free models, tier 1 (strongest) → tier 2, with
+ *                 last-working-model shortcut and 3-strike model skipping
+ *   3. TERTIARY:  Groq — llama-3.3-70b → qwen3-32b → llama-4-scout → llama-3.1-8b
+ *                 (ultra-fast, absorbs OpenRouter free-tier rate limits)
+ *   4. SAFETY NET: full OpenRouter sweep ignoring per-model fail counters —
+ *                 guarantees the user ALWAYS gets a reply if ANY model works.
+ *
+ * The "mode" parameter (thinking|instant) is accepted for API compatibility.
+ * Both modes now use the same quality-first cascade — Modal was the only
+ * provider that differed between them, and it is gone.
  *
  * The user never sees which provider answered, never sees any error, and never
  * sees internal reasoning. If all tiers fail, a friendly error is shown.
@@ -29,13 +38,13 @@ export const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, 
 // PROVIDER CONFIG
 // ════════════════════════════════════════════════════════════════════════
 
-// ── TIER 1: Modal (GLM-5.1-FP8) — Primary ─────────────────────────────
-export const MODAL_API_KEY =
-  env.MODAL_API_KEY || process.env.MODAL_API_KEY || "";
-export const MODAL_ENDPOINT = "https://api.us-west-2.modal.direct/v1/chat/completions";
-export const MODAL_MODEL = "zai-org/GLM-5.1-FP8";
+// ── TIER 1: NVIDIA (MiniMax-M3) — Primary (free) ──────────────────────
+export const NVIDIA_API_KEY =
+  env.NVIDIA_API_KEY || process.env.NVIDIA_API_KEY || "";
+export const NVIDIA_ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions";
+export const NVIDIA_MODEL = "minimaxai/minimax-m3";
 
-// ── TIER 2: Groq — Secondary (free ultra-fast models) ───────────────────
+// ── TIER 2: Groq — Tertiary (free ultra-fast models) ──────────────────
 export const GROQ_API_KEY =
   env.GROQ_API_KEY || process.env.GROQ_API_KEY || "";
 export const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
@@ -47,13 +56,7 @@ export const GROQ_MODELS = [
   "qwen/qwen3.6-27b",                  // 565ms | Qwen 3.6 latest
 ];
 
-// ── TIER 2.5: NVIDIA (MiniMax-M3) — Third tier ─────────────────────────
-export const NVIDIA_API_KEY =
-  env.NVIDIA_API_KEY || process.env.NVIDIA_API_KEY || "";
-export const NVIDIA_ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions";
-export const NVIDIA_MODEL = "minimaxai/minimax-m3";
-
-// ── TIER 3: OpenRouter — Fallback cascade ──────────────────────────────
+// ── TIER 1.5: OpenRouter — Secondary (22-model free cascade) ───────────
 // Support both CHATBOT_API_KEY (from .env template) and OPENROUTER_API_KEY (legacy)
 export const OPENROUTER_API_KEY =
   env.OPENROUTER_API_KEY || process.env.CHATBOT_API_KEY || "";
@@ -63,15 +66,11 @@ export const OPENROUTER_API_KEY =
 // ════════════════════════════════════════════════════════════════════════
 
 // ── Shared mutable health state ──
-// ESM rule: imported bindings are read-only. Reassignment (e.g. chatHealth.modalConsecFails++)
-// from another module throws TypeError. We use a single exported OBJECT whose
-// properties are freely mutable from any importer — the standard ESM pattern.
+// ESM rule: imported bindings are read-only. Reassignment of scalars
+// (e.g. chatHealth.groqConsecFails++) from another module throws TypeError. We use a
+// single exported OBJECT whose properties are freely mutable from any importer — the
+// standard ESM pattern.
 export const chatHealth = {
-  modalKeyValid: null as boolean | null,
-  modalConsecFails: 0,
-  modalLastSuccess: 0,
-  modalLastFailTime: 0,
-
   groqKeyValid: null as boolean | null,
   groqConsecFails: 0,
   groqLastSuccess: 0,
@@ -95,20 +94,19 @@ export const chatHealth = {
 export const modelSuccessCount: Record<string, number> = {};
 export const modelFailCount: Record<string, number> = {};
 
-export const MODAL_COOLDOWN_MS = 5 * 60_000;
-export const MAX_CONSEC_MODAL_FAILS = 5;
 export const GROQ_COOLDOWN_MS = 2 * 60_000;
 export const MAX_CONSEC_GROQ_FAILS = 5;
 export const NVIDIA_COOLDOWN_MS = 2 * 60_000;
 export const MAX_CONSEC_NVIDIA_FAILS = 5;
 
 // ════════════════════════════════════════════════════════════════════════
-// OPENROUTER FALLBACK MODEL POOL — 21 free models, strongest -> weakest
+// OPENROUTER MODEL POOL — 22 free models, strongest -> weakest
 // ════════════════════════════════════════════════════════════════════════
 
 export const AI_MODELS = [
-  { id: "google/gemma-4-31b-it:free",                   ctx: 262144, tier: 1 },
+  // tier 1: strongest free reasoning models first (120B MoE before 31B)
   { id: "nvidia/nemotron-3-super-120b-a12b:free",        ctx: 262144, tier: 1 },
+  { id: "google/gemma-4-31b-it:free",                   ctx: 262144, tier: 1 },
 
   { id: "google/gemma-4-26b-a4b-it:free",               ctx: 262144, tier: 2 },
   { id: "meta-llama/llama-3.3-70b-instruct:free",       ctx: 65536,  tier: 2 },
@@ -133,106 +131,7 @@ export const AI_MODELS = [
 ];
 
 // ════════════════════════════════════════════════════════════════════════
-// MODAL (TIER 1) — non-streaming
-// ════════════════════════════════════════════════════════════════════════
-
-export async function validateModalKey(): Promise<boolean> {
-  if (!MODAL_API_KEY.startsWith("modalresearch_") && !MODAL_API_KEY.startsWith("ak-")) {
-    logger.warn("[Chatbot/Modal] API key has unexpected format", { keyPrefix: `${MODAL_API_KEY.substring(0, 15)}...` });
-  }
-  chatHealth.modalKeyValid = true;
-  logger.info("[Chatbot/Modal] API key configured (will be validated on first request).");
-  return true;
-}
-
-export function modalIsAvailable(): boolean {
-  if (!MODAL_API_KEY) return false;
-  if (chatHealth.modalKeyValid === false) return false;
-  if (chatHealth.modalConsecFails >= MAX_CONSEC_MODAL_FAILS) {
-    if (chatHealth.modalLastFailTime && Date.now() - chatHealth.modalLastFailTime < MODAL_COOLDOWN_MS) {
-      return false;
-    }
-  }
-  return true;
-}
-
-export async function tryModal(
-  messages: { role: string; content: string }[],
-  systemPrompt: string,
-  timeoutMs: number
-): Promise<{ reply: string; model: string } | null> {
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  try {
-    const controller = new AbortController();
-    timeoutId = setTimeout(() => { controller.abort(); }, timeoutMs);
-
-    const response = await fetch(MODAL_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${MODAL_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: MODAL_MODEL,
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...messages.map((m) => ({ role: m.role, content: m.content })),
-        ],
-        temperature: 0.7,
-        max_tokens: 2048,
-      }),
-    });
-
-    if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
-
-    if (response.status === 401 || response.status === 403) {
-      chatHealth.modalKeyValid = false;
-      chatHealth.modalConsecFails++;
-      chatHealth.modalLastFailTime = Date.now();
-      logger.error("[Chatbot/Modal] request rejected", { status: response.status });
-      return null;
-    }
-    if (!response.ok) {
-      chatHealth.modalConsecFails++;
-      chatHealth.modalLastFailTime = Date.now();
-      return null;
-    }
-
-    const data = await response.json() as {
-      error?: unknown;
-      choices?: { message?: { content?: string | null; reasoning_content?: string | null } }[];
-    };
-
-    if (data.error) {
-      chatHealth.modalConsecFails++;
-      chatHealth.modalLastFailTime = Date.now();
-      return null;
-    }
-
-    const reply = data.choices?.[0]?.message?.content ?? "";
-
-    if (!reply || reply.trim().length === 0) {
-      chatHealth.modalConsecFails++;
-      chatHealth.modalLastFailTime = Date.now();
-      return null;
-    }
-
-    chatHealth.modalConsecFails = 0;
-    chatHealth.modalLastSuccess = Date.now();
-    chatHealth.modalKeyValid = true;
-    return { reply: reply.trim(), model: MODAL_MODEL };
-  } catch (e) {
-    if (timeoutId) clearTimeout(timeoutId);
-    chatHealth.modalConsecFails++;
-    chatHealth.modalLastFailTime = Date.now();
-    logger.warn("[Chatbot/Modal] request failed", { error: String(e) });
-    return null;
-  }
-}
-
-// ════════════════════════════════════════════════════════════════════════
-// GROQ (TIER 2) — non-streaming
+// GROQ (TIER 3) — non-streaming
 // ════════════════════════════════════════════════════════════════════════
 
 export async function validateGroqKey(): Promise<boolean> {
@@ -334,8 +233,18 @@ export async function tryGroq(
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// NVIDIA (MINIMAX-M3) — non-streaming
+// NVIDIA (MINIMAX-M3) — TIER 1 non-streaming
 // ════════════════════════════════════════════════════════════════════════
+
+export async function validateNvidiaKey(): Promise<boolean> {
+  if (!NVIDIA_API_KEY) {
+    chatHealth.nvidiaKeyValid = false;
+    return false;
+  }
+  chatHealth.nvidiaKeyValid = true;
+  logger.info("[Chatbot/NVIDIA] API key configured (will be validated on first request).");
+  return true;
+}
 
 export function nvidiaIsAvailable(): boolean {
   if (!NVIDIA_API_KEY) return false;
@@ -441,7 +350,7 @@ export async function validateOpenRouterKey(): Promise<boolean> {
   if (!OPENROUTER_API_KEY) {
     chatHealth.openrouterKeyValid = false;
     chatHealth.openrouterKeyValidated = true;
-    logger.warn("[Chatbot/OpenRouter] No OPENROUTER_API_KEY configured — chatbot will not work without either MODAL_API_KEY or OPENROUTER_API_KEY.");
+    logger.warn("[Chatbot/OpenRouter] No OPENROUTER_API_KEY configured — chatbot falls back to NVIDIA/Groq tiers.");
     return false;
   }
   if (!OPENROUTER_API_KEY.startsWith("sk-or-")) {
@@ -649,11 +558,11 @@ function buildSuccessResult(result: { reply: string; model: string }): { success
 }
 
 function buildAllTiersFailedResponse(language?: string): { success: boolean; error: string } {
-  const modalDead = chatHealth.modalKeyValid === false || !MODAL_API_KEY;
+  const nvidiaDead = chatHealth.nvidiaKeyValid === false || !NVIDIA_API_KEY;
   const groqDead = chatHealth.groqKeyValid === false || !GROQ_API_KEY;
   const orDead = chatHealth.openrouterKeyValid === false || !OPENROUTER_API_KEY;
 
-  if (modalDead && groqDead && orDead) {
+  if (nvidiaDead && groqDead && orDead) {
     return {
       success: false,
       error: language === "ar"
@@ -662,7 +571,7 @@ function buildAllTiersFailedResponse(language?: string): { success: boolean; err
     };
   }
 
-  logger.error("[Chatbot] All tiers failed (Modal + Groq + OpenRouter).");
+  logger.error("[Chatbot] All tiers failed (NVIDIA + OpenRouter + Groq).");
   return {
     success: false,
     error: language === "ar"
@@ -671,45 +580,12 @@ function buildAllTiersFailedResponse(language?: string): { success: boolean; err
   };
 }
 
-export async function tryModalTier(
-  messages: { role: string; content: string }[],
-  systemPrompt: string
-): Promise<{ success: boolean; reply?: string; model?: string } | null> {
-  if (!modalIsAvailable()) {
-    logger.info("[Chatbot] Modal not available — trying Groq next.");
-    return null;
-  }
-  if (chatHealth.modalKeyValid === null) {
-    await validateModalKey();
-  }
-  if (!modalIsAvailable()) return null;
-
-  let result = await tryModal(messages, systemPrompt, 180000);
-  if (result) return buildSuccessResult(result);
-
-  logger.warn("[Chatbot] Modal attempt 1 failed — waiting 5s then retrying (5min timeout)...");
-  await sleep(5000);
-  result = await tryModal(messages, systemPrompt, 300000);
-  if (result) return buildSuccessResult(result);
-
-  logger.warn("[Chatbot] Modal attempt 2 failed — waiting 10s then FINAL retry (8min timeout)...");
-  await sleep(10000);
-  result = await tryModal(messages, systemPrompt, 480000);
-  if (result) return buildSuccessResult(result);
-
-  logger.error("[Chatbot] GLM-5.1 completely failed after 3 attempts.");
-  return null;
-}
-
 export async function tryGroqTier(
   messages: { role: string; content: string }[],
   systemPrompt: string
 ): Promise<{ success: boolean; reply?: string; model?: string } | null> {
   if (!groqIsAvailable()) {
-    logger.info("[Chatbot] Groq not available — trying NVIDIA...");
-    const nvidiaResult = await nvidiaFallback(messages, systemPrompt);
-    if (nvidiaResult) return buildSuccessResult(nvidiaResult);
-    logger.info("[Chatbot] NVIDIA also not available — using OpenRouter fallback.");
+    logger.info("[Chatbot] Groq not available (no key or cooldown).");
     return null;
   }
   if (chatHealth.groqKeyValid === null) {
@@ -721,45 +597,54 @@ export async function tryGroqTier(
     chatHealth.groqCurrentModelIndex = i;
     const modelId = GROQ_MODELS[i];
 
-    let result = await tryGroq(messages, systemPrompt, modelId, 120000);
+    let result = await tryGroq(messages, systemPrompt, modelId, 45000);
     if (result) return buildSuccessResult(result);
 
-    result = await tryGroq(messages, systemPrompt, modelId, 180000);
+    result = await tryGroq(messages, systemPrompt, modelId, 60000);
     if (result) return buildSuccessResult(result);
 
     logger.warn(`[Chatbot] Groq/${modelId} failed after 2 attempts — trying next model...`);
   }
 
-  logger.error("[Chatbot] All Groq models failed — falling back to NVIDIA (MiniMax-M3).");
-  const nvidiaResult = await nvidiaFallback(messages, systemPrompt);
-  if (nvidiaResult) return buildSuccessResult(nvidiaResult);
-  logger.error("[Chatbot] NVIDIA also failed — falling back to OpenRouter.");
+  logger.error("[Chatbot] All Groq models failed.");
   return null;
 }
 
+/**
+ * MAIN non-streaming cascade — strongest free model first:
+ *   1. NVIDIA MiniMax-M3 (230B MoE reasoning — skipped instantly if no key)
+ *   2. OpenRouter: last-working shortcut → 22 models tier1→tier2 →
+ *      full last-resort sweep (fail counters reset) — all inside openRouterFallback
+ *   3. Groq: 5 ultra-fast models × 2 attempts
+ *
+ * If every provider fails, a friendly error is returned. As long as ANY of the
+ * three free providers has one working model, the user gets a reply.
+ */
 export async function getChatResponse(request: {
   messages: { role: string; content: string }[];
   language?: string;
   mode?: "thinking" | "instant";
 }): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
   const systemPrompt = getSystemPrompt(request.language);
-  const mode = request.mode || "thinking";
+  // `mode` is accepted for API compatibility; both modes share the same
+  // quality-first cascade since Modal (the only mode-differentiating tier) is gone.
 
-  if (mode === "thinking") {
-    const modalResult = await tryModalTier(request.messages, systemPrompt);
-    if (modalResult) return modalResult;
+  // TIER 1 — NVIDIA MiniMax-M3 (strongest free reasoning model)
+  if (nvidiaIsAvailable()) {
+    if (chatHealth.nvidiaKeyValid === null) await validateNvidiaKey();
+    if (nvidiaIsAvailable()) {
+      const nvidiaResult = await nvidiaFallback(request.messages, systemPrompt);
+      if (nvidiaResult) return buildSuccessResult(nvidiaResult);
+    }
   }
 
-  const groqResult = await tryGroqTier(request.messages, systemPrompt);
-  if (groqResult) return groqResult;
-
+  // TIER 2 — OpenRouter (lastWorking → tier1 → tier2 → last-resort sweep)
   const orResult = await openRouterFallback(request.messages, systemPrompt, request.language);
   if (orResult) return buildSuccessResult(orResult);
 
-  if (mode === "instant") {
-    const modalResult = await tryModalTier(request.messages, systemPrompt);
-    if (modalResult) return modalResult;
-  }
+  // TIER 3 — Groq ultra-fast cascade (absorbs OpenRouter rate limits)
+  const groqResult = await tryGroqTier(request.messages, systemPrompt);
+  if (groqResult) return groqResult;
 
   return buildAllTiersFailedResponse(request.language);
 }
@@ -786,25 +671,6 @@ export async function groqFallback(
 export function getChatbotStats() {
   return {
     tier1: {
-      provider: "modal",
-      model: MODAL_MODEL,
-      configured: !!MODAL_API_KEY,
-      keyValid: chatHealth.modalKeyValid,
-      consecFails: chatHealth.modalConsecFails,
-      lastSuccessAgo: chatHealth.modalLastSuccess ? `${Math.round((Date.now() - chatHealth.modalLastSuccess) / 1000)}s ago` : "never",
-      available: modalIsAvailable(),
-    },
-    tier2: {
-      provider: "groq",
-      models: GROQ_MODELS,
-      currentModel: GROQ_MODELS[chatHealth.groqCurrentModelIndex] || GROQ_MODELS[0],
-      configured: !!GROQ_API_KEY,
-      keyValid: chatHealth.groqKeyValid,
-      consecFails: chatHealth.groqConsecFails,
-      lastSuccessAgo: chatHealth.groqLastSuccess ? `${Math.round((Date.now() - chatHealth.groqLastSuccess) / 1000)}s ago` : "never",
-      available: groqIsAvailable(),
-    },
-    tier2_5: {
       provider: "nvidia",
       model: NVIDIA_MODEL,
       configured: !!NVIDIA_API_KEY,
@@ -813,7 +679,7 @@ export function getChatbotStats() {
       lastSuccessAgo: chatHealth.nvidiaLastSuccess ? `${Math.round((Date.now() - chatHealth.nvidiaLastSuccess) / 1000)}s ago` : "never",
       available: nvidiaIsAvailable(),
     },
-    tier3: {
+    tier2: {
       provider: "openrouter",
       configured: !!OPENROUTER_API_KEY,
       keyValid: chatHealth.openrouterKeyValid,
@@ -822,6 +688,16 @@ export function getChatbotStats() {
       lastWorkingTimeAgo: chatHealth.lastWorkingTime ? `${Math.round((Date.now() - chatHealth.lastWorkingTime) / 1000)}s ago` : "never",
       modelSuccessCounts: modelSuccessCount,
       modelFailCounts: modelFailCount,
+    },
+    tier3: {
+      provider: "groq",
+      models: GROQ_MODELS,
+      currentModel: GROQ_MODELS[chatHealth.groqCurrentModelIndex] || GROQ_MODELS[0],
+      configured: !!GROQ_API_KEY,
+      keyValid: chatHealth.groqKeyValid,
+      consecFails: chatHealth.groqConsecFails,
+      lastSuccessAgo: chatHealth.groqLastSuccess ? `${Math.round((Date.now() - chatHealth.groqLastSuccess) / 1000)}s ago` : "never",
+      available: groqIsAvailable(),
     },
   };
 }

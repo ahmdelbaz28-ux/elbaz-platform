@@ -7,6 +7,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
  * Since chatbot.ts has module-level mutable state (apiKeyValid, modelFailCount, etc.),
  * we use vi.resetModules() + dynamic imports to get a fresh module instance per test.
  * We mock fetch globally and the env module so no real network calls are made.
+ *
+ * Cascade under test (Modal removed — service permanently 503):
+ *   1. NVIDIA (MiniMax-M3)        — if NVIDIA_API_KEY set
+ *   2. OpenRouter (22 free models, strongest tier first)
+ *   3. Groq (5 ultra-fast models)
  */
 
 describe("Chatbot Module", () => {
@@ -30,16 +35,15 @@ describe("Chatbot Module", () => {
    * Helper: import the chatbot module with mocked env.
    * Must be called after vi.resetModules() so the module is freshly loaded.
    *
-   * By default MODAL_API_KEY is omitted (undefined) so the PRIMARY Modal
-   * provider is disabled and tests exercise the OpenRouter FALLBACK cascade.
-   * Pass { modal: true } to enable Modal with a test key.
+   * By default NVIDIA_API_KEY and GROQ_API_KEY are empty so tests exercise the
+   * OpenRouter cascade. Pass { nvidia: true } / { groq: true } to enable them.
    */
-  async function importChatbot(opts?: { modal?: boolean; groq?: boolean }) {
+  async function importChatbot(opts?: { nvidia?: boolean; groq?: boolean }) {
     vi.doMock("../lib/env", () => ({
       env: {
         OPENROUTER_API_KEY: "sk-or-v1-test-key-12345",
         CHATBOT_API_KEY: "",
-        MODAL_API_KEY: opts?.modal ? "modal-test-key-12345" : "",
+        NVIDIA_API_KEY: opts?.nvidia ? "nvapi-test-key-12345" : "",
         GROQ_API_KEY: opts?.groq ? "groq-test-key-12345" : "",
         isProduction: false,
       },
@@ -54,18 +58,23 @@ describe("Chatbot Module", () => {
       const { getChatbotStats } = await importChatbot();
       const stats = getChatbotStats();
 
-      // Tier 1 (Modal) defaults
-      expect(stats.tier1.provider).toBe("modal");
-      expect(stats.tier1.configured).toBe(false); // no MODAL_API_KEY in mock
+      // Tier 1 (NVIDIA) defaults
+      expect(stats.tier1.provider).toBe("nvidia");
+      expect(stats.tier1.configured).toBe(false); // no NVIDIA_API_KEY in mock
       expect(stats.tier1.consecFails).toBe(0);
       expect(stats.tier1.lastSuccessAgo).toBe("never");
 
-      // Fallback (OpenRouter) defaults
-      expect(stats.tier3.totalModels).toBe(22);
-      expect(stats.tier3.lastWorkingModel).toBe("");
-      expect(stats.tier3.lastWorkingTimeAgo).toBe("never");
-      expect(stats.tier3.modelSuccessCounts).toEqual({});
-      expect(stats.tier3.modelFailCounts).toEqual({});
+      // Tier 2 (OpenRouter) defaults
+      expect(stats.tier2.provider).toBe("openrouter");
+      expect(stats.tier2.totalModels).toBe(22);
+      expect(stats.tier2.lastWorkingModel).toBe("");
+      expect(stats.tier2.lastWorkingTimeAgo).toBe("never");
+      expect(stats.tier2.modelSuccessCounts).toEqual({});
+      expect(stats.tier2.modelFailCounts).toEqual({});
+
+      // Tier 3 (Groq) defaults
+      expect(stats.tier3.provider).toBe("groq");
+      expect(stats.tier3.configured).toBe(false);
     });
   });
 
@@ -74,7 +83,7 @@ describe("Chatbot Module", () => {
   describe("model pool", () => {
     it("has 22 models", async () => {
       const { getChatbotStats } = await importChatbot();
-      expect(getChatbotStats().tier3.totalModels).toBe(22);
+      expect(getChatbotStats().tier2.totalModels).toBe(22);
     });
 
     it("models are ordered by tier (all tier 1 before tier 2, etc.)", async () => {
@@ -104,15 +113,15 @@ describe("Chatbot Module", () => {
         (args: any[]) => JSON.parse((args[1] as any).body).model
       );
 
-      // Step 2 tries models tier by tier — first 22 calls should be all 22 models
-      // in tier order. Collect the first 22 model IDs.
+      // First pass tries models tier by tier — first 22 calls should be all 22
+      // models in tier order. Collect the first 22 model IDs.
       const firstPass = modelIds.slice(0, 22);
       expect(firstPass).toHaveLength(22);
 
-      // Known tier 1 model IDs (2 models — verified working free models)
+      // Known tier 1 model IDs (2 models — strongest free reasoning models)
       const tier1Ids = [
-        "google/gemma-4-31b-it:free",
         "nvidia/nemotron-3-super-120b-a12b:free",
+        "google/gemma-4-31b-it:free",
       ];
 
       // Verify all tier 1 models appear before any tier 2 model
@@ -124,6 +133,9 @@ describe("Chatbot Module", () => {
       // Tier 1 models should be at positions 0 and 1 (first two)
       expect(tier1Indices).toHaveLength(2);
       expect(Math.max(...tier1Indices)).toBeLessThan(tier2FirstIndex);
+
+      // Strongest model first: nemotron-120b at position 0
+      expect(firstPass[0]).toBe("nvidia/nemotron-3-super-120b-a12b:free");
     });
   });
 
@@ -329,19 +341,18 @@ describe("Chatbot Module", () => {
       expect(result.success).toBe(true);
 
       const stats = getChatbotStats();
-      expect(stats.tier3.lastWorkingModel).toBe(result.model);
-      expect(stats.tier3.lastWorkingTimeAgo).not.toBe("never");
-      expect(stats.tier3.modelSuccessCounts[result.model!]).toBe(1);
+      expect(stats.tier2.lastWorkingModel).toBe(result.model);
+      expect(stats.tier2.lastWorkingTimeAgo).not.toBe("never");
+      expect(stats.tier2.modelSuccessCounts[result.model!]).toBe(1);
     });
   });
 
-  // ─── Modal (PRIMARY provider) ─────────────────────────────────────────
+  // ─── NVIDIA (PRIMARY provider) ────────────────────────────────────────
 
-  describe("Modal primary provider", () => {
-    it("uses Modal first when configured and returns content (not reasoning)", async () => {
-      // Mock that returns BOTH reasoning_content and content, like the real GLM-5.1
+  describe("NVIDIA primary provider", () => {
+    it("uses NVIDIA first when configured and never touches OpenRouter", async () => {
       mockFetch.mockImplementation(async (url: string) => {
-        if (url.includes("modal.direct")) {
+        if (url.includes("integrate.api.nvidia.com")) {
           return {
             ok: true,
             json: async () => ({
@@ -349,7 +360,6 @@ describe("Chatbot Module", () => {
                 {
                   message: {
                     content: "Hello! I can confirm I am the Elbaz assistant.",
-                    reasoning_content: "1. Internal thinking steps the user must never see.",
                   },
                 },
               ],
@@ -365,31 +375,26 @@ describe("Chatbot Module", () => {
         };
       });
 
-      const { getChatResponse, getChatbotStats } = await importChatbot({ modal: true });
+      const { getChatResponse, getChatbotStats } = await importChatbot({ nvidia: true });
       const result = await getChatResponse({
         messages: [{ role: "user", content: "Hi" }],
       });
 
       expect(result.success).toBe(true);
-      // The user-facing reply is the polished content, NOT the reasoning.
       expect(result.reply).toBe("Hello! I can confirm I am the Elbaz assistant.");
-      expect(result.reply).not.toContain("Internal thinking");
-      expect(result.model).toBe("zai-org/GLM-5.1-FP8");
+      expect(result.model).toBe("minimaxai/minimax-m3");
 
-      // Modal recorded as healthy; OpenRouter untouched.
+      // NVIDIA recorded as healthy; OpenRouter untouched.
       const stats = getChatbotStats();
       expect(stats.tier1.consecFails).toBe(0);
       expect(stats.tier1.lastSuccessAgo).not.toBe("never");
-      expect(stats.tier3.lastWorkingModel).toBe(""); // OpenRouter never invoked
+      expect(stats.tier2.lastWorkingModel).toBe(""); // OpenRouter never invoked
     });
 
-    it("falls back to Groq then OpenRouter when Modal returns an error", async () => {
+    it("falls back to OpenRouter when NVIDIA fails (failover proof)", async () => {
       mockFetch.mockImplementation(async (url: string) => {
-        if (url.includes("modal.direct")) {
-          return { ok: false, status: 500, json: async () => ({ error: "boom" }) };
-        }
-        if (url.includes("groq.com")) {
-          return { ok: false, status: 500, json: async () => ({ error: "boom" }) };
+        if (url.includes("integrate.api.nvidia.com")) {
+          return { ok: false, status: 503, json: async () => ({ error: "unavailable" }) };
         }
         if (url.includes("/auth/key")) {
           return { ok: true, json: async () => ({}) };
@@ -403,56 +408,79 @@ describe("Chatbot Module", () => {
         };
       });
 
-      const { getChatResponse, getChatbotStats } = await importChatbot({ modal: true, groq: true });
+      const { getChatResponse, getChatbotStats } = await importChatbot({ nvidia: true });
       const result = await getChatResponse({
         messages: [{ role: "user", content: "Hi" }],
       });
 
       expect(result.success).toBe(true);
       expect(result.reply).toBe("Recovered via OpenRouter!");
-      // Modal and OpenCode health degraded; OpenRouter has a working model.
+      // NVIDIA health degraded; OpenRouter has a working model.
       const stats = getChatbotStats();
       expect(stats.tier1.consecFails).toBeGreaterThan(0);
-      expect(stats.tier3.lastWorkingModel).toBeTruthy();
+      expect(stats.tier2.lastWorkingModel).toBeTruthy();
     });
 
-    it("treats a reply that is only reasoning (empty content) as a Modal failure", async () => {
+    it("falls through OpenRouter to Groq when both NVIDIA and OpenRouter fail", async () => {
+      let sawGroqCall = false;
       mockFetch.mockImplementation(async (url: string) => {
-        if (url.includes("modal.direct")) {
-          return {
-            ok: true,
-            json: async () => ({
-              choices: [
-                {
-                  message: {
-                    content: null, // ran out of tokens during reasoning
-                    reasoning_content: "long private chain-of-thought...",
-                  },
-                },
-              ],
-            }),
-          };
+        if (url.includes("integrate.api.nvidia.com")) {
+          return { ok: false, status: 503, json: async () => ({}) };
         }
         if (url.includes("/auth/key")) {
           return { ok: true, json: async () => ({}) };
         }
-        return {
-          ok: true,
-          json: async () => ({
-            choices: [{ message: { content: "OpenRouter fallback answer" } }],
-          }),
-        };
+        if (url.includes("groq.com")) {
+          sawGroqCall = true;
+          return {
+            ok: true,
+            json: async () => ({
+              choices: [{ message: { content: "Recovered via Groq!" } }],
+            }),
+          };
+        }
+        // OpenRouter: all models fail fast
+        return { ok: false, status: 429, json: async () => ({ error: "rate limited" }) };
       });
 
-      const { getChatResponse } = await importChatbot({ modal: true });
+      const { getChatResponse } = await importChatbot({ nvidia: true, groq: true });
       const result = await getChatResponse({
         messages: [{ role: "user", content: "Hi" }],
       });
 
-      // Should NOT surface the reasoning — falls back to OpenRouter.
       expect(result.success).toBe(true);
-      expect(result.reply).toBe("OpenRouter fallback answer");
-      expect(result.reply).not.toContain("chain-of-thought");
+      expect(result.reply).toBe("Recovered via Groq!");
+      expect(sawGroqCall).toBe(true);
+    });
+  });
+
+  // ─── pickWorkingModel (streaming provider order) ──────────────────────
+
+  describe("pickWorkingModel (streaming)", () => {
+    it("prefers NVIDIA when configured, then OpenRouter tier-1", async () => {
+      mockFetch.mockImplementation(async (url: string) => {
+        if (url.includes("/auth/key")) {
+          return { ok: true, json: async () => ({}) };
+        }
+        return { ok: true, json: async () => ({}) };
+      });
+
+      const withNvidia = await importChatbot({ nvidia: true });
+      const pick1 = await withNvidia.pickWorkingModel(
+        [{ role: "user", content: "hi" }],
+        "en"
+      );
+      expect(pick1?.provider).toBe("nvidia");
+
+      vi.resetModules(); // fresh module state before re-importing
+      const withoutNvidia = await importChatbot();
+      const pick2 = await withoutNvidia.pickWorkingModel(
+        [{ role: "user", content: "hi" }],
+        "en"
+      );
+      expect(pick2?.provider).toBe("openrouter");
+      // Best (strongest) tier-1 model chosen
+      expect(pick2?.modelId).toBe("nvidia/nemotron-3-super-120b-a12b:free");
     });
   });
 });
