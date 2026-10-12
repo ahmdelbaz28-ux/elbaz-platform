@@ -617,5 +617,42 @@ describe("Chatbot Module", () => {
       expect(instantPrompt.toLowerCase()).toMatch(/elbaz/);
       expect(thinkingPrompt.toLowerCase()).toMatch(/elbaz/);
     });
+    it("instant never inherits thinking's last-working OpenRouter model (no mode collapse)", async () => {
+      mockFetch.mockImplementation(async (url: string, options: any) => {
+        if (url.includes("/auth/key")) return { ok: true, json: async () => ({}) };
+        const model = JSON.parse(options.body).model;
+        // Both models succeed
+        return { ok: true, json: async () => ({ choices: [{ message: { content: `reply from ${model}` } }] }) };
+      });
+
+      // OpenRouter-only environment (Groq/NVIDIA keys absent) — the exact
+      // production scenario where both modes would otherwise land on the
+      // same tier-1 model.
+      const mod = await importChatbot();
+
+      // 1) thinking succeeds → lastWorkingModel = tier-1 nemotron
+      const thinkRes = await mod.getChatResponse({
+        messages: [{ role: "user", content: "deep question" }],
+        mode: "thinking",
+      });
+      expect(thinkRes.model).toBe("nvidia/nemotron-3-super-120b-a12b:free");
+
+      // 2) streaming picker (thinking) reuses the healthy tier-1 model
+      const thinkingPick = await mod.pickWorkingModel([{ role: "user", content: "hi" }], "en", "thinking");
+      expect(thinkingPick?.modelId).toBe("nvidia/nemotron-3-super-120b-a12b:free");
+
+      // 3) instant must NOT reuse nemotron — it starts from its fast model
+      const instantRes = await mod.getChatResponse({
+        messages: [{ role: "user", content: "quick question" }],
+        mode: "instant",
+      });
+      expect(instantRes.model).toBe("google/gemma-4-26b-a4b-it:free");
+      expect(instantRes.model).not.toBe(thinkRes.model);
+
+      // 4) streaming picker agrees: instant stays on its fast model
+      const instantPick = await mod.pickWorkingModel([{ role: "user", content: "hi" }], "en", "instant");
+      expect(instantPick?.provider).toBe("openrouter");
+      expect(instantPick?.modelId).toBe("google/gemma-4-26b-a4b-it:free");
+    });
   });
 });

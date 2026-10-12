@@ -37,6 +37,13 @@ export interface ModeTuning {
   nvidiaStreamTimeoutMs: number;
   /** Streaming Groq per-attempt timeouts (ms) — 2 attempts per model */
   groqStreamTimeouts: [number, number];
+  /**
+   * When instant mode falls through to OpenRouter it starts from this FAST
+   * model (small active-parameter MoE) instead of the thinking tier-1 model,
+   * so the two modes never collapse onto the same model when Groq is down.
+   * The last-working-model shortcut never overrides this preference.
+   */
+  openRouterPreferredModel?: string;
 }
 
 export const MODE_TUNING: Record<ChatbotMode, ModeTuning> = {
@@ -61,6 +68,10 @@ export const MODE_TUNING: Record<ChatbotMode, ModeTuning> = {
     openRouterStreamTimeoutMs: 45000,
     nvidiaStreamTimeoutMs: 60000,
     groqStreamTimeouts: [12000, 20000],
+    // Fastest capable OpenRouter model (MoE, ~4B active params) — a different
+    // model from the thinking tier so the modes stay visibly distinct even
+    // when Groq is unavailable and instant lands on OpenRouter.
+    openRouterPreferredModel: "google/gemma-4-26b-a4b-it:free",
   },
 };
 
