@@ -679,5 +679,29 @@ describe("Chatbot Module", () => {
       // The thinking tier-1 model was never attempted — the fast lane caught it
       expect(calledModels).not.toContain("nvidia/nemotron-3-super-120b-a12b:free");
     });
+
+    it("thinking never inherits instant's fast-lane last-working model (mirror collapse guard)", async () => {
+      mockFetch.mockImplementation(async (url: string) => {
+        if (url.includes("/auth/key")) return { ok: true, json: async () => ({}) };
+        return { ok: true, json: async () => ({ choices: [{ message: { content: "ok" } }] }) };
+      });
+
+      const mod = await importChatbot();
+
+      // 1) instant succeeds first → instant-lane lastWorking = fast gemma
+      const instantRes = await mod.getChatResponse({
+        messages: [{ role: "user", content: "quick" }],
+        mode: "instant",
+      });
+      expect(instantRes.model).toBe("google/gemma-4-26b-a4b-it:free");
+
+      // 2) thinking must NOT reuse the fast-lane model — it goes to tier-1
+      const thinkRes = await mod.getChatResponse({
+        messages: [{ role: "user", content: "deep" }],
+        mode: "thinking",
+      });
+      expect(thinkRes.model).toBe("nvidia/nemotron-3-super-120b-a12b:free");
+      expect(thinkRes.model).not.toBe(instantRes.model);
+    });
   });
 });

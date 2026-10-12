@@ -92,6 +92,12 @@ export const chatHealth = {
 
   lastWorkingModel: "",
   lastWorkingTime: 0,
+  // Per-mode last-working OpenRouter model — prevents cross-mode collapse:
+  // instant must never inherit thinking's tier-1 model and vice versa.
+  lastWorkingByMode: {
+    thinking: { model: "", time: 0 },
+    instant: { model: "", time: 0 },
+  } as Record<"thinking" | "instant", { model: string; time: number }>,
   modelFailResetTime: 0,
 };
 
@@ -470,6 +476,9 @@ export async function tryModel(
     modelFailCount[modelId] = 0;
     chatHealth.lastWorkingModel = modelId;
     chatHealth.lastWorkingTime = Date.now();
+    // Record per-mode so the other mode never inherits this model shortcut
+    const modeKey: "thinking" | "instant" = tuning === MODE_TUNING.instant ? "instant" : "thinking";
+    chatHealth.lastWorkingByMode[modeKey] = { model: modelId, time: Date.now() };
 
     return { reply: reply.trim(), model: modelId };
   } catch {
@@ -485,14 +494,14 @@ export async function tryLastWorkingModel(
   tierTimeouts: Record<number, number>,
   tuning?: ModeTuning,
 ): Promise<{ reply: string; model: string } | null> {
-  if (!chatHealth.lastWorkingModel) return null;
-  if ((Date.now() - chatHealth.lastWorkingTime) >= 300000) return null;
-  if ((modelFailCount[chatHealth.lastWorkingModel] || 0) >= 3) return null;
-  // Mode-aware: instant never reuses a last-working model that belongs to
-  // the thinking tier — it starts from its own preferred fast model instead.
-  const preferred = tuning?.openRouterPreferredModel;
-  if (preferred && chatHealth.lastWorkingModel !== preferred) return null;
-  return await tryModel(chatHealth.lastWorkingModel, messages, systemPrompt, tierTimeouts[1], tuning);
+  // Mode-scoped shortcut: each mode only reuses a model that THIS mode
+  // previously succeeded with — no cross-mode inheritance in either direction.
+  const modeKey: "thinking" | "instant" = tuning === MODE_TUNING.instant ? "instant" : "thinking";
+  const entry = chatHealth.lastWorkingByMode[modeKey];
+  if (!entry || !entry.model) return null;
+  if ((Date.now() - entry.time) >= 300000) return null;
+  if ((modelFailCount[entry.model] || 0) >= 3) return null;
+  return await tryModel(entry.model, messages, systemPrompt, tierTimeouts[1], tuning);
 }
 
 export async function tryModelsByTier(
