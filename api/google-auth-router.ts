@@ -246,7 +246,7 @@ async function exchangeCodeForTokens(
   code: string,
   state: string,
   redirectUri: string,
-): Promise<{ id_token?: string; access_token?: string } | { errorRedirect: string }> {
+): Promise<{ id_token?: string; access_token?: string } | { error: true }> {
   const tokenResp = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -284,11 +284,11 @@ async function exchangeCodeForTokens(
     stateLength: state.length,
   });
 
-  // ✅ SECURITY FIX (S5146): the redirect target is now a compile-time
-  // constant. Google's error/error_description used to be reflected into the
-  // `google_detail` query param (attacker-influenced URL content, open-
-  // redirect taint) — they now live ONLY in the server-side log above.
-  return { errorRedirect: "/?google_error=token_exchange_failed" };
+  // ✅ SECURITY FIX (S5146): returns a taint-free `{ error: true }` marker —
+  // the redirect target is built at the CALL SITE as a compile-time constant,
+  // so no attacker-influenced value can ever flow into the Location header.
+  // Google's error/error_description live ONLY in the server-side log above.
+  return { error: true };
 }
 
 /**
@@ -372,8 +372,10 @@ googleAuthRouter.get("/callback", async (c) => { // NOSONAR — complex function
 
     // Exchange authorization code for tokens
     const tokenResult = await exchangeCodeForTokens(code, state, redirectUri);
-    if ("errorRedirect" in tokenResult) {
-      return c.redirect(safeInternalRedirect(tokenResult.errorRedirect));
+    if ("error" in tokenResult) {
+      // Constant path — the exchange function logs the Google error details
+      // server-side instead of reflecting them into the URL (S5146).
+      return c.redirect("/?google_error=token_exchange_failed");
     }
 
     const tokens = tokenResult;
