@@ -32,8 +32,12 @@ export const adminPaymentsProcedures = {
   paymobSelfTest: adminQuery.mutation(async () => {
     const cfg = await resolvePaymobRuntimeConfig();
     const missing = summarizePaymobConfig(cfg);
-    if (missing.length > 0) {
-      return { ok: false, stage: "config" as const, missing, message: `Missing configuration: ${missing.join("; ")}` };
+    // The Public Key is only needed to BUILD the hosted-checkout URL — the
+    // intention API call itself proves credentials + integration IDs, so the
+    // probe runs without it and reports checkoutUrl: null in that case.
+    const blocking = missing.filter((m) => !m.includes("Public Key"));
+    if (blocking.length > 0) {
+      return { ok: false, stage: "config" as const, missing, message: `Missing configuration: ${blocking.join("; ")}` };
     }
 
     const reference = `SELFTEST-${nanoid(12)}`;
@@ -59,8 +63,10 @@ export const adminPaymentsProcedures = {
         reference,
         intentionId: intention.intentionId,
         paymobOrderId: intention.paymobOrderId,
-        checkoutUrl: intention.checkoutUrl,
-        message: "Intention created — the gateway is reachable and the credentials work.",
+        checkoutUrl: cfg.publicKey ? intention.checkoutUrl : null,
+        message: cfg.publicKey
+          ? "Intention created — the gateway is reachable and the credentials work."
+          : "Intention created — credentials and integration IDs work. Add the Public Key to enable the hosted checkout link.",
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
