@@ -18,8 +18,8 @@
  * - Rate limiting on the endpoint
  */
 
-import { Hono } from "hono";
-import { eq, sql, and } from "drizzle-orm";
+import { Hono, type Context } from "hono";
+import { eq, sql, and, or } from "drizzle-orm";
 import { db } from "./queries/connection.js";
 import { payments, enrollments, courses } from "@db/schema";
 import { verifyTransactionCallback, verifyPaymobAmount, type PaymobCallbackPayload, type PaymobCallbackTransaction } from "./lib/paymob.js";
@@ -185,7 +185,7 @@ async function processWebhookInTransaction(
   return c.json({ ok: true, status: newStatus }, 200);
 }
 
-paymobWebhook.post("/webhook", async (c) => {
+const handlePaymobWebhook = async (c: Context) => {
   const contentType = c.req.header("content-type") ?? "";
 
   // Paymob sends JSON
@@ -242,7 +242,7 @@ paymobWebhook.post("/webhook", async (c) => {
     // ⚠️ Return 503 to make Paymob retry later if DB is locked/down
     return c.json({ error: "Service Unavailable", detail: "Database busy" }, 503);
   }
-});
+};
 
 // ─── Legacy dashboard-registered callback path ─────────────────────────
 //
@@ -251,13 +251,14 @@ paymobWebhook.post("/webhook", async (c) => {
 // integrations were created). The mobile-wallet legacy flow relies on those
 // account-level URLs, so mount the SAME HMAC-verified handler there.
 
-/** POST /api/webhooks/paymob — processed callback, identical to /webhook. */
+// Canonical path (/api/paymob/webhook) AND the dashboard-registered legacy
+// alias share the SAME handler — verified: forwarding the request between two
+// mounted sub-apps silently 404s the forwarded POST, so no internal fetch here.
+paymobWebhook.post("/webhook", handlePaymobWebhook);
+
+/** POST /api/webhooks/paymob — processed callback, identical handler. */
 const paymobWebhookAlias = new Hono();
-paymobWebhookAlias.on("POST", ["/", "/*"], (c) => {
-  const url = new URL(c.req.url);
-  url.pathname = "/api/paymob/webhook";
-  return paymobWebhook.fetch(new Request(url, c.req.raw));
-});
+paymobWebhookAlias.on("POST", ["/", "/*"], handlePaymobWebhook);
 
 /**
  * GET /api/webhooks/paymob — the browser-side Response Callback. After a
@@ -267,20 +268,23 @@ paymobWebhookAlias.on("POST", ["/", "/*"], (c) => {
  * course page the Intention flow uses (?txn=… polls payment.verify).
  */
 paymobWebhookAlias.on("GET", ["/", "/*"], async (c) => {
-  const q = c.req.query;
-  const merchantOrderId = q("merchant_order_id") || q("order") || "";
+  // ⚠️ Bound calls: `const q = c.req.query; q(...)` detaches `this` and crashes
+  // with "Cannot read properties of undefined (reading 'url')" in Hono v4.
+  const merchantOrderId = c.req.query("merchant_order_id") || c.req.query("order") || "";
   const frontend = env.FRONTEND_URL.replace(/\/+$/, "");
   let destination = `${frontend}/dashboard?payment=returned`;
   if (merchantOrderId) {
     try {
+      // The legacy Response Callback may carry OUR transaction id
+      // (merchant_order_id) or Paymob's order id (`order`) — match either.
       const [row] = await db
         .select({ slug: courses.slug, id: courses.id })
         .from(payments)
         .innerJoin(courses, eq(courses.id, payments.courseId))
-        .where(eq(payments.transactionId, merchantOrderId))
+        .where(or(eq(payments.transactionId, merchantOrderId), eq(payments.paymobOrderId, merchantOrderId)))
         .limit(1);
       if (row) {
-        destination = `${frontend}/courses/${row.slug ?? row.id}?txn=${encodeURIComponent(merchantOrderId)}`;
+        destination = `${frontend}/courses/${row.slug ?? row.id}?txn=${encodeURIComponent(String(merchantOrderId))}`;
       }
     } catch (err) {
       logger.warn("[Paymob Webhook] GET return lookup failed", { error: String(err) });
