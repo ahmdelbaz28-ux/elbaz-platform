@@ -46,6 +46,11 @@ const envSchema = z.object({
   PAYMOB_INTEGRATION_ID: z.coerce.number().min(0).optional(),
   PAYMOB_IFRAME_ID: z.coerce.number().min(0).optional(),
   PAYMOB_WEBHOOK_SECRET: z.string().optional(),
+  // Explicit webhook endpoint override. The default is ${FRONTEND_URL}/api/paymob/webhook,
+  // but when the public domain sits behind a bot-challenge CDN (Cloudflare) the
+  // server-to-server callback (non-browser UA) never reaches the origin — probed
+  // live 2026-10-13. Point this at a direct origin host (e.g. the hf.space URL).
+  PAYMOB_WEBHOOK_URL: z.string().url().optional(),
   PAYMOB_BASE_URL: z.string().default("https://accept.paymob.com"),
 
   // ── AI Chatbot providers ──────────────────────────────────────

@@ -48,8 +48,11 @@ export interface PaymobRuntimeConfig {
   walletIframeId: number | null;
   /** Regional gateway base, no trailing slash. */
   baseUrl: string;
-  /** Public site origin used for notification_url / redirection_url. */
+  /** Public site origin used for redirection_url. */
   frontendUrl: string;
+  /** Server-to-server callback URL (notification_url). May differ from the
+   *  public origin when a CDN challenges non-browser traffic. */
+  webhookUrl: string;
 }
 
 /**
@@ -210,7 +213,7 @@ async function createIntention(
     customer: { first_name: firstName, last_name: lastName, email: input.customer.email || "customer@example.com" },
     special_reference: input.specialReference,
     expiration: 3600,
-    notification_url: `${cfg.frontendUrl}/api/paymob/webhook`,
+    notification_url: cfg.webhookUrl,
     redirection_url: input.redirectionUrl || cfg.frontendUrl,
     extras: input.extras ?? {},
   };
@@ -456,6 +459,10 @@ async function createLegacyWalletCheckout(
     currency: "EGP",
     items: [{ name: courseLabel, amount_cents: amountCents, description: courseLabel, quantity: 1 }],
     merchant_order_id: input.specialReference,
+    // Accepted by the classic order API (probed live, 201) — routes the
+    // transaction-processed callback to our HMAC-verified endpoint even when
+    // the dashboard-level callback sits behind a bot-challenged domain.
+    notification_url: cfg.webhookUrl,
   });
   if (!order.status.toString().startsWith("2") || !order.data.id) {
     const detail = order.data.message || `HTTP ${order.status}`;
