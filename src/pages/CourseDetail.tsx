@@ -31,6 +31,9 @@ import {
   CheckCircle2,
   AlertCircle,
   ImageOff,
+  Landmark,
+  Copy,
+  Hourglass,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Seo from "@/components/SEO";
@@ -492,7 +495,12 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
   const [showQuiz, setShowQuiz] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
-  const [paymentStep, setPaymentStep] = useState<"idle" | "redirecting" | "processing" | "success" | "error">("idle");
+  const [paymentStep, setPaymentStep] = useState<"idle" | "redirecting" | "processing" | "success" | "pending_approval" | "error">("idle");
+  const [paymentTab, setPaymentTab] = useState<"electronic" | "manual">("electronic");
+  const [manualMethod, setManualMethod] = useState<"vodafone_cash" | "instapay" | "bank_transfer">("vodafone_cash");
+  const [transferReference, setTransferReference] = useState("");
+  const [copiedChannel, setCopiedChannel] = useState<string | null>(null);
+  const [manualTransactionId, setManualTransactionId] = useState<string | null>(null);
   const [, setLastTransactionId] = useState<string | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
@@ -691,6 +699,114 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
       setPaymentError(error.message || "Failed to initiate payment");
     },
   });
+
+  // ✅ Payment gateway availability (decides if electronic methods are usable)
+  const { data: paymobStatus } = trpc.payment.isConfigured.useQuery(undefined, {
+    enabled: !!course,
+    staleTime: 60_000,
+  });
+  const paymobConfigured = paymobStatus?.configured === true;
+
+  // ✅ Manual transfer details (Vodafone Cash / InstaPay / bank) set by the admin
+  const { data: manualDetails } = trpc.payment.manualDetails.useQuery(undefined, {
+    enabled: showPayment,
+    staleTime: 60_000,
+  });
+
+  const manualChannels = [
+    {
+      key: "vodafone_cash" as const,
+      label: lang === "ar" ? "فودافون كاش" : "Vodafone Cash",
+      icon: <Wallet className="h-4 w-4" />,
+      value: manualDetails?.vodafoneCashNumber || "",
+    },
+    {
+      key: "instapay" as const,
+      label: "InstaPay",
+      icon: <Smartphone className="h-4 w-4" />,
+      value: manualDetails?.instapayHandle || "",
+    },
+    {
+      key: "bank_transfer" as const,
+      label: lang === "ar" ? "تحويل بنكي" : "Bank Transfer",
+      icon: <Landmark className="h-4 w-4" />,
+      value: manualDetails?.bankTransferDetails || "",
+    },
+  ].filter((ch) => ch.value !== "");
+
+  const availableManualChannels = manualChannels.filter((ch) => ch.key === manualMethod);
+
+  // Auto-select the first available manual channel when details load, or when
+  // the currently-selected channel has no value configured by the admin.
+  useEffect(() => {
+    if (!manualDetails) return;
+    const hasCurrent = manualChannels.some((ch) => ch.key === manualMethod);
+    if (!hasCurrent && manualChannels.length > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setManualMethod(manualChannels[0].key);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manualDetails]);
+
+  // ✅ When the electronic gateway is disabled but manual transfer is available,
+  // open the modal straight on the manual tab so users aren't shown dead buttons.
+  useEffect(() => {
+    if (showPayment && paymobStatus && !paymobStatus.configured && manualDetails?.enabled) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPaymentTab("manual");
+    }
+  }, [showPayment, paymobStatus, manualDetails?.enabled]);
+  const copyChannelValue = useCallback(async (key: string, value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedChannel(key);
+      setTimeout(() => setCopiedChannel((cur) => (cur === key ? null : cur)), 2000);
+    } catch {
+      toast.error(lang === "ar" ? "تعذر النسخ — انسخ يدوياً" : "Copy failed — copy manually");
+    }
+  }, [lang]);
+
+  const manualPaymentMutation = trpc.payment.createManual.useMutation({
+    onSuccess: (data) => {
+      if ("duplicate" in data && data.duplicate) {
+        globalThis.location.reload();
+        return;
+      }
+      if ("requiresAdminApproval" in data && data.requiresAdminApproval) {
+        // ✅ Pending manual payment submitted — show awaiting-approval state
+        if ("transactionId" in data) setManualTransactionId(data.transactionId);
+        setPaymentStep("pending_approval");
+      } else if ("requiresRedirect" in data && !data.requiresRedirect) {
+        // Free course enrolled instantly
+        globalThis.location.reload();
+      }
+    },
+    onError: (error) => {
+      setPaymentError(error.message || "Failed to submit payment");
+    },
+  });
+
+  const handleManualPayment = () => {
+    const cleanPhone = phoneNumber.replaceAll(/[\s\-()]/g, "");
+    if (cleanPhone.length < 11) {
+      setPaymentError(lang === "ar" ? "رقم الموبايل مطلوب (11 رقم على الأقل)" : "Phone number is required (at least 11 digits)");
+      return;
+    }
+    if (!manualDetails?.enabled || availableManualChannels.length === 0) {
+      setPaymentError(lang === "ar" ? "الدفع اليدوي غير متاح حالياً" : "Manual payment is not available right now");
+      return;
+    }
+    setPaymentError(null);
+    trackEvent("payment_method_selected", { courseId: course?.id, method: manualMethod, slug, provider: "manual" });
+    manualPaymentMutation.mutate({
+      courseId: course!.id,
+      paymentMethod: manualMethod,
+      idempotencyKey: crypto.randomUUID(),
+      phoneNumber: cleanPhone,
+      reference: transferReference.trim() || undefined,
+      promoCodeId: promoValidation?.valid && promoValidation.promoId ? promoValidation.promoId : undefined,
+    });
+  };
 
   const handleEnroll = () => {
     if (!isAuthenticated) {
@@ -1373,35 +1489,200 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
               </div>
             )}
 
-            {/* Payment Methods */}
-            <div className="mt-5 space-y-3">
-              {[
-                { key: "visa" as const, label: lang === "en" ? "Card Payment" : "بطاقة ائتمان", desc: lang === "en" ? "Visa / Mastercard" : "فيزا / ماستركارد" },
-                { key: "wallet" as const, label: lang === "en" ? "Mobile Wallet" : "محفظة موبايل", desc: lang === "en" ? "Vodafone / Orange / Etisalat" : "فودافون / أورانج / اتصالات" },
-                { key: "kiosk" as const, label: lang === "en" ? "Kiosk" : "كiosk (فوري / أمين)", desc: lang === "en" ? "Pay at nearest kiosk" : "ادفع من أقرب فرع فوري أو أمين" },
-                { key: "cash_collection" as const, label: lang === "en" ? "Cash Collection" : "تحصيل نقدى", desc: lang === "en" ? "Pay on delivery" : "دفع عند الاستلام" },
-                { key: "paypal" as const, label: "PayPal", desc: lang === "en" ? "International (USD)" : "دولار أمريكي" },
-              ].map((method) => {
-                const Icon = methodIcons[method.key] || CreditCard;
-                return (
-                  <button
-                    key={method.key}
-                    onClick={() => handlePayment(method.key)}
-                    disabled={enrollMutation.isPending || paymentStep === "redirecting" || paymentStep === "processing"}
-                    className="flex w-full items-center gap-3 rounded-lg border border-[#1f2d44] p-4 text-start transition-colors hover:border-[#06b6d4] hover:bg-[rgba(6,182,212,0.05)] disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <div className="flex h-8 w-8 items-center justify-center rounded bg-[#1a2233]">
-                      <Icon className="h-4 w-4 text-[#06b6d4]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <span className="text-sm font-medium text-[#f0f4f8]">{method.label}</span>
-                      <p className="text-xs text-[#64748b]">{method.desc}</p>
-                    </div>
-                    <Zap className="h-4 w-4 text-[#64748b]" />
-                  </button>
-                );
-              })}
+            {/* ✅ Pending approval state (manual payment submitted) */}
+            {paymentStep === "pending_approval" ? (
+              <div className="mt-6 text-center">
+                <Hourglass className="mx-auto h-14 w-14 text-[#f59e0b]" />
+                <p className="mt-4 text-base font-semibold text-[#f0f4f8]">
+                  {lang === "ar" ? "تم استلام طلب الدفع" : "Payment request received"}
+                </p>
+                <p className="mt-2 text-sm text-[#94a3b8]">
+                  {lang === "ar"
+                    ? "طلبك قيد المراجعة حالياً. هيتم تفعيل الكورس تلقائياً بعد تأكيد التحويل من إدارة المنصة."
+                    : "Your request is under review. The course will be activated automatically once the admin confirms your transfer."}
+                </p>
+                {manualTransactionId && (
+                  <p className="mt-3 text-xs text-[#64748b]" dir="ltr">{manualTransactionId}</p>
+                )}
+                <Button
+                  variant="ghost"
+                  className="mt-5 w-full text-[#94a3b8] hover:text-[#f0f4f8]"
+                  onClick={() => {
+                    setPaymentStep("idle");
+                    setShowPayment(false);
+                  }}
+                >
+                  {lang === "ar" ? "تمام، شكراً" : "Done, thanks"}
+                </Button>
+              </div>
+            ) : (
+            <>
+            {/* ✅ Payment type tabs: electronic gateway vs manual transfer */}
+            <div className="mt-5 grid grid-cols-2 gap-2 rounded-lg border border-[#1f2d44] bg-[#0a0e17] p-1">
+              <button
+                onClick={() => { setPaymentTab("electronic"); setPaymentError(null); }}
+                className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                  paymentTab === "electronic"
+                    ? "bg-[rgba(6,182,212,0.15)] text-[#06b6d4]"
+                    : "text-[#94a3b8] hover:text-[#f0f4f8]"
+                }`}
+              >
+                <CreditCard className="h-4 w-4" />
+                {lang === "ar" ? "دفع إلكتروني" : "Electronic"}
+              </button>
+              <button
+                onClick={() => { setPaymentTab("manual"); setPaymentError(null); }}
+                className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                  paymentTab === "manual"
+                    ? "bg-[rgba(245,158,11,0.15)] text-[#f59e0b]"
+                    : "text-[#94a3b8] hover:text-[#f0f4f8]"
+                }`}
+              >
+                <Landmark className="h-4 w-4" />
+                {lang === "ar" ? "تحويل يدوي" : "Manual Transfer"}
+              </button>
             </div>
+
+            {/* ✅ ELECTRONIC TAB — Paymob gateway methods */}
+            {paymentTab === "electronic" && (
+              <div className="mt-4">
+                {!paymobConfigured && (
+                  <div className="mb-3 flex items-start gap-2 rounded-lg border border-[rgba(245,158,11,0.3)] bg-[rgba(245,158,11,0.08)] px-3 py-2.5">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#f59e0b]" />
+                    <span className="text-xs text-[#f59e0b]">
+                      {lang === "ar"
+                        ? "الدفع الإلكتروني غير مفعّل حالياً. استخدم تبويب «تحويل يدوي» (فودافون كاش / انستاباي / بنك) لإتمام الشراء."
+                        : "Electronic payment is currently disabled. Use the \"Manual Transfer\" tab (Vodafone Cash / InstaPay / bank) to complete your purchase."}
+                    </span>
+                  </div>
+                )}
+                <div className="space-y-3">
+                  {[
+                    { key: "visa" as const, label: lang === "en" ? "Card Payment" : "بطاقة ائتمان", desc: lang === "en" ? "Visa / Mastercard" : "فيزا / ماستركارد" },
+                    { key: "wallet" as const, label: lang === "en" ? "Mobile Wallet" : "محفظة موبايل", desc: lang === "en" ? "Vodafone / Orange / Etisalat" : "فودافون / أورانج / اتصالات" },
+                    { key: "kiosk" as const, label: lang === "en" ? "Kiosk" : "كشك (فوري / أمين)", desc: lang === "en" ? "Pay at nearest kiosk" : "ادفع من أقرب فرع فوري أو أمين" },
+                    { key: "cash_collection" as const, label: lang === "en" ? "Cash Collection" : "تحصيل نقدي", desc: lang === "en" ? "Pay on delivery" : "دفع عند الاستلام" },
+                    { key: "paypal" as const, label: "PayPal", desc: lang === "en" ? "International (USD)" : "دولار أمريكي" },
+                  ].map((method) => {
+                    const Icon = methodIcons[method.key] || CreditCard;
+                    const electronicDisabled = !paymobConfigured || enrollMutation.isPending || paymentStep === "redirecting" || paymentStep === "processing";
+                    return (
+                      <button
+                        key={method.key}
+                        onClick={() => handlePayment(method.key)}
+                        disabled={electronicDisabled}
+                        className="flex w-full items-center gap-3 rounded-lg border border-[#1f2d44] p-4 text-start transition-colors hover:border-[#06b6d4] hover:bg-[rgba(6,182,212,0.05)] disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <div className="flex h-8 w-8 items-center justify-center rounded bg-[#1a2233]">
+                          <Icon className="h-4 w-4 text-[#06b6d4]" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-medium text-[#f0f4f8]">{method.label}</span>
+                          <p className="text-xs text-[#64748b]">{method.desc}</p>
+                        </div>
+                        <Zap className="h-4 w-4 text-[#64748b]" />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* ✅ MANUAL TAB — offline transfer + admin approval */}
+            {paymentTab === "manual" && (
+              <div className="mt-4">
+                {!manualDetails?.enabled ? (
+                  <div className="flex items-start gap-2 rounded-lg border border-[rgba(245,158,11,0.3)] bg-[rgba(245,158,11,0.08)] px-3 py-2.5">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#f59e0b]" />
+                    <span className="text-xs text-[#f59e0b]">
+                      {lang === "ar"
+                        ? "الدفع اليدوي غير مفعّل حالياً. تواصل مع الدعم لإتمام الشراء."
+                        : "Manual payment is not enabled yet. Contact support to complete your purchase."}
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    <p className="mb-3 text-xs text-[#94a3b8]">
+                      {lang === "ar"
+                        ? "حوّل المبلغ على أي من الوسائل التالية، ثم اضغط «تم التحويل — إرسال الطلب» وهيتم المراجعة والتفعيل."
+                        : "Transfer the amount using any of the channels below, then press \"Transfer done — submit request\". The admin will review and activate."}
+                    </p>
+                    <div className="space-y-2">
+                      {manualChannels.map((channel) => {
+                        const selected = manualMethod === channel.key;
+                        return (
+                          <div
+                            key={channel.key}
+                            className={`flex items-center gap-3 rounded-lg border p-3 transition-colors ${
+                              selected
+                                ? "border-[rgba(245,158,11,0.5)] bg-[rgba(245,158,11,0.08)]"
+                                : "border-[#1f2d44] hover:border-[#f59e0b]/40"
+                            }`}
+                          >
+                            <button
+                              onClick={() => { setManualMethod(channel.key); setPaymentError(null); }}
+                              className="flex flex-1 items-center gap-3 text-start"
+                            >
+                              <div className="flex h-8 w-8 items-center justify-center rounded bg-[#1a2233]">
+                                {channel.icon}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <span className="text-sm font-medium text-[#f0f4f8]">{channel.label}</span>
+                                <p className="truncate text-xs text-[#94a3b8]" dir="ltr">{channel.value}</p>
+                              </div>
+                            </button>
+                            <button
+                              onClick={() => copyChannelValue(channel.key, channel.value)}
+                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-[#1f2d44] text-[#94a3b8] transition-colors hover:border-[#06b6d4] hover:text-[#06b6d4]"
+                              aria-label={lang === "ar" ? "نسخ" : "Copy"}
+                            >
+                              {copiedChannel === channel.key ? <CheckCircle2 className="h-4 w-4 text-[#10b981]" /> : <Copy className="h-4 w-4" />}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Optional transfer reference */}
+                    <div className="mt-3">
+                      <label htmlFor="transfer-reference" className="mb-1.5 block text-sm font-medium text-[#f0f4f8]">
+                        {lang === "ar" ? "رقم عملية التحويل (اختياري)" : "Transfer reference (optional)"}
+                      </label>
+                      <input
+                        id="transfer-reference"
+                        type="text"
+                        dir="ltr"
+                        placeholder={lang === "ar" ? "مثال: 93041255" : "e.g. 93041255"}
+                        value={transferReference}
+                        onChange={(e) => { setTransferReference(e.target.value); setPaymentError(null); }}
+                        maxLength={60}
+                        className="w-full rounded-lg border border-[#1f2d44] bg-[#0a0e17] px-4 py-2.5 text-sm text-[#f0f4f8] placeholder-[#64748b] focus:border-[#f59e0b] focus:outline-none focus:ring-1 focus:ring-[#f59e0b]"
+                      />
+                    </div>
+
+                    {manualDetails.notesAr && (
+                      <p className="mt-3 text-xs text-[#64748b]">
+                        {lang === "ar" ? manualDetails.notesAr : (manualDetails.notesEn || manualDetails.notesAr)}
+                      </p>
+                    )}
+
+                    <Button
+                      className="mt-4 w-full bg-gradient-to-r from-[#f59e0b] to-[#d97706] font-semibold text-[#0a0e17] hover:from-[#fbbf24] hover:to-[#f59e0b]"
+                      onClick={handleManualPayment}
+                      disabled={manualPaymentMutation.isPending || availableManualChannels.length === 0}
+                    >
+                      {manualPaymentMutation.isPending
+                        ? t("loading")
+                        : lang === "ar"
+                          ? "تم التحويل — إرسال الطلب"
+                          : "Transfer done — submit request"}
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+            </>
+            )}
 
             <Button
               variant="ghost"

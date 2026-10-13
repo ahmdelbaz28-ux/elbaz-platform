@@ -77,6 +77,8 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
   const { data: coursesData } = trpc.admin.listCourses.useQuery(undefined, { enabled: !!isAdmin && activeTab === "courses" });
   const { data: allTickets } = trpc.admin.tickets.useQuery(undefined, { enabled: !!isAdmin && activeTab === "tickets" });
   const { data: paymentsData } = trpc.admin.payments.useQuery(undefined, { enabled: !!isAdmin && activeTab === "payments" });
+  const { data: manualPayDetails, refetch: refetchManualPayDetails } = trpc.payment.manualDetails.useQuery(undefined, { enabled: !!isAdmin && activeTab === "payments" });
+  const { data: paymobStatusAdmin } = trpc.payment.isConfigured.useQuery(undefined, { enabled: !!isAdmin && activeTab === "payments" });
 
   const updateTicket = trpc.admin.updateTicketStatus.useMutation({ onSuccess: () => { utils.admin.tickets.invalidate(); toast.success(lang === "en" ? "Ticket updated" : "تم تحديث التذكرة"); }, onError: (err) => toast.error(err.message) });
   const [replyText, setReplyText] = useState("");
@@ -94,6 +96,47 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
   const createLesson = trpc.admin.createLesson.useMutation({ onSuccess: () => { utils.admin.listLessons.invalidate(); setShowLessonForm(false); toast.success(lang === "en" ? "Lesson added" : "تمت إضافة الدرس"); }, onError: (err) => toast.error(err.message) });
   const updateLesson = trpc.admin.updateLesson.useMutation({ onSuccess: () => { utils.admin.listLessons.invalidate(); setShowLessonForm(false); toast.success(lang === "en" ? "Lesson updated" : "تم تحديث الدرس"); }, onError: (err) => toast.error(err.message) });
   const deleteLesson = trpc.admin.deleteLesson.useMutation({ onSuccess: () => { utils.admin.listLessons.invalidate(); toast.success(lang === "en" ? "Lesson deleted" : "تم حذف الدرس"); }, onError: (err) => toast.error(err.message) });
+
+  // ✅ Manual payment approval (Vodafone Cash / InstaPay / bank transfer)
+  const approveManualPayment = trpc.admin.approveManual.useMutation({ onSuccess: () => { utils.admin.payments.invalidate(); utils.admin.stats.invalidate(); toast.success(lang === "en" ? "Payment approved — course activated" : "تم اعتماد الدفع وتفعيل الكورس"); }, onError: (err) => toast.error(err.message) });
+  const rejectManualPayment = trpc.admin.rejectManual.useMutation({ onSuccess: () => { utils.admin.payments.invalidate(); toast.success(lang === "en" ? "Payment rejected" : "تم رفض الدفع"); }, onError: (err) => toast.error(err.message) });
+  const bulkUpsertPaymentSettings = trpc.settings.bulkUpsert.useMutation({ onSuccess: () => { utils.invalidate(); refetchManualPayDetails(); toast.success(lang === "en" ? "Payment details saved" : "تم حفظ تفاصيل الدفع اليدوي"); }, onError: (err) => toast.error(err.message) });
+
+  /* ✅ Manual payment transfer details editor state (siteSettings section "payments") */
+  const [paySettings, setPaySettings] = useState({
+    vodafone_cash_number: "",
+    instapay_handle: "",
+    bank_transfer_details: "",
+    notes_ar: "",
+    notes_en: "",
+  });
+  const [paySettingsLoaded, setPaySettingsLoaded] = useState(false);
+  useEffect(() => {
+    if (manualPayDetails && !paySettingsLoaded) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPaySettings({
+        vodafone_cash_number: manualPayDetails.vodafoneCashNumber ?? "",
+        instapay_handle: manualPayDetails.instapayHandle ?? "",
+        bank_transfer_details: manualPayDetails.bankTransferDetails ?? "",
+        notes_ar: manualPayDetails.notesAr ?? "",
+        notes_en: manualPayDetails.notesEn ?? "",
+      });
+      setPaySettingsLoaded(true);
+    }
+  }, [manualPayDetails, paySettingsLoaded]);
+
+  const savePaymentSettings = () => {
+    bulkUpsertPaymentSettings.mutate({
+      section: "payments",
+      settings: [
+        { key: "vodafone_cash_number", value: paySettings.vodafone_cash_number.trim(), type: "text", sortOrder: 1 },
+        { key: "instapay_handle", value: paySettings.instapay_handle.trim(), type: "text", sortOrder: 2 },
+        { key: "bank_transfer_details", value: paySettings.bank_transfer_details.trim(), type: "text", sortOrder: 3 },
+        { key: "notes_ar", value: paySettings.notes_ar.trim(), type: "text", sortOrder: 4 },
+        { key: "notes_en", value: paySettings.notes_en.trim(), type: "text", sortOrder: 5 },
+      ],
+    });
+  };
 
   /* Course & lesson management state */
   const [showCourseForm, setShowCourseForm] = useState(false);
@@ -514,6 +557,58 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                     <h1 className="text-2xl font-bold text-foreground">{isRTL ? "سجل المدفوعات" : "Payment History"}</h1>
                     <p className="text-sm text-text-muted mt-1">{allPayments.length} {isRTL ? "معاملة" : "transactions"}</p>
                   </div>
+
+                  {/* ✅ Payment gateway status + manual transfer details editor */}
+                  <div className="rounded-xl border border-border bg-primary p-6 space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h2 className="text-lg font-semibold text-foreground">{isRTL ? "إعدادات وسائل الدفع" : "Payment Methods Setup"}</h2>
+                        <p className="text-sm text-text-muted mt-1">
+                          {isRTL ? "اضبط تفاصيل التحويل اليدوي التي سيراها الطلاب في صفحة الكورس" : "Configure the manual transfer details students will see on the course page"}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge className={`text-xs ${paymobStatusAdmin?.configured ? "bg-[rgba(16,185,129,0.15)] text-emerald-400" : "bg-[rgba(245,158,11,0.15)] text-amber-400"}`}>
+                          {isRTL ? "بوابة إلكترونية: " : "Electronic gateway: "}
+                          {paymobStatusAdmin?.configured ? (isRTL ? "مفعّلة" : "configured") : (isRTL ? "غير مفعّلة (ينقص أسرار Paymob)" : "not configured (Paymob secrets missing)")}
+                        </Badge>
+                        <Badge className={`text-xs ${manualPayDetails?.enabled ? "bg-[rgba(16,185,129,0.15)] text-emerald-400" : "bg-[rgba(244,63,94,0.15)] text-destructive"}`}>
+                          {isRTL ? "تحويل يدوي: " : "Manual transfer: "}
+                          {manualPayDetails?.enabled ? (isRTL ? "مفعّل" : "enabled") : (isRTL ? "معطّل (أدخل التفاصيل بالأسفل)" : "disabled (fill details below)")}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="grid gap-1.5">
+                        <Label className="text-sm text-text-muted">{isRTL ? "رقم فودافون كاش" : "Vodafone Cash number"}</Label>
+                        <Input value={paySettings.vodafone_cash_number} onChange={(e) => setPaySettings((p) => ({ ...p, vodafone_cash_number: e.target.value }))} placeholder="01001234567" className="border-border bg-background text-foreground" dir="ltr" />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label className="text-sm text-text-muted">{isRTL ? "عنوان InstaPay (رقم/رابط)" : "InstaPay handle (number/link)"}</Label>
+                        <Input value={paySettings.instapay_handle} onChange={(e) => setPaySettings((p) => ({ ...p, instapay_handle: e.target.value }))} placeholder="01001234567 أو https://ipn.example/..." className="border-border bg-background text-foreground" dir="ltr" />
+                      </div>
+                      <div className="grid gap-1.5 sm:col-span-2">
+                        <Label className="text-sm text-text-muted">{isRTL ? "تفاصيل التحويل البنكي (اسم البنك / رقم الحساب / IBAN)" : "Bank transfer details (bank / account number / IBAN)"}</Label>
+                        <Textarea value={paySettings.bank_transfer_details} onChange={(e) => setPaySettings((p) => ({ ...p, bank_transfer_details: e.target.value }))} placeholder={isRTL ? "مثال: بنك مصر — حساب 1234567890 — IBAN EG12..." : "e.g. Banque Misr — account 1234567890 — IBAN EG12..."} rows={2} className="border-border bg-background text-foreground" dir="ltr" />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label className="text-sm text-text-muted">{isRTL ? "ملاحظات للطالب (عربي)" : "Student notes (Arabic)"}</Label>
+                        <Input value={paySettings.notes_ar} onChange={(e) => setPaySettings((p) => ({ ...p, notes_ar: e.target.value }))} placeholder={isRTL ? "مثال: التحويل باسم شخصي فقط" : ""} className="border-border bg-background text-foreground" />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label className="text-sm text-text-muted">{isRTL ? "ملاحظات للطالب (إنجليزي)" : "Student notes (English)"}</Label>
+                        <Input value={paySettings.notes_en} onChange={(e) => setPaySettings((p) => ({ ...p, notes_en: e.target.value }))} placeholder={isRTL ? "" : "e.g. personal transfers only"} className="border-border bg-background text-foreground" dir="ltr" />
+                      </div>
+                    </div>
+                    <Button
+                      className="bg-gradient-to-r from-[#06b6d4] to-[#0891b2] text-[#0a0e17] hover:from-[#22d3ee] hover:to-[#06b6d4]"
+                      onClick={savePaymentSettings}
+                      disabled={bulkUpsertPaymentSettings.isPending}
+                    >
+                      {bulkUpsertPaymentSettings.isPending ? (isRTL ? "جاري الحفظ..." : "Saving...") : (isRTL ? "حفظ تفاصيل الدفع" : "Save payment details")}
+                    </Button>
+                  </div>
+
                   <div className="rounded-xl border border-border bg-primary overflow-hidden">
                     <table className="w-full text-start text-sm">
                       <thead>
@@ -521,21 +616,65 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                           <th className="p-4 text-text-muted text-start font-medium">ID</th>
                           <th className="p-4 text-text-muted text-start font-medium">{isRTL ? "المبلغ" : "Amount"}</th>
                           <th className="p-4 text-text-muted text-start font-medium">{isRTL ? "الطريقة" : "Method"}</th>
+                          <th className="p-4 text-text-muted text-start font-medium">{isRTL ? "المصدر" : "Provider"}</th>
                           <th className="p-4 text-text-muted text-start font-medium">{t("status")}</th>
                           <th className="p-4 text-text-muted text-start font-medium">{isRTL ? "التاريخ" : "Date"}</th>
+                          <th className="p-4 text-text-muted text-start font-medium">{isRTL ? "إجراء" : "Actions"}</th>
                         </tr>
                       </thead>
                       <tbody>
                         {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                        {(allPayments || []).map((p: any) => (
+                        {(allPayments || []).map((p: any) => {
+                          const meta = (p.metadata ?? {}) as { reference?: string | null; rejectReason?: string | null };
+                          const isPendingManual = p.provider === "manual" && p.status === "pending";
+                          return (
                           <tr key={p.id} className="border-b border-border/50 hover:bg-[rgba(6,182,212,0.02)] transition-colors">
                             <td className="p-4 text-foreground font-mono text-xs">#{p.id}</td>
                             <td className="p-4 font-semibold text-accent-secondary">{p.amount} {p.currency}</td>
-                            <td className="p-4 text-text-muted">{p.paymentMethod}</td>
-                            <td className="p-4"><Badge className={`text-xs ${paymentStatusBadgeClass[p.status] ?? "bg-[rgba(244,63,94,0.15)] text-destructive"}`}>{p.status}</Badge></td>
+                            <td className="p-4 text-text-muted">
+                              {p.paymentMethod}
+                              {(p.phoneNumber || meta.reference) && (
+                                <span className="block text-xs text-text-faint" dir="ltr">
+                                  {p.phoneNumber}{p.phoneNumber && meta.reference ? " · " : ""}{meta.reference}
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-4">
+                              <Badge variant="outline" className={`text-[10px] ${p.provider === "manual" ? "border-[rgba(245,158,11,0.4)] text-amber-400" : "border-border text-text-faint"}`}>{p.provider}</Badge>
+                            </td>
+                            <td className="p-4">
+                              <Badge className={`text-xs ${paymentStatusBadgeClass[p.status] ?? "bg-[rgba(244,63,94,0.15)] text-destructive"}`}>{p.status}</Badge>
+                              {meta.rejectReason && <span className="block text-xs text-destructive mt-1">{meta.rejectReason}</span>}
+                            </td>
                             <td className="p-4 text-text-faint text-xs">{p.createdAt ? new Date(p.createdAt).toLocaleDateString() : "—"}</td>
+                            <td className="p-4">
+                              {isPendingManual ? (
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    className="bg-[rgba(16,185,129,0.15)] text-emerald-400 hover:bg-[rgba(16,185,129,0.25)]"
+                                    onClick={() => approveManualPayment.mutate({ paymentId: p.id })}
+                                    disabled={approveManualPayment.isPending}
+                                  >
+                                    {isRTL ? "اعتماد" : "Approve"}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="border-[rgba(244,63,94,0.4)] text-destructive hover:bg-[rgba(244,63,94,0.1)]"
+                                    onClick={() => rejectManualPayment.mutate({ paymentId: p.id })}
+                                    disabled={rejectManualPayment.isPending}
+                                  >
+                                    {isRTL ? "رفض" : "Reject"}
+                                  </Button>
+                                </div>
+                              ) : (
+                                <span className="text-text-faint text-xs">—</span>
+                              )}
+                            </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
