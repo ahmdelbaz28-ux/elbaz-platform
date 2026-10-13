@@ -29,10 +29,22 @@ const envSchema = z.object({
   R2_ENDPOINT: z.string().optional(),
   R2_PUBLIC_URL: z.string().url().optional(),
 
+  // ── Paymob (Intention API — official 2025+ flow) ────────────────
+  // Secret/Public keys + HMAC come from Dashboard → Settings → API Keys.
+  // Integration IDs come from Dashboard → Settings → Payment Integrations
+  // (each has a Test and Live version; match the Secret Key's mode).
+  // Public key + integration IDs may alternatively be set by the admin in
+  // the dashboard UI (siteSettings section "payments") without a redeploy.
+  PAYMOB_SECRET_KEY: z.string().optional(),
+  PAYMOB_PUBLIC_KEY: z.string().optional(),
+  PAYMOB_HMAC_SECRET: z.string().optional(),
+  PAYMOB_INTEGRATION_CARD: z.coerce.number().int().positive().optional(),
+  PAYMOB_INTEGRATION_WALLET: z.coerce.number().int().positive().optional(),
+  // Legacy Accept API key (JWT) — only used by the old Transaction Inquiry
+  // endpoints; kept optional because Intention-API-era keys are rejected by it.
   PAYMOB_API_KEY: z.string().optional(),
   PAYMOB_INTEGRATION_ID: z.coerce.number().min(0).optional(),
   PAYMOB_IFRAME_ID: z.coerce.number().min(0).optional(),
-  PAYMOB_HMAC_SECRET: z.string().optional(),
   PAYMOB_WEBHOOK_SECRET: z.string().optional(),
   PAYMOB_BASE_URL: z.string().default("https://accept.paymob.com"),
 

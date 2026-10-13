@@ -4,7 +4,8 @@ import { db, pool } from "./queries/connection.js";
 import { sql } from "drizzle-orm";
 import { getCache, cacheKeys, CACHE_TTL } from "./lib/cache.js";
 import { logger } from "./lib/logger.js";
-import { isPaymobConfigured } from "./lib/paymob.js";
+import { resolvePaymobRuntimeConfig } from "./lib/payments-config.js";
+import { isPaymobConfigComplete } from "./lib/paymob.js";
 
 const healthRouter = new Hono({ strict: false });
 
@@ -157,11 +158,16 @@ healthRouter.get("/health", async (c) => {
     checks.ai = { status: "degraded", latency_ms: 0, detail: "No AI provider configured" };
   }
 
-  // 6. Payments Check — Paymob gateway keys or manual transfer fallback
-  if (isPaymobConfigured()) {
-    checks.payments = { status: "healthy", latency_ms: 0, detail: "Paymob gateway configured" };
-  } else {
-    checks.payments = { status: "degraded", latency_ms: 0, detail: "Paymob not configured — manual transfer only (if admin filled siteSettings payments section)" };
+  // 6. Payments Check — Paymob gateway (env + dashboard settings) or manual transfer fallback
+  try {
+    const paymobCfg = await resolvePaymobRuntimeConfig();
+    if (isPaymobConfigComplete(paymobCfg)) {
+      checks.payments = { status: "healthy", latency_ms: 0, detail: "Paymob gateway configured" };
+    } else {
+      checks.payments = { status: "degraded", latency_ms: 0, detail: "Paymob not fully configured — manual transfer only (if admin filled siteSettings payments section)" };
+    }
+  } catch (error) {
+    checks.payments = { status: "degraded", latency_ms: 0, detail: `Paymob config check failed: ${error instanceof Error ? error.message : String(error)}` };
   }
 
   await cache.set(cacheKeys.healthCheck(), { checks }, CACHE_TTL.HEALTH_CHECK);

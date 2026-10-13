@@ -1,27 +1,19 @@
 import { z } from "zod";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { createRouter, authedQuery, publicQuery } from "./middleware";
-import { MANUAL_PAYMENT_METHODS } from "./lib/payments-core";
+import { MANUAL_PAYMENT_METHODS, resolveManualChannel } from "./lib/payments-core";
+import { getManualPaymentDetails, resolvePaymobRuntimeConfig } from "./lib/payments-config";
 import { getDb, withTransaction } from "./queries/connection";
-import { payments, enrollments, courses, promoCodes, promoCodeUsage, siteSettings } from "@db/schema";
+import { payments, enrollments, courses, promoCodes, promoCodeUsage } from "@db/schema";
 import { TRPCError } from "@trpc/server";
 import { nanoid } from "nanoid";
-import { initiatePaymobPayment, isPaymobConfigured } from "./lib/paymob";
+import {
+  createIntention,
+  isPaymobConfigComplete,
+  summarizePaymobConfig,
+} from "./lib/paymob";
+import { env } from "./lib/env";
 import { invalidateCourseCache, invalidateStatsCache } from "./lib/cache";
-import { mapManualDetailsFromSettings, resolveManualChannel, PAYMENT_SETTINGS_SECTION, type ManualPaymentDetails } from "./lib/payments-core";
-
-/**
- * Read manual payment details from siteSettings (section "payments").
- * Thin DB wrapper around the pure mapManualDetailsFromSettings helper.
- */
-async function getManualPaymentDetails(): Promise<ManualPaymentDetails> {
-  const db = getDb();
-  const rows = await db
-    .select({ key: siteSettings.key, value: siteSettings.value })
-    .from(siteSettings)
-    .where(eq(siteSettings.section, PAYMENT_SETTINGS_SECTION));
-  return mapManualDetailsFromSettings(rows);
-}
 
 /**
  * Apply a promo code to compute the discount amount, final amount, and applied promo id.
@@ -147,9 +139,12 @@ export const paymentRouter = createRouter({
       // ✅ CRITICAL FIX: Use transaction to prevent race conditions
       return await withTransaction(async (tx) => {
         // ✅ Server fetches the actual price — never trust client-sent amount
+        // Select the course slug too — the Paymob redirect lands back on
+        // /courses/{slug}?txn=… where the frontend polls payment.verify.
         const [course] = await tx
           .select({
             id: courses.id,
+            slug: courses.slug,
             price: courses.price,
             isPremium: courses.isPremium,
             isPublished: courses.isPublished,
@@ -209,12 +204,14 @@ export const paymentRouter = createRouter({
           return await enrollInFreeCourse(tx, ctx, input, amount, transactionId);
         }
 
-        // ✅ PAID COURSES: Initiate Paymob payment
-        // Check Paymob configuration first
-        if (!isPaymobConfigured()) {
+        // ✅ PAID COURSES: create a Paymob intention and return the hosted-checkout URL
+        // Resolve config (env + dashboard settings) first so a missing piece
+        // produces an actionable error instead of a failed Paymob call.
+        const paymobConfig = await resolvePaymobRuntimeConfig();
+        if (!isPaymobConfigComplete(paymobConfig)) {
           throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: "Payment gateway is not configured. Please contact support.",
+            code: "PRECONDITION_FAILED",
+            message: `Payment gateway is not fully configured. Missing: ${summarizePaymobConfig(paymobConfig).join("; ")}`,
           });
         }
 
@@ -250,17 +247,31 @@ export const paymentRouter = createRouter({
             .where(eq(promoCodes.id, appliedPromoCodeId));
         }
 
-        // Call Paymob API: Auth → Create Order → Generate Payment Key
+        // Call Paymob: create the payment intention (official Intention API)
         let paymobResult: { paymentUrl: string; paymobOrderId: number };
         try {
-          paymobResult = await initiatePaymobPayment(
-            finalAmount,
-            transactionId,
-            ctx.user.name || ctx.user.username,
-            ctx.user.email || "",
-            input.phoneNumber || "",
-            input.paymentMethod, // ✅ Pass payment method to select correct Integration ID
-          );
+          const intention = await createIntention(paymobConfig, {
+            amount: finalAmount,
+            itemName: `Course #${input.courseId}`,
+            specialReference: transactionId,
+            customer: {
+              firstName: (ctx.user.name || ctx.user.username || "Customer").split(" ")[0],
+              lastName: (ctx.user.name || ctx.user.username || "Customer").split(" ").slice(1).join(" ") || "Customer",
+              email: ctx.user.email || "",
+              phone: input.phoneNumber || "",
+            },
+            paymentMethod: input.paymentMethod,
+            extras: {
+              course_id: input.courseId,
+              user_id: ctx.user.id,
+              payment_id: Number(payment.insertId),
+              discount: discountAmount > 0 ? discountAmount.toFixed(2) : null,
+            },
+            // Land the customer back on the course page — the frontend reads
+            // ?txn=… and polls payment.verify until the webhook settles.
+            redirectionUrl: `${env.FRONTEND_URL}/courses/${course.slug ?? input.courseId}?txn=${transactionId}`,
+          });
+          paymobResult = { paymentUrl: intention.checkoutUrl, paymobOrderId: intention.paymobOrderId };
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } catch (error: any) {
           // Paymob API failed — mark payment as failed
@@ -345,10 +356,20 @@ export const paymentRouter = createRouter({
   }),
 
   /**
-   * Check if Paymob is configured (for frontend to show/hide payment options)
+   * Paymob configuration status — drives the frontend "electronic payment"
+   * visibility AND gives the admin dashboard an actionable missing-items list.
+   * Env-only values (secret key, HMAC) can't be displayed; everything else is
+   * either resolved or listed as missing with its exact source.
    */
-  isConfigured: publicQuery.query(() => {
-    return { configured: isPaymobConfigured() };
+  isConfigured: publicQuery.query(async () => {
+    const cfg = await resolvePaymobRuntimeConfig();
+    const missing = summarizePaymobConfig(cfg);
+    const mode = cfg.secretKey.includes("_test_") || cfg.secretKey.includes("_sk_test")
+      ? "test"
+      : cfg.secretKey
+        ? "live"
+        : "unset";
+    return { configured: missing.length === 0, missing, mode };
   }),
 
   /**

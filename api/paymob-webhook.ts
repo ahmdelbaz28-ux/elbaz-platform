@@ -22,7 +22,8 @@ import { Hono } from "hono";
 import { eq, sql, and } from "drizzle-orm";
 import { db } from "./queries/connection.js";
 import { payments, enrollments, courses } from "@db/schema";
-import { verifyPaymobWebhook, type PaymobWebhookPayload } from "./lib/paymob.js";
+import { verifyTransactionCallback, verifyPaymobAmount, type PaymobCallbackPayload, type PaymobCallbackTransaction } from "./lib/paymob.js";
+import { env } from "./lib/env.js";
 import { invalidateCourseCache, invalidateStatsCache } from "./lib/cache.js";
 import { invalidateSitemapCache } from "./boot.js";
 import { logger } from "./lib/logger.js";
@@ -39,16 +40,16 @@ function computeNewPaymentStatus(isSuccess: boolean, isRefunded: boolean, isVoid
 }
 
 /**
- * Verify the webhook amount matches our recorded amount (prevent partial-payment attacks).
+ * Verify the callback amount matches our recorded amount (prevent partial-payment attacks).
  * Returns null on success, or an error Response on mismatch.
  */
-async function verifyWebhookAmount(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], paymentRecord: { finalAmount: string | null; amount: string }, obj: PaymobWebhookPayload["obj"], merchantOrderId: string): Promise<Response | null> {
+async function verifyWebhookAmount(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], paymentRecord: { finalAmount: string | null; amount: string }, obj: PaymobCallbackTransaction, merchantOrderId: string): Promise<Response | null> {
   const expectedAmount = Number.parseFloat(String(paymentRecord.finalAmount ?? paymentRecord.amount));
-  const webhookAmount = Number.parseFloat(obj.amount_cents?.toString() ?? obj.amount as string) / 100;
-  const amountValid = Math.abs(webhookAmount - expectedAmount) < 0.01;
+  const webhookAmountCents = Number(obj.amount_cents);
+  const amountValid = verifyPaymobAmount(webhookAmountCents, expectedAmount, "EGP");
   if (amountValid) return null;
 
-  logger.error(`[Paymob Webhook] Amount mismatch`, { expectedAmount, webhookAmount, merchantOrderId });
+  logger.error(`[Paymob Webhook] Amount mismatch`, { expectedAmount, webhookAmountCents, merchantOrderId });
   // Block payment — mark as failed to prevent partial-payment attacks
   await tx
     .update(payments)
@@ -108,7 +109,7 @@ async function processWebhookInTransaction(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   c: any,
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
-  obj: PaymobWebhookPayload["obj"],
+  obj: PaymobCallbackTransaction,
   merchantOrderId: string,
   isSuccess: boolean,
   isRefunded: boolean,
@@ -193,7 +194,7 @@ paymobWebhook.post("/webhook", async (c) => {
     return c.json({ error: "Invalid content type" }, 400);
   }
 
-  let payload: PaymobWebhookPayload;
+  let payload: PaymobCallbackPayload;
   try {
     payload = await c.req.json();
   } catch {
@@ -202,12 +203,24 @@ paymobWebhook.post("/webhook", async (c) => {
   }
 
   // ── Step 1: Verify HMAC signature ──
-  if (!verifyPaymobWebhook(payload)) {
-    logger.warn("[Paymob Webhook] HMAC verification failed — possible tampering or wrong secret");
+  // Official Intention-API callbacks carry the HMAC on the URL (?hmac=…);
+  // legacy Accept callbacks embedded it in the body — both are accepted.
+  const queryHmac = c.req.query("hmac");
+  if (!verifyTransactionCallback(payload, queryHmac, env.PAYMOB_HMAC_SECRET ?? "")) {
+    logger.warn("[Paymob Webhook] HMAC verification failed — possible tampering or wrong secret", {
+      hmacSource: queryHmac ? "query" : payload.hmac ? "body" : "missing",
+    });
     return c.json({ error: "Invalid signature" }, 401);
   }
 
+  // verifyTransactionCallback only passes when payload.obj exists — this guard
+  // narrows the type for the rest of the handler (TS18048).
   const obj = payload.obj;
+  if (!obj) {
+    logger.warn("[Paymob Webhook] Callback missing transaction object");
+    return c.json({ error: "Missing transaction object" }, 400);
+  }
+
   const merchantOrderId = obj.order?.merchant_order_id;
   const isSuccess = obj.success === true;
   const isRefunded = obj.is_refunded === true;

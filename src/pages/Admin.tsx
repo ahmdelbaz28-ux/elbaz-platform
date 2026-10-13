@@ -101,6 +101,17 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
   const approveManualPayment = trpc.admin.approveManual.useMutation({ onSuccess: () => { utils.admin.payments.invalidate(); utils.admin.stats.invalidate(); toast.success(lang === "en" ? "Payment approved — course activated" : "تم اعتماد الدفع وتفعيل الكورس"); }, onError: (err) => toast.error(err.message) });
   const rejectManualPayment = trpc.admin.rejectManual.useMutation({ onSuccess: () => { utils.admin.payments.invalidate(); toast.success(lang === "en" ? "Payment rejected" : "تم رفض الدفع"); }, onError: (err) => toast.error(err.message) });
   const bulkUpsertPaymentSettings = trpc.settings.bulkUpsert.useMutation({ onSuccess: () => { utils.invalidate(); refetchManualPayDetails(); toast.success(lang === "en" ? "Payment details saved" : "تم حفظ تفاصيل الدفع اليدوي"); }, onError: (err) => toast.error(err.message) });
+  const paymobSelfTest = trpc.admin.paymobSelfTest.useMutation({
+    onSuccess: (res) => {
+      if (res.ok) {
+        toast.success(lang === "en" ? "Paymob is reachable — intention created!" : "Paymob يستجيب — تم إنشاء نية دفع!");
+        if (res.checkoutUrl) globalThis.open(res.checkoutUrl, "_blank", "noopener");
+      } else {
+        toast.error(`${lang === "en" ? "Self-test failed" : "فشل الاختبار"} (${res.stage}): ${res.message}`);
+      }
+    },
+    onError: (err) => toast.error(err.message),
+  });
 
   /* ✅ Manual payment transfer details editor state (siteSettings section "payments") */
   const [paySettings, setPaySettings] = useState({
@@ -109,6 +120,9 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
     bank_transfer_details: "",
     notes_ar: "",
     notes_en: "",
+    paymob_public_key: "",
+    paymob_integration_card: "",
+    paymob_integration_wallet: "",
   });
   const [paySettingsLoaded, setPaySettingsLoaded] = useState(false);
   useEffect(() => {
@@ -120,6 +134,9 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
         bank_transfer_details: manualPayDetails.bankTransferDetails ?? "",
         notes_ar: manualPayDetails.notesAr ?? "",
         notes_en: manualPayDetails.notesEn ?? "",
+        paymob_public_key: manualPayDetails.paymobPublicKey ?? "",
+        paymob_integration_card: manualPayDetails.paymobIntegrationCard ?? "",
+        paymob_integration_wallet: manualPayDetails.paymobIntegrationWallet ?? "",
       });
       setPaySettingsLoaded(true);
     }
@@ -134,6 +151,9 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
         { key: "bank_transfer_details", value: paySettings.bank_transfer_details.trim(), type: "text", sortOrder: 3 },
         { key: "notes_ar", value: paySettings.notes_ar.trim(), type: "text", sortOrder: 4 },
         { key: "notes_en", value: paySettings.notes_en.trim(), type: "text", sortOrder: 5 },
+        { key: "paymob_public_key", value: paySettings.paymob_public_key.trim(), type: "text", sortOrder: 6 },
+        { key: "paymob_integration_card", value: paySettings.paymob_integration_card.trim(), type: "text", sortOrder: 7 },
+        { key: "paymob_integration_wallet", value: paySettings.paymob_integration_wallet.trim(), type: "text", sortOrder: 8 },
       ],
     });
   };
@@ -570,7 +590,9 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                       <div className="flex flex-wrap gap-2">
                         <Badge className={`text-xs ${paymobStatusAdmin?.configured ? "bg-[rgba(16,185,129,0.15)] text-emerald-400" : "bg-[rgba(245,158,11,0.15)] text-amber-400"}`}>
                           {isRTL ? "بوابة إلكترونية: " : "Electronic gateway: "}
-                          {paymobStatusAdmin?.configured ? (isRTL ? "مفعّلة" : "configured") : (isRTL ? "غير مفعّلة (ينقص أسرار Paymob)" : "not configured (Paymob secrets missing)")}
+                          {paymobStatusAdmin?.configured
+                            ? `${isRTL ? "مفعّلة" : "configured"}${paymobStatusAdmin.mode ? ` (${paymobStatusAdmin.mode})` : ""}`
+                            : isRTL ? "غير مكتملة" : "incomplete"}
                         </Badge>
                         <Badge className={`text-xs ${manualPayDetails?.enabled ? "bg-[rgba(16,185,129,0.15)] text-emerald-400" : "bg-[rgba(244,63,94,0.15)] text-destructive"}`}>
                           {isRTL ? "تحويل يدوي: " : "Manual transfer: "}
@@ -578,6 +600,11 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                         </Badge>
                       </div>
                     </div>
+                    {paymobStatusAdmin && !paymobStatusAdmin.configured && (
+                      <p className="text-xs text-amber-400/90" dir="ltr">
+                        {isRTL ? "الناقص: " : "Missing: "}{(paymobStatusAdmin.missing ?? []).join(" · ")}
+                      </p>
+                    )}
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="grid gap-1.5">
                         <Label className="text-sm text-text-muted">{isRTL ? "رقم فودافون كاش" : "Vodafone Cash number"}</Label>
@@ -599,14 +626,47 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                         <Label className="text-sm text-text-muted">{isRTL ? "ملاحظات للطالب (إنجليزي)" : "Student notes (English)"}</Label>
                         <Input value={paySettings.notes_en} onChange={(e) => setPaySettings((p) => ({ ...p, notes_en: e.target.value }))} placeholder={isRTL ? "" : "e.g. personal transfers only"} className="border-border bg-background text-foreground" dir="ltr" />
                       </div>
+                      {/* ── Paymob electronic gateway (Intention API) ── */}
+                      <div className="sm:col-span-2 pt-3 border-t border-border/60">
+                        <h3 className="text-sm font-semibold text-foreground">
+                          {isRTL ? "بوابة Paymob الإلكترونية (بطاقة / محفظة)" : "Paymob electronic gateway (card / wallet)"}
+                        </h3>
+                        <p className="text-xs text-text-muted mt-1" dir="ltr">
+                          {isRTL
+                            ? "من لوحة Paymob: Settings → API Keys → Public Key، و Settings → Payment Integrations → معرّفات Test لكل وسيلة."
+                            : "From the Paymob dashboard: Settings → API Keys → Public Key, and Settings → Payment Integrations → the Test ID per method."}
+                        </p>
+                      </div>
+                      <div className="grid gap-1.5 sm:col-span-2">
+                        <Label className="text-sm text-text-muted">{isRTL ? "المفتاح العام (Public Key)" : "Public Key"}</Label>
+                        <Input value={paySettings.paymob_public_key} onChange={(e) => setPaySettings((p) => ({ ...p, paymob_public_key: e.target.value }))} placeholder="pk_test_… / egy_pk_test_…" className="border-border bg-background text-foreground font-mono text-xs" dir="ltr" />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label className="text-sm text-text-muted">{isRTL ? "معرّف تكامل البطاقات (Test)" : "Card Integration ID (Test)"}</Label>
+                        <Input value={paySettings.paymob_integration_card} onChange={(e) => setPaySettings((p) => ({ ...p, paymob_integration_card: e.target.value }))} placeholder="1234567" className="border-border bg-background text-foreground font-mono text-xs" dir="ltr" />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label className="text-sm text-text-muted">{isRTL ? "معرّف تكامل المحافظ (Test)" : "Wallet Integration ID (Test)"}</Label>
+                        <Input value={paySettings.paymob_integration_wallet} onChange={(e) => setPaySettings((p) => ({ ...p, paymob_integration_wallet: e.target.value }))} placeholder="1234568" className="border-border bg-background text-foreground font-mono text-xs" dir="ltr" />
+                      </div>
                     </div>
-                    <Button
-                      className="bg-gradient-to-r from-[#06b6d4] to-[#0891b2] text-[#0a0e17] hover:from-[#22d3ee] hover:to-[#06b6d4]"
-                      onClick={savePaymentSettings}
-                      disabled={bulkUpsertPaymentSettings.isPending}
-                    >
-                      {bulkUpsertPaymentSettings.isPending ? (isRTL ? "جاري الحفظ..." : "Saving...") : (isRTL ? "حفظ تفاصيل الدفع" : "Save payment details")}
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <Button
+                        className="bg-gradient-to-r from-[#06b6d4] to-[#0891b2] text-[#0a0e17] hover:from-[#22d3ee] hover:to-[#06b6d4]"
+                        onClick={savePaymentSettings}
+                        disabled={bulkUpsertPaymentSettings.isPending}
+                      >
+                        {bulkUpsertPaymentSettings.isPending ? (isRTL ? "جاري الحفظ..." : "Saving...") : (isRTL ? "حفظ تفاصيل الدفع" : "Save payment details")}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="border-border text-foreground hover:bg-background"
+                        onClick={() => paymobSelfTest.mutate()}
+                        disabled={paymobSelfTest.isPending}
+                      >
+                        {paymobSelfTest.isPending ? (isRTL ? "جاري الاختبار..." : "Testing…") : (isRTL ? "اختبار الاتصال بـ Paymob" : "Test Paymob connection")}
+                      </Button>
+                    </div>
                   </div>
 
                   <div className="rounded-xl border border-border bg-primary overflow-hidden">
