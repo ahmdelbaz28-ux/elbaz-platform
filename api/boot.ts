@@ -7,7 +7,7 @@ import { env } from "./lib/env.js";
 import { initRedis } from "./lib/rate-limiter.js";
 import { healthRouter } from "./health-router.js";
 import { promoRouter } from "./promo-router.js";
-import { paymobWebhook } from "./paymob-webhook.js";
+import { paymobWebhook, paymobWebhookAlias } from "./paymob-webhook.js";
 import { chatbotRouter } from "./chatbot-router.js";
 import { googleAuthRouter } from "./google-auth-router.js";
 import { securityMiddleware } from "./middleware/security.js";
@@ -84,6 +84,10 @@ app.use(
 app.route("/api", healthRouter);
 app.route("/api/promo", promoRouter);
 app.route("/api/paymob", paymobWebhook);
+// Legacy account-level callback URLs registered in the Paymob dashboard
+// (Transaction Processed + browser Response callbacks) — same HMAC-verified
+// handler; required by the mobile-wallet classic checkout flow.
+app.route("/api/webhooks/paymob", paymobWebhookAlias);
 app.route("/api/chatbot", chatbotRouter);
 app.route("/api/google-auth", googleAuthRouter);
 

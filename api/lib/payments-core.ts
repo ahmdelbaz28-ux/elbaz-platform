@@ -19,6 +19,7 @@ export interface ManualPaymentDetails {
   paymobPublicKey: string;
   paymobIntegrationCard: string;
   paymobIntegrationWallet: string;
+  paymobWalletIframe: string;
 }
 
 export type ManualPaymentMethod = "vodafone_cash" | "instapay" | "bank_transfer";
@@ -51,6 +52,7 @@ export function mapManualDetailsFromSettings(
     paymobPublicKey: map.get("paymob_public_key")?.trim() ?? "",
     paymobIntegrationCard: map.get("paymob_integration_card")?.trim() ?? "",
     paymobIntegrationWallet: map.get("paymob_integration_wallet")?.trim() ?? "",
+    paymobWalletIframe: map.get("paymob_wallet_iframe")?.trim() ?? "",
   };
   details.enabled =
     details.vodafoneCashNumber !== "" ||

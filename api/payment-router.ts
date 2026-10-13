@@ -9,7 +9,9 @@ import { TRPCError } from "@trpc/server";
 import { nanoid } from "nanoid";
 import {
   createIntention,
+  createLegacyWalletCheckout,
   isPaymobConfigComplete,
+  isWalletMethod,
   summarizePaymobConfig,
 } from "./lib/paymob";
 import { env } from "./lib/env";
@@ -249,32 +251,46 @@ export const paymentRouter = createRouter({
             .where(eq(promoCodes.id, appliedPromoCodeId));
         }
 
-        // Call Paymob: create the payment intention (official Intention API)
+        // Call Paymob: cards ride the official Intention API; mobile wallets ride
+        // the classic Accept flow (this account's UIG wallet integration is
+        // rejected by the Intention API — probed live — and the classic flow
+        // renders the hosted wallet page through the dashboard IFRAME).
         let paymobResult: { paymentUrl: string; paymobOrderId: number };
         const courseLabel = course.titleAr || course.titleEn || `Course #${input.courseId}`;
+        const paymobCustomer = {
+          firstName: (ctx.user.name || ctx.user.username || "Customer").split(" ")[0],
+          lastName: (ctx.user.name || ctx.user.username || "Customer").split(" ").slice(1).join(" ") || "Customer",
+          email: ctx.user.email || "",
+          phone: input.phoneNumber || "",
+        };
+        const paymobExtras = {
+          course_id: input.courseId,
+          user_id: ctx.user.id,
+          payment_id: Number(payment.insertId),
+          discount: discountAmount > 0 ? discountAmount.toFixed(2) : null,
+        };
         try {
-          const intention = await createIntention(paymobConfig, {
-            amount: finalAmount,
-            itemName: courseLabel,
-            specialReference: transactionId,
-            customer: {
-              firstName: (ctx.user.name || ctx.user.username || "Customer").split(" ")[0],
-              lastName: (ctx.user.name || ctx.user.username || "Customer").split(" ").slice(1).join(" ") || "Customer",
-              email: ctx.user.email || "",
-              phone: input.phoneNumber || "",
-            },
-            paymentMethod: input.paymentMethod,
-            extras: {
-              course_id: input.courseId,
-              user_id: ctx.user.id,
-              payment_id: Number(payment.insertId),
-              discount: discountAmount > 0 ? discountAmount.toFixed(2) : null,
-            },
-            // Land the customer back on the course page — the frontend reads
-            // ?txn=… and polls payment.verify until the webhook settles.
-            redirectionUrl: `${env.FRONTEND_URL}/courses/${course.slug ?? input.courseId}?txn=${transactionId}`,
-          });
-          paymobResult = { paymentUrl: intention.checkoutUrl, paymobOrderId: intention.paymobOrderId };
+          const result = isWalletMethod(input.paymentMethod)
+            ? await createLegacyWalletCheckout(paymobConfig, {
+                amount: finalAmount,
+                itemName: courseLabel,
+                specialReference: transactionId,
+                customer: paymobCustomer,
+                paymentMethod: input.paymentMethod,
+                extras: paymobExtras,
+              })
+            : await createIntention(paymobConfig, {
+                amount: finalAmount,
+                itemName: courseLabel,
+                specialReference: transactionId,
+                customer: paymobCustomer,
+                paymentMethod: input.paymentMethod,
+                extras: paymobExtras,
+                // Land the customer back on the course page — the frontend reads
+                // ?txn=… and polls payment.verify until the webhook settles.
+                redirectionUrl: `${env.FRONTEND_URL}/courses/${course.slug ?? input.courseId}?txn=${transactionId}`,
+              });
+          paymobResult = { paymentUrl: result.checkoutUrl, paymobOrderId: result.paymobOrderId };
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } catch (error: any) {
           // Paymob API failed — mark payment as failed
@@ -380,10 +396,11 @@ export const paymentRouter = createRouter({
       missing,
       mode,
       // Per-method availability — the frontend hides dead options so a
-      // customer can never select a method that would 412 at the gateway.
+      // customer can never select a method that would 412/404 at the gateway.
+      // Wallet needs BOTH the integration ID and the legacy checkout IFRAME.
       methods: {
         card: cfg.cardIntegrationId !== null,
-        wallet: cfg.walletIntegrationId !== null,
+        wallet: cfg.walletIntegrationId !== null && cfg.walletIframeId !== null,
       },
     };
   }),
