@@ -412,7 +412,11 @@ export default function Home() { // NOSONAR — landing page with hero + feature
           </FadeIn>
         </div>
 
-        <motion.div animate={{ y: [0, 8, 0], opacity: [0.4, 1, 0.4] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} className="absolute bottom-8 left-1/2 z-20 -translate-x-1/2 flex flex-col items-center gap-2">
+        {/* Scroll-down indicator — mobile: in normal flow BELOW the banner
+            (centered, never overlaps the hero image); desktop: unchanged
+            absolute position at the section bottom (centered via inset-x +
+            flex, immune to framer-motion transform overrides). */}
+        <motion.div animate={{ y: [0, 8, 0], opacity: [0.4, 1, 0.4] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} className="relative z-20 mt-2 mb-6 flex flex-col items-center gap-2 pointer-events-none lg:absolute lg:bottom-8 lg:inset-x-0 lg:mt-0 lg:mb-0">
           <span className="text-[10px] uppercase tracking-widest text-text-muted">{lang === "ar" ? "مرر للأسفل" : "Scroll Down"}</span>
           <div className="flex h-6 w-4 items-start justify-center">
             <svg width="16" height="24" viewBox="0 0 16 24" fill="none" role="img" aria-hidden="true">
