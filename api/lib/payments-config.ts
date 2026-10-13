@@ -54,6 +54,9 @@ async function resolvePaymobRuntimeConfig(): Promise<PaymobRuntimeConfig> {
     walletIframeId: env.PAYMOB_IFRAME_ID ?? parseIntSetting(details.paymobWalletIframe),
     baseUrl: env.PAYMOB_BASE_URL,
     frontendUrl: env.FRONTEND_URL,
+    // S2S callback: a CDN-fronted public domain challenges non-browser UAs, so
+    // allow an explicit direct-origin override (hf.space host in production).
+    webhookUrl: env.PAYMOB_WEBHOOK_URL?.trim() || `${env.FRONTEND_URL.replace(/\/+$/, "")}/api/paymob/webhook`,
   };
 }
 

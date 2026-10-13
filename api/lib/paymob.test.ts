@@ -60,6 +60,7 @@ const fullConfig: PaymobRuntimeConfig = {
   walletIframeId: 1039272,
   baseUrl: "https://accept.paymob.com",
   frontendUrl: "https://ahmedelbaz.qzz.io",
+  webhookUrl: "https://ahmedelbaz.qzz.io/api/paymob/webhook",
 };
 
 describe("buildTransactionHmacString", () => {
