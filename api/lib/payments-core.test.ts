@@ -23,6 +23,7 @@ const fullDetails: ManualPaymentDetails = {
   paymobPublicKey: "",
   paymobIntegrationCard: "",
   paymobIntegrationWallet: "",
+  paymobWalletIframe: "",
 };
 
 describe("mapManualDetailsFromSettings", () => {
