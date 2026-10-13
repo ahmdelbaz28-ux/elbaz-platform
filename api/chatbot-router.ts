@@ -41,6 +41,24 @@ setInterval(() => {
   }
 }, 5 * 60_000).unref();
 
+// ── Language mirror: reply in the language of the user's LAST message ──
+// The UI language is irrelevant — an Arabic message must get an Arabic reply
+// and an English (Latin) message an English one, regardless of site locale.
+const ARABIC_CHAR_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+
+function resolveChatLanguage(
+  requested: string | undefined,
+  messages: { role: string; content: string }[],
+): string | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (!m || m.role !== "user") continue;
+    if (!m.content || !m.content.trim()) continue;
+    return ARABIC_CHAR_RE.test(m.content) ? "ar" : "en";
+  }
+  return requested;
+}
+
 // ── Non-streaming chat endpoint ──
 chatbotRouter.post("/", async (c) => {
   try {
@@ -69,7 +87,7 @@ chatbotRouter.post("/", async (c) => {
 
     const result = await getChatResponse({
       messages,
-      language: body.language,
+      language: resolveChatLanguage(body.language, messages),
       mode: body.mode,
     });
 
@@ -213,7 +231,7 @@ chatbotRouter.post("/stream", async (c) => {
     // Create promise that rejects on timeout
     const streamPromise = getStreamResponse({
       messages,
-      language: body.language,
+      language: resolveChatLanguage(body.language, messages),
       mode: body.mode,
     });
 

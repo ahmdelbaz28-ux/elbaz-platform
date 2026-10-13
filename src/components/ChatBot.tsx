@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -92,37 +92,119 @@ function loadMessagesFromStorage(): Message[] | null {
   }
 }
 
-// ─── Markdown to HTML (simple regex-based, no library) ───────────────────────
+// ─── Text direction + Markdown to HTML (regex-based, no library) ─────────────
+// Bidi support: any message containing Arabic script renders RTL (the reader
+// reads from the right, as Arabic). Latin runs inside an RTL paragraph are
+// isolated automatically by the Unicode bidi algorithm; code blocks and inline
+// code are pinned LTR so terminal-style content stays readable in both
+// directions. Markdown supports: fenced code blocks, inline code, **bold**
+// (rendered as cyan-highlighted key terms), *italic*, ### headings, numbered
+// step lists ("1. …"), bullet lists ("- " / "• "), and paragraphs.
 
-function renderMarkdown(text: string): string {
-  // Escape HTML entities first (preserve markdown markers)
-  let html = text
+const ARABIC_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+
+function escapeHtml(s: string): string {
+  return s
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll("\"", "&quot;")
     .replaceAll("'", "&#x27;");
+}
 
-  // Code blocks (``` ... ```). The lazy `([\s\S]+?)` quantifier requires at
-  // least one character of code and is bounded by the closing ```, so it
-  // cannot backtrack super-linearly.
-  // S8786: regex is intentionally bounded; `[\s\S]+?` is the canonical
-  // non-backtracking pattern for delimited multiline captures.
-  html = html.replaceAll(/```(\w*)\n?([\s\S]+?)```/g, (_match, _lang, code) => `<pre class="bg-black/40 border border-[#1e2d3d] rounded-lg p-2.5 my-1.5 overflow-x-auto text-[12px] leading-5 text-[#b4c6e0]"><code>${code.trim()}</code></pre>`); // NOSONAR — S8786: regex is intentionally bounded
-
-  // Inline code (` ... `)
-  html = html.replaceAll(/`([^`]+)`/g, '<code class="bg-black/30 border border-[#1e2d3d] px-1.5 py-0.5 rounded text-[12px] text-cyan-300">$1</code>');
-
-  // Bold (** ... **)
-  html = html.replaceAll(/\*\*([^*]+)\*\*/g, '<strong class="font-semibold text-white">$1</strong>');
-
-  // Italic (* ... *)
+/** Inline markdown (code / bold / italic) — input must already be escaped. */
+function renderInline(md: string): string {
+  // Inline code first, so ** inside code is never bolded. dir="ltr" isolates
+  // the code run from the surrounding RTL/LTR paragraph.
+  let html = md.replaceAll(/`([^`]+)`/g, '<code dir="ltr" class="bg-black/30 border border-[#1e2d3d] px-1.5 py-0.5 rounded text-[12px] text-cyan-300">$1</code>');
+  // Bold → highlighted key term (the UI colors important words cyan)
+  html = html.replaceAll(/\*\*([^*]+)\*\*/g, '<strong class="font-semibold text-cyan-300">$1</strong>');
+  // Italic
   html = html.replaceAll(/(?<!\*)\*([^*]+)\*(?!\*)/g, "<em>$1</em>");
+  return html;
+}
 
-  // Line breaks: double newline → paragraph break, single newline → <br>
-  html = html.replaceAll('\n\n', "<br><br>");
-  html = html.replaceAll('\n', "<br>");
+/**
+ * Render a non-code text segment: headings, numbered step lists, bullet lists
+ * and paragraphs. Line-based so the model's "1. step" instructions render as
+ * real ordered steps (with a number badge) instead of a wall of text.
+ */
+function renderTextBlock(text: string): string {
+  const lines = text.split("\n");
+  let out = "";
+  let mode: "none" | "ol" | "ul" = "none";
+  let para: string[] = [];
 
+  const closeList = () => {
+    if (mode === "ol") out += "</ol>";
+    else if (mode === "ul") out += "</ul>";
+    mode = "none";
+  };
+  const flushPara = () => {
+    if (para.length) {
+      out += `<p>${para.join("<br>")}</p>`;
+      para = [];
+    }
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    const heading = /^#{1,6}\s+(.+)$/.exec(line);
+    const step = /^(\d{1,2})[.)]\s+(.+)$/.exec(line);
+    const bullet = /^[-*•]\s+(.+)$/.exec(line);
+
+    if (heading) {
+      flushPara();
+      closeList();
+      out += `<h4 class="chat-h">${renderInline(heading[1])}</h4>`;
+    } else if (step) {
+      flushPara();
+      if (mode !== "ol") {
+        closeList();
+        out += '<ol class="chat-ol">';
+        mode = "ol";
+      }
+      out += `<li data-n="${step[1]}">${renderInline(step[2])}</li>`;
+    } else if (bullet) {
+      flushPara();
+      if (mode !== "ul") {
+        closeList();
+        out += '<ul class="chat-ul">';
+        mode = "ul";
+      }
+      out += `<li>${renderInline(bullet[1])}</li>`;
+    } else if (!line) {
+      flushPara();
+      closeList();
+    } else {
+      closeList();
+      para.push(renderInline(line));
+    }
+  }
+  flushPara();
+  closeList();
+  return out;
+}
+
+function renderMarkdown(text: string): string {
+  // While streaming, a fence may be momentarily unclosed — close it so the
+  // partial code renders as a block instead of leaking raw backticks.
+  let src = text;
+  const fenceCount = (src.match(/```/g) || []).length;
+  if (fenceCount % 2 === 1) src += "\n```";
+
+  // S8786: regex is intentionally bounded; `[\s\S]*?` is the canonical
+  // non-backtracking pattern for delimited multiline captures.
+  const segments = src.split(/```(\w*)[ \t]*\n?([\s\S]*?)```/); // NOSONAR — S8786: bounded lazy capture between ``` delimiters
+  // segments: [text, lang, code, text, lang, code, …, text]
+  let html = "";
+  for (let i = 0; i < segments.length; i += 3) {
+    html += renderTextBlock(segments[i]);
+    if (segments[i + 2] !== undefined) {
+      const code = escapeHtml(segments[i + 2].trim());
+      html += `<pre dir="ltr" class="bg-black/40 border border-[#1e2d3d] rounded-lg p-2.5 my-1.5 overflow-x-auto text-[12px] leading-5 text-[#b4c6e0]" style="text-align:left"><code>${code}</code></pre>`;
+    }
+  }
   return html;
 }
 
@@ -183,25 +265,126 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   const [typingVisible, setTypingVisible] = useState(false);
   const [typingExiting, setTypingExiting] = useState(false);
 
-  // ─── Auto-scroll during streaming (instant scroll, responsive) ───
-  useEffect(() => {
-    if (chatContainerRef.current && streamingContent) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-    }
-  }, [streamingContent]);
+  // ─── Scroll-follow state ───
+  const stickToBottomRef = useRef(true);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
 
-  // ─── Smooth auto-scroll when new messages arrive ───
-  useEffect(() => {
-    if (messagesEndRef.current && !isLoading) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+  // ─── Stick-to-bottom auto-scroll (streaming + new messages) ───
+  // useLayoutEffect runs BEFORE paint, so text growth and the scroll land in
+  // the same frame — the conversation follows the streaming cursor with zero
+  // flicker. If the user scrolls up to read, auto-follow pauses and a
+  // "jump to latest" chip appears instead.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: streamingContent / typingVisible / messages.length are intentional TRIGGERS — the effect re-pins the scroll position whenever any of them changes (refs are read on purpose)
+  useLayoutEffect(() => {
+    if (!chatContainerRef.current || !stickToBottomRef.current) return;
+    chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+  }, [streamingContent, typingVisible, messages.length]);
+
+  const scrollToBottom = useCallback((smooth = false) => {
+    const el = chatContainerRef.current;
+    if (!el) return;
+    stickToBottomRef.current = true;
+    setShowJumpToLatest(false);
+    if (smooth) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    else el.scrollTop = el.scrollHeight;
+  }, []);
+
+  // Track whether the user detached from the bottom (scrolled up to read).
+  // A scroll event fired right after the container was RESIZED is a layout
+  // clamp (the browser adjusting scrollTop during reflow — e.g. keyboard
+  // open/close), not a user gesture — it must not break stick-to-bottom.
+  const lastClientHeightRef = useRef(0);
+  const handleMessagesScroll = useCallback(() => {
+    const el = chatContainerRef.current;
+    if (!el) return;
+    if (el.clientHeight !== lastClientHeightRef.current) {
+      lastClientHeightRef.current = el.clientHeight;
+      return;
     }
-  }, [isLoading]);
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    stickToBottomRef.current = distance < 80;
+    setShowJumpToLatest(distance > 140);
+  }, []);
 
   // ─── Focus input when chat opens ───
   useEffect(() => {
     if (isOpen && !isMinimized && inputRef.current) {
       setTimeout(() => inputRef.current?.focus(), 300);
     }
+  }, [isOpen, isMinimized]);
+
+  // ─── Scroll to latest when the chat opens ───
+  useEffect(() => {
+    if (isOpen && !isMinimized) {
+      const t = setTimeout(() => scrollToBottom(false), 60);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [isOpen, isMinimized, scrollToBottom]);
+
+  // ─── Keyboard-aware mobile sizing (visualViewport API) ───
+  // When the on-screen keyboard opens, a fixed bottom-anchored window gets
+  // covered on iOS (layout viewport unchanged) and squeezed on Android. We
+  // track the visual viewport and, while the chat is open on a small screen,
+  // pin the window's bottom just above the keyboard and give it the full
+  // visual height — the conversation and whatever the user types stay visible.
+  const [kb, setKb] = useState({ open: false, height: 0, offsetBottom: 0, small: false });
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return undefined;
+    let maxSeen = Math.max(window.innerHeight, vv.height);
+    const update = () => {
+      maxSeen = Math.max(maxSeen, window.innerHeight, vv.height);
+      const small = window.innerWidth < 768;
+      const open = small && vv.height < maxSeen - 100;
+      const offsetBottom = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+      setKb((prev) => {
+        const next = { open, height: Math.round(vv.height), offsetBottom, small };
+        return (prev.open === next.open && prev.height === next.height
+          && prev.offsetBottom === next.offsetBottom && prev.small === next.small)
+          ? prev
+          : next;
+      });
+    };
+    // rAF keeps the initial measurement out of the effect body (React 19 lint)
+    const raf = requestAnimationFrame(update);
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    window.addEventListener("resize", update);
+    window.addEventListener("orientationchange", update);
+    return () => {
+      cancelAnimationFrame(raf);
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+      window.removeEventListener("orientationchange", update);
+    };
+  }, []);
+
+  // When the keyboard opens, keep the latest message + the caret in view
+  const prevKbOpenRef = useRef(false);
+  useEffect(() => {
+    if (kb.open && !prevKbOpenRef.current && isOpen) {
+      requestAnimationFrame(() => {
+        if (stickToBottomRef.current) scrollToBottom(false);
+      });
+    }
+    prevKbOpenRef.current = kb.open;
+  }, [kb.open, isOpen, scrollToBottom]);
+
+  // Re-stick to bottom whenever the messages viewport itself resizes
+  // (keyboard open/close, orientation change): the window height changes
+  // without a scroll event, so a plain scroll listener would miss it.
+  useEffect(() => {
+    const el = chatContainerRef.current;
+    if (!isOpen || isMinimized || !el || typeof ResizeObserver === "undefined") return undefined;
+    const ro = new ResizeObserver(() => {
+      if (stickToBottomRef.current) {
+        el.scrollTop = el.scrollHeight;
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [isOpen, isMinimized]);
 
   // ─── Typing indicator: show with enter animation / hide with exit animation ───
@@ -320,7 +503,9 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
 
     const requestBody = {
       messages: apiMessages,
-      language: lang,
+      // Language mirror: reply in the language of the user's actual message,
+      // not the site UI language (Arabic message → Arabic reply, etc.)
+      language: ARABIC_RE.test(trimmed) ? "ar" : "en",
       chatId: chatIdRef.current,
       mode: chatMode,
     };
@@ -675,13 +860,26 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
               ? "w-12 h-12 md:w-14 md:h-14 rounded-full"
               : "w-[calc(100vw-2rem)] md:w-[420px] h-[calc(100dvh-8rem)] md:h-[600px] rounded-2xl"
             )}
-          style={isMinimized
-            ? { bottom: 'max(env(safe-area-inset-bottom, 0px) + 4.5rem, 4.5rem)', right: '1rem' }
-            : { bottom: 'max(env(safe-area-inset-bottom, 0px) + 1rem, 1rem)', right: '1rem', maxWidth: '420px' }
-          }
+          style={(() => {
+            if (isMinimized) return { bottom: 'max(env(safe-area-inset-bottom, 0px) + 4.5rem, 4.5rem)', right: '1rem' };
+            if (kb.open && kb.small && kb.height > 0) {
+              // Keyboard is open on a phone — pin the window just above the
+              // keyboard and use the full visual viewport height (works on
+              // both iOS Safari and Android Chrome). transition:none keeps
+              // the window glued to the keyboard during its slide animation.
+              return {
+                bottom: `${(kb.offsetBottom > 0 ? kb.offsetBottom : 0) + 8}px`,
+                height: `${kb.height - 16}px`,
+                right: '1rem',
+                maxWidth: '420px',
+                transition: 'none',
+              };
+            }
+            return { bottom: 'max(env(safe-area-inset-bottom, 0px) + 1rem, 1rem)', right: '1rem', maxWidth: '420px' };
+          })()}
         >
           <div
-            className={"h-full flex flex-col overflow-hidden " +
+            className={"relative h-full flex flex-col overflow-hidden " +
               (isMinimized
                 ? "bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full cursor-pointer"
                 : "bg-[#0a1019] border border-[#1e2d3d] rounded-2xl shadow-2xl shadow-black/50"
@@ -801,7 +999,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                       : "Fastest model + instant concise replies — for quick questions";
                     const modeDesc = chatMode === "thinking" ? thinkingDesc : instantDesc;
                     return (
-                      <p className="text-[10px] text-slate-600 mt-1.5 text-center">
+                      <p className={`text-[10px] text-slate-600 mt-1.5 text-center ${kb.open ? "hidden" : ""}`}>
                         {modeDesc}
                       </p>
                     );
@@ -809,7 +1007,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                 </div>
 
                 {/* ─── Messages Area ─── */}
-                <div ref={chatContainerRef} role="log" aria-label={lang === "ar" ? "\u0631\u0633\u0627\u0626\u0644 \u0627\u0644\u0645\u062d\u0627\u062f\u062b\u0629" : "Chat messages"} aria-live="polite" className="flex-1 overflow-y-auto overscroll-contain px-4 py-3 space-y-4 chatbot-messages">
+                <div ref={chatContainerRef} onScroll={handleMessagesScroll} role="log" aria-label={lang === "ar" ? "\u0631\u0633\u0627\u0626\u0644 \u0627\u0644\u0645\u062d\u0627\u062f\u062b\u0629" : "Chat messages"} aria-live="polite" className="flex-1 overflow-y-auto overscroll-contain px-4 py-3 space-y-4 chatbot-messages">
                   {messages.map((msg) => {
                     const errorBubbleClass = msg.isError
                       ? "bg-red-500/10 border border-red-500/30 text-red-300 rounded-ss-md"
@@ -840,6 +1038,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                       {/* Message Bubble */}
                       <div className="flex flex-col max-w-[85%] min-w-0">
                         <div
+                          dir={ARABIC_RE.test(msg.content) ? "rtl" : "ltr"}
                           className={"relative group px-3.5 py-2.5 rounded-2xl text-[13.5px] leading-relaxed break-words overflow-wrap-anywhere whitespace-pre-wrap word-break-break-word " +
                             bubbleClass
                           }
@@ -899,7 +1098,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                         <Zap className="w-3.5 h-3.5 text-cyan-400" />
                       </div>
                       <div className="flex flex-col max-w-[85%] min-w-0">
-                        <div className="px-3.5 py-2.5 rounded-2xl rounded-ss-md bg-[#111827] border border-[#1e2d3d] text-[#e8f0fe] text-[13.5px] leading-relaxed break-words overflow-wrap-anywhere whitespace-pre-wrap word-break-break-word">
+                        <div dir={ARABIC_RE.test(streamingContent) ? "rtl" : "ltr"} className="px-3.5 py-2.5 rounded-2xl rounded-ss-md bg-[#111827] border border-[#1e2d3d] text-[#e8f0fe] text-[13.5px] leading-relaxed break-words overflow-wrap-anywhere whitespace-pre-wrap word-break-break-word">
                           {/* biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown() escapes all HTML entities first; only safe markdown tags are re-added */}
                           <span key={chunkIndex} className="animate-stream-fade" dangerouslySetInnerHTML={{ __html: renderMarkdown(streamingContent) }} />
                           {/* Blinking caret */}
@@ -932,6 +1131,18 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
 
                   <div ref={messagesEndRef} />
                 </div>
+
+                {/* ─── Jump to latest (appears when the user scrolled up mid-stream) ─── */}
+                {showJumpToLatest && (
+                  <button
+                    onClick={() => scrollToBottom(true)}
+                    className="absolute bottom-[110px] left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 px-3 py-1.5 rounded-full bg-cyan-500/90 text-white text-[11px] font-medium shadow-lg shadow-cyan-500/30 active:scale-95 transition-transform"
+                    aria-label={lang === "ar" ? "\u0627\u0644\u0627\u0646\u062a\u0642\u0627\u0644 \u0644\u0623\u062d\u062f\u062b \u0631\u0633\u0627\u0644\u0629" : "Jump to latest message"}
+                  >
+                    <ChevronDown className="w-3.5 h-3.5" />
+                    {lang === "ar" ? "\u0623\u062d\u062f\u062b \u0631\u0633\u0627\u0644\u0629" : "Latest"}
+                  </button>
+                )}
 
                 {/* ─── Quick Suggestions (show only on first open) ─── */}
                 {messages.length <= 1 && !isLoading && (
@@ -982,6 +1193,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                         }
                         rows={1}
                         disabled={isLoading}
+                        dir={ARABIC_RE.test(input) ? "rtl" : "ltr"}
                         aria-label={lang === "ar" ? "\u0627\u0643\u062a\u0628 \u0631\u0633\u0627\u0644\u062a\u0643" : "Type your message"}
                         className="w-full px-3.5 py-2.5 bg-[#111827] border border-[#1e2d3d] rounded-xl text-[13.5px] text-[#e8f0fe] placeholder:text-slate-500 resize-none focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all disabled:opacity-50"
                         style={{ minHeight: "40px", maxHeight: "120px" }}
@@ -1000,7 +1212,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                       )}
                     </button>
                   </div>
-                  <p className="text-center text-[10px] text-slate-600 mt-2">
+                  <p className={`text-center text-[10px] text-slate-600 mt-2 ${kb.open ? "hidden" : ""}`}>
                     {lang === "ar"
                       ? "\u0628\u0648\u062a \u0627\u0644\u0628\u0627\u0632 \u0627\u0644\u0630\u0643\u064a \u2014 \u0645\u062a\u062e\u0635\u0635 \u0641\u064a \u0627\u0644\u0647\u0646\u062f\u0633\u0629 \u0627\u0644\u0643\u0647\u0631\u0628\u064a\u0629 \u0641\u0642\u0637"
                       : "Elbaz AI Bot \u2014 Electrical Engineering Specialist Only"}
