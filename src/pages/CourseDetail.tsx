@@ -1558,12 +1558,9 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                 )}
                 <div className="space-y-3">
                   {[
-                    { key: "visa" as const, label: lang === "en" ? "Card Payment" : "بطاقة ائتمان", desc: lang === "en" ? "Visa / Mastercard" : "فيزا / ماستركارد" },
-                    { key: "wallet" as const, label: lang === "en" ? "Mobile Wallet" : "محفظة موبايل", desc: lang === "en" ? "Vodafone / Orange / Etisalat" : "فودافون / أورانج / اتصالات" },
-                    { key: "kiosk" as const, label: lang === "en" ? "Kiosk" : "كشك (فوري / أمين)", desc: lang === "en" ? "Pay at nearest kiosk" : "ادفع من أقرب فرع فوري أو أمين" },
-                    { key: "cash_collection" as const, label: lang === "en" ? "Cash Collection" : "تحصيل نقدي", desc: lang === "en" ? "Pay on delivery" : "دفع عند الاستلام" },
-                    { key: "paypal" as const, label: "PayPal", desc: lang === "en" ? "International (USD)" : "دولار أمريكي" },
-                  ].map((method) => {
+                    { key: "visa" as const, available: paymobStatus?.methods?.card === true, label: lang === "en" ? "Card Payment" : "بطاقة ائتمان", desc: lang === "en" ? "Visa / Mastercard" : "فيزا / ماستركارد" },
+                    { key: "wallet" as const, available: paymobStatus?.methods?.wallet === true, label: lang === "en" ? "Mobile Wallet" : "محفظة موبايل", desc: lang === "en" ? "Vodafone / Orange / Etisalat" : "فودافون / أورانج / اتصالات" },
+                  ].filter((method) => method.available).map((method) => {
                     const Icon = methodIcons[method.key] || CreditCard;
                     const electronicDisabled = !paymobConfigured || enrollMutation.isPending || paymentStep === "redirecting" || paymentStep === "processing";
                     return (

@@ -375,7 +375,17 @@ export const paymentRouter = createRouter({
       : cfg.secretKey
         ? "live"
         : "unset";
-    return { configured: missing.length === 0, missing, mode };
+    return {
+      configured: missing.length === 0,
+      missing,
+      mode,
+      // Per-method availability — the frontend hides dead options so a
+      // customer can never select a method that would 412 at the gateway.
+      methods: {
+        card: cfg.cardIntegrationId !== null,
+        wallet: cfg.walletIntegrationId !== null,
+      },
+    };
   }),
 
   /**
