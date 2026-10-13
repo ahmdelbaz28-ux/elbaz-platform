@@ -266,7 +266,7 @@ paymobWebhookAlias.on("POST", ["/", "/*"], (c) => {
  * payment up by merchant_order_id and send the customer to the same
  * course page the Intention flow uses (?txn=… polls payment.verify).
  */
-paymobWebhookAlias.get(["/", "/*"], async (c) => {
+paymobWebhookAlias.on("GET", ["/", "/*"], async (c) => {
   const q = c.req.query;
   const merchantOrderId = q("merchant_order_id") || q("order") || "";
   const frontend = env.FRONTEND_URL.replace(/\/+$/, "");
