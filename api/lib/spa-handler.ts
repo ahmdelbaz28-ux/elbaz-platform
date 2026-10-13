@@ -147,9 +147,14 @@ export function createSpaHandler(getBuildId: () => string | null) {
     }
 
     // Skip requests that look like static assets (even if Accept: text/html
-    // is present, which can happen with some browsers/prefetchers)
-    if (path.match(/\.(js|css|png|jpg|jpeg|svg|ico|woff2?|ttf|eot|webmanifest|webp|avif|gif|map|txt|xml|json)$/)) {
-      return next();
+    // is present, which can happen with some browsers/prefetchers).
+    // `.html` MUST be in this list: raw .html files in dist/public (e.g.
+    // `google<token>.html` for Google Search Console verification) have to be
+    // served byte-for-byte by serveStatic. The Google verifier sends an
+    // `Accept: text/html` header, so without this entry the request would be
+    // captured below, rewritten to index.html (404) and verification would fail.
+    if (path.match(/\.(js|css|html?|png|jpg|jpeg|svg|ico|woff2?|ttf|eot|webmanifest|webp|avif|gif|map|txt|xml|json)$/)) {
+      return next(); // → serveStatic serves the raw file (or 404 if missing)
     }
 
     const routePath = normalizePath(path);
