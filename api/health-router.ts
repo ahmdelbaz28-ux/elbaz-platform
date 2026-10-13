@@ -4,6 +4,7 @@ import { db, pool } from "./queries/connection.js";
 import { sql } from "drizzle-orm";
 import { getCache, cacheKeys, CACHE_TTL } from "./lib/cache.js";
 import { logger } from "./lib/logger.js";
+import { isPaymobConfigured } from "./lib/paymob.js";
 
 const healthRouter = new Hono({ strict: false });
 
@@ -154,6 +155,13 @@ healthRouter.get("/health", async (c) => {
     checks.ai = { status: "healthy", latency_ms: 0, detail: "GROQ_API_KEY configured" };
   } else {
     checks.ai = { status: "degraded", latency_ms: 0, detail: "No AI provider configured" };
+  }
+
+  // 6. Payments Check — Paymob gateway keys or manual transfer fallback
+  if (isPaymobConfigured()) {
+    checks.payments = { status: "healthy", latency_ms: 0, detail: "Paymob gateway configured" };
+  } else {
+    checks.payments = { status: "degraded", latency_ms: 0, detail: "Paymob not configured — manual transfer only (if admin filled siteSettings payments section)" };
   }
 
   await cache.set(cacheKeys.healthCheck(), { checks }, CACHE_TTL.HEALTH_CHECK);

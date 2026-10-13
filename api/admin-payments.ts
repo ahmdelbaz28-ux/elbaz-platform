@@ -7,13 +7,16 @@
 import { z } from "zod";
 import { desc, eq, sql, and, count } from "drizzle-orm";
 import { adminQuery } from "./middleware";
-import { getDb } from "./queries/connection";
+import { getDb, withTransaction } from "./queries/connection";
 import { users, payments, enrollments, courses, supportTickets, lessons } from "@db/schema";
+import { TRPCError } from "@trpc/server";
+import { invalidateCourseCache, invalidateStatsCache } from "./lib/cache";
+import { guardManualPaymentAction } from "./lib/payments-core";
 
 export const adminPaymentsProcedures = {
-  // Payments list with pagination
+  // Payments list with pagination (optional status + provider filters)
   payments: adminQuery
-    .input(z.object({ page: z.number().int().min(1).default(1), limit: z.number().int().min(1).max(100).default(20), status: z.enum(["pending", "completed", "failed", "refunded", "expired"]).optional() }).optional())
+    .input(z.object({ page: z.number().int().min(1).default(1), limit: z.number().int().min(1).max(100).default(20), status: z.enum(["pending", "completed", "failed", "refunded", "expired"]).optional(), provider: z.string().max(50).optional() }).optional())
     .query(async ({ input }) => {
       const db = getDb();
       const page = input?.page ?? 1;
@@ -21,6 +24,7 @@ export const adminPaymentsProcedures = {
       const offset = (page - 1) * limit;
       const conditions = [];
       if (input?.status) conditions.push(eq(payments.status, input.status));
+      if (input?.provider) conditions.push(eq(payments.provider, input.provider));
       const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
       const [[{ total }], items] = await Promise.all([
@@ -86,4 +90,111 @@ export const adminPaymentsProcedures = {
       revenueByDay: recentPayments.map((p: any) => ({ date: p.date, amount: Number.parseFloat(p.amount) })),
     };
   }),
+
+  /**
+   * Approve a pending manual payment (Vodafone Cash / InstaPay / bank transfer
+   * verified by the admin outside the platform).
+   *
+   * Grants the enrollment in the SAME transaction that completes the payment —
+   * mirrors the Paymob webhook guarantee that payment completion always means
+   * course access. Idempotent: approving an already-approved payment is a no-op
+   * success instead of an error (dashboard double-clicks, retries).
+   */
+  approveManual: adminQuery
+    .input(z.object({ paymentId: z.number().int().positive() }))
+    .mutation(async ({ input }) => {
+      return await withTransaction(async (tx) => {
+        const [payment] = await tx
+          .select()
+          .from(payments)
+          .where(eq(payments.id, input.paymentId))
+          .limit(1);
+
+        if (!payment) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Payment not found" });
+        }
+
+        const guard = guardManualPaymentAction(payment, "approve");
+        if (!guard.ok) {
+          const message =
+            guard.error === "NOT_MANUAL"
+              ? "Only manual payments can be approved"
+              : `Cannot approve a payment with status "${guard.status}"`;
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message });
+        }
+        if (guard.alreadyProcessed) {
+          return { success: true, alreadyApproved: true };
+        }
+
+        await tx
+          .update(payments)
+          .set({ status: "completed", paidAt: new Date() })
+          .where(eq(payments.id, input.paymentId));
+
+        // Grant enrollment if missing (same idempotent pattern as the webhook)
+        const existingEnrollment = await tx
+          .select({ id: enrollments.id })
+          .from(enrollments)
+          .where(and(eq(enrollments.userId, payment.userId), eq(enrollments.courseId, payment.courseId)))
+          .limit(1);
+
+        if (existingEnrollment.length === 0) {
+          await tx.insert(enrollments).values({
+            userId: payment.userId,
+            courseId: payment.courseId,
+            progress: "0.00",
+            isCompleted: false,
+          });
+          await tx
+            .update(courses)
+            .set({ studentCount: sql`${courses.studentCount} + 1` })
+            .where(eq(courses.id, payment.courseId));
+        }
+
+        await invalidateCourseCache();
+        await invalidateStatsCache();
+
+        return { success: true, alreadyApproved: false };
+      });
+    }),
+
+  /**
+   * Reject a pending manual payment (transfer not received / wrong amount).
+   * Only pending manual payments can be rejected; already-completed ones must
+   * go through a refund flow instead.
+   */
+  rejectManual: adminQuery
+    .input(z.object({ paymentId: z.number().int().positive(), reason: z.string().max(500).optional() }))
+    .mutation(async ({ input }) => {
+      return await withTransaction(async (tx) => {
+        const [payment] = await tx
+          .select()
+          .from(payments)
+          .where(eq(payments.id, input.paymentId))
+          .limit(1);
+
+        if (!payment) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Payment not found" });
+        }
+
+        const guard = guardManualPaymentAction(payment, "reject");
+        if (!guard.ok) {
+          const message =
+            guard.error === "NOT_MANUAL"
+              ? "Only manual payments can be rejected"
+              : `Cannot reject a payment with status "${guard.status}"`;
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message });
+        }
+
+        await tx
+          .update(payments)
+          .set({
+            status: "failed",
+            metadata: { ...(payment.metadata as Record<string, unknown> | null ?? {}), rejectReason: input.reason ?? null },
+          })
+          .where(eq(payments.id, input.paymentId));
+
+        return { success: true };
+      });
+    }),
 };
