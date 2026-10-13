@@ -13,6 +13,12 @@ export interface ManualPaymentDetails {
   bankTransferDetails: string;
   notesAr: string;
   notesEn: string;
+  // Paymob online-gateway settings (admin-editable, no redeploy needed).
+  // Not secrets: the Public Key is designed to be client-safe and integration
+  // IDs are account-scoped references. The Secret Key stays env-only.
+  paymobPublicKey: string;
+  paymobIntegrationCard: string;
+  paymobIntegrationWallet: string;
 }
 
 export type ManualPaymentMethod = "vodafone_cash" | "instapay" | "bank_transfer";
@@ -42,6 +48,9 @@ export function mapManualDetailsFromSettings(
     bankTransferDetails: map.get("bank_transfer_details")?.trim() ?? "",
     notesAr: map.get("notes_ar")?.trim() ?? "",
     notesEn: map.get("notes_en")?.trim() ?? "",
+    paymobPublicKey: map.get("paymob_public_key")?.trim() ?? "",
+    paymobIntegrationCard: map.get("paymob_integration_card")?.trim() ?? "",
+    paymobIntegrationWallet: map.get("paymob_integration_wallet")?.trim() ?? "",
   };
   details.enabled =
     details.vodafoneCashNumber !== "" ||

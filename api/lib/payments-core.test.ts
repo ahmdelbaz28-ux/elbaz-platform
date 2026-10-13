@@ -20,6 +20,9 @@ const fullDetails: ManualPaymentDetails = {
   bankTransferDetails: "Banque Misr — 1234567890",
   notesAr: "تحويل باسم شخصي فقط",
   notesEn: "Personal transfers only",
+  paymobPublicKey: "",
+  paymobIntegrationCard: "",
+  paymobIntegrationWallet: "",
 };
 
 describe("mapManualDetailsFromSettings", () => {

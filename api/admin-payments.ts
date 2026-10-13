@@ -10,10 +10,65 @@ import { adminQuery } from "./middleware";
 import { getDb, withTransaction } from "./queries/connection";
 import { users, payments, enrollments, courses, supportTickets, lessons } from "@db/schema";
 import { TRPCError } from "@trpc/server";
+import { nanoid } from "nanoid";
 import { invalidateCourseCache, invalidateStatsCache } from "./lib/cache";
 import { guardManualPaymentAction } from "./lib/payments-core";
+import { resolvePaymobRuntimeConfig } from "./lib/payments-config";
+import { createIntention, summarizePaymobConfig } from "./lib/paymob";
+import { logger } from "./lib/logger";
 
 export const adminPaymentsProcedures = {
+  /**
+   * Paymob live self-test (admin dashboard → Payments → "Test gateway").
+   *
+   * 1. Resolves the runtime config and reports exactly what is missing.
+   * 2. When complete, creates a REAL 1.00 EGP test intention against Paymob —
+   *    proving credentials, integration IDs and connectivity in one call.
+   * 3. Returns the hosted-checkout URL so the admin can optionally complete
+   *    the sandbox payment with the official test card (5123 4567 8901 2346,
+   *    01/39, CVV 123) and watch the webhook enroll nothing (SELFTEST ref is
+   *    intentionally not a payment row) while still confirming the callback.
+   */
+  paymobSelfTest: adminQuery.mutation(async () => {
+    const cfg = await resolvePaymobRuntimeConfig();
+    const missing = summarizePaymobConfig(cfg);
+    if (missing.length > 0) {
+      return { ok: false, stage: "config" as const, missing, message: `Missing configuration: ${missing.join("; ")}` };
+    }
+
+    const reference = `SELFTEST-${nanoid(12)}`;
+    try {
+      const intention = await createIntention(cfg, {
+        amount: 1, // 1.00 EGP — sandbox-safe probe
+        itemName: "Paymob integration self-test",
+        specialReference: reference,
+        customer: {
+          firstName: "Admin",
+          lastName: "SelfTest",
+          email: "selftest@ahmedelbaz.qzz.io",
+          phone: "+201000000000",
+        },
+        // "other" selects every configured integration so the probe works
+        // whether the admin filled the card ID, the wallet ID, or both.
+        paymentMethod: "other",
+        extras: { selfTest: true, reference },
+      });
+      return {
+        ok: true,
+        stage: "intention_created" as const,
+        reference,
+        intentionId: intention.intentionId,
+        paymobOrderId: intention.paymobOrderId,
+        checkoutUrl: intention.checkoutUrl,
+        message: "Intention created — the gateway is reachable and the credentials work.",
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error("[Paymob SelfTest] Intention creation failed", { message });
+      return { ok: false, stage: "intention_creation" as const, missing: [], message };
+    }
+  }),
+
   // Payments list with pagination (optional status + provider filters)
   payments: adminQuery
     .input(z.object({ page: z.number().int().min(1).default(1), limit: z.number().int().min(1).max(100).default(20), status: z.enum(["pending", "completed", "failed", "refunded", "expired"]).optional(), provider: z.string().max(50).optional() }).optional())
