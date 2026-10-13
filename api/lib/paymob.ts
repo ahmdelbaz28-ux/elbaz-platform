@@ -36,10 +36,16 @@ export interface PaymobRuntimeConfig {
   publicKey: string;
   /** HMAC secret for webhook verification (Dashboard → Settings → API Keys). */
   hmacSecret: string;
+  /** API key (Dashboard → Settings → API Keys) — drives the legacy Accept session
+   *  auth used by the mobile-wallet checkout flow. */
+  apiKey: string;
   /** Card (online) integration ID — Settings → Payment Integrations. */
   cardIntegrationId: number | null;
   /** Mobile wallet integration ID (Vodafone Cash etc.). */
   walletIntegrationId: number | null;
+  /** Hosted-checkout IFRAME ID (Dashboard → Developers → Iframes) — the legacy
+   *  wallet flow renders its payment page through it. */
+  walletIframeId: number | null;
   /** Regional gateway base, no trailing slash. */
   baseUrl: string;
   /** Public site origin used for notification_url / redirection_url. */
@@ -51,7 +57,7 @@ export interface PaymobRuntimeConfig {
  * Empty list = fully configured and ready to create real intentions.
  */
 export function summarizePaymobConfig(
-  cfg: Pick<PaymobRuntimeConfig, "secretKey" | "publicKey" | "hmacSecret" | "cardIntegrationId" | "walletIntegrationId">,
+  cfg: Pick<PaymobRuntimeConfig, "secretKey" | "publicKey" | "hmacSecret" | "cardIntegrationId" | "walletIntegrationId" | "walletIframeId">,
 ): string[] {
   const missing: string[] = [];
   if (!cfg.secretKey) missing.push("PAYMOB_SECRET_KEY");
@@ -60,14 +66,24 @@ export function summarizePaymobConfig(
   if (cfg.cardIntegrationId === null && cfg.walletIntegrationId === null) {
     missing.push("at least one Integration ID (env PAYMOB_INTEGRATION_CARD / PAYMOB_INTEGRATION_WALLET or dashboard settings paymob_integration_card / paymob_integration_wallet)");
   }
+  // The wallet checkout renders through a legacy IFRAME (Developers → Iframes);
+  // without it a configured wallet integration can never reach a payment page.
+  if (cfg.walletIntegrationId !== null && cfg.walletIframeId === null) {
+    missing.push("Wallet IFRAME ID (env PAYMOB_IFRAME_ID or dashboard setting paymob_wallet_iframe) — required to render the mobile-wallet payment page");
+  }
   return missing;
 }
 
 /** True when every value needed to create a real intention is present. */
 export function isPaymobConfigComplete(
-  cfg: Pick<PaymobRuntimeConfig, "secretKey" | "publicKey" | "hmacSecret" | "cardIntegrationId" | "walletIntegrationId">,
+  cfg: Pick<PaymobRuntimeConfig, "secretKey" | "publicKey" | "hmacSecret" | "cardIntegrationId" | "walletIntegrationId" | "walletIframeId">,
 ): boolean {
   return summarizePaymobConfig(cfg).length === 0;
+}
+
+/** Mobile-wallet payment methods route through the legacy Accept flow. */
+export function isWalletMethod(paymentMethod: string): boolean {
+  return paymentMethod === "vodafone_cash" || paymentMethod === "wallet";
 }
 
 /**
@@ -349,4 +365,152 @@ export function verifyPaymobAmount(
 
 export {
   createIntention,
+};
+
+// ─── Legacy Accept flow (mobile wallets) ───────────────────────────────
+//
+// The Intention API rejects this account's mobile-wallet integration
+// (UIG / online_new gateway — live probe returned 404 "Integration ID/Name
+// does not exist"), while the classic Accept flow accepts it end-to-end
+// (auth → order → payment_keys → hosted IFRAME page, all probed live).
+// Wallet payments therefore ride the classic flow; cards keep the
+// Intention API. Both converge on the same HMAC-verified webhook.
+
+interface LegacyAuthResponse {
+  token?: string;
+  detail?: string;
+}
+
+interface LegacyOrderResponse {
+  id?: number;
+  message?: string;
+}
+
+interface LegacyPaymentKeyResponse {
+  token?: string;
+  detail?: string;
+  message?: string;
+}
+
+function legacyBase(cfg: PaymobRuntimeConfig): string {
+  return (cfg.baseUrl || PAYMOB_EGYPT_BASE_URL).replace(/\/+$/, "");
+}
+
+/** Build the hosted-checkout IFRAME URL for a wallet payment key (official shape). */
+export function buildLegacyWalletCheckoutUrl(cfg: PaymobRuntimeConfig, paymentKeyToken: string): string {
+  return `${legacyBase(cfg)}/api/acceptance/iframes/${cfg.walletIframeId}?payment_token=${encodeURIComponent(paymentKeyToken)}`;
+}
+
+/**
+ * Create a mobile-wallet checkout through the classic Accept flow.
+ * Requires cfg.apiKey (legacy session auth), cfg.walletIntegrationId and
+ * cfg.walletIframeId. Returns the same shape as createIntention so the
+ * payment-router can dispatch transparently.
+ */
+async function createLegacyWalletCheckout(
+  cfg: PaymobRuntimeConfig,
+  input: CreateIntentionInput,
+): Promise<CreateIntentionResult> {
+  const amountCents = toAmountCents(input.amount);
+  if (!Number.isInteger(amountCents) || amountCents <= 0) {
+    throw new Error("Invalid payment amount");
+  }
+  if (!cfg.apiKey) {
+    throw new Error("PAYMOB_API_KEY is not configured — required for the mobile-wallet checkout flow");
+  }
+  if (cfg.walletIntegrationId === null || cfg.walletIframeId === null) {
+    throw new Error("Mobile wallet checkout requires the wallet Integration ID and the IFRAME ID");
+  }
+
+  const base = legacyBase(cfg);
+  const post = async <T>(path: string, body: unknown): Promise<{ status: number; data: T }> => {
+    const res = await fetch(`${base}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = (await res.json().catch(() => ({}))) as T;
+    return { status: res.status, data };
+  };
+
+  // 1) Session token — the legacy flow uses short-lived tokens, one per checkout.
+  const auth = await post<LegacyAuthResponse>("/api/auth/tokens", { api_key: cfg.apiKey });
+  if (!auth.status.toString().startsWith("2") || !auth.data.token) {
+    const detail = auth.data.detail || `HTTP ${auth.status}`;
+    logger.error("[Paymob] Legacy auth failed", { status: auth.status, detail });
+    throw new Error(`Paymob auth failed: ${detail}`);
+  }
+  const authToken = auth.data.token;
+
+  const firstName = input.customer.firstName?.trim() || "Customer";
+  const lastName = input.customer.lastName?.trim() || firstName;
+  const phone = input.customer.phone?.trim() || "+201000000000";
+  const courseLabel = input.itemName;
+
+  // 2) Order — merchant_order_id carries our transactionId so the HMAC-verified
+  //    webhook correlates the payment exactly like the Intention flow does.
+  const order = await post<LegacyOrderResponse>("/api/ecommerce/orders", {
+    auth_token: authToken,
+    delivery_needed: false,
+    amount_cents: amountCents,
+    currency: "EGP",
+    items: [{ name: courseLabel, amount_cents: amountCents, description: courseLabel, quantity: 1 }],
+    merchant_order_id: input.specialReference,
+  });
+  if (!order.status.toString().startsWith("2") || !order.data.id) {
+    const detail = order.data.message || `HTTP ${order.status}`;
+    logger.error("[Paymob] Legacy order creation failed", { status: order.status, detail });
+    throw new Error(`Paymob order failed: ${detail}`);
+  }
+  const paymobOrderId = order.data.id;
+
+  // 3) Payment key bound to the wallet integration.
+  const paymentKey = await post<LegacyPaymentKeyResponse>("/api/acceptance/payment_keys", {
+    auth_token: authToken,
+    amount_cents: amountCents,
+    expiration: 3600,
+    order_id: paymobOrderId,
+    currency: "EGP",
+    integration_id: cfg.walletIntegrationId,
+    billing_data: {
+      first_name: firstName,
+      last_name: lastName,
+      email: input.customer.email || "customer@example.com",
+      phone_number: phone,
+      apartment: "NA",
+      floor: "NA",
+      street: "NA",
+      building: "NA",
+      shipping_method: "NA",
+      postal_code: "NA",
+      city: "NA",
+      state: "NA",
+      country: "EGY",
+    },
+    lock_order_when_paid: false,
+  });
+  if (!paymentKey.status.toString().startsWith("2") || !paymentKey.data.token) {
+    const detail = paymentKey.data.detail || paymentKey.data.message || `HTTP ${paymentKey.status}`;
+    logger.error("[Paymob] Legacy payment key failed", { status: paymentKey.status, detail });
+    throw new Error(`Paymob payment key failed: ${detail}`);
+  }
+
+  const checkoutUrl = buildLegacyWalletCheckoutUrl(cfg, paymentKey.data.token);
+  logger.info("[Paymob] Legacy wallet checkout created", {
+    paymobOrderId,
+    specialReference: input.specialReference,
+    integrationId: cfg.walletIntegrationId,
+    iframeId: cfg.walletIframeId,
+  });
+
+  return {
+    intentionId: 0,
+    paymobOrderId,
+    clientSecret: "",
+    checkoutUrl,
+  };
+}
+
+export {
+  createLegacyWalletCheckout,
 };

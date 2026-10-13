@@ -118,7 +118,9 @@ export const shieldMiddleware = createMiddleware(async (c, next) => {
     // in the Paymob dashboard (may be the direct hf.space host) and is already
     // HMAC-verified fail-closed inside paymob-webhook.ts — exempt from the
     // host gate so payments keep working regardless of the registered host.
-    const isPaymobWebhook = c.req.path.startsWith("/api/paymob");
+    // /api/webhooks/paymob is the dashboard-registered legacy alias of the
+    // same handler (mobile-wallet classic flow).
+    const isPaymobWebhook = c.req.path.startsWith("/api/paymob") || c.req.path.startsWith("/api/webhooks/paymob");
     if (!isEmbedFrame && !isInternal && !isPaymobWebhook) {
       const xfHost = (c.req.header("x-forwarded-host") ?? "").split(",")[0].trim().toLowerCase();
       const effective = xfHost || host0;

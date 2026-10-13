@@ -47,8 +47,11 @@ async function resolvePaymobRuntimeConfig(): Promise<PaymobRuntimeConfig> {
     secretKey: env.PAYMOB_SECRET_KEY ?? "",
     publicKey: env.PAYMOB_PUBLIC_KEY?.trim() || details.paymobPublicKey,
     hmacSecret: env.PAYMOB_HMAC_SECRET ?? "",
+    // Legacy-session credential — env-only by design (it is a secret).
+    apiKey: env.PAYMOB_API_KEY ?? "",
     cardIntegrationId: env.PAYMOB_INTEGRATION_CARD ?? parseIntSetting(details.paymobIntegrationCard),
     walletIntegrationId: env.PAYMOB_INTEGRATION_WALLET ?? parseIntSetting(details.paymobIntegrationWallet),
+    walletIframeId: env.PAYMOB_IFRAME_ID ?? parseIntSetting(details.paymobWalletIframe),
     baseUrl: env.PAYMOB_BASE_URL,
     frontendUrl: env.FRONTEND_URL,
   };

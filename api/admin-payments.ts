@@ -14,8 +14,38 @@ import { nanoid } from "nanoid";
 import { invalidateCourseCache, invalidateStatsCache } from "./lib/cache";
 import { guardManualPaymentAction } from "./lib/payments-core";
 import { resolvePaymobRuntimeConfig } from "./lib/payments-config";
-import { createIntention, summarizePaymobConfig } from "./lib/paymob";
+import { createIntention, createLegacyWalletCheckout, summarizePaymobConfig } from "./lib/paymob";
 import { logger } from "./lib/logger";
+
+/**
+ * Sandbox-safe legacy wallet-flow probe (1 EGP order + payment key, never paid).
+ * Returns a human-readable suffix for the self-test message: empty when the
+ * wallet isn't configured, success/failure text when it is.
+ */
+async function probeLegacyWallet(cfg: Awaited<ReturnType<typeof resolvePaymobRuntimeConfig>>): Promise<string> {
+  if (cfg.walletIntegrationId === null || cfg.walletIframeId === null) {
+    return ""; // wallet not configured — the missing-items list already covers it
+  }
+  if (!cfg.apiKey) {
+    return " Wallet checkout: PAYMOB_API_KEY missing (legacy flow auth).";
+  }
+  const reference = `SELFTEST-W-${nanoid(10)}`;
+  try {
+    await createLegacyWalletCheckout(cfg, {
+      amount: 1,
+      itemName: "Paymob wallet self-test",
+      specialReference: reference,
+      customer: { firstName: "Admin", lastName: "SelfTest", email: "selftest@ahmedelbaz.qzz.io", phone: "+201000000000" },
+      paymentMethod: "vodafone_cash",
+      extras: { selfTest: true, reference },
+    });
+    return " Wallet checkout (legacy flow) probe succeeded — Vodafone Cash is ready.";
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error("[Paymob SelfTest] Wallet legacy probe failed", { message });
+    return ` Wallet checkout probe failed: ${message}`;
+  }
+}
 
 export const adminPaymentsProcedures = {
   /**
@@ -52,9 +82,11 @@ export const adminPaymentsProcedures = {
           email: "selftest@ahmedelbaz.qzz.io",
           phone: "+201000000000",
         },
-        // "other" selects every configured integration so the probe works
-        // whether the admin filled the card ID, the wallet ID, or both.
-        paymentMethod: "other",
+        // "visa" selects the card integration only — the wallet integration is
+        // rejected by the Intention API on this gateway (UIG/online_new), so
+        // including it would fail the whole probe. The wallet path gets its
+        // own legacy-flow probe below.
+        paymentMethod: "visa",
         extras: { selfTest: true, reference },
       });
       return {
@@ -64,9 +96,11 @@ export const adminPaymentsProcedures = {
         intentionId: intention.intentionId,
         paymobOrderId: intention.paymobOrderId,
         checkoutUrl: cfg.publicKey ? intention.checkoutUrl : null,
-        message: cfg.publicKey
-          ? "Intention created — the gateway is reachable and the credentials work."
-          : "Intention created — credentials and integration IDs work. Add the Public Key to enable the hosted checkout link.",
+        message:
+          (cfg.publicKey
+            ? "Intention created — the gateway is reachable and the credentials work."
+            : "Intention created — credentials and integration IDs work. Add the Public Key to enable the hosted checkout link.") +
+          (await probeLegacyWallet(cfg)),
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

@@ -244,4 +244,49 @@ paymobWebhook.post("/webhook", async (c) => {
   }
 });
 
-export { paymobWebhook };
+// ─── Legacy dashboard-registered callback path ─────────────────────────
+//
+// The Paymob dashboard has the account-level Transaction Processed /
+// Response callbacks registered on /api/webhooks/paymob (set when the
+// integrations were created). The mobile-wallet legacy flow relies on those
+// account-level URLs, so mount the SAME HMAC-verified handler there.
+
+/** POST /api/webhooks/paymob — processed callback, identical to /webhook. */
+const paymobWebhookAlias = new Hono();
+paymobWebhookAlias.on("POST", ["/", "/*"], (c) => {
+  const url = new URL(c.req.url);
+  url.pathname = "/api/paymob/webhook";
+  return paymobWebhook.fetch(new Request(url, c.req.raw));
+});
+
+/**
+ * GET /api/webhooks/paymob — the browser-side Response Callback. After a
+ * (legacy) payment Paymob redirects the customer's browser here with the
+ * result as query params. Never trust those params for state — look the
+ * payment up by merchant_order_id and send the customer to the same
+ * course page the Intention flow uses (?txn=… polls payment.verify).
+ */
+paymobWebhookAlias.get(["/", "/*"], async (c) => {
+  const q = c.req.query;
+  const merchantOrderId = q("merchant_order_id") || q("order") || "";
+  const frontend = env.FRONTEND_URL.replace(/\/+$/, "");
+  let destination = `${frontend}/dashboard?payment=returned`;
+  if (merchantOrderId) {
+    try {
+      const [row] = await db
+        .select({ slug: courses.slug, id: courses.id })
+        .from(payments)
+        .innerJoin(courses, eq(courses.id, payments.courseId))
+        .where(eq(payments.transactionId, merchantOrderId))
+        .limit(1);
+      if (row) {
+        destination = `${frontend}/courses/${row.slug ?? row.id}?txn=${encodeURIComponent(merchantOrderId)}`;
+      }
+    } catch (err) {
+      logger.warn("[Paymob Webhook] GET return lookup failed", { error: String(err) });
+    }
+  }
+  return c.redirect(destination, 302);
+});
+
+export { paymobWebhook, paymobWebhookAlias };

@@ -17,9 +17,11 @@ import {
   verifyPaymobAmount,
   summarizePaymobConfig,
   isPaymobConfigComplete,
+  isWalletMethod,
   integrationIdsForMethod,
   toAmountCents,
   buildCheckoutUrl,
+  buildLegacyWalletCheckoutUrl,
   type PaymobCallbackTransaction,
   type PaymobRuntimeConfig,
 } from "./paymob";
@@ -52,8 +54,10 @@ const fullConfig: PaymobRuntimeConfig = {
   secretKey: "egy_sk_test_abc",
   publicKey: "egy_pk_test_abc",
   hmacSecret: TEST_HMAC_SECRET,
+  apiKey: "ZXlKaGJHY2lP\u2026test-api-key",
   cardIntegrationId: 4569876,
   walletIntegrationId: 4569877,
+  walletIframeId: 1039272,
   baseUrl: "https://accept.paymob.com",
   frontendUrl: "https://ahmedelbaz.qzz.io",
 };
@@ -144,6 +148,7 @@ describe("config completeness", () => {
       hmacSecret: "",
       cardIntegrationId: null,
       walletIntegrationId: null,
+      walletIframeId: null,
     });
     expect(missing).toHaveLength(4);
     expect(missing[0]).toContain("PAYMOB_SECRET_KEY");
@@ -154,12 +159,28 @@ describe("config completeness", () => {
 
   it("is complete when only one integration ID is set (any method works)", () => {
     expect(
-      isPaymobConfigComplete({ ...fullConfig, walletIntegrationId: null }),
+      isPaymobConfigComplete({ ...fullConfig, walletIntegrationId: null, walletIframeId: null }),
     ).toBe(true);
   });
 
   it("is incomplete without the public key even when everything else exists", () => {
     expect(isPaymobConfigComplete({ ...fullConfig, publicKey: "" })).toBe(false);
+  });
+
+  it("requires the wallet IFRAME only when a wallet integration is configured", () => {
+    const missing = summarizePaymobConfig({ ...fullConfig, walletIframeId: null });
+    expect(missing).toHaveLength(1);
+    expect(missing[0]).toContain("IFRAME");
+    expect(isPaymobConfigComplete({ ...fullConfig, walletIframeId: 1039272 })).toBe(true);
+  });
+});
+
+describe("isWalletMethod", () => {
+  it("routes only mobile-wallet methods to the legacy flow", () => {
+    expect(isWalletMethod("vodafone_cash")).toBe(true);
+    expect(isWalletMethod("wallet")).toBe(true);
+    expect(isWalletMethod("visa")).toBe(false);
+    expect(isWalletMethod("other")).toBe(false);
   });
 });
 
@@ -209,5 +230,19 @@ describe("buildCheckoutUrl", () => {
     const url = buildCheckoutUrl({ ...fullConfig, publicKey: "pk a&b" }, "cs&k");
     expect(url).toContain("publicKey=pk%20a%26b");
     expect(url).toContain("clientSecret=cs%26k");
+  });
+});
+
+describe("buildLegacyWalletCheckoutUrl", () => {
+  it("builds the classic IFRAME URL with the wallet payment key", () => {
+    const url = buildLegacyWalletCheckoutUrl(fullConfig, "pk_token_abc123");
+    expect(url).toBe(
+      "https://accept.paymob.com/api/acceptance/iframes/1039272?payment_token=pk_token_abc123",
+    );
+  });
+
+  it("encodes the payment token", () => {
+    const url = buildLegacyWalletCheckoutUrl(fullConfig, "tk&n 1");
+    expect(url).toContain("payment_token=tk%26n%201");
   });
 });
