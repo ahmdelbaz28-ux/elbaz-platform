@@ -40,6 +40,7 @@ async function loadBuildId() {
 
 import { cacheMiddleware } from "./middleware/cache.js";
 import { createSpaHandler } from "./lib/spa-handler.js";
+import { buildRobotsTxt } from "./lib/seo-meta.js";
 
 declare const Bun: { serve: (opts: { fetch: (r: Request) => Response | Promise<Response>; port?: number; hostname?: string }) => { close: (cb?: () => void) => void } } | undefined;
 
@@ -121,6 +122,15 @@ app.get("/api/env", async (c) => {
   return c.json(getPublicEnvKeys());
 });
 
+// ── robots.txt — declares sitemap + blocks private areas ──
+// Previously MISSING (404): Google had no crawl directives and no sitemap
+// pointer. Served with long-lived cache headers.
+app.get("/robots.txt", (c) => {
+  c.header("Content-Type", "text/plain; charset=UTF-8");
+  c.header("Cache-Control", "public, max-age=3600");
+  return c.body(buildRobotsTxt());
+});
+
 // ── Dynamic Sitemap ──
 // Generates sitemap.xml from live DB data so URLs + lastmod are always accurate.
 // Cached for 1 hour to avoid DB query on every request.
@@ -159,6 +169,9 @@ app.get("/sitemap.xml", async (c) => {
     const staticUrls = [
       { loc: `${baseUrl}/`, priority: "1", changefreq: "weekly", lastmod: now },
       { loc: `${baseUrl}/courses`, priority: "0.9", changefreq: "weekly", lastmod: now },
+      { loc: `${baseUrl}/references`, priority: "0.6", changefreq: "weekly", lastmod: now },
+      { loc: `${baseUrl}/faq`, priority: "0.6", changefreq: "monthly", lastmod: now },
+      { loc: `${baseUrl}/verify`, priority: "0.5", changefreq: "yearly", lastmod: now },
       { loc: `${baseUrl}/terms`, priority: "0.3", changefreq: "yearly", lastmod: now },
       { loc: `${baseUrl}/privacy`, priority: "0.3", changefreq: "yearly", lastmod: now },
       { loc: `${baseUrl}/refund`, priority: "0.3", changefreq: "yearly", lastmod: now },

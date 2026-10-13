@@ -67,7 +67,13 @@ export default function Courses() {
   const { t, lang } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [showFilters, setShowFilters] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+
+  // ── URL-backed search query (?q=) ──────────────────────────────────────
+  // The search box writes to the URL so results are shareable/linkable and
+  // the WebSite SearchAction structured data (/courses?q={query}) actually
+  // works — a prerequisite for Google Sitelinks Search Box.
+  const urlQuery = searchParams.get("q") ?? "";
+  const [searchInput, setSearchInput] = useState(urlQuery);
 
   const selectedCategory = searchParams.get("category") ? Number.parseInt(searchParams.get("category")!, 10) : undefined;
   const selectedType = searchParams.get("type") as "free" | "premium" | undefined;
@@ -87,17 +93,25 @@ export default function Courses() {
   const premiumCount = allCourses.filter((c) => c.isPremium).length;
 
   const filteredCourses = useMemo(() => {
-    if (!searchQuery.trim()) return allCourses;
-    const q = searchQuery.toLowerCase().trim();
+    if (!urlQuery.trim()) return allCourses;
+    const q = urlQuery.toLowerCase().trim();
     return allCourses.filter((c) => c.titleEn?.toLowerCase().includes(q) || c.titleAr?.toLowerCase().includes(q));
-  }, [allCourses, searchQuery]);
+  }, [allCourses, urlQuery]);
 
   const handleSearch = (value: string) => {
-    setSearchQuery(value);
-    if (value.trim().length >= 2) {
-      const q = value.trim().toLowerCase();
+    setSearchInput(value);
+    const next = new URLSearchParams(searchParams);
+    const trimmed = value.trim();
+    if (trimmed) {
+      next.set("q", trimmed);
+    } else {
+      next.delete("q");
+    }
+    setSearchParams(next, { replace: true });
+    if (trimmed.length >= 2) {
+      const q = trimmed.toLowerCase();
       const resultsCount = allCourses?.filter((c) => c.titleEn?.toLowerCase().includes(q) || c.titleAr?.toLowerCase().includes(q)).length || 0;
-      trackEvent("search_used", { query: value.trim(), resultsCount, page: "courses" });
+      trackEvent("search_used", { query: trimmed, resultsCount, page: "courses" });
     }
   };
 
@@ -113,13 +127,13 @@ export default function Courses() {
         <div className="mb-6 relative max-w-md">
           <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
           <Input
-            value={searchQuery}
+            value={searchInput}
             onChange={(e) => handleSearch(e.target.value)}
             placeholder={t("searchCourses")}
             className="border-border bg-primary ps-10 pe-10 text-foreground placeholder:text-text-faint focus:border-accent-secondary focus:ring-accent-secondary"
           />
-          {searchQuery && (
-            <button onClick={() => setSearchQuery("")} className="absolute end-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary transition-colors">
+          {searchInput && (
+            <button onClick={() => handleSearch("")} className="absolute end-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary transition-colors">
               <X className="h-4 w-4" />
             </button>
           )}
