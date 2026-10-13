@@ -145,6 +145,8 @@ export const paymentRouter = createRouter({
           .select({
             id: courses.id,
             slug: courses.slug,
+            titleAr: courses.titleAr,
+            titleEn: courses.titleEn,
             price: courses.price,
             isPremium: courses.isPremium,
             isPublished: courses.isPublished,
@@ -249,10 +251,11 @@ export const paymentRouter = createRouter({
 
         // Call Paymob: create the payment intention (official Intention API)
         let paymobResult: { paymentUrl: string; paymobOrderId: number };
+        const courseLabel = course.titleAr || course.titleEn || `Course #${input.courseId}`;
         try {
           const intention = await createIntention(paymobConfig, {
             amount: finalAmount,
-            itemName: `Course #${input.courseId}`,
+            itemName: courseLabel,
             specialReference: transactionId,
             customer: {
               firstName: (ctx.user.name || ctx.user.username || "Customer").split(" ")[0],
@@ -281,7 +284,10 @@ export const paymentRouter = createRouter({
             .where(eq(payments.id, Number(payment.insertId)));
 
           throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
+            // PRECONDITION_FAILED (412) keeps the underlying Paymob detail
+            // visible in production — INTERNAL_SERVER_ERROR would be masked by
+            // the errorFormatter, hiding the exact gateway misconfiguration.
+            code: "PRECONDITION_FAILED",
             message: error.message || "Failed to initiate payment. Please try again.",
           });
         }
