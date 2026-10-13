@@ -604,6 +604,39 @@ html {
   }
 }
 
+/* ── Mobile-native platform baseline (mobile-native skill) ── */
+/* §4: iOS zooms the page when an input under 16px gets focus and never
+   zooms back out. 16px on touch devices only — desktop keeps its sizes. */
+@media (pointer: coarse) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
+
+/* §5 + §8: instant taps (no double-tap-zoom wait) and no long-press text
+   selection / callout on controls. Content text stays selectable. */
+button, a, [role="button"] {
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Scroll-to-top FAB placement. On mobile the bottom nav (~65px + safe area)
+   owns the bottom edge — pinning the button at 1.5rem makes it overlap the
+   Home tab, so it stacks above the WhatsApp FAB column instead, left-aligned
+   with it. Desktop (md+) has no bottom nav and keeps the original corner. */
+.scroll-top-fab {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 8.75rem);
+  left: 1rem;
+}
+@media (min-width: 768px) {
+  .scroll-top-fab {
+    bottom: max(env(safe-area-inset-bottom, 0px) + 1.5rem, 1.5rem);
+    left: 1.25rem;
+  }
+}
+
 
 /* RTL overrides are now handled via Tailwind logical properties (end-, start-, ms-, me-)
    Legacy CSS RTL overrides removed — see ChatBot, CourseCard, CourseDetail, Home, Navbar */

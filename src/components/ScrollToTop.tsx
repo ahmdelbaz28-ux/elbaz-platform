@@ -20,14 +20,10 @@ export default function ScrollToTop() {
     <button
       onClick={scrollToTop}
       aria-label="Scroll to top"
-      className="fixed z-[95] group transform-gpu will-change-transform"
-      style={{
-        bottom: 'max(env(safe-area-inset-bottom, 0px) + 1.5rem, 1.5rem)',
-        left: '1.25rem',
-      }}
+      className="scroll-top-fab fixed z-[95] group transform-gpu will-change-transform"
     >
       <span
-        className={`flex h-12 w-12 items-center justify-center transition-all duration-500 ease-out ${
+        className={`flex h-11 w-11 items-center justify-center transition-all duration-500 ease-out md:h-12 md:w-12 ${
           visible
             ? "translate-y-0 opacity-100 scale-100"
             : "pointer-events-none translate-y-6 opacity-0 scale-75"
@@ -43,7 +39,7 @@ export default function ScrollToTop() {
 
         {/* Glass button body */}
         <span
-          className="relative flex h-12 w-12 items-center justify-center rounded-full transition-all duration-300 ease-out"
+          className="relative flex h-11 w-11 items-center justify-center rounded-full transition-all duration-300 ease-out md:h-12 md:w-12"
           style={{
             background: "linear-gradient(135deg, rgba(6,182,212,0.12) 0%, rgba(6,182,212,0.06) 50%, rgba(255,255,255,0.03) 100%)",
             backdropFilter: "blur(16px) saturate(180%)",

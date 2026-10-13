@@ -6,6 +6,11 @@ export default {
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
+  // mobile-native skill §1: gate all hover: variants behind
+  // @media (hover: hover) and (pointer: fine) so touch taps don't get stuck hover states
+  future: {
+    hoverOnlyWhenSupported: true,
+  },
   theme: {
     extend: {
       colors: {
