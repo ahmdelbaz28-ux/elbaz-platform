@@ -48,7 +48,8 @@ export function useTheme() {
     // Update the theme-color meta tag for mobile browser chrome
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) {
-      meta.setAttribute('content', next === 'light' ? '#f8fafc' : '#06b6d4');
+      // Match the header background per scheme (mobile-native skill §10)
+      meta.setAttribute('content', next === 'light' ? '#f8fafc' : '#0a0e17');
     }
     try {
       localStorage.setItem(STORAGE_KEY, next);

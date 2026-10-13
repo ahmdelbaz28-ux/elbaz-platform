@@ -650,12 +650,12 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
         <button
           ref={fabRef}
           onClick={handleFabClick}
-          className="fixed right-4 md:right-6 z-[100] w-14 h-14 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/25 flex items-center justify-center transition-all duration-300 hover:scale-110 hover:shadow-cyan-500/40 active:scale-95 chatbot-fab transform-gpu will-change-transform"
+          className="fixed right-4 md:right-6 z-[100] w-12 h-12 md:w-14 md:h-14 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/25 flex items-center justify-center transition-all duration-300 hover:scale-110 hover:shadow-cyan-500/40 active:scale-95 chatbot-fab transform-gpu will-change-transform"
           style={{ bottom: 'max(env(safe-area-inset-bottom, 0px) + 5rem, 5rem)' }}
           aria-label={lang === "ar" ? "\u0641\u062a\u062d \u0627\u0644\u0645\u0633\u0627\u0639\u062f \u0627\u0644\u0630\u0643\u064a" : "Open AI Assistant"}
         >
           <div className="relative">
-            <Bot className="w-6 h-6" />
+            <Bot className="w-5 h-5 md:w-6 md:h-6" />
             {unreadCount > 0 && (
               <span className="absolute -top-2 -right-2 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
                 {unreadCount > 9 ? "9+" : unreadCount}
@@ -672,8 +672,8 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
         <div
           className={"fixed z-[100] transition-all duration-300 ease-out chatbot-window " +
             (isMinimized
-              ? "w-14 h-14 rounded-full"
-              : "w-[calc(100vw-2rem)] md:w-[420px] h-[calc(100vh-8rem)] md:h-[600px] rounded-2xl"
+              ? "w-12 h-12 md:w-14 md:h-14 rounded-full"
+              : "w-[calc(100vw-2rem)] md:w-[420px] h-[calc(100dvh-8rem)] md:h-[600px] rounded-2xl"
             )}
           style={isMinimized
             ? { bottom: 'max(env(safe-area-inset-bottom, 0px) + 4.5rem, 4.5rem)', right: '1rem' }
@@ -694,7 +694,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                 className="w-full h-full flex items-center justify-center text-white"
                 aria-label={lang === "ar" ? "\u0641\u062a\u062d \u0627\u0644\u0634\u0627\u062a" : "Open chat"}
               >
-                <Bot className="w-6 h-6" />
+                <Bot className="w-5 h-5 md:w-6 md:h-6" />
                 <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-[#0a1019]" />
               </button>
             )}
@@ -809,7 +809,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                 </div>
 
                 {/* ─── Messages Area ─── */}
-                <div ref={chatContainerRef} role="log" aria-label={lang === "ar" ? "\u0631\u0633\u0627\u0626\u0644 \u0627\u0644\u0645\u062d\u0627\u062f\u062b\u0629" : "Chat messages"} aria-live="polite" className="flex-1 overflow-y-auto px-4 py-3 space-y-4 chatbot-messages">
+                <div ref={chatContainerRef} role="log" aria-label={lang === "ar" ? "\u0631\u0633\u0627\u0626\u0644 \u0627\u0644\u0645\u062d\u0627\u062f\u062b\u0629" : "Chat messages"} aria-live="polite" className="flex-1 overflow-y-auto overscroll-contain px-4 py-3 space-y-4 chatbot-messages">
                   {messages.map((msg) => {
                     const errorBubbleClass = msg.isError
                       ? "bg-red-500/10 border border-red-500/30 text-red-300 rounded-ss-md"
