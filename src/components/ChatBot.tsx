@@ -35,6 +35,10 @@ interface Message {
 const STORAGE_KEY = "elbaz_chat_history";
 const MODE_STORAGE_KEY = "elbaz_chat_mode";
 const MAX_STORAGE_MESSAGES = 50;
+// Max time a FAB click waits for the auth check before treating the visitor
+// as logged out (dead-man switch — guarantees the FAB can never be a dead
+// button, even if the auth check hangs or loops).
+const AUTH_LOADING_DEADMAN_MS = 4000;
 
 type ChatMode = "thinking" | "instant";
 
@@ -759,14 +763,33 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   }, []);
 
   // ─── Handle FAB click: auth gate ───
-  const handleFabClick = useCallback(() => {
-    // While auth state is loading, show a toast and wait — don't silently ignore the click
+  // ✅ FIX (dead click): track how long the auth check has been running.
+  // Normally authLoading resolves in one network round-trip, but a stale
+  // session used to trap it in a 401 refetch loop — every FAB click then
+  // hit the "still checking" branch and was silently swallowed ("no
+  // reaction"). If loading somehow exceeds AUTH_LOADING_DEADMAN_MS we stop
+  // waiting and treat the visitor as logged out instead of eating clicks.
+  const authLoadingSinceRef = useRef<number | null>(null);
+  useEffect(() => {
     if (authLoading) {
-      const loadingMsg = lang === "ar"
-        ? "جارٍ التحقق من تسجيل الدخول..."
-        : "Checking login status...";
-      toast(loadingMsg, { duration: 1500 });
-      return;
+      if (authLoadingSinceRef.current === null) authLoadingSinceRef.current = Date.now();
+    } else {
+      authLoadingSinceRef.current = null;
+    }
+  }, [authLoading]);
+
+  const handleFabClick = useCallback(() => {
+    // While auth state is loading, show a toast and wait — don't silently ignore the click.
+    if (authLoading) {
+      const waitedMs = authLoadingSinceRef.current ? Date.now() - authLoadingSinceRef.current : 0;
+      if (waitedMs < AUTH_LOADING_DEADMAN_MS) {
+        const loadingMsg = lang === "ar"
+          ? "جارٍ التحقق من تسجيل الدخول..."
+          : "Checking login status...";
+        toast(loadingMsg, { duration: 1500 });
+        return;
+      }
+      // Auth check stuck — fall through and treat as logged out.
     }
     // Auth gate: redirect to login if not authenticated
     if (!isAuthenticated) {
