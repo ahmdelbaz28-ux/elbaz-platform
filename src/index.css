@@ -684,17 +684,38 @@ button, a, [role="button"] {
 }
 
 /* Scroll-to-top FAB placement. On mobile the bottom nav (~65px + safe area)
-   owns the bottom edge — pinning the button at 1.5rem makes it overlap the
-   Home tab, so it stacks above the WhatsApp FAB column instead, left-aligned
-   with it. Desktop (md+) has no bottom nav and keeps the original corner. */
+   owns the bottom edge — the button sits alone on the LEFT at the same 5rem
+   baseline as the chatbot FAB (symmetric with the right-side FAB column).
+   Desktop (md+) has no bottom nav and keeps the original corner. */
 .scroll-top-fab {
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 8.75rem);
+  /* Mobile: sits alone on the LEFT at the same baseline as the chatbot
+     FAB (5rem) — symmetric single button, no longer stacked on top of
+     the WhatsApp button (declutter fix). */
+  bottom: max(env(safe-area-inset-bottom, 0px) + 5rem, 5rem);
   left: 1rem;
 }
 @media (min-width: 768px) {
   .scroll-top-fab {
     bottom: max(env(safe-area-inset-bottom, 0px) + 1.5rem, 1.5rem);
     left: 1.25rem;
+  }
+}
+
+/* ── WhatsApp FAB placement (mobile bottom-bar decluttering) ─────────
+   Mobile (<768px): stacks DIRECTLY above the chatbot FAB on the right
+   edge — one tidy vertical column (48px buttons + 12px gap) instead of
+   two pulsing circles scattered across both bottom corners.
+   Desktop (≥768px): unchanged original position — bottom-left corner
+   at the same 5rem baseline as before. */
+.whatsapp-fab-wrap {
+  right: 1rem;
+  bottom: calc(max(env(safe-area-inset-bottom, 0px) + 5rem, 5rem) + 3.75rem);
+}
+@media (min-width: 768px) {
+  .whatsapp-fab-wrap {
+    right: auto;
+    left: 1.5rem;
+    bottom: max(env(safe-area-inset-bottom, 0px) + 5rem, 5rem);
   }
 }
 
