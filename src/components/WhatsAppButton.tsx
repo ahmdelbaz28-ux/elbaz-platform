@@ -39,23 +39,23 @@ export default function WhatsAppButton() {
   if (!isVisible) return null;
 
   return (
-    <div 
-      className="fixed left-4 z-[90] md:left-6 transform-gpu will-change-transform"
-      style={{ bottom: 'max(env(safe-area-inset-bottom, 0px) + 5rem, 5rem)' }}
+    <div
+      className="whatsapp-fab-wrap fixed z-[90] transform-gpu will-change-transform"
     >
       {/* Tooltip popup */}
       <div
         id="whatsapp-tooltip"
         role="tooltip"
         aria-hidden={!isOpen}
-        className={`absolute bottom-14 md:bottom-16 left-0 mb-2 w-64 rounded-xl border border-[#1e2d3d] bg-[#0d1420] p-4 shadow-[0_16px_48px_rgba(0,0,0,0.5)] transition-all duration-300 md:w-72 ${
+        className={`absolute bottom-14 md:bottom-16 mb-2 w-64 right-0 md:right-auto md:left-0 rounded-xl border border-[#1e2d3d] bg-[#0d1420] p-4 shadow-[0_16px_48px_rgba(0,0,0,0.5)] transition-all duration-300 md:w-72 ${
           isOpen
             ? "translate-y-0 opacity-100 scale-100 pointer-events-auto"
             : "translate-y-2 opacity-0 scale-95 pointer-events-none"
         }`}
       >
-        {/* Arrow */}
-        <div className="absolute -bottom-2 left-6 h-4 w-4 rotate-45 border-b border-r border-[#1e2d3d] bg-[#0d1420]" />
+        {/* Arrow — anchored under the button center on each breakpoint
+            (mobile: stack sits on the right; desktop: button on the left) */}
+        <div className="absolute -bottom-2 right-6 h-4 w-4 rotate-45 border-b border-r border-[#1e2d3d] bg-[#0d1420] md:right-auto md:left-6" />
 
         <div className="flex items-center gap-2 mb-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#25D366]">

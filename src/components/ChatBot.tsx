@@ -847,8 +847,11 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
               </span>
             )}
           </div>
-          {/* Pulse ring */}
-          <span className="absolute inset-0 rounded-full bg-cyan-400/30 animate-ping" />
+          {/* Pulse ring — only when there are unread messages: a constant
+              ping next to the WhatsApp pulse was visual noise (declutter). */}
+          {unreadCount > 0 && (
+            <span className="absolute inset-0 rounded-full bg-cyan-400/30 animate-ping" />
+          )}
         </button>
       )}
 
