@@ -1,17 +1,41 @@
-import { createTRPCReact } from "@trpc/react-query";
-import { httpLink } from "@trpc/client";
-import { QueryClient } from "@tanstack/react-query";
+import { createTRPCReact, getQueryKey } from "@trpc/react-query";
+import { httpLink, TRPCClientError } from "@trpc/client";
+import { QueryCache, QueryClient, MutationCache } from "@tanstack/react-query";
 import superjson from "superjson";
 import type { AppRouter } from "../../api/router";
 import type { ReactNode } from "react";
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
-import { isNativePlatform, getStoredToken } from "@/lib/auth-storage";
+import { isNativePlatform, getStoredToken, removeStoredToken } from "@/lib/auth-storage";
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const trpc = createTRPCReact<AppRouter>();
 
+/**
+ * ✅ FIX (payment UNAUTHORIZED): global auth-failure safety net.
+ *
+ * Every AUTHED procedure (payment.create, wishlist, tickets, …) throws
+ * UNAUTHORIZED once the session cookie is expired/revoked. Without this net
+ * the client kept its stale "logged in" state (persisted React-Query cache +
+ * kept-alive SPA), so users saw a raw "UNAUTHORIZED" banner in the payment
+ * modal instead of being sent to re-authenticate.
+ *
+ * On ANY 401 from any query/mutation: drop the stale identity (auth.me) so
+ * every isAuthenticated consumer flips to logged-out. Component-level handlers
+ * (e.g. the payment modal) add their own friendly message + redirect on top.
+ */
+function handleGlobalAuthFailure(err: unknown): void {
+  const code = err instanceof TRPCClientError
+    ? (err.data as { code?: string } | null)?.code
+    : undefined;
+  if (code !== "UNAUTHORIZED") return;
+  removeStoredToken(); // native only
+  queryClient.removeQueries({ queryKey: getQueryKey(trpc.auth.me) });
+}
+
 const queryClient = new QueryClient({
+  queryCache: new QueryCache({ onError: handleGlobalAuthFailure }),
+  mutationCache: new MutationCache({ onError: handleGlobalAuthFailure }),
   defaultOptions: {
     queries: {
       staleTime: 1000 * 60 * 5, // 5 minutes fresh
