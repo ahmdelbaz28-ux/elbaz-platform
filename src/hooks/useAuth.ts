@@ -1,10 +1,9 @@
 import { trpc } from "@/providers/trpc";
-import { getQueryKey } from "@trpc/react-query";
 import { useCallback, useMemo, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useLocation } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { identifyUser } from "@/lib/clarity";
-import { hasStoredAuth, removeStoredToken } from "@/lib/auth-storage";
+import { hasStoredAuth, removeStoredToken, clearAuthFlagCookie } from "@/lib/auth-storage";
 
 
 export function useAuth() {
@@ -20,6 +19,19 @@ export function useAuth() {
     setStoredAuth(hasStoredAuth());
     setHasMounted(true);
   }, []);
+
+  const location = useLocation();
+
+  // ✅ FIX (chatbot dead click): re-sync the stored-auth flag on route
+  // changes. Login/Register complete with an SPA navigate() (no reload) and
+  // the login response sets the flag cookie — without this re-sync a query
+  // disabled by a previous 401 cleanup would stay disabled forever and the
+  // UI would keep showing logged-out after a successful login.
+  useEffect(() => {
+    if (!hasMounted) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setStoredAuth(hasStoredAuth());
+  }, [location.pathname, hasMounted]);
 
   const {
     data: user,
@@ -56,10 +68,22 @@ export function useAuth() {
     if (!error || !hasMounted) return;
     const code = (error as { data?: { code?: string } } | null)?.data?.code;
     if (code === "UNAUTHORIZED") {
+      // ✅ FIX (chatbot dead click): the non-HttpOnly flag cookie outlives the
+      // real session (30-day maxAge vs expired/revoked JWT) and kept
+      // hasStoredAuth() true, so the query kept refetching a dead session.
+      // Disable the query (storedAuth=false) + drop the stale flag cookie.
+      // ⚠️ Do NOT queryClient.removeQueries() here: the global auth-failure
+      // handler (trpc.tsx) has already parked auth.me in a terminal error
+      // state — removing it would recreate the query for the still-subscribed
+      // observers and auto-refetch → 401 → recreate → an infinite loop
+      // (~60 req/s measured) that kept authLoading stuck true and swallowed
+      // every ChatBot FAB click ("no reaction" bug).
       removeStoredToken(); // native only — web session lives in an HttpOnly cookie
-      queryClient.removeQueries({ queryKey: getQueryKey(trpc.auth.me) });
+      clearAuthFlagCookie(); // web — drop the flag that outlived the session
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setStoredAuth(false); // disable the auth.me query — nothing fires again
     }
-  }, [error, hasMounted, queryClient]);
+  }, [error, hasMounted]);
 
   // Auto-identify user in Clarity — only ONCE per session
   useEffect(() => {

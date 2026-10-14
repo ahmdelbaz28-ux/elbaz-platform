@@ -1,4 +1,4 @@
-import { createTRPCReact, getQueryKey } from "@trpc/react-query";
+import { createTRPCReact } from "@trpc/react-query";
 import { httpLink, TRPCClientError } from "@trpc/client";
 import { QueryCache, QueryClient, MutationCache } from "@tanstack/react-query";
 import superjson from "superjson";
@@ -6,7 +6,7 @@ import type { AppRouter } from "../../api/router";
 import type { ReactNode } from "react";
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
-import { isNativePlatform, getStoredToken, removeStoredToken } from "@/lib/auth-storage";
+import { isNativePlatform, getStoredToken, removeStoredToken, clearAuthFlagCookie } from "@/lib/auth-storage";
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const trpc = createTRPCReact<AppRouter>();
@@ -23,6 +23,16 @@ export const trpc = createTRPCReact<AppRouter>();
  * On ANY 401 from any query/mutation: drop the stale identity (auth.me) so
  * every isAuthenticated consumer flips to logged-out. Component-level handlers
  * (e.g. the payment modal) add their own friendly message + redirect on top.
+ *
+ * ✅ FIX (chatbot dead click): park auth.me in a TERMINAL error state instead
+ * of queryClient.removeQueries(). removeQueries() inside the cache's onError
+ * recreates the query for its still-subscribed observers (enabled has not
+ * flipped yet — React hasn't even seen the error) and every recreation
+ * auto-refetches → 401 → removeQueries → … an infinite UNAUTHORIZED loop
+ * (~60 req/s measured) with authLoading stuck true, which made the ChatBot
+ * FAB swallow every click ("no reaction"). setState() parks the query
+ * WITHOUT removal → no recreation → no refetch. useAuth's error effect then
+ * disables the query (storedAuth=false) so nothing fires again.
  */
 function handleGlobalAuthFailure(err: unknown): void {
   const code = err instanceof TRPCClientError
@@ -30,7 +40,21 @@ function handleGlobalAuthFailure(err: unknown): void {
     : undefined;
   if (code !== "UNAUTHORIZED") return;
   removeStoredToken(); // native only
-  queryClient.removeQueries({ queryKey: getQueryKey(trpc.auth.me) });
+  clearAuthFlagCookie(); // web — drop the flag that outlived the session
+  const meQuery = queryClient
+    .getQueryCache()
+    .getAll()
+    .find((q) => {
+      const k = q.queryKey as unknown[];
+      return Array.isArray(k?.[0]) && k[0][0] === "auth" && k[0][1] === "me";
+    });
+  meQuery?.setState({
+    data: undefined,
+    dataUpdatedAt: 0,
+    status: "error",
+    fetchStatus: "idle",
+    error: err instanceof Error ? err : new Error("UNAUTHORIZED"),
+  });
 }
 
 const queryClient = new QueryClient({

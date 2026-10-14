@@ -38,6 +38,29 @@ export function removeStoredToken(): void {
   }
 }
 
+/**
+ * Clear the web auth-flag companion cookie (elbaz_auth_flag).
+ *
+ * Called when the server rejects the session (401 UNAUTHORIZED). The flag
+ * cookie is non-HttpOnly and lives up to 30 days — it can easily outlive the
+ * actual HttpOnly session cookie (expired JWT, server-side revocation, space
+ * restart). Without clearing it, hasStoredAuth() keeps returning true, the
+ * auth.me query keeps firing and every refetch comes back 401 — an infinite
+ * UNAUTHORIZED refetch loop that keeps authLoading stuck true and swallows
+ * ChatBot FAB clicks ("no reaction" bug).
+ */
+export function clearAuthFlagCookie(): void {
+  if (isNativePlatform()) return;
+  if (typeof document === "undefined") return;
+  try {
+    // Must match the path the flag was set with (path=/) for the browser to
+    // overwrite/delete it. Best-effort — failures are non-fatal.
+    document.cookie = "elbaz_auth_flag=; Max-Age=0; path=/";
+  } catch {
+    // ignore
+  }
+}
+
 export function hasStoredAuth(): boolean {
   // On web, check for the auth flag cookie (non-HttpOnly companion)
   if (!isNativePlatform()) {
