@@ -54,7 +54,9 @@ function authRateLimit(action: import("./lib/rate-limiter").RateLimitAction) {
 }
 
 const requireAuth = t.middleware(async (opts) => {
-  if (!opts.ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+  // Human-readable message — clients that surface error.message verbatim
+  // (instead of mapping the code) show something actionable, not "UNAUTHORIZED".
+  if (!opts.ctx.user) throw new TRPCError({ code: "UNAUTHORIZED", message: "Your session has expired. Please log in again." });
   return opts.next({ ctx: { ...opts.ctx, user: opts.ctx.user } });
 });
 

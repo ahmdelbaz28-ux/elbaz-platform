@@ -696,7 +696,21 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
     },
     onError: (error) => {
       setPaymentStep("error");
-      setPaymentError(error.message || "Failed to initiate payment");
+      const code = (error.data as { code?: string } | undefined)?.code;
+      if (code === "UNAUTHORIZED") {
+        // ✅ FIX: session cookie expired while the UI still showed logged-in
+        // (stale persisted cache) — the raw "UNAUTHORIZED" banner confused
+        // users. Explain + auto-redirect to login, then bounce back here.
+        setPaymentError(lang === "ar"
+          ? "انتهت مدة جلسة الدخول — جارٍ تحويلك لتسجيل الدخول لإكمال عملية الشراء"
+          : "Your session has expired — redirecting you to login to complete your purchase");
+        const tid = setTimeout(() => {
+          navigate(`/login?redirect=${encodeURIComponent(globalThis.location.pathname)}`, { replace: true });
+        }, 1500);
+        pendingTimeouts.current.push(tid);
+        return;
+      }
+      setPaymentError(error.message || (lang === "ar" ? "فشل بدء عملية الدفع" : "Failed to initiate payment"));
     },
   });
 
@@ -782,7 +796,18 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
       }
     },
     onError: (error) => {
-      setPaymentError(error.message || "Failed to submit payment");
+      const code = (error.data as { code?: string } | undefined)?.code;
+      if (code === "UNAUTHORIZED") {
+        setPaymentError(lang === "ar"
+          ? "انتهت مدة جلسة الدخول — جارٍ تحويلك لتسجيل الدخول لإكمال عملية الشراء"
+          : "Your session has expired — redirecting you to login to complete your purchase");
+        const tid = setTimeout(() => {
+          navigate(`/login?redirect=${encodeURIComponent(globalThis.location.pathname)}`, { replace: true });
+        }, 1500);
+        pendingTimeouts.current.push(tid);
+        return;
+      }
+      setPaymentError(error.message || (lang === "ar" ? "فشل إرسال طلب الدفع" : "Failed to submit payment"));
     },
   });
 
@@ -811,7 +836,8 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
   const handleEnroll = () => {
     if (!isAuthenticated) {
       trackEvent("enrollment_click", { courseId: course?.id, slug, source: "enroll_button", isLoggedIn: false });
-      navigate("/login");
+      // ✅ carry the course URL so login sends the buyer straight back here
+      navigate(`/login?redirect=${encodeURIComponent(globalThis.location.pathname)}`);
       return;
     }
     if (course?.isPremium && Number.parseFloat(course.price || "0") > 0) {

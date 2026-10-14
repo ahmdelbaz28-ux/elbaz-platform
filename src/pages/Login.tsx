@@ -37,6 +37,16 @@ declare global {
 export default function Login() {
   const { t, lang } = useTranslation();
   const navigate = useNavigate();
+
+  // ✅ FIX (payment UNAUTHORIZED): the payment flow sends expired-session
+  // buyers here with ?redirect=<course-url> — after re-login they must land
+  // back on the course they were buying, not the home page. Only same-origin
+  // absolute paths are accepted (no protocol-relative //, no external URLs).
+  const safeRedirectTarget = (): string => {
+    const target = new URLSearchParams(globalThis.location.search).get("redirect") || "/";
+    return target.startsWith("/") && !target.startsWith("//") ? target : "/";
+  };
+
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -104,7 +114,7 @@ export default function Login() {
         trackPlatform("google_login_success");
         if (data.user?.id && data.user?.username) identifyUser(data.user.id, data.user.username, { role: data.user.role || "user", loginMethod: "google" });
         toast.success(lang === "ar" ? "تم تسجيل الدخول بنجاح" : "Logged in successfully");
-        navigate("/", { replace: true });
+        navigate(safeRedirectTarget(), { replace: true });
       } else {
         const errMsg = data.error || (lang === "ar" ? "فشل تسجيل الدخول بجوجل" : "Google login failed");
         setError(errMsg); toast.error(errMsg);
@@ -164,7 +174,7 @@ export default function Login() {
       if (data?.user?.id && data?.user?.username) identifyUser(data.user.id, data.user.username, { role: data.user.role || "user" });
       if (isNativePlatform() && data?.token) setStoredToken(data.token);
       toast.success(t("loginSuccess"));
-      navigate("/", { replace: true });
+      navigate(safeRedirectTarget(), { replace: true });
     },
     onError: (err) => {
       trackPlatform("login_failed");

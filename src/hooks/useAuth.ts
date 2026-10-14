@@ -1,4 +1,5 @@
 import { trpc } from "@/providers/trpc";
+import { getQueryKey } from "@trpc/react-query";
 import { useCallback, useMemo, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -43,6 +44,22 @@ export function useAuth() {
       utils.invalidate();
     },
   });
+
+  // ✅ FIX (payment UNAUTHORIZED): auth.me is an AUTHED procedure — it throws
+  // UNAUTHORIZED when the session cookie is expired/revoked. React Query keeps
+  // the last good user data on refetch errors (and the persisted cache can
+  // rehydrate a user for up to 24h), so the UI stayed "logged in" while the
+  // server rejected every authed call (e.g. payment.create → raw
+  // "UNAUTHORIZED" banner in the payment modal). On a 401 from auth.me we
+  // now drop the stale user immediately so the app flips to logged-out.
+  useEffect(() => {
+    if (!error || !hasMounted) return;
+    const code = (error as { data?: { code?: string } } | null)?.data?.code;
+    if (code === "UNAUTHORIZED") {
+      removeStoredToken(); // native only — web session lives in an HttpOnly cookie
+      queryClient.removeQueries({ queryKey: getQueryKey(trpc.auth.me) });
+    }
+  }, [error, hasMounted, queryClient]);
 
   // Auto-identify user in Clarity — only ONCE per session
   useEffect(() => {
