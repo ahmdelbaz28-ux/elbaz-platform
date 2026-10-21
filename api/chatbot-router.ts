@@ -9,6 +9,7 @@
 import { Hono } from "hono";
 import { getChatResponse, getStreamResponse } from "./lib/chatbot.js";
 import { getCourseCatalogText } from "./lib/course-catalog.js";
+import { sanitizeReplyOutput } from "./lib/chatbot-prompts.js";
 import { getClientIpFromHono as getChatbotIp } from "./lib/client-ip";
 import { logger } from "./lib/logger.js";
 // Removed checkRateLimit
@@ -100,7 +101,7 @@ chatbotRouter.post("/", async (c) => {
     if (result.success) {
       return c.json({
         success: true,
-        reply: result.reply,
+        reply: sanitizeReplyOutput(result.reply ?? ""),
         model: result.model,
         chatId: body.chatId,
       });

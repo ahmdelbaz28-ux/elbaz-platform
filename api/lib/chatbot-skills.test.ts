@@ -16,7 +16,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-import { getSystemPrompt } from "./chatbot-prompts";
+import { getSystemPrompt, sanitizeReplyOutput } from "./chatbot-prompts";
 import { buildCourseCatalogBlock, COURSE_CATALOG_PLACEHOLDER } from "./chatbot-skills";
 
 const MOCK_CATALOG = [
@@ -103,6 +103,34 @@ describe("getSystemPrompt — instant mode (token-light)", () => {
     const p = getSystemPrompt("ar", "instant");
     expect(p).toContain("الجنيه المصري (EGP)");
     expect(p).toContain("قاعدة السلامة الكهربائية");
+  });
+});
+
+describe("sanitizeReplyOutput — CJK leak enforcement (regression: 下游/官网)", () => {
+  it("strips CJK ideographs, kana, hangul, CJK punctuation and fullwidth forms", () => {
+    expect(sanitizeReplyOutput("الريلايات下游 (Downstream) بفاصل CTI")).toBe("الريلايات (Downstream) بفاصل CTI");
+    expect(sanitizeReplyOutput("راجع 官网 الصفحة")).toBe("راجع الصفحة");
+    expect(sanitizeReplyOutput("3相 fault")).toBe("3 fault");
+    expect(sanitizeReplyOutput("テストabc")).toBe("abc");
+    expect(sanitizeReplyOutput("결함abc")).toBe("abc");
+    expect(sanitizeReplyOutput("خطوة１٢３ (نهاية)")).toBe("خطوة٢ (نهاية)"); // fullwidth 1/3 stripped; Arabic-Indic 2 kept
+  });
+
+  it("keeps Arabic, English, markdown and normal punctuation intact", () => {
+    const fine = "** CTI ≥ 0.3s ** — راجع ETAP Help ← search: relay coordination";
+    expect(sanitizeReplyOutput(fine)).toBe(fine);
+    expect(sanitizeReplyOutput("```python\nprint('a b')\n```")).toContain("print('a b')");
+  });
+
+  it("cleans empty parens and doubled spaces left by the strip", () => {
+    expect(sanitizeReplyOutput("حماية (下游) أساسية")).toBe("حماية أساسية");
+    expect(sanitizeReplyOutput("قيمة  下游  قيمة")).toBe("قيمة قيمة");
+  });
+
+  it("is delta-safe: never trims, so SSE chunks concatenate correctly", () => {
+    expect(sanitizeReplyOutput("hello ")).toBe("hello "); // trailing space kept
+    expect(sanitizeReplyOutput(" world")).toBe(" world"); // leading space kept
+    expect(sanitizeReplyOutput("")).toBe("");
   });
 });
 

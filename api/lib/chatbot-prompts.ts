@@ -110,6 +110,29 @@ export const MODE_TUNING: Record<ChatbotMode, ModeTuning> = {
 const reasoningGuard = `\n\n⛔ OUTPUT RULES (critical):\n- Reply ONLY with the final user-facing answer. NEVER expose your internal reasoning, chain-of-thought, planning steps, or "let me think" text.\n- Answer directly in natural sentences. NEVER wrap answers in template scaffolding such as "REQUEST ANALYSIS", "INTERNAL SIMULATION", divider lines, or report headers — just talk to the user normally.\n- NEVER mention OpenRouter, NVIDIA, Groq, or any AI/model provider name. You are simply the platform's assistant.\n- Do NOT say you are an AI or a language model.\n- NEVER output Chinese/Japanese/Korean characters in your reply — write technical terms (e.g. fault types) in English: 3-phase, 2-phase, 1-phase.`;
 
 // ════════════════════════════════════════════════════════════════════════
+// OUTPUT SANITIZER — deterministic enforcement of the CJK rule above
+// The reasoningGuard *forbids* CJK output, but live behavior proved prompt
+// rules alone leak occasionally (官网 in an early build, 下游 in 669a25a).
+// This sanitizer strips CJK ideographs/kana/hangul/CJK-punctuation/fullwidth
+// forms from every user-facing reply — streamed deltas and final replies.
+// It is delta-safe: no trimming (would glue words across SSE chunks), no
+// cross-chunk assumptions; it only removes characters and collapses the
+// doubled spaces / empty paren pairs the removal can leave behind.
+// ════════════════════════════════════════════════════════════════════════
+
+// CJK: punctuation/symbols, kana, ideograph ext-A, ideographs, hangul,
+// fullwidth forms, halfwidth kana — none of these belong in AR/EN replies.
+const CJK_OUTPUT_RE = /[\u3000-\u303F\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uFF01-\uFF5E\uFF61-\uFF9F]/g;
+
+export function sanitizeReplyOutput(text: string): string {
+  if (!text) return text;
+  return text
+    .replace(CJK_OUTPUT_RE, "")
+    .replace(/\(\s*\)/g, "")   // empty parens left when the removed CJK sat between them
+    .replace(/[ \t]{2,}/g, " "); // doubled spaces left by the strip
+}
+
+// ════════════════════════════════════════════════════════════════════════
 // LANGUAGE MIRROR + STEP FORMATTING RULES (both modes, both languages)
 // The chat UI renders any bubble containing Arabic script as RTL and colors
 // **bold** terms cyan — these rules make the model's output match that UI.
