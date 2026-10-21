@@ -14,7 +14,33 @@
  *
  * Generation parameters and routing live in MODE_TUNING / chatbot.ts /
  * chatbot-stream.ts. This file only owns prompts + the tuning table.
+ *
+ * SKILLS (v2.1): getSystemPrompt accepts an optional `catalog` (real course
+ * text from api/lib/course-catalog.ts). Thinking mode composes the full
+ * skill set from ./chatbot-skills.js (version-awareness, mentor protocol,
+ * source-routing, PF/SKM/PVSyst cores, platform facts, safety rule) plus the
+ * catalog block; instant mode gets a token-light condensed variant plus the
+ * same catalog block so both modes quote real course names/prices.
  */
+
+import {
+  versionRuleAr,
+  versionRuleEn,
+  researchSkillAr,
+  researchSkillEn,
+  pfCore,
+  skmCore,
+  pvsystCore,
+  mentorProtocolAr,
+  mentorProtocolEn,
+  platformCoreAr,
+  platformCoreEn,
+  safetyRuleAr,
+  safetyRuleEn,
+  instantSkillsAr,
+  instantSkillsEn,
+  buildCourseCatalogBlock,
+} from "./chatbot-skills.js";
 
 // ════════════════════════════════════════════════════════════════════════
 // MODE TYPES + TUNING TABLE
@@ -250,8 +276,14 @@ Golden rules: never invent critical values; always include units; distinguish Lo
  * Personality: Friendly, interactive, professional — like a senior engineer mentor.
  * IMPORTANT: instructs the model to NEVER leak that it is a reasoning model,
  * never expose its internal thinking, and reply as the platform's own assistant.
+ *
+ * @param catalog  Real course-catalog text (from api/lib/course-catalog.ts).
+ *                 Injected verbatim into the catalog block in both modes.
+ *                 Empty/undefined → fallback line (never invented courses).
  */
-export function getSystemPrompt(language?: string, mode: ChatbotMode = "thinking"): string {
+export function getSystemPrompt(language?: string, mode: ChatbotMode = "thinking", catalog?: string): string {
+  const catalogBlock = buildCourseCatalogBlock(catalog ?? "");
+
   if (mode === "instant") {
     if (language === "ar") {
       return `أنت المساعد الذكي الرسمي لمنصة "الباز" (Elbaz Platform) المتخصصة في الكورسات الهندسية.
@@ -269,7 +301,7 @@ export function getSystemPrompt(language?: string, mode: ChatbotMode = "thinking
 🚫 محظورات:
 - لا تخترع روابط (URLs) غير موجودة.
 - لا تذكر أبداً أنك ذكاء اصطناعي أو نموذج لغوي أو من أي مزود مثل OpenRouter.
-- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${instantModeAr}${reasoningGuard}${langAndFormatRuleAr}${etapQuickCore}`;
+- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${instantModeAr}${reasoningGuard}${langAndFormatRuleAr}${etapQuickCore}${instantSkillsAr}${platformCoreAr}${safetyRuleAr}${catalogBlock}`;
     }
     return `You are the official AI Assistant of the "Elbaz Platform" (specializing in engineering courses).
 You are a highly professional, balanced, and interactive technical assistant. Do NOT use any personal name for yourself; introduce yourself only as the platform's smart assistant.
@@ -286,7 +318,7 @@ You are a highly professional, balanced, and interactive technical assistant. Do
 🚫 Rules:
 - Do NOT hallucinate fake URLs.
 - NEVER mention you are an AI, a language model, or from OpenRouter or any other provider.
-- If asked about non-engineering topics, politely decline and state your expertise.${instantModeEn}${reasoningGuard}${langAndFormatRuleEn}${etapQuickCore}`;
+- If asked about non-engineering topics, politely decline and state your expertise.${instantModeEn}${reasoningGuard}${langAndFormatRuleEn}${etapQuickCore}${instantSkillsEn}${platformCoreEn}${safetyRuleEn}${catalogBlock}`;
   }
 
   // ── thinking (default) ──
@@ -309,7 +341,7 @@ You are a highly professional, balanced, and interactive technical assistant. Do
 🚫 محظورات:
 - لا تخترع روابط (URLs) غير موجودة.
 - لا تذكر أبداً أنك ذكاء اصطناعي أو نموذج لغوي أو من أي مزود مثل OpenRouter.
-- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${thinkingModeAr}${reasoningGuard}${langAndFormatRuleAr}${etapExpertCore}`;
+- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${thinkingModeAr}${reasoningGuard}${langAndFormatRuleAr}${versionRuleAr}${mentorProtocolAr}${researchSkillAr}${pfCore}${skmCore}${pvsystCore}${etapExpertCore}${platformCoreAr}${safetyRuleAr}${catalogBlock}`;
   }
   return `You are the official AI Assistant of the "Elbaz Platform" (specializing in engineering courses).
 You are a highly professional, balanced, and interactive technical assistant. Do NOT use any personal name for yourself; introduce yourself only as the platform's smart assistant.
@@ -329,5 +361,5 @@ You are a highly professional, balanced, and interactive technical assistant. Do
 🚫 Rules:
 - Do NOT hallucinate fake URLs.
 - NEVER mention you are an AI, a language model, or from OpenRouter or any other provider.
-- If asked about non-engineering topics, politely decline and state your expertise.${thinkingModeEn}${reasoningGuard}${langAndFormatRuleEn}${etapExpertCore}`;
+- If asked about non-engineering topics, politely decline and state your expertise.${thinkingModeEn}${reasoningGuard}${langAndFormatRuleEn}${versionRuleEn}${mentorProtocolEn}${researchSkillEn}${pfCore}${skmCore}${pvsystCore}${etapExpertCore}${platformCoreEn}${safetyRuleEn}${catalogBlock}`;
 }

@@ -8,6 +8,7 @@
 
 import { Hono } from "hono";
 import { getChatResponse, getStreamResponse } from "./lib/chatbot.js";
+import { getCourseCatalogText } from "./lib/course-catalog.js";
 import { getClientIpFromHono as getChatbotIp } from "./lib/client-ip";
 import { logger } from "./lib/logger.js";
 // Removed checkRateLimit
@@ -85,10 +86,15 @@ chatbotRouter.post("/", async (c) => {
       return c.json({ success: false, error: "Conversation too long. Please start a new chat." }, 413);
     }
 
+    // Real course catalog (SWR-cached 10 min, fail-open to "") — lets the bot
+    // quote actual course names/levels/prices instead of hallucinating them.
+    const catalog = await getCourseCatalogText();
+
     const result = await getChatResponse({
       messages,
       language: resolveChatLanguage(body.language, messages),
       mode: body.mode,
+      catalog,
     });
 
     if (result.success) {
@@ -228,11 +234,16 @@ chatbotRouter.post("/stream", async (c) => {
       return c.json({ success: false, error: "Conversation too long. Please start a new chat." }, 413);
     }
 
+    // Real course catalog (same as non-streaming path) — fetched once here so
+    // the streamed system prompt carries the live course data.
+    const catalog = await getCourseCatalogText();
+
     // Create promise that rejects on timeout
     const streamPromise = getStreamResponse({
       messages,
       language: resolveChatLanguage(body.language, messages),
       mode: body.mode,
+      catalog,
     });
 
     // Race between stream response and timeout
