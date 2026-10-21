@@ -20,7 +20,7 @@
  * System prompts live in chatbot-prompts.ts.
  */
 
-import { getSystemPrompt, MODE_TUNING, type ModeTuning } from "./chatbot-prompts.js";
+import { getSystemPrompt, MODE_TUNING, sanitizeReplyOutput, type ModeTuning } from "./chatbot-prompts.js";
 import { logger } from "./logger.js";
 import {
   // ── Config constants ──
@@ -222,7 +222,7 @@ function processSSEDeltaLine(
     if (delta.content) {
       state.sawContent = true;
       try {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: delta.content })}\n\n`));
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: sanitizeReplyOutput(delta.content) })}\n\n`));
       } catch {
         state.streamClosed = true;
         return true;
@@ -251,7 +251,7 @@ function flushTrailingSSEBuffer(
     const delta = parsed.choices?.[0]?.delta;
     if (delta?.content) {
       state.sawContent = true;
-      try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: delta.content })}\n\n`)); } catch { /* already closed */ }
+      try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: sanitizeReplyOutput(delta.content) })}\n\n`)); } catch { /* already closed */ }
     }
   } catch {
     // Skip malformed trailing chunk
@@ -300,11 +300,11 @@ async function pumpNvidiaStream(
     logger.warn("[Chatbot/Stream] NVIDIA returned no content — trying OpenRouter then Groq...");
     const fbOR = await openRouterFallback(request.messages, picked.systemPrompt, request.language, picked.tuning);
     if (fbOR) {
-      try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: fbOR.reply })}\n\n`)); } catch { /* controller already closed */ }
+      try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: sanitizeReplyOutput(fbOR.reply) })}\n\n`)); } catch { /* controller already closed */ }
     } else {
       const fbGroq = await groqFallback(request.messages, picked.systemPrompt, picked.tuning);
       if (fbGroq) {
-        try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: fbGroq.reply })}\n\n`)); } catch { /* controller already closed */ }
+        try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: sanitizeReplyOutput(fbGroq.reply) })}\n\n`)); } catch { /* controller already closed */ }
       }
     }
   }
@@ -410,7 +410,7 @@ function buildSSEContentTransformStream(encoder: TextEncoder): TransformStream<U
             const parsed = JSON.parse(trimmed.slice(6));
             const delta = parsed.choices?.[0]?.delta;
             if (delta?.content) {
-              try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: delta.content })}\n\n`)); } catch { /* closed */ }
+              try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: sanitizeReplyOutput(delta.content) })}\n\n`)); } catch { /* closed */ }
             }
           } catch { /* skip malformed JSON */ }
         }
@@ -626,7 +626,7 @@ function singleChunkStream(reply: string, encoder: TextEncoder): ReadableStream<
   return new ReadableStream<Uint8Array>({
     start(controller) {
       try {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: reply })}\n\n`));
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: sanitizeReplyOutput(reply) })}\n\n`));
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
       } catch { /* controller already closed */ }
