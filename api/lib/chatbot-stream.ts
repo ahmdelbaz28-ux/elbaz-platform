@@ -557,7 +557,13 @@ async function streamOpenRouterProvider(
     if (!candidates.includes(m.id) && (modelFailCount[m.id] || 0) < 3) candidates.push(m.id);
   }
 
-  for (const modelId of candidates.slice(0, 8)) { // cap sweep to 8 models per request
+  // Sweep budget: real network attempts only. HTTP 404 means the model id no
+  // longer exists on OpenRouter (pool drift) — those rejects arrive in ~50ms,
+  // so they hard-skip the model WITHOUT consuming the budget; otherwise a
+  // dead top-of-pool can shield every working model behind the cap.
+  let realAttempts = 0;
+  for (const modelId of candidates) {
+    if (realAttempts >= 8) break;
     try {
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -581,7 +587,14 @@ async function streamOpenRouterProvider(
       });
 
       if (!response.ok || !response.body) {
+        if (response.status === 404) {
+          // Dead model id — mark skipped (fail threshold) and keep sweeping.
+          modelFailCount[modelId] = 3;
+          logger.warn(`[Chatbot/Stream/OpenRouter] ${modelId} unavailable (HTTP 404) — hard-skipped (no budget cost)`);
+          continue;
+        }
         modelFailCount[modelId] = (modelFailCount[modelId] || 0) + 1;
+        realAttempts++;
         logger.warn(`[Chatbot/Stream/OpenRouter] ${modelId} failed (HTTP ${response.status}) — trying next model...`);
         continue;
       }
@@ -590,11 +603,16 @@ async function streamOpenRouterProvider(
       return { stream: response.body.pipeThrough(transformStream), model: modelId };
     } catch (e) {
       modelFailCount[modelId] = (modelFailCount[modelId] || 0) + 1;
+      realAttempts++;
       logger.warn(`[Chatbot/Stream/OpenRouter] ${modelId} threw — trying next model...`, { error: String(e) });
     }
   }
 
-  return buildStreamErrorResponse("openRouterError", request.language);
+  // Safety net: same depth as the non-streaming path — full OpenRouter
+  // non-streaming sweep → Groq → NVIDIA, each emitted as a single SSE chunk,
+  // instead of failing the stream outright.
+  logger.warn("[Chatbot/Stream/OpenRouter] All streaming candidates failed — using non-streaming cascade fallback.");
+  return await streamOpenRouterFallback(request, picked.systemPrompt, picked.tuning);
 }
 
 // ════════════════════════════════════════════════════════════════════════
