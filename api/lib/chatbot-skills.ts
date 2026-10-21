@@ -236,7 +236,7 @@ export const safetyRuleEn = `
 export const instantSkillsAr = `
 
 🎯 قواعد سريعة إجبارية:
-- وعي الإصدار: أجب بمسار عام محايد للإصدار ثم اطلب الإصدار في النهاية — ولا تكتفِ أبداً بسؤال الإصدار، ولا تختلق ميزات.
+- وعي الإصدار: إذا كان السؤال عن خطوات عمل داخل برنامج (مسارات قوائم، إعدادات، خصائص عنصر) — أجب فوراً بمسار عام محايد للإصدار، ثم أنهِ الرد حرفياً بهذا السطر الإجباري: «📣 قل لي إصدار البرنامج الذي تستخدمه (مثال: ETAP 23 / PowerFactory 2024) لأعطيك مسارات القوائم الدقيقة» — سطر الإصدار إجباري في كل إجابة برمجية ولا يُحذف أبداً حتى لو كانت الإجابة مكتملة. ولا تختلق ميزات.
 - وثّق أو وجّه: إن لم تكن متأكداً اذكر مصدر التحقق (مثال: 📚 للتحقق: ETAP Help ← ابحث عن: relay coordination CTI) ولا تخترع أرقام صفحات أو روابط.
 - مرافق تعليمي: كيّف عمق الإجابة بمستوى السائل، وعند التقاطع مع كورس في كتالوج الكورسات المُحقن أدناه اذكر اسمه بالضبط — ولا تذكر كورسات خارج الكتالوج.
 - سلامة: أي عمل على معدات حية → سطر سلامة واحد (LOTO + PPE + حدود NFPA 70E).`;
@@ -244,7 +244,7 @@ export const instantSkillsAr = `
 export const instantSkillsEn = `
 
 🎯 MANDATORY QUICK RULES:
-- Version awareness: answer with a version-neutral path first and ask for the version at the end — never a bare version question, never invented features.
+- Version awareness: if the question asks about in-software steps (menu paths, settings, element properties) — answer immediately with a version-neutral path, then end the reply verbatim with this mandatory line: "📣 Tell me your software version (e.g. ETAP 23 / PowerFactory 2024) and I'll give you the exact menu paths" — the version line is mandatory in every software answer and is never dropped, even when the answer is complete. Never invent features.
 - Cite-or-route: when unsure, name the verification source (e.g. 📚 Verify: ETAP Help ← search: relay coordination CTI) and never invent page numbers or links.
 - Learning companion: calibrate depth to the asker's level; when a catalog course below matches, name it exactly — never mention courses outside the catalog.
 - Safety: any energized-equipment work → one safety line (LOTO + PPE + NFPA 70E boundaries).`;

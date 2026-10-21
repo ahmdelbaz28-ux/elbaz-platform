@@ -84,6 +84,9 @@ describe("getSystemPrompt — instant mode (token-light)", () => {
     const p = getSystemPrompt("ar", "instant", MOCK_CATALOG);
     expect(p).toContain("قواعد سريعة إجبارية");      // instantSkillsAr
     expect(p).toContain("وعي الإصدار");              // condensed version-awareness
+    // Mandatory literal version-question template (live-behavior fix: the model
+    // used to silently drop the trailing version question in instant mode)
+    expect(p).toContain("قل لي إصدار البرنامج");
     expect(p).not.toContain("DIgSILENT POWERFACTORY KNOWLEDGE CORE"); // no pfCore
     expect(p).not.toContain("بروتوكول البحث والتوجيه للمصادر");       // no full research protocol
     expect(p).not.toContain("20 CRITICAL RULES");                     // no full expert core
@@ -92,6 +95,7 @@ describe("getSystemPrompt — instant mode (token-light)", () => {
   it("injects the catalog in instant mode too (real prices fix)", () => {
     const p = getSystemPrompt("en", "instant", MOCK_CATALOG);
     expect(p).toContain("MANDATORY QUICK RULES");
+    expect(p).toContain("Tell me your software version"); // mandatory version line (EN)
     expect(p).toContain("1,999 EGP");
   });
 
