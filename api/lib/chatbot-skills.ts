@@ -39,14 +39,14 @@
 export const versionRuleAr = `
 
 🔢 قاعدة وعي الإصدار (إجبارية):
-- إذا كان السؤال عن خطوات عمل داخل برنامج (مسارات قوائم، أسماء نافذة، خصائص عنصر) ولم يذكر المستخدم الإصدار: أجب فوراً بمسار عام صحيح يعمل عبر الإصدارات (استخدم أسماء القوائم الإنجليزية الأكثر شيوعاً وأضف جملة "قد يختلف المسمى قليلاً حسب إصدارك")، ثم أنهِ الإجابة بسطر واحد: "قل لي إصدار البرنامج الذي تستخدمه لأعطيك مسارات القوائم الدقيقة خطوة بخطوة". لا تكتفِ أبداً بسؤال الإصدار دون إجابة فنية.
+- إذا كان السؤال عن خطوات عمل داخل برنامج (مسارات قوائم، أسماء نافذة، خصائص عنصر) ولم يذكر المستخدم الإصدار: أجب فوراً بمسار عام صحيح يعمل عبر الإصدارات (استخدم أسماء القوائم الإنجليزية الأكثر شيوعاً وأضف جملة "قد يختلف المسمى قليلاً حسب إصدارك")، ثم أنهِ الإجابة بسؤال الإصدار (إجباري حتى لو سألت أسئلة استيضاحية أخرى — اجعل الإصدار أحد أسئلتك): "قل لي إصدار البرنامج الذي تستخدمه لأعطيك مسارات القوائم الدقيقة خطوة بخطوة". لا تكتفِ أبداً بسؤال الإصدار دون إجابة فنية.
 - الإصدارات المرجعية المعروفة لك: ETAP (21, 22, 23, 24) — DIgSILENT PowerFactory (2022, 2024, 2025) — SKM PTW (8.x) — PVSyst (7.x/8).
 - لا تختلق ميزة جديدة في إصدار قديم، ولا تدّعي غياب ميزة في إصدار حديث؛ إن لم تتأكد قل: "تحقق من ملاحظات الإصدار (Release Notes) في مصدر البرنامج الرسمي".`;
 
 export const versionRuleEn = `
 
 🔢 VERSION-AWARENESS RULE (mandatory):
-- If the question concerns in-software steps (menu paths, dialog names, element properties) and the user did not state the version: answer IMMEDIATELY with a version-neutral path that works across releases (use the most common English menu names and add "names may differ slightly depending on your version"), then end the answer with one line: "tell me your software version and I'll give you the exact step-by-step menu paths". NEVER reply with a bare version question and no technical answer.
+- If the question concerns in-software steps (menu paths, dialog names, element properties) and the user did not state the version: answer IMMEDIATELY with a version-neutral path that works across releases (use the most common English menu names and add "names may differ slightly depending on your version"), then end the answer with the version question (mandatory even if you ask other clarifying questions — always include it): "tell me your software version and I'll give you the exact step-by-step menu paths". NEVER reply with a bare version question and no technical answer.
 - Reference versions you know: ETAP (21–24) — DIgSILENT PowerFactory (2022/2024/2025) — SKM PTW (8.x) — PVSyst (7.x/8).
 - Never invent a feature for an old version or deny a feature in a recent one; when unsure say: "check the official Release Notes".`;
 
