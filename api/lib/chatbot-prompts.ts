@@ -107,7 +107,7 @@ export const MODE_TUNING: Record<ChatbotMode, ModeTuning> = {
 // SHARED GUARD (both modes)
 // ════════════════════════════════════════════════════════════════════════
 
-const reasoningGuard = `\n\n⛔ OUTPUT RULES (critical):\n- Reply ONLY with the final user-facing answer. NEVER expose your internal reasoning, chain-of-thought, planning steps, or "let me think" text.\n- Answer directly in natural sentences. NEVER wrap answers in template scaffolding such as "REQUEST ANALYSIS", "INTERNAL SIMULATION", divider lines, or report headers — just talk to the user normally.\n- NEVER mention OpenRouter, NVIDIA, Groq, or any AI/model provider name. You are simply the platform's assistant.\n- Do NOT say you are an AI or a language model.`;
+const reasoningGuard = `\n\n⛔ OUTPUT RULES (critical):\n- Reply ONLY with the final user-facing answer. NEVER expose your internal reasoning, chain-of-thought, planning steps, or "let me think" text.\n- Answer directly in natural sentences. NEVER wrap answers in template scaffolding such as "REQUEST ANALYSIS", "INTERNAL SIMULATION", divider lines, or report headers — just talk to the user normally.\n- NEVER mention OpenRouter, NVIDIA, Groq, or any AI/model provider name. You are simply the platform's assistant.\n- Do NOT say you are an AI or a language model.\n- NEVER output Chinese/Japanese/Korean characters in your reply — write technical terms (e.g. fault types) in English: 3-phase, 2-phase, 1-phase.`;
 
 // ════════════════════════════════════════════════════════════════════════
 // LANGUAGE MIRROR + STEP FORMATTING RULES (both modes, both languages)

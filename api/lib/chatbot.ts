@@ -117,30 +117,24 @@ export const MAX_CONSEC_NVIDIA_FAILS = 5;
 // ════════════════════════════════════════════════════════════════════════
 
 export const AI_MODELS = [
-  // tier 1: strongest free reasoning models first (120B MoE before 31B)
-  { id: "nvidia/nemotron-3-super-120b-a12b:free",        ctx: 262144, tier: 1 },
-  { id: "google/gemma-4-31b-it:free",                   ctx: 262144, tier: 1 },
+  // tier 1: strongest free reasoning models first (verified live 2026-10-21)
+  { id: "nvidia/nemotron-3-ultra-550b-a55b:free",           ctx: 1000000, tier: 1 },
+  { id: "nvidia/nemotron-3-super-120b-a12b:free",           ctx: 262144,  tier: 1 },
+  { id: "nvidia/nemotron-3.5-lightning:free",               ctx: 1000000, tier: 1 },
+  { id: "google/gemma-4-31b-it:free",                       ctx: 262144,  tier: 1 },
+  { id: "thinkingmachines/inkling:free",                    ctx: 1048576, tier: 1 },
+  { id: "minimax/minimax-m3.1-flash:free",                  ctx: 1000000, tier: 1 },
 
-  { id: "google/gemma-4-26b-a4b-it:free",               ctx: 262144, tier: 2 },
-  { id: "meta-llama/llama-3.3-70b-instruct:free",       ctx: 65536,  tier: 2 },
-  { id: "deepseek/deepseek-chat-v3:free",                ctx: 131072, tier: 2 },
-  { id: "qwen/qwen3-32b:free",                          ctx: 131072, tier: 2 },
-  { id: "inclusionai/ring-2.6-1t:free",                 ctx: 262144, tier: 2 },
-  { id: "minimax/minimax-m2.5:free",                    ctx: 196608, tier: 2 },
-  { id: "z-ai/glm-4.5-air:free",                        ctx: 131072, tier: 2 },
-  { id: "arcee-ai/trinity-large-thinking:free",          ctx: 131072, tier: 2 },
-  { id: "qwen/qwen3-coder:free",                        ctx: 262000, tier: 2 },
   { id: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", ctx: 256000, tier: 2 },
-  { id: "qwen/qwen3-next-80b-a3b-instruct:free",         ctx: 262144, tier: 2 },
-  { id: "baidu/cobuddy:free",                           ctx: 131072, tier: 2 },
-  { id: "poolside/laguna-m.1:free",                     ctx: 131072, tier: 2 },
-  { id: "poolside/laguna-xs.2:free",                    ctx: 131072, tier: 2 },
-  { id: "meta-llama/llama-3.2-3b-instruct:free",       ctx: 131072, tier: 2 },
-  { id: "nvidia/nemotron-3-nano-30b-a3b:free",          ctx: 256000, tier: 2 },
-  { id: "nvidia/nemotron-nano-12b-v2-vl:free",          ctx: 128000, tier: 2 },
-  { id: "nvidia/nemotron-nano-9b-v2:free",              ctx: 128000, tier: 2 },
-  { id: "liquid/lfm-2.5-1.2b-thinking:free",             ctx: 32768,  tier: 2 },
-  { id: "liquid/lfm-2.5-1.2b-instruct:free",            ctx: 32768,  tier: 2 },
+  { id: "thinkingmachines/inkling-small:free",               ctx: 1048576, tier: 2 },
+  { id: "dots-studio/dots-3-note-preview:free",              ctx: 512000,  tier: 2 },
+  { id: "xingchen-agi/xing4.0-29b-a4b:free",                 ctx: 262144,  tier: 2 },
+  { id: "nvidia/nemotron-3.5-super-vl:free",                 ctx: 1000000, tier: 2 },
+  { id: "google/gemma-4-26b-a4b-it:free",                    ctx: 262144,  tier: 2 },
+  { id: "poolside/laguna-s-2.1:free",                        ctx: 262144,  tier: 2 },
+  { id: "poolside/laguna-xs-2.1:free",                       ctx: 262144,  tier: 2 },
+  { id: "cohere/north-mini-code:free",                       ctx: 256000,  tier: 2 },
+  { id: "liquid/lfm-2.5-2.6b:free",                          ctx: 65536,   tier: 2 },
 ];
 
 // ════════════════════════════════════════════════════════════════════════
@@ -366,14 +360,14 @@ export async function nvidiaFallback(
 // ════════════════════════════════════════════════════════════════════════
 
 export const INSTANT_FAST_MODELS = [
-  "google/gemma-4-26b-a4b-it:free",                    // MoE A4B — fastest capable
-  "qwen/qwen3-next-80b-a3b-instruct:free",             // MoE A3B
-  "nvidia/nemotron-3-nano-30b-a3b:free",               // MoE A3B (non-reasoning)
-  "z-ai/glm-4.5-air:free",                             // MoE air — lightweight
-  "minimax/minimax-m2.5:free",                         // MoE — light
-  // NOTE: nemotron-3-nano-omni-...-reasoning is deliberately excluded —
-  // reasoning models burn the whole 1024-token instant budget on internal
-  // reasoning and can return zero content (observed live 2026-10-12).
+  "google/gemma-4-26b-a4b-it:free",                      // MoE A4B — fastest capable (live)
+  "xingchen-agi/xing4.0-29b-a4b:free",                   // MoE A4B (live)
+  "minimax/minimax-m3.1-flash:free",                     // flash — built for speed (live)
+  "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",  // MoE A3B — proven live in prod 2026-10-21
+  "nvidia/nemotron-3.5-lightning:free",                  // lightning tier — fast (live)
+  "thinkingmachines/inkling-small:free",                 // small variant, 1M ctx (live)
+  // NOTE: models are verified against OpenRouter's live free catalog; ids
+  // that drift away now hard-skip (HTTP 404) without burning sweep budget.
 ];
 
 // ════════════════════════════════════════════════════════════════════════

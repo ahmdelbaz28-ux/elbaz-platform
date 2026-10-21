@@ -67,7 +67,7 @@ describe("Chatbot Module", () => {
 
       // Tier 2 (OpenRouter) defaults
       expect(stats.tier2.provider).toBe("openrouter");
-      expect(stats.tier2.totalModels).toBe(22);
+      expect(stats.tier2.totalModels).toBe(16);
       expect(stats.tier2.lastWorkingModel).toBe("");
       expect(stats.tier2.lastWorkingTimeAgo).toBe("never");
       expect(stats.tier2.modelSuccessCounts).toEqual({});
@@ -82,9 +82,9 @@ describe("Chatbot Module", () => {
   // ─── Model pool ────────────────────────────────────────────────────────
 
   describe("model pool", () => {
-    it("has 22 models", async () => {
+    it("has 16 models", async () => {
       const { getChatbotStats } = await importChatbot();
-      expect(getChatbotStats().tier2.totalModels).toBe(22);
+      expect(getChatbotStats().tier2.totalModels).toBe(16);
     });
 
     it("models are ordered by tier (all tier 1 before tier 2, etc.)", async () => {
@@ -114,29 +114,29 @@ describe("Chatbot Module", () => {
         (args: any[]) => JSON.parse((args[1] as any).body).model
       );
 
-      // First pass tries models tier by tier — first 22 calls should be all 22
-      // models in tier order. Collect the first 22 model IDs.
-      const firstPass = modelIds.slice(0, 22);
-      expect(firstPass).toHaveLength(22);
+      // First pass tries models tier by tier — first 16 calls should be all 16
+      // models in tier order. Collect the first 16 model IDs.
+      const firstPass = modelIds.slice(0, 16);
+      expect(firstPass).toHaveLength(16);
 
-      // Known tier 1 model IDs (2 models — strongest free reasoning models)
+      // Known tier 1 model IDs (first two of the tier-1 block)
       const tier1Ids = [
+        "nvidia/nemotron-3-ultra-550b-a55b:free",
         "nvidia/nemotron-3-super-120b-a12b:free",
-        "google/gemma-4-31b-it:free",
       ];
 
       // Verify all tier 1 models appear before any tier 2 model
       const tier1Indices = tier1Ids
         .map((id) => firstPass.indexOf(id))
         .filter((i) => i >= 0);
-      const tier2FirstIndex = 22; // tier 2 starts after tier 1
+      const tier2FirstIndex = 16; // tier 2 starts after tier 1
 
       // Tier 1 models should be at positions 0 and 1 (first two)
       expect(tier1Indices).toHaveLength(2);
       expect(Math.max(...tier1Indices)).toBeLessThan(tier2FirstIndex);
 
-      // Strongest model first: nemotron-120b at position 0
-      expect(firstPass[0]).toBe("nvidia/nemotron-3-super-120b-a12b:free");
+      // Strongest model first: nemotron-ultra-550b at position 0
+      expect(firstPass[0]).toBe("nvidia/nemotron-3-ultra-550b-a55b:free");
     });
   });
 
@@ -481,7 +481,7 @@ describe("Chatbot Module", () => {
       );
       expect(pick2?.provider).toBe("openrouter");
       // Best (strongest) tier-1 model chosen
-      expect(pick2?.modelId).toBe("nvidia/nemotron-3-super-120b-a12b:free");
+      expect(pick2?.modelId).toBe("nvidia/nemotron-3-ultra-550b-a55b:free");
     });
   });
 
@@ -635,11 +635,11 @@ describe("Chatbot Module", () => {
         messages: [{ role: "user", content: "deep question" }],
         mode: "thinking",
       });
-      expect(thinkRes.model).toBe("nvidia/nemotron-3-super-120b-a12b:free");
+      expect(thinkRes.model).toBe("nvidia/nemotron-3-ultra-550b-a55b:free");
 
       // 2) streaming picker (thinking) reuses the healthy tier-1 model
       const thinkingPick = await mod.pickWorkingModel([{ role: "user", content: "hi" }], "en", "thinking");
-      expect(thinkingPick?.modelId).toBe("nvidia/nemotron-3-super-120b-a12b:free");
+      expect(thinkingPick?.modelId).toBe("nvidia/nemotron-3-ultra-550b-a55b:free");
 
       // 3) instant must NOT reuse nemotron — it starts from its fast model
       const instantRes = await mod.getChatResponse({
@@ -661,8 +661,8 @@ describe("Chatbot Module", () => {
         if (url.includes("/auth/key")) return { ok: true, json: async () => ({}) };
         const model = JSON.parse(options.body).model;
         calledModels.push(model);
-        // gemma (preferred) is dead, qwen3-next (2nd fast) works,
-        // nemotron (thinking tier-1) would also work but must not be reached first
+        // gemma (preferred) is dead, xingchen (2nd fast) works,
+        // nemotron-ultra (thinking tier-1) would also work but must not be reached first
         if (model === "google/gemma-4-26b-a4b-it:free") {
           return { ok: false, status: 429, json: async () => ({ error: "rate limited" }) };
         }
@@ -675,9 +675,9 @@ describe("Chatbot Module", () => {
         mode: "instant",
       });
 
-      expect(res.model).toBe("qwen/qwen3-next-80b-a3b-instruct:free");
+      expect(res.model).toBe("xingchen-agi/xing4.0-29b-a4b:free");
       // The thinking tier-1 model was never attempted — the fast lane caught it
-      expect(calledModels).not.toContain("nvidia/nemotron-3-super-120b-a12b:free");
+      expect(calledModels).not.toContain("nvidia/nemotron-3-ultra-550b-a55b:free");
     });
 
     it("thinking never inherits instant's fast-lane last-working model (mirror collapse guard)", async () => {
@@ -700,7 +700,7 @@ describe("Chatbot Module", () => {
         messages: [{ role: "user", content: "deep" }],
         mode: "thinking",
       });
-      expect(thinkRes.model).toBe("nvidia/nemotron-3-super-120b-a12b:free");
+      expect(thinkRes.model).toBe("nvidia/nemotron-3-ultra-550b-a55b:free");
       expect(thinkRes.model).not.toBe(instantRes.model);
     });
   });
