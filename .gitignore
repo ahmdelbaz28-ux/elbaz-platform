@@ -130,3 +130,4 @@ dist-electron/
 # Add any binary that must be tracked via git-lfs here
 
 update_hf_secrets.py
+__pycache__/
