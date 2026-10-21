@@ -53,15 +53,19 @@ function buildSocialLinks(contact: {
   return out;
 }
 
-const BRAND_COLORS: Record<string, string> = {
-  YouTube: "hover:border-[#FF0000] hover:text-[#FF0000] hover:bg-[rgba(255,0,0,0.08)] hover:shadow-[0_0_18px_rgba(255,0,0,0.25)]",
-  LinkedIn: "hover:border-[#0A66C2] hover:text-[#0A66C2] hover:bg-[rgba(10,102,194,0.08)] hover:shadow-[0_0_18px_rgba(10,102,194,0.25)]",
-  Facebook: "hover:border-[#1877F2] hover:text-[#1877F2] hover:bg-[rgba(24,119,242,0.08)] hover:shadow-[0_0_18px_rgba(24,119,242,0.25)]",
-  Instagram: "hover:border-[#E1306C] hover:text-[#E1306C] hover:bg-[rgba(225,48,108,0.08)] hover:shadow-[0_0_18px_rgba(225,48,108,0.25)]",
-  Twitter: "hover:border-[#e8f0fe] hover:text-[#e8f0fe] hover:bg-[rgba(232,240,254,0.08)] hover:shadow-[0_0_18px_rgba(232,240,254,0.25)]",
-  TikTok: "hover:border-[#00f2fe] hover:text-[#00f2fe] hover:bg-[rgba(0,242,254,0.08)] hover:shadow-[0_0_18px_rgba(0,242,254,0.25)]",
-  Telegram: "hover:border-[#229ED9] hover:text-[#229ED9] hover:bg-[rgba(34,158,217,0.08)] hover:shadow-[0_0_18px_rgba(34,158,217,0.25)]",
-  Email: "hover:border-accent hover:text-accent hover:bg-accent/10 hover:shadow-[0_0_18px_rgba(249,115,22,0.25)]",
+// Solid official brand colors — buttons POP against the dark footer
+// background instead of melting into it (owner request).
+const SOLID_BRAND: Record<string, { bg: string; glow: string; fg?: string }> = {
+  YouTube: { bg: "#FF0000", glow: "rgba(255,0,0,0.45)" },
+  Telegram: { bg: "#229ED9", glow: "rgba(34,158,217,0.45)" },
+  Facebook: { bg: "#1877F2", glow: "rgba(24,119,242,0.45)" },
+  Instagram: { bg: "linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%)", glow: "rgba(204,35,102,0.45)" },
+  // TikTok's official black vanishes on the dark footer — use the inverted
+  // (white/black) app-icon look so it stays unmissable.
+  TikTok: { bg: "#ffffff", glow: "rgba(255,255,255,0.35)", fg: "#010101" },
+  LinkedIn: { bg: "#0A66C2", glow: "rgba(10,102,194,0.45)" },
+  Twitter: { bg: "#1DA1F2", glow: "rgba(29,161,242,0.45)" },
+  Email: { bg: "#f97316", glow: "rgba(249,115,22,0.45)" },
 };
 
 export default function Footer() {
@@ -132,20 +136,29 @@ export default function Footer() {
                 : "Specialized platform for power system design software, built for serious electrical engineers."}
             </p>
 
-            {/* Social links */}
+            {/* Social links — solid brand-colored buttons */}
             <div className="mt-5 flex items-center gap-3">
-              {socialLinks.map((s) => (
-                <a
-                  key={s.label}
-                  href={s.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={s.label}
-                  className={`flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-primary text-text-secondary transition-all duration-300 ${BRAND_COLORS[s.label] || "hover:border-accent hover:text-accent"}`}
-                >
-                  {s.icon}
-                </a>
-              ))}
+              {socialLinks.map((s) => {
+                const brand = SOLID_BRAND[s.label];
+                return (
+                  <a
+                    key={s.label}
+                    href={s.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={s.label}
+                    title={s.label}
+                    style={{
+                      background: brand?.bg,
+                      boxShadow: `0 0 16px ${brand?.glow || "rgba(255,255,255,0.2)"}, inset 0 0 0 1px rgba(255,255,255,0.12)`,
+                      color: brand?.fg || "#ffffff",
+                    }}
+                    className="flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-300 hover:scale-[1.15] hover:-translate-y-0.5 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  >
+                    {s.icon}
+                  </a>
+                );
+              })}
             </div>
           </div>
 
