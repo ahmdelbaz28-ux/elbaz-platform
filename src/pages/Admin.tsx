@@ -765,7 +765,7 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                         <Input value={contactValues.email || ""} onChange={(e) => setContactValues((p) => ({ ...p, email: e.target.value }))} placeholder="contact@example.com" className="border-border bg-background text-foreground" dir="ltr" />
                       </div>
                       <div className="grid gap-4 sm:grid-cols-2">
-                        {(["youtubeUrl", "linkedinUrl", "facebookUrl", "instagramUrl", "tiktokUrl", "twitterUrl"] as const).map((key) => (
+                        {(["youtubeUrl", "linkedinUrl", "facebookUrl", "instagramUrl", "tiktokUrl", "twitterUrl", "telegramUrl"] as const).map((key) => (
                           <div key={key} className="grid gap-1.5">
                             <Label className="text-sm text-text-muted">{key.replaceAll("Url", "").charAt(0).toUpperCase() + key.replaceAll("Url", "").slice(1)}</Label>
                             <Input value={contactValues[key] || ""} onChange={(e) => setContactValues((p) => ({ ...p, [key]: e.target.value }))} placeholder="https://..." className="border-border bg-background text-foreground" dir="ltr" />

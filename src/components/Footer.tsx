@@ -4,6 +4,14 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { useContactSettings } from "@/hooks/useContactSettings";
 import { Youtube, Linkedin, Mail, Facebook, Instagram, Twitter } from "lucide-react";
 
+// Official Telegram brand mark (circular paper-plane logo)
+const TelegramIcon = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor" role="img" aria-hidden="true">
+    <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+  </svg>
+);
+
+// Official TikTok brand mark (musical note logo)
 const TiktokIcon = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor" role="img" aria-hidden="true">
     <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-5.2 1.74 2.89 2.89 0 012.31-4.64 2.93 2.93 0 01.88.13V9.4a6.84 6.84 0 00-1-.05A6.33 6.33 0 005 20.1a6.34 6.34 0 0010.86-4.43v-7a8.16 8.16 0 004.77 1.52v-3.4a4.85 4.85 0 01-1.04-.1z"/>
@@ -28,15 +36,19 @@ function buildSocialLinks(contact: {
   instagramUrl?: string | null;
   twitterUrl?: string | null;
   tiktokUrl?: string | null;
+  telegramUrl?: string | null;
   email?: string | null;
 }): SocialLink[] {
   const out: SocialLink[] = [];
+  // Order mirrors the owner's requested lineup:
+  // YouTube → Telegram → Facebook → Instagram → TikTok → Email
   pushIfValid(out, contact.youtubeUrl, <Youtube className="h-4 w-4" />, "YouTube");
-  pushIfValid(out, contact.linkedinUrl, <Linkedin className="h-4 w-4" />, "LinkedIn");
+  pushIfValid(out, contact.telegramUrl, <TelegramIcon className="h-4 w-4" />, "Telegram");
   pushIfValid(out, contact.facebookUrl, <Facebook className="h-4 w-4" />, "Facebook");
   pushIfValid(out, contact.instagramUrl, <Instagram className="h-4 w-4" />, "Instagram");
-  pushIfValid(out, contact.twitterUrl, <Twitter className="h-4 w-4" />, "Twitter");
   pushIfValid(out, contact.tiktokUrl, <TiktokIcon className="h-4 w-4" />, "TikTok");
+  pushIfValid(out, contact.linkedinUrl, <Linkedin className="h-4 w-4" />, "LinkedIn");
+  pushIfValid(out, contact.twitterUrl, <Twitter className="h-4 w-4" />, "Twitter");
   pushIfValid(out, contact.email, <Mail className="h-4 w-4" />, "Email", (e) => `mailto:${e}`);
   return out;
 }
@@ -48,6 +60,7 @@ const BRAND_COLORS: Record<string, string> = {
   Instagram: "hover:border-[#E1306C] hover:text-[#E1306C] hover:bg-[rgba(225,48,108,0.08)] hover:shadow-[0_0_18px_rgba(225,48,108,0.25)]",
   Twitter: "hover:border-[#e8f0fe] hover:text-[#e8f0fe] hover:bg-[rgba(232,240,254,0.08)] hover:shadow-[0_0_18px_rgba(232,240,254,0.25)]",
   TikTok: "hover:border-[#00f2fe] hover:text-[#00f2fe] hover:bg-[rgba(0,242,254,0.08)] hover:shadow-[0_0_18px_rgba(0,242,254,0.25)]",
+  Telegram: "hover:border-[#229ED9] hover:text-[#229ED9] hover:bg-[rgba(34,158,217,0.08)] hover:shadow-[0_0_18px_rgba(34,158,217,0.25)]",
   Email: "hover:border-accent hover:text-accent hover:bg-accent/10 hover:shadow-[0_0_18px_rgba(249,115,22,0.25)]",
 };
 
