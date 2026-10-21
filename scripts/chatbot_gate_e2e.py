@@ -17,12 +17,22 @@ Scenarios (client-side deterministic — auth.me mocked at network level):
   C) LOGGED-IN USER — auth.me → 200 user. Expect: click FAB → chat window
      opens (no redirect). Regression guard.
 """
-import json, subprocess, sys, time
+import json, os, subprocess, sys, tempfile, time
 from playwright.sync_api import sync_playwright
 
 BASE = "http://127.0.0.1:3999"
 OUT = "/home/z/my-project/work/elbaz-platform/scripts/shots_chatgate"
 subprocess.run(["mkdir", "-p", OUT], check=True)
+
+# -- Sonar S1192: shared literals defined once -------------------------------
+T_RPC = T_RPC
+AUTH_ME = AUTH_ME
+CT_JSON = CT_JSON
+LOGIN_PATH = LOGIN_PATH
+# Sonar security hotspot: never write to a predictable /tmp path — use a
+# pid-suffixed tempfile so concurrent runs cannot collide (symlink-safe).
+BOOT_LOG = os.path.join(tempfile.gettempdir(), f"boot_chatgate_{os.getpid()}.log")
+
 
 env_cmd = [
     "env",
@@ -37,7 +47,7 @@ env_cmd = [
     "npx", "tsx", "api/boot.ts",
 ]
 server = subprocess.Popen(env_cmd, cwd="/home/z/my-project/work/elbaz-platform",
-                          stdout=open("/tmp/boot_chatgate.log", "w"),
+                          stdout=open(BOOT_LOG, "w"),
                           stderr=subprocess.STDOUT)
 time.sleep(12)
 
@@ -46,7 +56,7 @@ ME_OK = {"result": {"data": {"json": USER_JSON}}}
 ME_401 = {"error": {"json": {
     "message": "Your session has expired. Please log in again.",
     "code": -32001,
-    "data": {"code": "UNAUTHORIZED", "httpStatus": 401, "path": "auth.me"}}}}
+    "data": {"code": "UNAUTHORIZED", "httpStatus": 401, "path": AUTH_ME}}}}
 
 LOGIN_OK = {"result": {"data": {"json": {"user": USER_JSON, "token": "mock-token"}}}}
 
@@ -56,16 +66,16 @@ def setup_auth_mock(pg, mode, counter):
     """mode: 'ok' → auth.me 200 with user | 'unauthorized' → 401 loop."""
     def handler(route):
         url = route.request.url
-        if "/api/trpc/" not in url:
+        if T_RPC not in url:
             return route.continue_()
-        path = url.split("/api/trpc/")[1].split("?")[0]
-        if path == "auth.me":
+        path = url.split(T_RPC)[1].split("?")[0]
+        if path == AUTH_ME:
             counter["n"] += 1
             if mode == "ok":
-                route.fulfill(status=200, content_type="application/json",
+                route.fulfill(status=200, content_type=CT_JSON,
                               body=json.dumps(ME_OK))
             else:
-                route.fulfill(status=401, content_type="application/json",
+                route.fulfill(status=401, content_type=CT_JSON,
                               body=json.dumps(ME_401))
             return
         return route.continue_()
@@ -131,7 +141,7 @@ with sync_playwright() as p:
         fails.append("[A] chatbot FAB not found")
     else:
         toast = toast_text(pg)
-        went = wait_for_url(pg, "/login", 5)
+        went = wait_for_url(pg, LOGIN_PATH, 5)
         print(f"A) fresh visitor → toast={toast!r} redirect={went} url={pg.url} auth.me_calls={me_calls_fresh}")
         pg.screenshot(path=f"{OUT}/A_after_click.png")
         if not went:
@@ -169,7 +179,7 @@ with sync_playwright() as p:
         fails.append("[B] chatbot FAB not found")
     else:
         toast = toast_text(pg)
-        went = wait_for_url(pg, "/login", 5)
+        went = wait_for_url(pg, LOGIN_PATH, 5)
         print(f"B) stale flag → auth.me_calls_in_5s={me_calls_5s} flag_cookie_still={flag_after} "
               f"toast={toast!r} redirect={went} url={pg.url}")
         pg.screenshot(path=f"{OUT}/B_after_click.png")
@@ -191,7 +201,7 @@ with sync_playwright() as p:
     else:
         pg.wait_for_timeout(1500)
         window_open = pg.locator(".chatbot-window").count() > 0
-        still_home = "/login" not in pg.url
+        still_home = LOGIN_PATH not in pg.url
         print(f"C) logged-in → chat_window_open={window_open} url={pg.url}")
         pg.screenshot(path=f"{OUT}/C_chat_open.png")
         if not window_open:
@@ -212,9 +222,9 @@ with sync_playwright() as p:
 
     def d_handler(route):
         url = route.request.url
-        if "/api/trpc/" not in url:
+        if T_RPC not in url:
             return route.continue_()
-        raw = url.split("/api/trpc/")[1].split("?")[0]
+        raw = url.split(T_RPC)[1].split("?")[0]
         method = route.request.method
         procs = raw.split(",")
         # batch-aware: post-login the client batches auth.me together with
@@ -222,21 +232,21 @@ with sync_playwright() as p:
         # would let the whole batch hit the real sandbox server and fail
         if method == "POST" and "auth.login" in procs:
             counter["login"] += 1
-            route.fulfill(status=200, content_type="application/json",
+            route.fulfill(status=200, content_type=CT_JSON,
                           body=json.dumps(LOGIN_OK))
             return
-        if "auth.me" in procs:
+        if AUTH_ME in procs:
             counter["me"] += 1
             me = ME_OK if mode["auth"] == "ok" else ME_401
             if len(procs) == 1:
                 status = 200 if mode["auth"] == "ok" else 401
-                route.fulfill(status=status, content_type="application/json",
+                route.fulfill(status=status, content_type=CT_JSON,
                               body=json.dumps(me))
             else:
-                envelopes = [me if pr == "auth.me"
+                envelopes = [me if pr == AUTH_ME
                              else {"result": {"data": {"json": None}}}
                              for pr in procs]
-                route.fulfill(status=200, content_type="application/json",
+                route.fulfill(status=200, content_type=CT_JSON,
                               body=json.dumps(envelopes))
             return
         if method == "GET":
@@ -245,7 +255,7 @@ with sync_playwright() as p:
                 body = json.dumps({"result": {"data": {"json": None}}})
             else:
                 body = json.dumps([{"result": {"data": {"json": None}}} for _ in procs])
-            route.fulfill(status=200, content_type="application/json", body=body)
+            route.fulfill(status=200, content_type=CT_JSON, body=body)
             return
         return route.continue_()
     pg.route("**/api/trpc/**", d_handler)
@@ -255,7 +265,7 @@ with sync_playwright() as p:
     dead_calls = counter["me"]
     # 1) FAB click while dead → SPA redirect to /login
     click_fab(pg)
-    went = wait_for_url(pg, "/login", 5)
+    went = wait_for_url(pg, LOGIN_PATH, 5)
     if not went:
         fails.append(f"[D] expected FAB gate redirect to /login (at {pg.url})")
     # 2) "login succeeds": server sets cookies + auth.me now returns the user
@@ -267,7 +277,7 @@ with sync_playwright() as p:
     pg.locator("form input").nth(0).fill("gatetime")
     pg.locator("form input[type=password]").first.fill("whatever")
     pg.locator("form button[type=submit]").first.click()
-    back = wait_for_url_contains(pg, BASE + "/", 12, exclude="/login")
+    back = wait_for_url_contains(pg, BASE + "/", 12, exclude=LOGIN_PATH)
     pg.wait_for_timeout(2500)  # allow the re-sync + auth.me refetch
     logged_in = pg.evaluate(
         "() => !!document.querySelector('[data-user-menu], [aria-label*=account i], [aria-label*=حساب]')")
