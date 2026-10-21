@@ -12,11 +12,12 @@ INSERT INTO siteSettings (section, `key`, value, type, sortOrder) VALUES
 (@contact_section, 'email', 'contact@ahmedelbaz.com', 'text', 3),
 (@contact_section, 'whatsappMessageEn', 'Hi! I''m interested in your engineering courses. Can you help me?', 'text', 4),
 (@contact_section, 'whatsappMessageAr', 'مرحباً! أنا مهتم بالكورسات الهندسية. ممكن تساعدني؟', 'text', 5),
-(@contact_section, 'youtubeUrl', '#', 'url', 10),
+(@contact_section, 'youtubeUrl', 'https://youtube.com/playlist?list=PLeeb5_Qjhcgc', 'url', 10),
 (@contact_section, 'linkedinUrl', '#', 'url', 11),
-(@contact_section, 'facebookUrl', '#', 'url', 12),
-(@contact_section, 'instagramUrl', '#', 'url', 13),
-(@contact_section, 'tiktokUrl', '', 'url', 14),
+(@contact_section, 'facebookUrl', 'https://www.facebook.com/share/1Cm6U14ihR/', 'url', 12),
+(@contact_section, 'instagramUrl', 'https://www.instagram.com/ahmedetap1', 'url', 13),
+(@contact_section, 'tiktokUrl', 'https://www.tiktok.com/@ahmedetap', 'url', 14),
 (@contact_section, 'twitterUrl', '', 'url', 15),
-(@contact_section, 'websiteUrl', 'https://ahmedelbaz.qzz.io', 'url', 16)
+(@contact_section, 'websiteUrl', 'https://ahmedelbaz.qzz.io', 'url', 16),
+(@contact_section, 'telegramUrl', 'https://t.me/engahmedetap', 'url', 17)
 ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);

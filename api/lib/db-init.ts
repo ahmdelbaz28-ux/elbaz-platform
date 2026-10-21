@@ -661,17 +661,21 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         'مش هكدب، أول أسبوعين كانوا صعبين عليّ لأن مستواي في الأساسيات كان ضعيف. بس طريقة الشرح من الصفر خلّتني أكمّل. لو حد يسألني أنصحه يبدأ من الـ power systems basics الأول قبل ما يروح على ETAP مباشرة.',
         4, 1, NOW())`,
 
-      // Contact settings
+      // Contact settings — social URLs are the official platform links
+      // (upserted on every boot so existing deployments pick them up).
       `INSERT INTO siteSettings (section, \`key\`, value, type, sortOrder) VALUES
        ('contact', 'whatsappNumber', '201061857305', 'text', 1),
        ('contact', 'phone', '01061857305', 'text', 2),
        ('contact', 'email', 'contact@ahmedelbaz.com', 'text', 3),
        ('contact', 'whatsappMessageEn', 'Hi! I am interested in your engineering courses.', 'text', 4),
        ('contact', 'whatsappMessageAr', 'مرحباً! أنا مهتم بالكورسات الهندسية.', 'text', 5),
-       ('contact', 'youtubeUrl', '#', 'url', 10),
+       ('contact', 'youtubeUrl', 'https://youtube.com/playlist?list=PLeeb5_Qjhcgc', 'url', 10),
        ('contact', 'linkedinUrl', '#', 'url', 11),
-       ('contact', 'facebookUrl', '#', 'url', 12),
-       ('contact', 'instagramUrl', '#', 'url', 13),
+       ('contact', 'facebookUrl', 'https://www.facebook.com/share/1Cm6U14ihR/', 'url', 12),
+       ('contact', 'instagramUrl', 'https://www.instagram.com/ahmedetap1', 'url', 13),
+       ('contact', 'tiktokUrl', 'https://www.tiktok.com/@ahmedetap', 'url', 14),
+       ('contact', 'twitterUrl', '', 'url', 15),
+       ('contact', 'telegramUrl', 'https://t.me/engahmedetap', 'url', 17),
        ('contact', 'websiteUrl', 'https://ahmedelbaz.qzz.io', 'url', 16)
        ON DUPLICATE KEY UPDATE \`value\` = VALUES(\`value\`)`,
     ];

@@ -12,6 +12,7 @@ export interface ContactSettings {
   instagramUrl: string;
   tiktokUrl: string;
   twitterUrl: string;
+  telegramUrl: string;
   websiteUrl: string;
 }
 
@@ -21,12 +22,15 @@ const FALLBACKS: ContactSettings = {
   email: "contact@ahmedelbaz.com",
   whatsappMessageEn: "Hi! I'm interested in your engineering courses. Can you help me?",
   whatsappMessageAr: "مرحباً! أنا مهتم بالكورسات الهندسية. ممكن تساعدني؟",
-  youtubeUrl: "#",
+  // Official social platform links (also seeded into siteSettings on boot —
+  // DB values win once present; these keep the icons alive if the query fails).
+  youtubeUrl: "https://youtube.com/playlist?list=PLeeb5_Qjhcgc",
   linkedinUrl: "#",
-  facebookUrl: "#",
-  instagramUrl: "#",
-  tiktokUrl: "",
+  facebookUrl: "https://www.facebook.com/share/1Cm6U14ihR/",
+  instagramUrl: "https://www.instagram.com/ahmedetap1",
+  tiktokUrl: "https://www.tiktok.com/@ahmedetap",
   twitterUrl: "",
+  telegramUrl: "https://t.me/engahmedetap",
   websiteUrl: "https://ahmedelbaz.qzz.io",
 };
 
@@ -50,6 +54,7 @@ export function useContactSettings() {
     instagramUrl: raw?.instagramUrl ?? FALLBACKS.instagramUrl,
     tiktokUrl: raw?.tiktokUrl ?? FALLBACKS.tiktokUrl,
     twitterUrl: raw?.twitterUrl ?? FALLBACKS.twitterUrl,
+    telegramUrl: raw?.telegramUrl ?? FALLBACKS.telegramUrl,
     websiteUrl: raw?.websiteUrl ?? FALLBACKS.websiteUrl,
   };
 
