@@ -144,10 +144,11 @@ async function tryPickOpenRouterProvider(systemPrompt: string, tuning: ModeTunin
 export async function pickWorkingModel(
   _messages: { role: string; content: string }[],
   language?: string,
-  mode: "thinking" | "instant" = "thinking"
+  mode: "thinking" | "instant" = "thinking",
+  catalog?: string
 ): Promise<PickedProvider | null> {
   const tuning = mode === "instant" ? MODE_TUNING.instant : MODE_TUNING.thinking;
-  const systemPrompt = getSystemPrompt(language, mode);
+  const systemPrompt = getSystemPrompt(language, mode, catalog);
 
   if (mode === "instant") {
     // ─── INSTANT: fastest first — Groq → OpenRouter (fast model) → NVIDIA ───
@@ -652,8 +653,10 @@ export async function getStreamResponse(request: {
   messages: { role: string; content: string }[];
   language?: string;
   mode?: "thinking" | "instant";
+  /** Real course-catalog text (api/lib/course-catalog.ts) — injected into the system prompt. */
+  catalog?: string;
 }): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
-  const picked = await pickWorkingModel(request.messages, request.language, request.mode || "thinking");
+  const picked = await pickWorkingModel(request.messages, request.language, request.mode || "thinking", request.catalog);
 
   if (!picked) {
     return buildStreamErrorResponse("noProvider", request.language);

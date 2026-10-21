@@ -27,6 +27,8 @@
  *   chatbot.ts        — Config, health tracking, non-streaming provider functions, getChatResponse
  *   chatbot-stream.ts — SSE streaming for all providers, getStreamResponse, pickWorkingModel
  *   chatbot-prompts.ts — System prompt builder (getSystemPrompt) + MODE_TUNING
+ *   chatbot-skills.ts — Skill blocks (source-routing, PF/SKM/PVSyst cores, mentor, platform facts)
+ *   course-catalog.ts — Real course data for prompt injection (getCourseCatalogText)
  */
 
 import { env } from "../lib/env";
@@ -682,10 +684,12 @@ export async function getChatResponse(request: {
   messages: { role: string; content: string }[];
   language?: string;
   mode?: "thinking" | "instant";
+  /** Real course-catalog text (api/lib/course-catalog.ts) — injected into the system prompt. */
+  catalog?: string;
 }): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
   const mode: ChatbotMode = request.mode === "instant" ? "instant" : "thinking";
   const tuning = MODE_TUNING[mode];
-  const systemPrompt = getSystemPrompt(request.language, mode);
+  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog);
 
   if (mode === "instant") {
     // INSTANT — fastest provider first: Groq → OpenRouter (fast model) → NVIDIA
