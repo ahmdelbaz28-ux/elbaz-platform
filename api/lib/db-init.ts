@@ -18,6 +18,7 @@ import { getRawConnection } from "../queries/connection.js";
 import { hashPassword } from "./password.js";
 import { env } from "./env.js";
 import { logger } from "./logger.js";
+import { invalidateSettingsCache } from "./cache.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -578,6 +579,36 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
             ('How do I reset my password?', 'كيف أعيد تعيين كلمة المرور؟', 'Click "Forgot Password" on the login page. Enter your email, and we will send a reset link valid for 30 minutes.', 'اضغط "نسيت كلمة المرور" في صفحة تسجيل الدخول. أدخل بريدك الإلكتروني وسنرسل رابط إعادة التعيين صالح لمدة 30 دقيقة.', 'account', 5)
           `);
           logger.info("[DB] Default FAQ entries seeded");
+        }
+
+        // ── Social links sync (existing deployments) ──
+        // The footer social icons read siteSettings.contact.*. Older databases
+        // still carry the '#'/'' "not configured" sentinels, which HIDE the
+        // icons entirely. Fill ONLY sentinel/missing rows with the official
+        // platform URLs — real URLs saved from the admin dashboard are never
+        // overwritten (IF guard in ON DUPLICATE KEY UPDATE).
+        const SOCIAL_LINK_DEFAULTS: [string, string, number][] = [
+          ["youtubeUrl", "https://youtube.com/playlist?list=PLeeb5_Qjhcgc", 10],
+          ["facebookUrl", "https://www.facebook.com/share/1Cm6U14ihR/", 12],
+          ["instagramUrl", "https://www.instagram.com/ahmedetap1", 13],
+          ["tiktokUrl", "https://www.tiktok.com/@ahmedetap", 14],
+          ["telegramUrl", "https://t.me/engahmedetap", 17],
+        ];
+        try {
+          for (const [key, url, sortOrder] of SOCIAL_LINK_DEFAULTS) {
+            await conn.execute(
+              `INSERT INTO siteSettings (section, \`key\`, value, type, sortOrder)
+               VALUES ('contact', ?, ?, 'url', ?)
+               ON DUPLICATE KEY UPDATE \`value\` = IF(\`value\` IN ('#', ''), VALUES(\`value\`), \`value\`)`,
+              [key, url, sortOrder]
+            );
+          }
+          // Settings are cached (Redis/in-memory) — invalidate so the synced
+          // values are served on the very first request after boot.
+          await invalidateSettingsCache();
+          logger.info("[DB] Social link defaults synced (sentinel rows only)");
+        } catch (err) {
+          logger.warn("[DB] Social links sync warning", { error: (err as Error).message });
         }
 
         logger.info("[DB] v6 tables verified (faqEntries, wishlists, lessonComments, commentLikes, notificationPreferences)");
