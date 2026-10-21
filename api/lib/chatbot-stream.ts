@@ -397,7 +397,7 @@ async function streamNvidiaProvider(
 function buildSSEContentTransformStream(encoder: TextEncoder): TransformStream<Uint8Array, Uint8Array> {
   const decoder = new TextDecoder();
   return new TransformStream<Uint8Array, Uint8Array>({
-    async transform(chunk, controller) {
+    transform(chunk, controller) {
       try {
         const text = decoder.decode(chunk, { stream: true });
         const lines = text.split("\n");

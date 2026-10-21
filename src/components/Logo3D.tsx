@@ -51,7 +51,7 @@ export default function Logo3D({
   /* ── Theme detection ──────────────────────────────────────────────────── */
   useEffect(() => {
     const checkTheme = () => {
-      setIsLight(document.documentElement.getAttribute('data-theme') === 'light');
+      setIsLight(document.documentElement.dataset.theme === 'light');
     };
     checkTheme();
     const observer = new MutationObserver(checkTheme);

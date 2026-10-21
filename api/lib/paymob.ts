@@ -142,7 +142,7 @@ export interface CreateIntentionResult {
 /** Convert an EGP amount to integer piasters without float drift. */
 export function toAmountCents(amount: string | number): number {
   const n = typeof amount === "string" ? Number.parseFloat(amount) : amount;
-  if (!Number.isFinite(n)) return NaN;
+  if (!Number.isFinite(n)) return Number.NaN;
   return Math.round(n * 100);
 }
 

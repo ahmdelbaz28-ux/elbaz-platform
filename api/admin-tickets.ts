@@ -22,7 +22,7 @@ export const adminTicketsProcedures = {
       const offset = (page - 1) * limit;
       const conditions = [];
       if (input?.status) conditions.push(eq(supportTickets.status, input.status));
-      return db
+      return await db
         .select({
           id: supportTickets.id,
           userId: supportTickets.userId,

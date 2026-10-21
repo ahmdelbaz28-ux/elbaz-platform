@@ -266,7 +266,7 @@ export async function generateR2UploadUrl(
     ContentType: contentType,
   });
 
-  return getSignedUrl(client, command, { expiresIn });
+  return await getSignedUrl(client, command, { expiresIn });
 }
 
 // ─── Presigned Download URL ──────────────────────────────────────────────────
@@ -292,7 +292,7 @@ export async function generateR2DownloadUrl(
     ResponseContentDisposition: `attachment; filename="${fileName.replace(/[^\w\u0600-\u06FF.-]/g, "_")}"`,
   });
 
-  return getSignedUrl(client, command, { expiresIn });
+  return await getSignedUrl(client, command, { expiresIn });
 }
 
 // ─── Delete Object ───────────────────────────────────────────────────────────

@@ -31,7 +31,7 @@ if ('serviceWorker' in navigator && !(globalThis as any).Capacitor?.isNativePlat
       }) => void
     } = await import('virtual:pwa-register');
 
-    const registerServiceWorker = async () => {
+    const registerServiceWorker = () => {
       const SW_UPDATE_INTERVAL = 5 * 60 * 1000; // 5 minutes
       let intervalId: ReturnType<typeof setInterval> | null = null;
 

@@ -16,7 +16,7 @@ import { activeEnrollmentWhere } from "./lib/enrollment";
 export const courseEnrollmentProcedures = {
   enrollments: authedQuery.query(async ({ ctx }) => {
     const db = getDb();
-    return db
+    return await db
       .select({
         id: enrollments.id,
         courseId: enrollments.courseId,

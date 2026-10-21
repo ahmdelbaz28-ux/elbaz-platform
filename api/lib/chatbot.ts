@@ -145,7 +145,7 @@ export const AI_MODELS = [
 // GROQ (TIER 3) — non-streaming
 // ════════════════════════════════════════════════════════════════════════
 
-export async function validateGroqKey(): Promise<boolean> {
+export function validateGroqKey(): boolean {
   if (!GROQ_API_KEY) {
     chatHealth.groqKeyValid = false;
     return false;
@@ -248,7 +248,7 @@ export async function tryGroq(
 // NVIDIA (MINIMAX-M3) — TIER 1 non-streaming
 // ════════════════════════════════════════════════════════════════════════
 
-export async function validateNvidiaKey(): Promise<boolean> {
+export function validateNvidiaKey(): boolean {
   if (!NVIDIA_API_KEY) {
     chatHealth.nvidiaKeyValid = false;
     return false;

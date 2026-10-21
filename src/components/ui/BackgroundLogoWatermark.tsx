@@ -26,7 +26,7 @@ export default function BackgroundLogoWatermark() {
   /* ── Theme detection ── */
   useEffect(() => {
     const check = () => {
-      setIsLight(document.documentElement.getAttribute("data-theme") === "light");
+      setIsLight(document.documentElement.dataset.theme === "light");
     };
     check();
     const obs = new MutationObserver(check);
