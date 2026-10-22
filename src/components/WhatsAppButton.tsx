@@ -1,27 +1,36 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useContactSettings } from "@/hooks/useContactSettings";
+import { useFabScrollVisibility } from "@/hooks/useFabScrollVisibility";
 import { useLocation } from "react-router";
 import { MessageCircle, X } from "lucide-react";
+
+// Gentle entrance delay — let the page settle first, then glide the
+// WhatsApp FAB in to catch the eye (owner request: 3s + soft animation).
+const ENTRANCE_DELAY_MS = 3000;
 
 export default function WhatsAppButton() {
   const { lang } = useTranslation();
   const { data: contact } = useContactSettings();
   const [isOpen, setIsOpen] = useState(false);
-  const [isVisible, setIsVisible] = useState(false);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setIsVisible(true), 2000);
-    return () => clearTimeout(timer);
-  }, []);
+  const [appeared, setAppeared] = useState(false);
 
   const location = useLocation();
   const isAuthPage = location.pathname === "/login" || location.pathname === "/register" || location.pathname === "/forgot-password" || location.pathname === "/reset-password" || location.pathname === "/verify-email";
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setIsVisible(!isAuthPage);
+    if (isAuthPage) return;
+    const timer = setTimeout(() => setAppeared(true), ENTRANCE_DELAY_MS);
+    return () => clearTimeout(timer);
   }, [isAuthPage]);
+
+  // Never render on auth pages; also fixes the old bug where the delay
+  // timer re-showed the button on /login after it had been hidden.
+  const isVisible = appeared && !isAuthPage;
+
+  // YouTube-style: dip below the edge while scrolling down, glide back on
+  // stop — but never hide while the tooltip popup is open.
+  const fabHidden = useFabScrollVisibility(isOpen);
 
   // Close on Escape key
   useEffect(() => {
@@ -40,7 +49,9 @@ export default function WhatsAppButton() {
 
   return (
     <div
-      className="whatsapp-fab-wrap fixed z-[90] transform-gpu will-change-transform"
+      className={`whatsapp-fab-wrap whatsapp-fab-enter fixed z-[90] transform-gpu will-change-transform ${
+        fabHidden ? "fab-scroll-hidden" : ""
+      }`}
     >
       {/* Tooltip popup */}
       <div

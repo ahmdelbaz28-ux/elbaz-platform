@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useAuth } from "@/hooks/useAuth";
 import { useChatFabAnimation } from "@/hooks/useChatFabAnimation";
+import { useFabScrollVisibility } from "@/hooks/useFabScrollVisibility";
 import {
   X,
   Send,
@@ -262,6 +263,9 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   // conversation from being partially re-populated by a late stream).
   const generationRef = useRef(0);
   const fabRef = useChatFabAnimation();
+  // YouTube-style scroll hide for the FAB button — suspended while the chat
+  // window (or its minimized bubble) is open so an active chat never dips away.
+  const fabHidden = useFabScrollVisibility(isOpen);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingExitStartedRef = useRef(false);
 
@@ -858,7 +862,8 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
         <button
           ref={fabRef}
           onClick={handleFabClick}
-          className="fixed z-[100] w-10 h-10 md:w-14 md:h-14 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/25 flex items-center justify-center transition-all duration-300 hover:scale-110 hover:shadow-cyan-500/40 active:scale-95 chatbot-fab transform-gpu will-change-transform"
+          className={"fixed z-[100] w-10 h-10 md:w-14 md:h-14 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/25 flex items-center justify-center transition-all duration-300 hover:scale-110 hover:shadow-cyan-500/40 active:scale-95 chatbot-fab transform-gpu will-change-transform" +
+            (fabHidden ? " fab-scroll-hidden" : "")}
           aria-label={lang === "ar" ? "\u0641\u062a\u062d \u0627\u0644\u0645\u0633\u0627\u0639\u062f \u0627\u0644\u0630\u0643\u064a" : "Open AI Assistant"}
         >
           <div className="relative">

@@ -1,8 +1,11 @@
 import { useState, useEffect } from "react";
 import { ArrowUp } from "lucide-react";
+import { useFabScrollVisibility } from "@/hooks/useFabScrollVisibility";
 
 export default function ScrollToTop() {
   const [visible, setVisible] = useState(false);
+  // YouTube-style: dip below the edge while scrolling down, glide back on stop.
+  const fabHidden = useFabScrollVisibility();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -20,7 +23,9 @@ export default function ScrollToTop() {
     <button
       onClick={scrollToTop}
       aria-label="Scroll to top"
-      className="scroll-top-fab fixed z-[95] group transform-gpu will-change-transform"
+      className={`scroll-top-fab fixed z-[95] group transform-gpu will-change-transform ${
+        fabHidden ? "fab-scroll-hidden" : ""
+      }`}
     >
       <span
         className={`flex h-10 w-10 items-center justify-center transition-all duration-500 ease-out md:h-12 md:w-12 ${

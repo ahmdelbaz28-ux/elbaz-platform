@@ -18,6 +18,11 @@ F   (Task 18) FAB stack: WhatsApp/chatbot/scroll-top hug the bottom edge
 L   (Task 19) circular logo everywhere: navbar/drawer/footer = circular
     asset (logo-circle.png), square box, fully rounded corners
 D   (Task 19) desktop 1366x900: navbar + footer logo circular+square
+F8  (Task 20) WhatsApp 3s delayed entrance: absent before 3s, glides in after
+F9  (Task 20) YouTube-style: FABs dip away while scrolling down, glide back
+    when the scroll stops (reveal debounce ~220ms)
+F10 (Task 20) brand unification to the tab: circular favicon set + boot
+    splash assets live + splash markup present in the HTML
 Shots: scripts/shots_mobile/
 """
 import json, re, subprocess, sys
@@ -166,8 +171,22 @@ with sync_playwright() as p:
         check("M2c ETAP content renders (RTL)", "الإيتاب" in body_txt and "ETAP" in body_txt, body_txt[:80].replace("\n", " "))
         pg.screenshot(path=f"{OUT}/M2_article_detail.png")
 
-    # ---------- F: floating FABs — compact bottom stack (Task 18) ----------
+    # ---------- F: floating FABs — compact bottom stack (Task 18/20) ----------
     pg.wait_for_timeout(1200)
+
+    # F8 (Task 20): WhatsApp 3s delayed entrance — fresh reload catches the
+    # early window: absent before 3s, present after (entrance anim 0.7s).
+    pg.reload(wait_until="domcontentloaded")
+    pg.wait_for_timeout(1200)
+    early = pg.locator("button.whatsapp-fab").count()
+    check("F8a WhatsApp FAB hidden during first 3s", early == 0, f"count={early}")
+    pg.wait_for_selector("button.whatsapp-fab", timeout=8000)
+    check("F8b WhatsApp FAB glides in after ~3s",
+          pg.locator("button.whatsapp-fab").count() == 1)
+    splash_gone = pg.evaluate("() => document.getElementById('boot-splash') === null")
+    check("F8c boot splash removed after React mounts", splash_gone)
+    pg.wait_for_timeout(900)  # let the 0.7s entrance animation settle
+
     def bbox(sel):
         loc = pg.locator(sel).first
         return loc.bounding_box() if loc.count() else None
@@ -231,6 +250,34 @@ with sync_playwright() as p:
     pg.wait_for_timeout(2000)
     y_after = pg.evaluate("() => window.scrollY")
     check("F6b scroll-top scrolls back to top", y_before > 400 and y_after < 50, f"{y_before} -> {y_after}")
+
+    # F9 (Task 20): YouTube-style hide-on-scroll-down + reveal-on-stop.
+    # Single instant downward jump = one scroll event -> hidden at once;
+    # after the events stop, the 220ms reveal debounce glides FABs back.
+    pg.evaluate("() => window.scrollTo({top: 1600, behavior: 'instant'})")
+    pg.wait_for_timeout(100)
+    hid = pg.evaluate("() => !!document.querySelector('.whatsapp-fab-wrap.fab-scroll-hidden')")
+    check("F9a FABs dip away while scrolling down", hid, f"hidden={hid}")
+    pg.screenshot(path=f"{OUT}/F5_fabs_hidden_during_scroll.png")
+    pg.wait_for_timeout(800)
+    hid2 = pg.evaluate("() => !!document.querySelector('.whatsapp-fab-wrap.fab-scroll-hidden')")
+    check("F9b FABs glide back when scrolling stops", not hid2, f"hidden={hid2}")
+    pg.screenshot(path=f"{OUT}/F6_fabs_revealed_after_stop.png")
+
+    # F10 (Task 20): brand unification to the browser tab — circular favicon
+    # set + boot-splash icon live, splash markup present in the HTML.
+    for asset, name in [("favicon-32x32.png", "F10a favicon-32x32 live"),
+                        ("favicon-16x16.png", "F10b favicon-16x16 live"),
+                        ("apple-touch-icon.png", "F10c apple-touch-icon live"),
+                        ("favicon.ico", "F10d favicon.ico live"),
+                        ("logo-splash.png", "F10e boot-splash icon live")]:
+        r = pg.request.get(f"{PROD}/{asset}", timeout=15000)
+        ct = r.headers.get("content-type", "")
+        check(name, r.status == 200 and ct.startswith("image/"), f"status={r.status} ct={ct}")
+    html = pg.request.get(PROD + "/", timeout=15000).text()
+    check("F10f boot splash present in HTML", "boot-splash" in html)
+    check("F10g favicon links = circular set (no broken svg)",
+          "favicon-32x32.png" in html and "mask-icon" not in html)
 
     # ---------- M3: admin login on mobile ----------
     open_page(pg, "/login")

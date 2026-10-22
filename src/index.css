@@ -751,6 +751,46 @@ button, a, [role="button"] {
   }
 }
 
+/* ── YouTube-style scroll behavior (useFabScrollVisibility) ─────────────
+   While the user scrolls DOWN the FABs dip below the screen edge so they
+   never cover the text being read; scrolling UP or pausing reveals them
+   again. The 130% offset guarantees the button + pulse ring fully clear
+   the edge. !important beats the WhatsApp entrance keyframes (both fills). */
+.fab-scroll-hidden {
+  transform: translateY(calc(130% + 2rem)) scale(0.8) !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+.whatsapp-fab-wrap,
+.scroll-top-fab {
+  transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+}
+
+/* Gentle 3s entrance for the WhatsApp FAB — let the page settle first,
+   then glide the button in with a soft overshoot to catch the eye. */
+@keyframes whatsapp-fab-enter {
+  0% {
+    transform: translateY(1.5rem) scale(0.5);
+    opacity: 0;
+  }
+  60% {
+    transform: translateY(-0.25rem) scale(1.06);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+.whatsapp-fab-enter {
+  animation: whatsapp-fab-enter 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .whatsapp-fab-enter {
+    animation: none;
+  }
+}
+
 
 /* RTL overrides are now handled via Tailwind logical properties (end-, start-, ms-, me-)
    Legacy CSS RTL overrides removed — see ChatBot, CourseCard, CourseDetail, Home, Navbar */
