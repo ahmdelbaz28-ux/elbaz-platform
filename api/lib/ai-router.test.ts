@@ -66,6 +66,20 @@ describe("AI Router — classifyRawModel", () => {
     expect(classifyRawModel({} as { id?: unknown })).toBeNull();
     expect(classifyRawModel({ id: 42 })).toBeNull();
   });
+  it("excludes speech/embedding models from the chat lane (whisper/orpheus cannot do chat)", () => {
+    const whisper = classifyRawModel({ id: "whisper-large-v3" });
+    expect(whisper!.supportsChat).toBe(false);
+    expect(whisper!.supportsVision).toBe(false);
+
+    const tts = classifyRawModel({ id: "playai-tts" });
+    expect(tts!.supportsChat).toBe(false);
+
+    const embed = classifyRawModel({ id: "text-embedding-3-small" });
+    expect(embed!.supportsChat).toBe(false);
+
+    // chat-capable ids are untouched by the exclusion
+    expect(classifyRawModel({ id: "llama-3.3-70b-versatile" })!.supportsChat).toBe(true);
+  });
 });
 
 describe("AI Router — maskApiKey", () => {

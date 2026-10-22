@@ -141,6 +141,15 @@ const VISION_ID_RE =
 const TIER1_RE = /(70b|120b|230b|550b|405b|ultra|super|pro\b|large|scout|maverick|reasoning)/i;
 const TIER3_RE = /(nano|mini\b|flash|instant|small|lite|\b[1-8]b\b|a3b|a4b|lfm|preview)/i;
 
+/**
+ * Non-chat models (speech-to-text, TTS, embeddings, guard/moderation).
+ * Providers like Groq list them on /models, but they cannot answer
+ * chat/completions calls — routing to them would burn an attempt and a
+ * cooldown on every message. They stay visible in the dashboard (no Chat
+ * badge) but are excluded from both chat and vision lanes.
+ */
+const NON_CHAT_RE = /(whisper|orpheus|playai|\btts\b|\bnumina\b|embedding|\bembed\b|guard|moderation|rerank|\bsafety\b|distil-whisper)/i;
+
 export interface ClassifiedModel {
   modelId: string;
   supportsChat: boolean;
@@ -197,7 +206,7 @@ export function classifyRawModel(raw: RawProviderModel): ClassifiedModel | null 
   if (TIER3_RE.test(modelId) && !TIER1_RE.test(modelId)) tier = 3;
   else if (TIER1_RE.test(modelId) || ctx >= 262144) tier = 1;
 
-  return { modelId, supportsChat: true, supportsVision, isFree, tier, contextLength: ctx };
+  return { modelId, supportsChat: !NON_CHAT_RE.test(modelId), supportsVision: supportsVision && !NON_CHAT_RE.test(modelId), isFree, tier, contextLength: ctx };
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -284,9 +293,12 @@ export async function discoverProviderModels(provider: Pick<AiProvider, "id" | "
       const cls = classifyRawModel(raw);
       if (!cls) continue;
       if (existingSet.has(cls.modelId)) {
-        // Refresh routing metadata only — admin toggles untouched.
+        // Refresh routing metadata only — admin toggles (enabled /
+        // supportsVision) untouched. supportsChat is DERIVED (non-chat ids
+        // are a provider fact) so it is always re-applied to heal rows from
+        // older discovery runs.
         await db.update(aiModels)
-          .set({ isFree: cls.isFree, tier: cls.tier, status: "unknown", failCount: 0, lastError: null })
+          .set({ isFree: cls.isFree, tier: cls.tier, supportsChat: cls.supportsChat, status: "unknown", failCount: 0, lastError: null })
           .where(and(eq(aiModels.providerId, provider.id), eq(aiModels.modelId, cls.modelId)));
       } else {
         await db.insert(aiModels).values({
