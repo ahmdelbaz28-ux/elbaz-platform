@@ -86,6 +86,28 @@ with sync_playwright() as p:
         gone = pg.locator('aside[aria-label="قائمة التنقل"]').count() == 0
         check("M1e drawer closed after navigation", gone, f"panels={pg.locator('aside[aria-label=\"قائمة التنقل\"]').count()}")
 
+    # ---------- N: bottom bar removed + drag-to-close (site drawer) ----------
+    bottom = pg.locator('nav[aria-label="التنقل السفلي"]')
+    check("N1 fixed bottom bar removed", bottom.count() == 0, f"count={bottom.count()}")
+    dismiss_cookie(pg)
+    burger.first.click()
+    pg.wait_for_timeout(1100)
+    panel_bb = pg.locator('aside[aria-label="قائمة التنقل"]').bounding_box()
+    if panel_bb:
+        cx, cy = panel_bb["x"] + panel_bb["width"] / 2, 420
+        pg.mouse.move(cx, cy)
+        pg.mouse.down()
+        pg.mouse.move(cx + 150, cy, steps=10)
+        pg.mouse.up()
+        pg.wait_for_timeout(1200)
+        closed = pg.locator('aside[aria-label="قائمة التنقل"]').count() == 0
+        stayed = "/articles" in pg.url and "/articles/" not in pg.url
+        check("N2 site drawer SWIPE-to-close works", closed, f"panels={pg.locator('aside[aria-label=\"قائمة التنقل\"]').count()}")
+        check("N3 drag guard: no accidental navigation", stayed, f"url={pg.url}")
+        pg.screenshot(path=f"{OUT}/N1_no_bottom_bar.png")
+    else:
+        check("N2 site drawer SWIPE-to-close works", False, "panel did not reopen")
+
     # ---------- M2: articles public pages ----------
     etap_card = pg.locator("a", has_text="برنامج الإيتاب")
     for _ in range(8):  # list loads async — poll before judging
@@ -177,6 +199,23 @@ with sync_playwright() as p:
         check("M5 backdrop tap closes drawer", sb_bb5 is not None and sb_bb5["x"] < -200, f"x={sb_bb5 and sb_bb5['x']}")
     else:
         check("M5 backdrop tap closes drawer", False, f"drawer did not open: {sb_bb4}")
+
+    # ---------- M6: admin drawer drag-to-close ----------
+    dismiss_cookie(pg)
+    top_burger.click()
+    pg.wait_for_timeout(1100)
+    sb_bb6 = sb.bounding_box()
+    if sb_bb6 and abs(sb_bb6["x"]) < 4:
+        cx, cy = sb_bb6["width"] / 2, 420
+        pg.mouse.move(cx, cy)
+        pg.mouse.down()
+        pg.mouse.move(cx - 150, cy, steps=10)
+        pg.mouse.up()
+        pg.wait_for_timeout(1200)
+        sb_bb7 = sb.bounding_box()
+        check("M6 admin drawer SWIPE-to-close works", sb_bb7 is not None and sb_bb7["x"] < -200, f"x={sb_bb7 and sb_bb7['x']}")
+    else:
+        check("M6 admin drawer SWIPE-to-close works", False, f"drawer did not open: {sb_bb6}")
 
     browser.close()
 
