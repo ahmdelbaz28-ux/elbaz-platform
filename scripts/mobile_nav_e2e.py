@@ -15,6 +15,9 @@ F   (Task 18) FAB stack: WhatsApp/chatbot/scroll-top hug the bottom edge
     F5 chat auth-gate for guests (redirect to /login);
     F6 scroll-top appears after scrolling and scrolls back to top;
     F7 chat opens/minimizes-into-slot/closes for AUTHENTICATED user
+L   (Task 19) circular logo everywhere: navbar/drawer/footer = circular
+    asset (logo-circle.png), square box, fully rounded corners
+D   (Task 19) desktop 1366x900: navbar + footer logo circular+square
 Shots: scripts/shots_mobile/
 """
 import json, re, subprocess, sys
@@ -113,6 +116,39 @@ with sync_playwright() as p:
         pg.screenshot(path=f"{OUT}/N1_no_bottom_bar.png")
     else:
         check("N2 site drawer SWIPE-to-close works", False, "panel did not reopen")
+
+    # ---------- L: circular logo everywhere (Task 19) ----------
+    def logo_state(sel):
+        return pg.evaluate("""(sel) => {
+            const el = document.querySelector(sel);
+            if (!el) return null;
+            const r = el.getBoundingClientRect();
+            const s = getComputedStyle(el);
+            return { src: el.getAttribute('src') || '', w: r.width, h: r.height,
+                     radius: parseFloat(s.borderTopLeftRadius) };
+        }""", sel)
+
+    def round_ok(l):
+        return bool(l) and "logo-circle.png" in l["src"] \
+            and abs(l["w"] - l["h"]) <= 1.5 and l["radius"] >= l["w"] / 2 - 1
+
+    nav_l = logo_state('nav[aria-label="التنقل الرئيسي"] img[alt="Eng. Ahmed Elbaz Logo"]')
+    check("L1a navbar logo = circular asset, square+round", round_ok(nav_l), f"{nav_l}")
+
+    foot_l = logo_state('footer img[alt="Eng. Ahmed Elbaz Logo"]')
+    check("L2a footer logo = circular asset, square+round", round_ok(foot_l), f"{foot_l}")
+
+    dismiss_cookie(pg)
+    burger.first.click()
+    pg.wait_for_timeout(1100)
+    dr_l = logo_state('aside[aria-label="قائمة التنقل"] img')
+    check("L3a drawer logo = circular asset, square+round", round_ok(dr_l), f"{dr_l}")
+    pg.screenshot(path=f"{OUT}/L1_drawer_circle_logo.png")
+    drawer_link = pg.locator('aside[aria-label="قائمة التنقل"] a', has_text="المقالات")
+    if drawer_link.count():
+        drawer_link.first.click()
+        pg.wait_for_timeout(1200)
+    pg.screenshot(path=f"{OUT}/L2_navbar_circle_logo.png")
 
     # ---------- M2: articles public pages ----------
     etap_card = pg.locator("a", has_text="برنامج الإيتاب")
@@ -315,6 +351,28 @@ with sync_playwright() as p:
             close_btn.first.click()
             pg.wait_for_timeout(900)
         check("F7c chat closes -> FAB returns", pg.locator("button.chatbot-fab").count() == 1)
+
+    # ---------- D: desktop logo proportions (Task 19) ----------
+    dctx = browser.new_context(viewport={"width": 1366, "height": 900}, service_workers="block")
+    dctx.add_init_script("try{localStorage.setItem('language','ar');}catch(e){}")
+    dp = dctx.new_page()
+    dp.goto(PROD + "/", wait_until="domcontentloaded", timeout=45000)
+    dp.wait_for_timeout(3000)
+    try:
+        cb = dp.locator('[data-testid="cookie-accept-all"]')
+        if cb.is_visible(timeout=1500):
+            cb.click(timeout=3000); dp.wait_for_timeout(400)
+    except Exception:
+        pass
+    d_nav = logo_state('nav[aria-label="التنقل الرئيسي"] img[alt="Eng. Ahmed Elbaz Logo"]')
+    check("D1a desktop navbar logo circular+square", round_ok(d_nav), f"{d_nav}")
+    dp.screenshot(path=f"{OUT}/D1_desktop_navbar_logo.png")
+    dp.evaluate("() => document.querySelector('footer')?.scrollIntoView({behavior:'instant'})")
+    dp.wait_for_timeout(900)
+    d_foot = logo_state('footer img[alt="Eng. Ahmed Elbaz Logo"]')
+    check("D2a desktop footer logo circular+square", round_ok(d_foot), f"{d_foot}")
+    dp.screenshot(path=f"{OUT}/D2_desktop_footer_logo.png")
+    dctx.close()
 
     browser.close()
 

@@ -116,7 +116,7 @@ export default function Navbar() {
         >
           {/* ── Brand Mark ── */}
           <Link to="/" className="group flex items-center gap-3 outline-none">
-            <img src="/logo.jpg" alt="Eng. Ahmed Elbaz Logo" className="h-10 w-auto object-contain rounded-lg transition-transform duration-300 group-hover:scale-105" />
+            <img src="/logo-circle.png" alt="Eng. Ahmed Elbaz Logo" className="h-10 w-10 object-cover rounded-full transition-transform duration-300 group-hover:scale-105" />
             <div className="flex flex-col leading-none">
               <span className="text-[13px] font-extrabold tracking-tight text-foreground">
                 {lang === "ar" ? "أحمد الباز" : "Eng. Ahmed Elbaz"}
@@ -278,7 +278,7 @@ export default function Navbar() {
             {/* Panel header */}
             <div className="flex items-center justify-between px-5 py-4">
               <div className="flex items-center gap-2.5">
-                <img src="/logo.jpg" alt="" className="h-8 w-8 rounded-lg object-contain" />
+                <img src="/logo-circle.png" alt="" className="h-8 w-8 rounded-full object-cover" />
                 <span className="text-[13px] font-extrabold text-foreground">
                   {lang === "ar" ? "أحمد الباز" : "Eng. Ahmed Elbaz"}
                 </span>
