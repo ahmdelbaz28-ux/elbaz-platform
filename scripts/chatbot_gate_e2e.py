@@ -25,10 +25,10 @@ OUT = "/home/z/my-project/work/elbaz-platform/scripts/shots_chatgate"
 subprocess.run(["mkdir", "-p", OUT], check=True)
 
 # -- Sonar S1192: shared literals defined once -------------------------------
-T_RPC = T_RPC
-AUTH_ME = AUTH_ME
-CT_JSON = CT_JSON
-LOGIN_PATH = LOGIN_PATH
+T_RPC = "/api/trpc/"          # URL prefix — split(...) yields "auth.me?..."
+AUTH_ME = "auth.me"           # tRPC procedure path (no leading slash)
+CT_JSON = "application/json"
+LOGIN_PATH = "/login"
 # Sonar security hotspot: never write to a predictable /tmp path — use a
 # pid-suffixed tempfile so concurrent runs cannot collide (symlink-safe).
 BOOT_LOG = os.path.join(tempfile.gettempdir(), f"boot_chatgate_{os.getpid()}.log")
