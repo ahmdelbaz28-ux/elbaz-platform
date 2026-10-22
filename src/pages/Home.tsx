@@ -37,6 +37,8 @@ import {
   ArrowRight,
   CheckCircle2,
   Rocket,
+  Eye,
+  PenLine,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect, useRef } from "react";
@@ -76,6 +78,85 @@ type Stats = {
   totalLessons: number;
   satisfactionRate: number;
 };
+
+type ArticleTeaser = {
+  id: number;
+  slug: string;
+  titleAr: string;
+  titleEn: string;
+  excerptAr: string | null;
+  excerptEn: string | null;
+  coverImage: string | null;
+  category: string;
+  authorName: string | null;
+  viewCount: number;
+  readMinutes: number;
+  publishedAt: Date | string | null;
+};
+
+const AR_DATE_FMT = new Intl.DateTimeFormat("ar-EG", { day: "numeric", month: "long", year: "numeric" });
+const EN_DATE_FMT = new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short", year: "numeric" });
+
+function fmtTeaserDate(value: Date | string | null, lang: "ar" | "en"): string {
+  if (!value) return "";
+  const d = typeof value === "string" ? new Date(value) : value;
+  return lang === "ar" ? AR_DATE_FMT.format(d) : EN_DATE_FMT.format(d);
+}
+
+/* Home-page article teaser card — mirrors the /articles ArticleCard styling
+   while matching the home grid rhythm (CourseCard-like borders + hover glow). */
+function ArticleTeaserCard({ item, lang }: { readonly item: ArticleTeaser; readonly lang: "ar" | "en" }) {
+  const title = lang === "ar" ? item.titleAr : item.titleEn;
+  const excerpt = (lang === "ar" ? item.excerptAr : item.excerptEn) || (lang === "ar" ? item.excerptEn : item.excerptAr) || "";
+
+  return (
+    <Link
+      to={`/articles/${encodeURIComponent(item.slug)}`}
+      className="group flex h-full flex-col overflow-hidden rounded-xl border border-border bg-primary transition-all duration-200 hover:border-[rgba(6,182,212,0.35)] hover:shadow-[0_8px_32px_rgba(6,182,212,0.08)]"
+    >
+      {item.coverImage && (
+        <div className="aspect-[16/8] overflow-hidden">
+          <img
+            src={item.coverImage}
+            alt={title}
+            loading="lazy"
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
+          />
+        </div>
+      )}
+
+      <div className="flex flex-1 flex-col p-5">
+        <div className="mb-2 flex items-center gap-2 text-[11px]">
+          <span className="rounded-full bg-accent-secondary/10 px-2 py-0.5 font-medium text-accent-secondary">{item.category}</span>
+          <span className="flex items-center gap-1 text-text-faint">
+            <Clock className="h-3 w-3" />
+            {lang === "ar" ? `${item.readMinutes} دقائق` : `${item.readMinutes} min`}
+          </span>
+        </div>
+
+        <h3 className="mb-1 line-clamp-2 text-base font-semibold text-foreground transition-colors group-hover:text-accent-secondary">
+          {title}
+        </h3>
+
+        {excerpt && <p className="mb-3 line-clamp-2 text-xs leading-relaxed text-text-faint">{excerpt}</p>}
+
+        <div className="mt-auto flex items-center justify-between pt-2 text-[11px] text-text-faint">
+          <span className="flex items-center gap-1">
+            <PenLine className="h-3 w-3" />
+            {item.authorName || (lang === "ar" ? "فريق المنصة" : "Platform Team")}
+          </span>
+          <span className="flex items-center gap-2">
+            <span className="flex items-center gap-1">
+              <Eye className="h-3 w-3" />
+              {item.viewCount}
+            </span>
+            <span>{fmtTeaserDate(item.publishedAt, lang)}</span>
+          </span>
+        </div>
+      </div>
+    </Link>
+  );
+}
 
 const categoryIcons: Record<string, React.ReactNode> = {
   Zap: <Zap className="h-5 w-5" />,
@@ -283,6 +364,8 @@ export default function Home() { // NOSONAR — landing page with hero + feature
   const { t, lang } = useTranslation();
   const { data: coursesData, isPending: coursesPending } = trpc.course.list.useQuery({ featured: true });
   const courses = Array.isArray(coursesData?.items) ? coursesData.items : [];
+  const { data: articlesData, isPending: articlesPending } = trpc.articles.list.useQuery({ limit: 3 });
+  const articles = (Array.isArray(articlesData?.items) ? articlesData.items : []) as ArticleTeaser[];
   const { data: categories, isPending: categoriesPending } = trpc.course.categories.useQuery();
   const { data: testimonials, isPending: testimonialsPending } = trpc.course.testimonials.useQuery();
   const { data: activePromotionsRaw } = trpc.settings.getActivePromotions.useQuery();
@@ -532,6 +615,29 @@ export default function Home() { // NOSONAR — landing page with hero + feature
           )}
         </div>
       </section>
+
+      {/* ═══════════════════ MOST POPULAR ARTICLES ═══════════════════ */}
+      {!articlesPending && articles.length > 0 && (
+        <section className="relative py-24">
+          <div className="absolute inset-0 grid-pattern pointer-events-none" />
+          <div className="relative z-10 mx-auto max-w-7xl px-4 lg:px-6">
+            <SectionHeader badge={t("featured")} title={t("mostPopularArticles")} />
+            <div className="flex justify-end mb-8">
+              <Link to="/articles" className="inline-flex items-center gap-2 text-sm font-medium text-text-muted transition-colors hover:text-accent-secondary group">
+                {t("viewAll")}
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1 rtl:group-hover:-translate-x-1" />
+              </Link>
+            </div>
+            <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
+              {articles.map((article, idx: number) => (
+                <ScrollReveal key={article.id} delay={idx * 0.1}>
+                  <ArticleTeaserCard item={article} lang={lang} />
+                </ScrollReveal>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* ═══════════════════ FEATURES BENTO GRID ═══════════════════ */}
       <section className="border-t border-border py-24">

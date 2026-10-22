@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useContactSettings } from "@/hooks/useContactSettings";
 import { useFabScrollVisibility } from "@/hooks/useFabScrollVisibility";
@@ -8,12 +8,20 @@ import { MessageCircle, X } from "lucide-react";
 // Gentle entrance delay — let the page settle first, then glide the
 // WhatsApp FAB in to catch the eye (owner request: 3s + soft animation).
 const ENTRANCE_DELAY_MS = 3000;
+// Proactive welcome bubble: pops shortly after the button entrance, then
+// auto-dismisses. Shown once per page load; a manual close persists for the
+// whole browser session (owner request: custom welcome message).
+const WELCOME_DELAY_MS = 1400;
+const WELCOME_AUTOHIDE_MS = 14000;
+const WELCOME_DISMISS_KEY = "wa-welcome-dismissed";
 
 export default function WhatsAppButton() {
   const { lang } = useTranslation();
   const { data: contact } = useContactSettings();
   const [isOpen, setIsOpen] = useState(false);
   const [appeared, setAppeared] = useState(false);
+  const [welcomeVisible, setWelcomeVisible] = useState(false);
+  const welcomeDone = useRef(false);
 
   const location = useLocation();
   const isAuthPage = location.pathname === "/login" || location.pathname === "/register" || location.pathname === "/forgot-password" || location.pathname === "/reset-password" || location.pathname === "/verify-email";
@@ -27,6 +35,48 @@ export default function WhatsAppButton() {
   // Never render on auth pages; also fixes the old bug where the delay
   // timer re-showed the button on /login after it had been hidden.
   const isVisible = appeared && !isAuthPage;
+
+  // ── Proactive welcome bubble (custom greeting) ──
+  // Appears once shortly after the FAB entrance, auto-dismisses after 14s,
+  // and never comes back once closed manually (session persistence) or once
+  // the visitor opened the tooltip / started a chat.
+  useEffect(() => {
+    if (!isVisible || isOpen) return undefined;
+    try {
+      if (sessionStorage.getItem(WELCOME_DISMISS_KEY) === "1") return undefined;
+    } catch {
+      /* private mode — still show the bubble for this visit */
+    }
+    const showTimer = setTimeout(() => {
+      if (!welcomeDone.current) setWelcomeVisible(true);
+    }, WELCOME_DELAY_MS);
+    const hideTimer = setTimeout(() => {
+      welcomeDone.current = true;
+      setWelcomeVisible(false);
+    }, WELCOME_DELAY_MS + WELCOME_AUTOHIDE_MS);
+    return () => {
+      clearTimeout(showTimer);
+      clearTimeout(hideTimer);
+    };
+  }, [isVisible, isOpen]);
+
+  // Opening the tooltip (or navigating) permanently retires the bubble.
+  useEffect(() => {
+    if (!isOpen) return;
+    welcomeDone.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- retiring the bubble synchronously prevents a one-frame flash when the tooltip opens
+    setWelcomeVisible(false);
+  }, [isOpen]);
+
+  const dismissWelcome = () => {
+    welcomeDone.current = true;
+    setWelcomeVisible(false);
+    try {
+      sessionStorage.setItem(WELCOME_DISMISS_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+  };
 
   // YouTube-style: dip below the edge while scrolling down, glide back on
   // stop — but never hide while the tooltip popup is open.
@@ -53,6 +103,49 @@ export default function WhatsAppButton() {
         fabHidden ? "fab-scroll-hidden" : ""
       }`}
     >
+      {/* Proactive welcome bubble — custom greeting that pops in above the
+          button shortly after entrance. Click = open the chat popup. */}
+      <div
+        id="whatsapp-welcome"
+        role="status"
+        aria-hidden={!welcomeVisible || isOpen}
+        className={`absolute bottom-12 md:bottom-16 mb-2 w-60 right-0 md:right-auto md:left-0 rounded-xl border border-[#1e2d3d] bg-[#0d1420] p-3.5 shadow-[0_16px_48px_rgba(0,0,0,0.55)] md:w-64 ${
+          welcomeVisible && !isOpen
+            ? "wa-welcome-bubble pointer-events-auto"
+            : "pointer-events-none opacity-0"
+        }`}
+      >
+        <div className="absolute -bottom-2 right-3 h-4 w-4 rotate-45 border-b border-r border-[#1e2d3d] bg-[#0d1420] md:right-auto md:left-5" />
+
+        <div className="mb-1.5 flex items-center justify-between gap-2">
+          <span className="flex items-center gap-1.5 text-xs font-semibold text-[#f0f4f8]">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#25D366] opacity-60" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-[#25D366]" />
+            </span>
+            {lang === "en" ? "Elbaz Platform Team" : "فريق منصة الباز"}
+          </span>
+          <button
+            type="button"
+            onClick={dismissWelcome}
+            aria-label={lang === "en" ? "Dismiss greeting" : "إغلاق الترحيب"}
+            className="text-[#64748b] transition-colors hover:text-[#f0f4f8]"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsOpen(true)}
+          className="block w-full text-start text-xs leading-relaxed text-[#94a3b8]"
+        >
+          {lang === "en"
+            ? "Welcome! Need engineering advice or a quick question about a course? Message us on WhatsApp — we usually reply within minutes."
+            : "أهلاً بك! محتاج استشارة هندسية أو عندك سؤال عن الكورسات؟ ابعتلنا واتساب وهنرد عليك خلال دقائق."}
+        </button>
+      </div>
+
       {/* Tooltip popup */}
       <div
         id="whatsapp-tooltip"
