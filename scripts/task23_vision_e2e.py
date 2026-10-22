@@ -160,7 +160,7 @@ with sync_playwright() as p:
     file_input = pg.locator('.chatbot-window input[type="file"]')
     file_input.set_input_files(pick_path)
     pg.wait_for_timeout(1500)
-    preview = pg.locator('.chatbot-window img[alt*="task23_vision_test"], .chatbot-window img[alt="attachment"]').first
+    preview = pg.locator('.chatbot-window img[alt$="vision_test_input.png"]').first
     check("V2 preview chip shown after pick", preview.count() > 0 and preview.is_visible(), "")
     pg.screenshot(path=f"{OUT}/T23_attach_preview.png")
 
