@@ -60,6 +60,31 @@ function saveChatMode(mode: ChatMode): void {
   }
 }
 
+// Toast copy shown when the user flips the brain toggle (module-level to keep
+// the component body simple — SonarCloud S3358).
+function modeChangeToast(mode: ChatMode, lang: string): string {
+  if (mode === "thinking") {
+    return lang === "ar"
+      ? "تم تفعيل وضع التفكير العميق — إجابات أدق للمسائل المعقدة"
+      : "Thinking mode enabled — deeper analysis for complex problems";
+  }
+  return lang === "ar"
+    ? "تم التحويل إلى الوضع السريع — ردود فورية مختصرة"
+    : "Instant mode enabled — fast, concise replies";
+}
+
+// Tooltip for the header brain toggle (SonarCloud S3358).
+function brainToggleTitle(thinking: boolean, lang: string): string {
+  if (thinking) {
+    return lang === "ar"
+      ? "وضع التفكير العميق مفعّل — اضغط للتبديل إلى الوضع السريع"
+      : "Thinking mode ON — click to switch to Instant";
+  }
+  return lang === "ar"
+    ? "الوضع السريع — اضغط لتفعيل وضع التفكير العميق"
+    : "Instant mode — click to enable Thinking";
+}
+
 function saveMessagesToStorage(msgs: Message[]): void {
   try {
     const serializable = msgs.slice(-MAX_STORAGE_MESSAGES).map((m) => ({
@@ -762,14 +787,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     setChatMode(mode);
     saveChatMode(mode);
     if (mode !== chatMode) {
-      const modeToast = mode === "thinking"
-        ? (lang === "ar"
-          ? "تم تفعيل وضع التفكير العميق — إجابات أدق للمسائل المعقدة"
-          : "Thinking mode enabled — deeper analysis for complex problems")
-        : (lang === "ar"
-          ? "تم التحويل إلى الوضع السريع — ردود فورية مختصرة"
-          : "Instant mode enabled — fast, concise replies");
-      toast(modeToast, { duration: 2000 });
+      toast(modeChangeToast(mode, lang), { duration: 2000 });
     }
   }, [chatMode, lang]);
 
@@ -1032,13 +1050,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                             ? "border-violet-500/50 bg-violet-500/20 text-violet-300 shadow-[0_0_12px_rgba(139,92,246,0.35)]"
                             : "border-transparent text-slate-500 hover:border-cyan-500/30 hover:bg-cyan-400/10 hover:text-cyan-300")
                         }
-                        title={chatMode === "thinking"
-                          ? (lang === "ar"
-                            ? "وضع التفكير العميق مفعّل — اضغط للتبديل إلى الوضع السريع"
-                            : "Thinking mode ON — click to switch to Instant")
-                          : (lang === "ar"
-                            ? "الوضع السريع — اضغط لتفعيل وضع التفكير العميق"
-                            : "Instant mode — click to enable Thinking")}
+                        title={brainToggleTitle(chatMode === "thinking", lang)}
                       >
                         <Brain className="w-4 h-4" />
                         {/* active pulse dot */}
