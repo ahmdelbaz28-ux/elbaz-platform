@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -71,6 +71,8 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
   // Mobile: sidebar becomes an off-canvas drawer (slides from the side) instead of
   // a permanently visible column that squeezes the content on small screens.
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  // Guards against accidental tab activation right after a drag-to-close gesture
+  const adminDragGuard = useRef(false);
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches);
 
   useEffect(() => {
@@ -351,7 +353,23 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
         initial={{ width: sidebarWidth, x: sidebarHidden ? "-100%" : 0 }}
         animate={{ width: sidebarWidth, x: sidebarHidden ? "-100%" : 0 }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        className="admin-sidebar fixed left-0 top-0 z-50 h-screen flex flex-col shadow-2xl lg:shadow-none"
+        drag={isDesktop ? false : "x"}
+        dragDirectionLock
+        dragConstraints={{ left: 0, right: 0 }}
+        dragElastic={{ left: 0.55, right: 0 }}
+        onDragStart={() => { adminDragGuard.current = true; }}
+        onDragEnd={(_, info) => {
+          if (!isDesktop && (info.offset.x < -90 || info.velocity.x < -600)) setMobileSidebarOpen(false);
+          globalThis.setTimeout(() => { adminDragGuard.current = false; }, 250);
+        }}
+        onClickCapture={(e) => {
+          if (adminDragGuard.current) {
+            e.preventDefault();
+            e.stopPropagation();
+            adminDragGuard.current = false;
+          }
+        }}
+        className="admin-sidebar fixed left-0 top-0 z-50 h-screen flex flex-col shadow-2xl rounded-r-2xl lg:rounded-none lg:shadow-none"
         aria-label={isRTL ? "قائمة لوحة التحكم" : "Admin navigation"}
       >
         <div className="flex items-center justify-between p-4 border-b border-border">
