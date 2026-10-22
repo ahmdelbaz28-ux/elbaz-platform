@@ -677,51 +677,20 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
       // aiProviders  — admin adds ANY OpenAI-compatible provider + API key
       // aiModels     — models auto-discovered via GET {baseUrl}/models and
       //                classified chat vs vision (failover routing input).
+      // The DDL lives in db/migration-v9-ai-router.sql (repo convention —
+      // see migration-v4-features.sql) and is executed statement by statement.
       try {
         logger.info("[DB] Running v9 features migration (aiProviders + aiModels tables)...");
-        await conn.query(`
-          CREATE TABLE IF NOT EXISTS \`aiProviders\` (
-            \`id\`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-            \`slug\`        VARCHAR(64)     NOT NULL,
-            \`displayName\` VARCHAR(100)    NOT NULL,
-            \`baseUrl\`     VARCHAR(255)    NOT NULL,
-            \`apiKey\`      VARCHAR(512)    NOT NULL DEFAULT '',
-            \`priority\`    INT             NOT NULL DEFAULT 100,
-            \`enabled\`     BOOLEAN         NOT NULL DEFAULT TRUE,
-            \`status\`      VARCHAR(16)     NOT NULL DEFAULT 'unknown',
-            \`lastError\`   TEXT            NULL,
-            \`lastCheckedAt\` TIMESTAMP     NULL,
-            \`createdAt\`   TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            \`updatedAt\`   TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            PRIMARY KEY (\`id\`),
-            UNIQUE INDEX \`ai_providers_slug_unique\` (\`slug\`),
-            INDEX \`ai_providers_enabled_priority_idx\` (\`enabled\`, \`priority\`)
-          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-        `);
-        await conn.query(`
-          CREATE TABLE IF NOT EXISTS \`aiModels\` (
-            \`id\`             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-            \`providerId\`     BIGINT UNSIGNED NOT NULL,
-            \`modelId\`        VARCHAR(190)    NOT NULL,
-            \`supportsChat\`   BOOLEAN         NOT NULL DEFAULT TRUE,
-            \`supportsVision\` BOOLEAN         NOT NULL DEFAULT FALSE,
-            \`isFree\`         BOOLEAN         NOT NULL DEFAULT TRUE,
-            \`enabled\`        BOOLEAN         NOT NULL DEFAULT TRUE,
-            \`tier\`           INT             NOT NULL DEFAULT 2,
-            \`status\`         VARCHAR(16)     NOT NULL DEFAULT 'unknown',
-            \`failCount\`      INT             NOT NULL DEFAULT 0,
-            \`lastError\`      VARCHAR(500)    NULL,
-            \`lastSuccessAt\`  TIMESTAMP       NULL,
-            \`lastUsedAt\`     TIMESTAMP       NULL,
-            \`latencyMs\`      INT             NULL,
-            \`updatedAt\`      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            PRIMARY KEY (\`id\`),
-            UNIQUE INDEX \`ai_models_provider_model_unique\` (\`providerId\`, \`modelId\`),
-            INDEX \`ai_models_provider_idx\` (\`providerId\`),
-            INDEX \`ai_models_enabled_tier_idx\` (\`enabled\`, \`tier\`),
-            CONSTRAINT \`fk_ai_models_provider\` FOREIGN KEY (\`providerId\`) REFERENCES \`aiProviders\` (\`id\`) ON DELETE CASCADE ON UPDATE CASCADE
-          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-        `);
+        const v9Sql = readFileSync(join(__dirname, "..", "..", "db", "migration-v9-ai-router.sql"), "utf-8");
+        // Strip comment lines FIRST (the header comment precedes the first
+        // statement — trimming chunks alone would drop that CREATE TABLE).
+        const v9Statements = v9Sql
+          .split(";")
+          .map((chunk) => chunk.split("\n").filter((line) => !line.trim().startsWith("--")).join("\n").trim())
+          .filter((s) => s.length > 0);
+        for (const statement of v9Statements) {
+          await conn.query(statement);
+        }
         logger.info("[DB] v9 aiProviders + aiModels tables verified");
 
         // Seed known providers from env keys on first run ONLY (table empty).
