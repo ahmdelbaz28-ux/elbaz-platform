@@ -5,8 +5,8 @@ import { motion, useScroll, useTransform } from "framer-motion";
 /*  BackgroundLogoWatermark                                                    */
 /*  ─────────────────────────────────────────────────────────────────────────  */
 /*  A large, ultra-subtle brand watermark behind hero content.                 */
-/*  Modern, clean design — no circular badge, just the logo with elegant      */
-/*  ambient glow. Matches the squircle aesthetic of Logo3D.                    */
+/*  Modern, clean design — just the circular logo itself with an elegant       */
+/*  ambient glow. Matches the circular aesthetic of Logo3D.                    */
 /*                                                                             */
 /*  Features:                                                                  */
 /*    • Huge logo image at 4–6% opacity sitting behind the hero text          */
@@ -93,42 +93,26 @@ export default function BackgroundLogoWatermark() {
           mixBlendMode: isLight ? "normal" : "soft-light",
         }}
       >
-        {/* Elegant squircle backing — no heavy borders or rings */}
-        <div
-          className="w-full h-full flex items-center justify-center"
-          style={{
-            borderRadius: "22%",
-            opacity: isLight ? opacityLight : opacityDark,
-            background: isLight
-              ? "radial-gradient(circle at 35% 30%, rgba(255,255,255,0.9) 0%, rgba(241,245,249,0.3) 100%)"
-              : "radial-gradient(circle at 35% 30%, rgba(16,23,36,0.85) 0%, rgba(5,8,13,0.4) 100%)",
-            border: `1px solid ${
-              isLight ? "rgba(8,145,178,0.08)" : "rgba(6,182,212,0.07)"
-            }`,
-            boxShadow: isLight
-              ? "0 0 40px rgba(8,145,178,0.03), inset 0 0 20px rgba(8,145,178,0.015)"
-              : "0 0 40px rgba(6,182,212,0.03), inset 0 0 20px rgba(6,182,212,0.015)",
+        {/* The circular logo itself — no backing, no border, no additions.
+            The asset is pre-cropped edge-to-edge to the logo's own circle. */}
+        <img
+          src="/logo-circle.png"
+          alt=""
+          draggable={false}
+          loading="lazy"
+          decoding="async"
+          className="w-full h-full object-cover rounded-full"
+          onError={(e) => {
+            e.currentTarget.style.display = 'none';
+            e.currentTarget.onerror = null;
           }}
-        >
-          {/* Logo image */}
-          <img
-            src="/logo.jpg"
-            alt=""
-            draggable={false}
-            loading="lazy"
-            decoding="async"
-            className="w-full h-full object-contain"
-            onError={(e) => {
-              e.currentTarget.style.display = 'none';
-              e.currentTarget.onerror = null;
-            }}
-            style={{
-              filter: isLight
-                ? "brightness(0.55) saturate(0.7)"
-                : "brightness(1.3) saturate(0.85)",
-            }}
-          />
-        </div>
+          style={{
+            opacity: isLight ? opacityLight : opacityDark,
+            filter: isLight
+              ? "brightness(0.55) saturate(0.7)"
+              : "brightness(1.3) saturate(0.85)",
+          }}
+        />
       </motion.div>
     </motion.div>
   );
