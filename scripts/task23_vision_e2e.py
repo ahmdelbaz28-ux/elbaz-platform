@@ -10,9 +10,8 @@ V5  image bubble renders in the conversation
 V6  brain toggle: frameless (no border-* class), glows orange #f97316 when thinking
 V7  header is compact (smaller than the old 56px+ paddings)
 """
-import base64
 import io
-import json
+import os
 import sys
 import time
 
@@ -153,10 +152,13 @@ with sync_playwright() as p:
 
     # ---------- V2: pick file -> preview chip ----------
     png_bytes = make_test_image()
-    with open("/tmp/task23_vision_test.png", "wb") as f:
+    # S5443: never write pick files into world-writable /tmp — keep the input
+    # image inside the run's own output directory.
+    pick_path = os.path.join(OUT, ".vision_test_input.png")
+    with open(pick_path, "wb") as f:
         f.write(png_bytes)
     file_input = pg.locator('.chatbot-window input[type="file"]')
-    file_input.set_input_files("/tmp/task23_vision_test.png")
+    file_input.set_input_files(pick_path)
     pg.wait_for_timeout(1500)
     preview = pg.locator('.chatbot-window img[alt*="task23_vision_test"], .chatbot-window img[alt="attachment"]').first
     check("V2 preview chip shown after pick", preview.count() > 0 and preview.is_visible(), "")
