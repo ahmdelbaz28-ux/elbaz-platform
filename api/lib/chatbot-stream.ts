@@ -33,6 +33,11 @@ import {
   OPENROUTER_API_KEY,
   AI_MODELS,
   INSTANT_FAST_MODELS,
+  GROQ_VISION_MODEL,
+  OPENROUTER_VISION_MODELS,
+
+  // ── Shared types ──
+  type ChatApiMessage,
 
   // ── Health state (mutable via properties; direct scalar reassignments crash in ESM) ──
   chatHealth,
@@ -46,6 +51,7 @@ import {
   groqFallback,
   nvidiaFallback,
   openRouterFallback,
+  getVisionResponse,
 
   // ── Validation functions ──
   validateNvidiaKey,
@@ -142,7 +148,7 @@ async function tryPickOpenRouterProvider(systemPrompt: string, tuning: ModeTunin
 }
 
 export async function pickWorkingModel(
-  _messages: { role: string; content: string }[],
+  _messages: ChatApiMessage[],
   language?: string,
   mode: "thinking" | "instant" = "thinking",
   catalog?: string
@@ -267,7 +273,7 @@ async function pumpNvidiaStream(
   decoder: TextDecoder,
   encoder: TextEncoder,
   controller: ReadableStreamDefaultController<Uint8Array>,
-  request: { messages: { role: string; content: string }[]; language?: string },
+  request: { messages: ChatApiMessage[]; language?: string },
   picked: PickedProvider,
 ): Promise<void> {
   const reader = upstream.getReader();
@@ -323,7 +329,7 @@ async function pumpNvidiaStream(
  * On failure → OpenRouter stream → Groq stream (guaranteed-reply chain).
  */
 async function streamNvidiaProvider(
-  request: { messages: { role: string; content: string }[]; language?: string },
+  request: { messages: ChatApiMessage[]; language?: string },
   picked: PickedProvider,
   encoder: TextEncoder,
 ): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
@@ -427,7 +433,7 @@ function buildSSEContentTransformStream(encoder: TextEncoder): TransformStream<U
  * Try a single Groq streaming fetch attempt with the given timeout.
  */
 async function tryGroqStreamFetch(
-  request: { messages: { role: string; content: string }[] },
+  request: { messages: ChatApiMessage[]; language?: string },
   picked: PickedProvider,
   modelId: string,
   timeout: number,
@@ -491,7 +497,7 @@ async function evaluateGroqStreamResponse(
  * thinking: 60s/90s).
  */
 async function streamGroqProvider(
-  request: { messages: { role: string; content: string }[]; language?: string },
+  request: { messages: ChatApiMessage[]; language?: string },
   picked: PickedProvider,
   encoder: TextEncoder,
 ): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
@@ -541,7 +547,7 @@ async function streamGroqProvider(
  * If the picked model fails, sweeps tier-1 then tier-2 models before giving up.
  */
 async function streamOpenRouterProvider(
-  request: { messages: { role: string; content: string }[]; language?: string },
+  request: { messages: ChatApiMessage[]; language?: string },
   picked: PickedProvider,
   encoder: TextEncoder,
 ): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
@@ -639,7 +645,7 @@ function singleChunkStream(reply: string, encoder: TextEncoder): ReadableStream<
  * each emitted as a single SSE text chunk so the client sees one clean reply.
  */
 async function streamOpenRouterFallback(
-  request: { messages: { role: string; content: string }[]; language?: string },
+  request: { messages: ChatApiMessage[]; language?: string },
   systemPrompt: string,
   tuning: ModeTuning = MODE_TUNING.thinking,
 ): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
@@ -664,16 +670,149 @@ async function streamOpenRouterFallback(
 }
 
 // ════════════════════════════════════════════════════════════════════════
+// VISION STREAMING — image requests are routed ONLY to vision-capable models:
+//   1. Groq Llama-4-Scout (multimodal, streaming)
+//   2. OpenRouter vision-language ids (streaming)
+//   3. Non-streaming vision cascade emitted as a single SSE chunk
+// Text-only providers are never contacted with image parts (mandatory rule).
+// ════════════════════════════════════════════════════════════════════════
+
+/**
+ * Groq vision stream — Llama-4-Scout with the mode's stream timeouts.
+ * Returns null when every attempt fails so the caller can move on.
+ */
+async function streamGroqVisionProvider(
+  request: { messages: ChatApiMessage[]; language?: string },
+  systemPrompt: string,
+  tuning: ModeTuning,
+  encoder: TextEncoder,
+): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | null> {
+  const timeouts: number[] = tuning.groqStreamTimeouts;
+  const visionPick: PickedProvider = { provider: "groq", modelId: GROQ_VISION_MODEL, systemPrompt, tuning };
+
+  for (let attempt = 0; attempt < timeouts.length; attempt++) {
+    const response = await tryGroqStreamFetch(request, visionPick, GROQ_VISION_MODEL, timeouts[attempt], attempt, timeouts.length);
+    if (!response) continue;
+
+    const evaluation = await evaluateGroqStreamResponse(response, GROQ_VISION_MODEL, attempt, timeouts.length);
+    if (evaluation.kind === "retry") continue;
+    if (evaluation.kind === "nextModel") break;
+
+    // SUCCESS
+    chatHealth.groqConsecFails = 0;
+    chatHealth.groqLastSuccess = Date.now();
+    chatHealth.groqKeyValid = true;
+    logger.info(`[Chatbot/Vision] Groq ${GROQ_VISION_MODEL} SUCCESS`);
+    return { stream: response.body!.pipeThrough(buildSSEContentTransformStream(encoder)), model: GROQ_VISION_MODEL };
+  }
+  return null;
+}
+
+/**
+ * OpenRouter vision stream — sweeps the vision-language ids only.
+ */
+async function streamOpenRouterVisionProvider(
+  request: { messages: ChatApiMessage[]; language?: string },
+  systemPrompt: string,
+  tuning: ModeTuning,
+  encoder: TextEncoder,
+): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | null> {
+  for (const modelId of OPENROUTER_VISION_MODELS) {
+    if ((modelFailCount[modelId] || 0) >= 3) continue;
+    try {
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://ahmedelbaz.qzz.io",
+          "X-Title": "Elbaz LMS Chatbot",
+        },
+        body: JSON.stringify({
+          model: modelId,
+          messages: [
+            { role: "system", content: systemPrompt },
+            ...request.messages.map((m) => ({ role: m.role, content: m.content })),
+          ],
+          temperature: tuning.temperature,
+          max_tokens: tuning.maxTokens,
+          stream: true,
+        }),
+        signal: AbortSignal.timeout(tuning.openRouterStreamTimeoutMs),
+      });
+
+      if (!response.ok || !response.body) {
+        if (response.status === 404) {
+          modelFailCount[modelId] = 3; // dead id — hard-skip
+          continue;
+        }
+        modelFailCount[modelId] = (modelFailCount[modelId] || 0) + 1;
+        logger.warn(`[Chatbot/Vision] OpenRouter ${modelId} failed (HTTP ${response.status})`);
+        continue;
+      }
+      logger.info(`[Chatbot/Vision] OpenRouter ${modelId} SUCCESS`);
+      return { stream: response.body.pipeThrough(buildSSEContentTransformStream(encoder)), model: modelId };
+    } catch (e) {
+      modelFailCount[modelId] = (modelFailCount[modelId] || 0) + 1;
+      logger.warn(`[Chatbot/Vision] OpenRouter ${modelId} threw`, { error: String(e) });
+    }
+  }
+  return null;
+}
+
+/**
+ * MAIN VISION streaming entry point — mirrors getStreamResponse but with a
+ * vision-only provider chain and a friendly bilingual failure message.
+ */
+async function getVisionStreamResponse(request: {
+  messages: ChatApiMessage[];
+  language?: string;
+  mode?: "thinking" | "instant";
+  catalog?: string;
+}): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
+  const mode: "thinking" | "instant" = request.mode === "instant" ? "instant" : "thinking";
+  const tuning = MODE_TUNING[mode];
+  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, true);
+  const encoder = new TextEncoder();
+
+  // 1) Groq Llama-4-Scout streaming
+  const groqVision = await streamGroqVisionProvider(request, systemPrompt, tuning, encoder);
+  if (groqVision) return groqVision;
+
+  // 2) OpenRouter vision-language streaming
+  const orVision = await streamOpenRouterVisionProvider(request, systemPrompt, tuning, encoder);
+  if (orVision) return orVision;
+
+  // 3) Non-streaming vision cascade (Groq non-stream → OpenRouter non-stream)
+  logger.warn("[Chatbot/Vision] Streaming vision failed — using non-streaming vision cascade.");
+  const nv = await getVisionResponse({ messages: request.messages, language: request.language, mode, catalog: request.catalog });
+  if (nv.success && nv.reply) {
+    return { stream: singleChunkStream(nv.reply, encoder), model: nv.model ?? "vision" };
+  }
+
+  return {
+    error: request.language === "ar"
+      ? "تعذر تحليل الصورة حالياً — خدمة تحليل الصور مشغولة. جرب مرة أخرى بعد قليل أو اكتب سؤالك نصاً ⚡"
+      : "Image analysis is temporarily busy. Please try again shortly, or send your question as text ⚡",
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════════
 // MAIN STREAMING ENTRY POINT
 // ════════════════════════════════════════════════════════════════════════
 
 export async function getStreamResponse(request: {
-  messages: { role: string; content: string }[];
+  messages: ChatApiMessage[];
   language?: string;
   mode?: "thinking" | "instant";
   /** Real course-catalog text (api/lib/course-catalog.ts) — injected into the system prompt. */
   catalog?: string;
+  /** Image attached to the last user message — force vision-only routing. */
+  vision?: boolean;
 }): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
+  // VISION OVERRIDE: image requests never touch the text-only provider chain.
+  if (request.vision) return await getVisionStreamResponse(request);
+
   const picked = await pickWorkingModel(request.messages, request.language, request.mode || "thinking", request.catalog);
 
   if (!picked) {
