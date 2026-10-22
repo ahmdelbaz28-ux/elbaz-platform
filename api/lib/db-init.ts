@@ -673,6 +673,83 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         logger.warn("[DB] v8 image quota migration warning", { error: (err as Error).message });
       }
 
+      // ── v9 feature: dynamic AI provider router (admin-managed providers) ──
+      // aiProviders  — admin adds ANY OpenAI-compatible provider + API key
+      // aiModels     — models auto-discovered via GET {baseUrl}/models and
+      //                classified chat vs vision (failover routing input).
+      try {
+        logger.info("[DB] Running v9 features migration (aiProviders + aiModels tables)...");
+        await conn.query(`
+          CREATE TABLE IF NOT EXISTS \`aiProviders\` (
+            \`id\`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            \`slug\`        VARCHAR(64)     NOT NULL,
+            \`displayName\` VARCHAR(100)    NOT NULL,
+            \`baseUrl\`     VARCHAR(255)    NOT NULL,
+            \`apiKey\`      VARCHAR(512)    NOT NULL DEFAULT '',
+            \`priority\`    INT             NOT NULL DEFAULT 100,
+            \`enabled\`     BOOLEAN         NOT NULL DEFAULT TRUE,
+            \`status\`      VARCHAR(16)     NOT NULL DEFAULT 'unknown',
+            \`lastError\`   TEXT            NULL,
+            \`lastCheckedAt\` TIMESTAMP     NULL,
+            \`createdAt\`   TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            \`updatedAt\`   TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (\`id\`),
+            UNIQUE INDEX \`ai_providers_slug_unique\` (\`slug\`),
+            INDEX \`ai_providers_enabled_priority_idx\` (\`enabled\`, \`priority\`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+        await conn.query(`
+          CREATE TABLE IF NOT EXISTS \`aiModels\` (
+            \`id\`             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            \`providerId\`     BIGINT UNSIGNED NOT NULL,
+            \`modelId\`        VARCHAR(190)    NOT NULL,
+            \`supportsChat\`   BOOLEAN         NOT NULL DEFAULT TRUE,
+            \`supportsVision\` BOOLEAN         NOT NULL DEFAULT FALSE,
+            \`isFree\`         BOOLEAN         NOT NULL DEFAULT TRUE,
+            \`enabled\`        BOOLEAN         NOT NULL DEFAULT TRUE,
+            \`tier\`           INT             NOT NULL DEFAULT 2,
+            \`status\`         VARCHAR(16)     NOT NULL DEFAULT 'unknown',
+            \`failCount\`      INT             NOT NULL DEFAULT 0,
+            \`lastError\`      VARCHAR(500)    NULL,
+            \`lastSuccessAt\`  TIMESTAMP       NULL,
+            \`lastUsedAt\`     TIMESTAMP       NULL,
+            \`latencyMs\`      INT             NULL,
+            \`updatedAt\`      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (\`id\`),
+            UNIQUE INDEX \`ai_models_provider_model_unique\` (\`providerId\`, \`modelId\`),
+            INDEX \`ai_models_provider_idx\` (\`providerId\`),
+            INDEX \`ai_models_enabled_tier_idx\` (\`enabled\`, \`tier\`),
+            CONSTRAINT \`fk_ai_models_provider\` FOREIGN KEY (\`providerId\`) REFERENCES \`aiProviders\` (\`id\`) ON DELETE CASCADE ON UPDATE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+        logger.info("[DB] v9 aiProviders + aiModels tables verified");
+
+        // Seed known providers from env keys on first run ONLY (table empty).
+        // Keys become admin-visible/editable in the dashboard immediately.
+        const [providerRows] = await conn.query("SELECT COUNT(*) AS n FROM `aiProviders`");
+        const providerCount = Number((providerRows as { n?: number }[])[0]?.n ?? 0);
+        if (providerCount === 0) {
+          const groqKey = env.GROQ_API_KEY || process.env.GROQ_API_KEY || "";
+          const orKey = env.OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY || process.env.CHATBOT_API_KEY || "";
+          const nvidiaKey = env.NVIDIA_API_KEY || process.env.NVIDIA_API_KEY || "";
+          const seeds: [string, string, string, string, number][] = [
+            ["nvidia", "NVIDIA NIM", "https://integrate.api.nvidia.com/v1", nvidiaKey, 10],
+            ["openrouter", "OpenRouter", "https://openrouter.ai/api/v1", orKey, 20],
+            ["groq", "Groq", "https://api.groq.com/openai/v1", groqKey, 30],
+          ];
+          for (const [slug, displayName, baseUrl, apiKey, priority] of seeds) {
+            if (!apiKey) continue;
+            await conn.execute(
+              "INSERT IGNORE INTO `aiProviders` (slug, displayName, baseUrl, apiKey, priority, enabled, status) VALUES (?, ?, ?, ?, ?, TRUE, 'unknown')",
+              [slug, displayName, baseUrl, apiKey, priority],
+            );
+            logger.info(`[DB] v9 seeded provider "${slug}" from env key`);
+          }
+        }
+      } catch (err) {
+        logger.warn("[DB] v9 ai router migration warning", { error: (err as Error).message });
+      }
+
       // ── Admin password sync (existing deployments) ──
       // The seed step below (which upserts the admin hash from
       // ADMIN_PASSWORD) only runs on FIRST boot. On existing databases we

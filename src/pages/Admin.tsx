@@ -6,7 +6,7 @@ import { trpc } from "@/providers/trpc";
 import { motion, AnimatePresence } from "framer-motion";
 import "@/elite-animations.css";
 import {
-  LayoutDashboard, Users, BookOpen, Headphones, DollarSign, Phone, FileText, Palette, Tag, Megaphone,
+  LayoutDashboard, Users, BookOpen, Headphones, DollarSign, Phone, FileText, Palette, Tag, Megaphone, Bot,
   Plus, Pencil, Trash2, Save, Eye, Zap, TrendingUp, CheckCircle, ChevronLeft, ChevronRight,
   LogOut, ArrowUpRight, Shield, PlayCircle, Newspaper, X, Menu,
 } from "lucide-react";
@@ -20,6 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { AiProvidersPanel } from "@/components/admin/AiProvidersPanel";
 import { bilingual } from "@/lib/i18n";
 
 interface SettingItem { id?: string; key: string; value: string; section: string; type?: string; }
@@ -55,6 +56,7 @@ const SIDEBAR_ITEMS = [
   { id: "articles", icon: Newspaper, labelEn: "Articles", labelAr: "المقالات" },
   { id: "tickets", icon: Headphones, labelEn: "Tickets", labelAr: "التذاكر" },
   { id: "payments", icon: DollarSign, labelEn: "Payments", labelAr: "المدفوعات" },
+  { id: "ai", icon: Bot, labelEn: "AI Models", labelAr: "النماذج الذكية" },
   { id: "contact", icon: Phone, labelEn: "Contact", labelAr: "التواصل" },
   { id: "cms", icon: FileText, labelEn: "CMS", labelAr: "المحتوى" },
   { id: "themes", icon: Palette, labelEn: "Themes", labelAr: "الثيمات" },
@@ -880,6 +882,8 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
               )}
 
               {/* ═══════════════════ CONTACT ═══════════════════ */}
+              {activeTab === "ai" && <AiProvidersPanel />}
+
               {activeTab === "contact" && (
                 <div className="space-y-6">
                   <div>

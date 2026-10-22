@@ -58,6 +58,7 @@ import {
   validateGroqKey,
   validateOpenRouterKey,
 } from "./chatbot.js";
+import { routeChatStream } from "./ai-router.js";
 
 // ════════════════════════════════════════════════════════════════════════
 // STREAMING — provider selection
@@ -810,6 +811,25 @@ export async function getStreamResponse(request: {
   /** Image attached to the last user message — force vision-only routing. */
   vision?: boolean;
 }): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
+  // ─── DYNAMIC ROUTER (v9) — admin-managed providers first ─────────────
+  // Streams from any provider the admin configured (priority → tier order,
+  // automatic model↔provider failover). Vision requests are offered only to
+  // supportsVision models. When the dynamic pool cannot serve (empty, all
+  // cooling down, budget spent) we fall through to the battle-tested legacy
+  // cascade below — availability can only increase, never regress.
+  const routerMode: "thinking" | "instant" = request.mode === "instant" ? "instant" : "thinking";
+  const routerTuning = MODE_TUNING[routerMode];
+  const routed = await routeChatStream({
+    messages: request.messages,
+    systemPrompt: getSystemPrompt(request.language, routerMode, request.catalog, !!request.vision),
+    mode: routerMode,
+    vision: !!request.vision,
+    gen: routerMode === "instant"
+      ? { temperature: routerTuning.temperature, maxTokens: routerTuning.maxTokens, attemptTimeoutMs: 10_000, globalBudgetMs: 12_000 }
+      : { temperature: routerTuning.temperature, maxTokens: routerTuning.maxTokens, attemptTimeoutMs: 20_000, globalBudgetMs: 22_000 },
+  });
+  if (routed.ok) return { stream: routed.result.stream, model: routed.result.model };
+
   // VISION OVERRIDE: image requests never touch the text-only provider chain.
   if (request.vision) return await getVisionStreamResponse(request);
 
