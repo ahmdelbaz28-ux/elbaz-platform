@@ -1088,10 +1088,15 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
             setMessages((prev) => [...prev, botMsg]);
           }
         } else if (!isStale()) {
+          // Surface the server's SPECIFIC error (vision busy, image quota,
+          // rate limit — already localized by the router) instead of masking
+          // it with the generic network message.
+          const serverError = typeof data?.error === "string" ? data.error : "";
           addErrorMessage(
-            lang === "ar"
-              ? "يبدو أن هناك ضغط على الشبكة، حاول إرسال رسالتك مرة أخرى ⚡"
-              : "The network seems busy. Please try sending your message again ⚡"
+            serverError ||
+              (lang === "ar"
+                ? "يبدو أن هناك ضغط على الشبكة، حاول إرسال رسالتك مرة أخرى ⚡"
+                : "The network seems busy. Please try sending your message again ⚡")
           );
         }
       }
