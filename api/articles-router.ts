@@ -122,23 +122,26 @@ export const articlesRouter = createRouter({
         .where(and(eq(articles.slug, input.slug), eq(articles.isPublished, true)))
         .limit(1);
       if (!article) return null;
-      // Non-blocking view counter — never fails the read.
-      db.update(articles)
-        .set({ viewCount: sql`${articles.viewCount} + 1` })
-        .where(eq(articles.id, article.id))
-        .execute()
-        .catch(() => { /* best-effort */ });
+      // Best-effort view bump — atomic increment, never blocks the read.
+      try {
+        await db.update(articles)
+          .set({ viewCount: sql`${articles.viewCount} + 1` })
+          .where(eq(articles.id, article.id));
+      } catch {
+        /* counters are non-critical */
+      }
       return article;
     }),
 
-  // ─── Distinct categories of published articles ───
+  // ─── Distinct categories of published articles (grouped — distinct via GROUP BY) ───
   categories: publicQuery.query(async () => {
     const db = getDb();
-    const rows = await db
-      .selectDistinct({ category: articles.category })
+    const grouped = await db
+      .select({ category: articles.category })
       .from(articles)
-      .where(eq(articles.isPublished, true));
-    return rows.map((r) => r.category).filter(Boolean) as string[];
+      .where(eq(articles.isPublished, true))
+      .groupBy(articles.category);
+    return grouped.map((row) => row.category).filter((c): c is string => Boolean(c));
   }),
 
   // ─── Admin: full list including drafts (content included for inline editing) ───
