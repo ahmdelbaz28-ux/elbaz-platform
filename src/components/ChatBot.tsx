@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, memo, forwardRef, useImperativeHandle } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -17,6 +17,7 @@ import {
   Copy,
   RotateCcw,
   Brain,
+  ImagePlus,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -28,6 +29,14 @@ interface Message {
   timestamp: Date;
   model?: string;
   isError?: boolean;
+  /** Attached image — dataUrl lives in memory only; localStorage keeps the thumb. */
+  image?: MessageImage;
+}
+
+interface MessageImage {
+  dataUrl?: string;
+  thumb?: string;
+  name?: string;
 }
 
 // ─── localStorage persistence ───────────────────────────────────────────────
@@ -94,6 +103,9 @@ function saveMessagesToStorage(msgs: Message[]): void {
         timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp,
         model: m.model || undefined,
         isError: m.isError || undefined,
+        // NEVER persist the full dataUrl (localStorage budget) — the 160px
+        // thumb is enough for history display after a reload.
+        image: m.image ? { thumb: m.image.thumb, name: m.image.name } : undefined,
       }));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(serializable));
   } catch {
@@ -114,6 +126,7 @@ function loadMessagesFromStorage(): Message[] | null {
         timestamp: new Date(m.timestamp || Date.now()),
         model: m.model || undefined,
         isError: m.isError || undefined,
+        image: m.image ? { thumb: m.image.thumb, name: m.image.name } : undefined,
       }));
   } catch {
     // Intentionally ignored: corrupt or unreadable storage — return null so caller re-initializes. — SonarCloud S2486
@@ -260,6 +273,346 @@ const MAX_HISTORY = typeof import.meta.env.VITE_CHATBOT_MAX_HISTORY === "string"
   ? Math.max(10, Math.min(200, Number(import.meta.env.VITE_CHATBOT_MAX_HISTORY) || 50))
   : 50;
 
+// ─── Image attachment (vision) — browser-side compression ───────────────────
+// The image is downscaled + re-encoded to JPEG in the browser so every upload
+// lands far below the server's 1MB payload guard: longest edge steps 1024px →
+// 768px → 640px until the base64 data URL fits a 300KB budget. A 160px thumb
+// is produced alongside for bubble display + localStorage persistence.
+
+interface AttachedImage {
+  dataUrl: string; // compressed full image → sent to the API as image_url part
+  thumb: string;   // 160px preview → bubble display + localStorage
+  name?: string;
+}
+
+const IMAGE_MAX_DIM_STEPS: readonly number[] = [1024, 768, 640];
+const IMAGE_QUALITY_STEPS: readonly number[] = [0.75, 0.6, 0.55];
+const IMAGE_DATAURL_BUDGET = 300_000; // ~300KB base64 → safely under the 1MB shield
+const THUMB_DIM = 160;
+
+function loadImageElement(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("image-decode-failed")); };
+    img.src = url;
+  });
+}
+
+function drawToDataUrl(img: HTMLImageElement, maxDim: number, quality: number): string {
+  const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.max(1, Math.round(img.naturalWidth * scale));
+  const h = Math.max(1, Math.round(img.naturalHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("canvas-unavailable");
+  // White background flattens transparency (diagrams stay readable in JPEG).
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(img, 0, 0, w, h);
+  return canvas.toDataURL("image/jpeg", quality);
+}
+
+async function compressImageFile(file: File): Promise<AttachedImage> {
+  if (!file.type.startsWith("image/")) throw new Error("not-an-image");
+  const img = await loadImageElement(file);
+  let dataUrl = "";
+  for (let i = 0; i < IMAGE_MAX_DIM_STEPS.length; i++) {
+    dataUrl = drawToDataUrl(img, IMAGE_MAX_DIM_STEPS[i], IMAGE_QUALITY_STEPS[i]);
+    if (dataUrl.length <= IMAGE_DATAURL_BUDGET) break;
+  }
+  const thumb = drawToDataUrl(img, THUMB_DIM, 0.6);
+  return { dataUrl, thumb, name: file.name };
+}
+
+// ─── Chat input area (ISOLATED component) ────────────────────────────────────
+// Typing lag fix: the text value lives in THIS component's state, so every
+// keystroke re-renders only this small subtree — not the whole chat window
+// (bubbles + markdown re-parsing). This was the root cause of the delayed
+// text appearance while typing/deleting on mobile and desktop.
+
+interface ChatInputHandle {
+  setTextAndFocus: (text: string) => void;
+  focus: () => void;
+}
+
+interface ChatInputAreaProps {
+  lang: string;
+  isLoading: boolean;
+  kbOpen: boolean;
+  isMobileViewport: boolean;
+  onSend: (text: string, image: AttachedImage | null) => void;
+}
+
+const ChatInputArea = memo(forwardRef<ChatInputHandle, ChatInputAreaProps>(function ChatInputArea(
+  { lang, isLoading, kbOpen, isMobileViewport, onSend },
+  ref,
+) {
+  const [value, setValue] = useState("");
+  const [attachment, setAttachment] = useState<AttachedImage | null>(null);
+  const [compressing, setCompressing] = useState(false);
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const autoresize = useCallback(() => {
+    const el = taRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+  }, []);
+
+  useImperativeHandle(ref, () => ({
+    setTextAndFocus: (text: string) => {
+      setValue(text);
+      requestAnimationFrame(() => {
+        autoresize();
+        taRef.current?.focus();
+      });
+    },
+    focus: () => {
+      taRef.current?.focus();
+    },
+  }), [autoresize]);
+
+  const canSend = (value.trim().length > 0 || attachment !== null) && !isLoading && !compressing;
+
+  const doSend = useCallback(() => {
+    if (isLoading || compressing) return;
+    if (!value.trim() && !attachment) return;
+    onSend(value, attachment);
+    setValue("");
+    setAttachment(null);
+    requestAnimationFrame(autoresize);
+  }, [value, attachment, isLoading, compressing, onSend, autoresize]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      doSend();
+    }
+  };
+
+  const handleFilePicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file later
+    if (!file) return;
+    setCompressing(true);
+    try {
+      const compressed = await compressImageFile(file);
+      setAttachment(compressed);
+    } catch {
+      toast(
+        lang === "ar"
+          ? "تعذر تجهيز الصورة — جرب صورة أخرى"
+          : "Couldn't process that image — try another one",
+        { duration: 2500 },
+      );
+    } finally {
+      setCompressing(false);
+    }
+  };
+
+  const placeholder = lang === "ar" ? "اسأل سؤالك الهندسي..." : "Ask your engineering question...";
+
+  return (
+    <div
+      className="flex-shrink-0 px-3 py-3 border-t border-[#1e2d3d] bg-[#0a1019]"
+      style={isMobileViewport ? { paddingBottom: "max(env(safe-area-inset-bottom, 0px) + 0.5rem, 0.75rem)" } : undefined}
+    >
+      {/* Attachment preview / compressing indicator */}
+      {(attachment || compressing) && (
+        <div className="mb-2 flex items-center gap-2 rounded-xl border border-[#1e2d3d] bg-[#111827] p-2">
+          {compressing ? (
+            <div className="flex items-center gap-2 text-[12px] text-slate-400">
+              <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />
+              <span>{lang === "ar" ? "جارٍ تجهيز الصورة..." : "Preparing image..."}</span>
+            </div>
+          ) : attachment ? (
+            <>
+              <img
+                src={attachment.thumb}
+                alt={attachment.name || "attachment"}
+                className="h-12 w-12 flex-shrink-0 rounded-lg border border-white/10 object-cover"
+                draggable={false}
+              />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[12px] text-slate-300">{attachment.name || (lang === "ar" ? "صورة" : "Image")}</p>
+                <p className="text-[10px] text-cyan-400/70">
+                  {lang === "ar" ? "سيتم تحليل الصورة بالذكاء الاصطناعي" : "The image will be analyzed by AI"}
+                </p>
+              </div>
+              <button
+                onClick={() => setAttachment(null)}
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-red-400/10 hover:text-red-400"
+                title={lang === "ar" ? "إزالة الصورة" : "Remove image"}
+                aria-label={lang === "ar" ? "إزالة الصورة" : "Remove image"}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </>
+          ) : null}
+        </div>
+      )}
+
+      <div className="flex items-end gap-2">
+        {/* Attach image (vision) button */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          className="hidden"
+          onChange={handleFilePicked}
+          aria-hidden="true"
+          tabIndex={-1}
+        />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isLoading || compressing}
+          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-[#1e2d3d] bg-[#111827] text-slate-400 transition-all hover:border-cyan-500/40 hover:text-cyan-300 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+          title={lang === "ar" ? "إرفاق صورة للتحليل" : "Attach an image for analysis"}
+          aria-label={lang === "ar" ? "إرفاق صورة للتحليل" : "Attach an image for analysis"}
+        >
+          {compressing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+        </button>
+        <div className="relative flex-1">
+          <textarea
+            ref={taRef}
+            value={value}
+            onChange={(e) => { setValue(e.target.value); autoresize(); }}
+            onKeyDown={handleKeyDown}
+            placeholder={placeholder}
+            rows={1}
+            disabled={isLoading}
+            dir={ARABIC_RE.test(value) ? "rtl" : "ltr"}
+            aria-label={lang === "ar" ? "اكتب رسالتك" : "Type your message"}
+            className="w-full resize-none rounded-xl border border-[#1e2d3d] bg-[#111827] px-3.5 py-2.5 text-[13.5px] text-[#e8f0fe] transition-all placeholder:text-slate-500 focus:border-cyan-500/50 focus:outline-none focus:ring-1 focus:ring-cyan-500/20 disabled:opacity-50"
+            style={{ minHeight: "40px", maxHeight: "120px" }}
+          />
+        </div>
+        <button
+          onClick={doSend}
+          disabled={!canSend}
+          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white transition-all hover:shadow-lg hover:shadow-cyan-500/25 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:shadow-none"
+          aria-label={lang === "ar" ? "إرسال" : "Send"}
+        >
+          {isLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Send className="h-4 w-4" />
+          )}
+        </button>
+      </div>
+      <p className={`mt-2 text-center text-[10px] text-slate-600 ${kbOpen ? "hidden" : ""}`}>
+        {lang === "ar"
+          ? "بوت الباز الذكي — متخصص في الهندسة الكهربائية فقط"
+          : "Elbaz AI Bot — Electrical Engineering Specialist Only"}
+      </p>
+    </div>
+  );
+}));
+
+// ─── Message bubble (memoized) ───────────────────────────────────────────────
+// Extracted + memoized so streaming chunks / keystrokes never re-run the
+// markdown parser for old messages — only a NEW message re-renders its bubble.
+
+interface MessageBubbleProps {
+  msg: Message;
+  lang: string;
+  copied: boolean;
+  onCopy: (msgId: string, content: string) => void;
+  onRetry: (msgId: string) => void;
+}
+
+const MessageBubble = memo(function MessageBubble({ msg, lang, copied, onCopy, onRetry }: MessageBubbleProps) {
+  const errorBubbleClass = msg.isError
+    ? "bg-red-500/10 border border-red-500/30 text-red-300 rounded-ss-md"
+    : "bg-[#111827] border border-[#1e2d3d] text-[#e8f0fe] rounded-ss-md";
+  const bubbleClass = msg.role === "user"
+    ? "bg-gradient-to-br from-cyan-600 to-blue-600 text-white rounded-ee-md"
+    : errorBubbleClass;
+  const imageSrc = msg.image?.dataUrl || msg.image?.thumb;
+
+  return (
+    <div className={`flex gap-2.5 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+      {/* Avatar */}
+      <div
+        className={"mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg " +
+          (msg.role === "user"
+            ? "bg-blue-600/20 border border-blue-500/30"
+            : "bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30")
+        }
+      >
+        {msg.role === "user" ? (
+          <User className="h-3.5 w-3.5 text-blue-400" />
+        ) : (
+          <Zap className="h-3.5 w-3.5 text-cyan-400" />
+        )}
+      </div>
+
+      {/* Message Bubble */}
+      <div className="flex min-w-0 max-w-[85%] flex-col">
+        <div
+          dir={ARABIC_RE.test(msg.content) ? "rtl" : "ltr"}
+          className={"chatbot-bubble relative group px-3.5 py-2.5 rounded-2xl text-[13.5px] leading-relaxed break-words overflow-wrap-anywhere whitespace-pre-wrap word-break-break-word " +
+            bubbleClass
+          }
+        >
+          {/* Attached image (vision) */}
+          {imageSrc && (
+            <img
+              src={imageSrc}
+              alt={msg.image?.name || (lang === "ar" ? "صورة مرفقة" : "Attached image")}
+              className="mb-2 max-h-44 w-auto max-w-full rounded-lg border border-white/15"
+              draggable={false}
+            />
+          )}
+
+          {msg.role === "assistant" && msg.isError ? (
+            <span className="whitespace-pre-wrap">{msg.content}</span>
+          ) : (
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown() escapes all HTML entities first, only re-adds safe markdown formatting tags
+            <span dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
+          )}
+
+          {/* Copy button (assistant messages, only on hover) */}
+          {msg.role === "assistant" && !msg.isError && msg.id !== "welcome" && (
+            <button
+              onClick={() => onCopy(msg.id, msg.content)}
+              className="absolute top-1.5 end-1.5 p-1 rounded-md opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity text-slate-500 hover:text-cyan-400 hover:bg-white/5"
+              title={lang === "ar" ? "نسخ" : "Copy"}
+            >
+              <Copy className="h-3 w-3" />
+            </button>
+          )}
+
+          {/* Copied tooltip */}
+          {copied && (
+            <span className="absolute top-1.5 end-8 rounded border border-cyan-400/20 bg-cyan-400/10 px-1.5 py-0.5 text-[10px] text-cyan-400">
+              {lang === "ar" ? "تم النسخ!" : "Copied!"}
+            </span>
+          )}
+        </div>
+
+        {/* (No model label by design — engine identity is private.) */}
+
+        {/* Retry button (error messages) */}
+        {msg.isError && (
+          <button
+            onClick={() => onRetry(msg.id)}
+            className="mt-2 ms-1 flex items-center gap-1.5 text-[11px] text-red-400/70 transition-colors hover:text-red-400"
+          >
+            <RotateCcw className="h-3 w-3" />
+            {lang === "ar" ? "إعادة المحاولة" : "Retry"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+});
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function ChatBot() { // NOSONAR — chatbot component with SSE streaming, abort, copy, minimize, scroll-sync, localStorage; extraction would require prop-drilling many refs/state
@@ -268,7 +621,6 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>(() => loadMessagesFromStorage() || [WELCOME_MESSAGES[lang]]);
-  const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [streamingContent, setStreamingContent] = useState<string>("");
@@ -278,7 +630,10 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Typing-lag fix: the textarea lives inside the isolated ChatInputArea —
+  // the parent no longer holds input state, so keystrokes never re-render
+  // the conversation. The ref exposes setTextAndFocus for the quick chips.
+  const chatInputRef = useRef<ChatInputHandle>(null);
   const chatIdRef = useRef<string>(crypto.randomUUID());
   const abortControllerRef = useRef<AbortController | null>(null);
   // Bumped on clearChat — any in-flight sendMessage with an older generation
@@ -338,10 +693,15 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   }, []);
 
   // ─── Focus input when chat opens ───
+  // (The textarea is inside ChatInputArea — focus it via the exposed ref.)
   useEffect(() => {
-    if (isOpen && !isMinimized && inputRef.current) {
-      setTimeout(() => inputRef.current?.focus(), 300);
+    if (isOpen && !isMinimized) {
+      const t = setTimeout(() => {
+        chatInputRef.current?.focus();
+      }, 300);
+      return () => clearTimeout(t);
     }
+    return undefined;
   }, [isOpen, isMinimized]);
 
   // ─── Scroll to latest when the chat opens ───
@@ -501,10 +861,10 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     });
   }, []);
 
-  // ─── Send message (with streaming) ───
-  const sendMessage = useCallback(async (overrideInput?: string) => { // NOSONAR — orchestrates streaming + fallback + abort + UI state; extraction would split inter-dependent closures and shared mutable locals (accumulated/buffer/streamError) across helpers, risking regressions
-    const trimmed = (overrideInput || input).trim();
-    if (!trimmed || isLoading) return;
+  // ─── Send message (with streaming + optional image → vision routing) ───
+  const sendMessage = useCallback(async (overrideText?: string, image?: AttachedImage | null) => { // NOSONAR — orchestrates streaming + fallback + abort + UI state; extraction would split inter-dependent closures and shared mutable locals (accumulated/buffer/streamError) across helpers, risking regressions
+    const trimmed = (overrideText ?? "").trim();
+    if ((!trimmed && !image) || isLoading) return;
 
     const generation = generationRef.current;
     const isStale = () => generationRef.current !== generation;
@@ -514,29 +874,39 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
       role: "user",
       content: trimmed,
       timestamp: new Date(),
+      image: image ? { dataUrl: image.dataUrl, thumb: image.thumb, name: image.name } : undefined,
     };
 
     // Update messages state
     setMessages((prev) => [...prev.slice(-MAX_HISTORY), userMessage]);
-    setInput("");
     setIsLoading(true);
     setStreamingContent("");
 
-    // Reset textarea height
-    if (inputRef.current) {
-      inputRef.current.style.height = "auto";
+    // Build API messages — history stays plain text; ONLY the new message may
+    // carry image parts (OpenAI-compatible multimodal format). The server
+    // re-validates and flattens anything that is not the last user message.
+    const historyMessages = messages.slice(-20).filter((m) => m.id !== "welcome");
+    type ApiContent = string | Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }>;
+    const apiMessages: { role: "user" | "assistant"; content: ApiContent }[] = [];
+    for (const m of historyMessages) {
+      apiMessages.push({ role: m.role as "user" | "assistant", content: m.content });
     }
-
-    // Build API messages
-    const apiMessages = [...messages.slice(-20), userMessage]
-      .filter((m) => m.id !== "welcome")
-      .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+    if (image) {
+      const contentParts: Exclude<ApiContent, string> = [];
+      if (trimmed) contentParts.push({ type: "text", text: trimmed });
+      contentParts.push({ type: "image_url", image_url: { url: image.dataUrl } });
+      apiMessages.push({ role: "user", content: contentParts });
+    } else {
+      apiMessages.push({ role: "user", content: trimmed });
+    }
 
     const requestBody = {
       messages: apiMessages,
       // Language mirror: reply in the language of the user's actual message,
       // not the site UI language (Arabic message → Arabic reply, etc.)
-      language: ARABIC_RE.test(trimmed) ? "ar" : "en",
+      language: trimmed
+        ? (ARABIC_RE.test(trimmed) ? "ar" : "en")
+        : (lang === "ar" ? "ar" : "en"),
       chatId: chatIdRef.current,
       mode: chatMode,
     };
@@ -741,23 +1111,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
       setStreamingContent("");
       abortControllerRef.current = null;
     }
-  }, [input, isLoading, messages, lang, chatMode]);
-
-  // ─── Handle Enter key ───
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  };
-
-  // ─── Handle textarea auto-resize ───
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value);
-    const textarea = e.target;
-    textarea.style.height = "auto";
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
-  };
+  }, [isLoading, messages, lang, chatMode]);
 
   // ─── Persist messages to localStorage when they change ───
   useEffect(() => {
@@ -1016,52 +1370,48 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
             {/* ─── Expanded Chat UI ─── */}
             {!isMinimized && (
               <>
-                {/* ─── Header ─── */}
-                <div className="flex-shrink-0 px-4 py-3 bg-gradient-to-r from-cyan-600/20 to-blue-600/20 border-b border-[#1e2d3d]">
+                {/* ─── Header (compact — every vertical px goes to the chat) ─── */}
+                <div className="flex-shrink-0 px-3 py-2 bg-gradient-to-r from-cyan-600/20 to-blue-600/20 border-b border-[#1e2d3d]">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                       <div className="relative">
-                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
-                          <Zap className="w-5 h-5 text-white" />
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
+                          <Zap className="w-4 h-4 text-white" />
                         </div>
-                        <span className="absolute -bottom-0.5 -end-0.5 w-3 h-3 bg-green-400 rounded-full border-2 border-[#0a1019]" />
+                        <span className="absolute -bottom-0.5 -end-0.5 w-2.5 h-2.5 bg-green-400 rounded-full border-2 border-[#0a1019]" />
                       </div>
                       <div>
-                        <h3 className="text-sm font-semibold text-white">
+                        <h3 className="text-[13px] font-semibold leading-tight text-white">
                           {lang === "ar" ? "\u0628\u0648\u062a \u0627\u0644\u0628\u0627\u0632 \u0627\u0644\u0630\u0643\u064a" : "Elbaz AI Bot"}
                         </h3>
-                        <p className="text-[11px] text-cyan-400/70">
+                        <p className="text-[10px] leading-tight text-cyan-400/70">
                           {lang === "ar"
                             ? "\u0645\u0633\u0627\u0639\u062f \u0627\u0644\u0647\u0646\u062f\u0633\u0629 \u0627\u0644\u0643\u0647\u0631\u0628\u064a\u0629"
                             : "Electrical Engineering Assistant"}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      {/* ─── Thinking/Instant brain toggle (moved from its own
-                           full-width row — frees vertical chat space) ─── */}
+                    <div className="flex items-center gap-0.5">
+                      {/* ─── Thinking/Instant brain toggle — frameless icon that
+                           GLOWS in the site's orange (#F97316) when active ─── */}
                       <button
                         onClick={() => toggleChatMode(chatMode === "thinking" ? "instant" : "thinking")}
                         disabled={isLoading}
                         aria-pressed={chatMode === "thinking"}
                         className={
-                          "relative flex h-9 w-9 items-center justify-center rounded-lg border transition-all disabled:opacity-50 disabled:cursor-not-allowed " +
+                          "flex h-8 w-8 items-center justify-center rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed " +
                           (chatMode === "thinking"
-                            ? "border-violet-500/50 bg-violet-500/20 text-violet-300 shadow-[0_0_12px_rgba(139,92,246,0.35)]"
-                            : "border-transparent text-slate-500 hover:border-cyan-500/30 hover:bg-cyan-400/10 hover:text-cyan-300")
+                            ? "text-[#f97316] drop-shadow-[0_0_7px_rgba(249,115,22,0.75)]"
+                            : "text-slate-500 hover:text-cyan-300")
                         }
                         title={brainToggleTitle(chatMode === "thinking", lang)}
                       >
-                        <Brain className="w-4 h-4" />
-                        {/* active pulse dot */}
-                        {chatMode === "thinking" && (
-                          <span className="absolute -top-0.5 -end-0.5 w-2 h-2 rounded-full bg-violet-400 border border-[#0a1019] animate-pulse" />
-                        )}
+                        <Brain className="h-[18px] w-[18px]" />
                       </button>
                       {/* Clear chat button */}
                       <button
                         onClick={clearChat}
-                        className="p-2.5 rounded-lg text-slate-400 hover:text-red-400 min-h-[44px] min-w-[44px] flex items-center justify-center hover:bg-red-400/10 transition-colors"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-400/10 hover:text-red-400"
                         title={lang === "ar" ? "\u0645\u0633\u062d \u0627\u0644\u0645\u062d\u0627\u062f\u062b\u0629" : "Clear chat"}
                       >
                         <Trash2 className="w-4 h-4" />
@@ -1069,7 +1419,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                       {/* Minimize button */}
                       <button
                         onClick={() => setIsMinimized(true)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-cyan-400 hover:bg-cyan-400/10 transition-colors"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-cyan-400/10 hover:text-cyan-400"
                         title={lang === "ar" ? "\u062a\u0635\u063a\u064a\u0631" : "Minimize"}
                       >
                         <ChevronDown className="w-4 h-4" />
@@ -1077,7 +1427,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                       {/* Close button */}
                       <button
                         onClick={() => setIsOpen(false)}
-                        className="p-2.5 rounded-lg text-slate-400 hover:text-red-400 min-h-[44px] min-w-[44px] flex items-center justify-center hover:bg-red-400/10 transition-colors"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-400/10 hover:text-red-400"
                         title={lang === "ar" ? "\u0625\u063a\u0644\u0627\u0642" : "Close"}
                       >
                         <X className="w-4 h-4" />
@@ -1088,83 +1438,16 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
 
                 {/* ─── Messages Area ─── */}
                 <div ref={chatContainerRef} onScroll={handleMessagesScroll} role="log" aria-label={lang === "ar" ? "\u0631\u0633\u0627\u0626\u0644 \u0627\u0644\u0645\u062d\u0627\u062f\u062b\u0629" : "Chat messages"} aria-live="polite" className="flex-1 overflow-y-auto overscroll-contain px-4 py-3 space-y-4 chatbot-messages">
-                  {messages.map((msg) => {
-                    const errorBubbleClass = msg.isError
-                      ? "bg-red-500/10 border border-red-500/30 text-red-300 rounded-ss-md"
-                      : "bg-[#111827] border border-[#1e2d3d] text-[#e8f0fe] rounded-ss-md";
-                    const bubbleClass = msg.role === "user"
-                      ? "bg-gradient-to-br from-cyan-600 to-blue-600 text-white rounded-ee-md"
-                      : errorBubbleClass;
-                    return (
-                    <div
+                  {messages.map((msg) => (
+                    <MessageBubble
                       key={msg.id}
-                      className={`flex gap-2.5 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}
-                    >
-                      {/* Avatar */}
-                      <div
-                        className={"flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center mt-0.5 " +
-                          (msg.role === "user"
-                            ? "bg-blue-600/20 border border-blue-500/30"
-                            : "bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30")
-                        }
-                      >
-                        {msg.role === "user" ? (
-                          <User className="w-3.5 h-3.5 text-blue-400" />
-                        ) : (
-                          <Zap className="w-3.5 h-3.5 text-cyan-400" />
-                        )}
-                      </div>
-
-                      {/* Message Bubble */}
-                      <div className="flex flex-col max-w-[85%] min-w-0">
-                        <div
-                          dir={ARABIC_RE.test(msg.content) ? "rtl" : "ltr"}
-                          className={"chatbot-bubble relative group px-3.5 py-2.5 rounded-2xl text-[13.5px] leading-relaxed break-words overflow-wrap-anywhere whitespace-pre-wrap word-break-break-word " +
-                            bubbleClass
-                          }
-                        >
-                          {msg.role === "assistant" && msg.isError ? (
-                            <span className="whitespace-pre-wrap">{msg.content}</span>
-                          ) : (
-                            // biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown() escapes all HTML entities first, only re-adds safe markdown formatting tags
-                            <span dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
-                          )}
-
-                          {/* Copy button (assistant messages, only on hover) */}
-                          {msg.role === "assistant" && !msg.isError && msg.id !== "welcome" && (
-                            <button
-                              onClick={() => copyMessage(msg.id, msg.content)}
-                              className="absolute top-1.5 end-1.5 p-1 rounded-md opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity text-slate-500 hover:text-cyan-400 hover:bg-white/5"
-                              title={lang === "ar" ? "\u0646\u0633\u062e" : "Copy"}
-                            >
-                              <Copy className="w-3 h-3" />
-                            </button>
-                          )}
-
-                          {/* Copied tooltip */}
-                          {copiedId === msg.id && (
-                            <span className="absolute top-1.5 end-8 text-[10px] text-cyan-400 bg-cyan-400/10 px-1.5 py-0.5 rounded border border-cyan-400/20">
-                              {lang === "ar" ? "\u062a\u0645 \u0627\u0644\u0646\u0633\u062e!" : "Copied!"}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* (No model label by design — engine identity is private.) */}
-
-                        {/* Retry button (error messages) */}
-                        {msg.isError && (
-                          <button
-                            onClick={() => handleRetry(msg.id)}
-                            className="flex items-center gap-1.5 mt-2 ms-1 text-[11px] text-red-400/70 hover:text-red-400 transition-colors"
-                          >
-                            <RotateCcw className="w-3 h-3" />
-                            {lang === "ar" ? "\u0625\u0639\u0627\u062f\u0629 \u0627\u0644\u0645\u062d\u0627\u0648\u0644\u0629" : "Retry"}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    );
-                  })}
+                      msg={msg}
+                      lang={lang}
+                      copied={copiedId === msg.id}
+                      onCopy={copyMessage}
+                      onRetry={handleRetry}
+                    />
+                  ))}
 
                   {/* Streaming content (incremental text display) */}
                   {isLoading && streamingContent && (
@@ -1240,8 +1523,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                           <button
                             key={suggestion}
                             onClick={() => {
-                              setInput(suggestion);
-                              setTimeout(() => { inputRef.current?.focus(); }, 50);
+                              chatInputRef.current?.setTextAndFocus(suggestion);
                             }}
                             className="px-2.5 py-1.5 text-[11px] text-cyan-400/80 bg-cyan-400/5 border border-cyan-400/10 rounded-lg hover:bg-cyan-400/10 hover:border-cyan-400/20 transition-colors truncate max-w-[180px]"
                           >
@@ -1252,50 +1534,16 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                   </div>
                 )}
 
-                {/* ─── Input Area ─── */}
-                <div
-                  className="flex-shrink-0 px-3 py-3 border-t border-[#1e2d3d] bg-[#0a1019]"
-                  style={isMobileViewport ? { paddingBottom: "max(env(safe-area-inset-bottom, 0px) + 0.5rem, 0.75rem)" } : undefined}
-                >
-                  <div className="flex items-end gap-2">
-                    <div className="flex-1 relative">
-                      <textarea
-                        ref={inputRef}
-                        value={input}
-                        onChange={handleInputChange}
-                        onKeyDown={handleKeyDown}
-                        placeholder={
-                          lang === "ar"
-                            ? "\u0627\u0633\u0623\u0644 \u0633\u0624\u0627\u0644\u0643 \u0627\u0644\u0647\u0646\u062f\u0633\u064a..."
-                            : "Ask your engineering question..."
-                        }
-                        rows={1}
-                        disabled={isLoading}
-                        dir={ARABIC_RE.test(input) ? "rtl" : "ltr"}
-                        aria-label={lang === "ar" ? "\u0627\u0643\u062a\u0628 \u0631\u0633\u0627\u0644\u062a\u0643" : "Type your message"}
-                        className="w-full px-3.5 py-2.5 bg-[#111827] border border-[#1e2d3d] rounded-xl text-[13.5px] text-[#e8f0fe] placeholder:text-slate-500 resize-none focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all disabled:opacity-50"
-                        style={{ minHeight: "40px", maxHeight: "120px" }}
-                      />
-                    </div>
-                    <button
-                      onClick={() => sendMessage()}
-                      disabled={!input.trim() || isLoading}
-                      className="flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white flex items-center justify-center transition-all hover:shadow-lg hover:shadow-cyan-500/25 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-none active:scale-95"
-                      aria-label={lang === "ar" ? "\u0625\u0631\u0633\u0627\u0644" : "Send"}
-                    >
-                      {isLoading ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Send className="w-4 h-4" />
-                      )}
-                    </button>
-                  </div>
-                  <p className={`text-center text-[10px] text-slate-600 mt-2 ${kb.open ? "hidden" : ""}`}>
-                    {lang === "ar"
-                      ? "\u0628\u0648\u062a \u0627\u0644\u0628\u0627\u0632 \u0627\u0644\u0630\u0643\u064a \u2014 \u0645\u062a\u062e\u0635\u0635 \u0641\u064a \u0627\u0644\u0647\u0646\u062f\u0633\u0629 \u0627\u0644\u0643\u0647\u0631\u0628\u064a\u0629 \u0641\u0642\u0637"
-                      : "Elbaz AI Bot \u2014 Electrical Engineering Specialist Only"}
-                  </p>
-                </div>
+                {/* ─── Input Area (isolated component — typing never re-renders
+                     the conversation; carries the image-attach button) ─── */}
+                <ChatInputArea
+                  ref={chatInputRef}
+                  lang={lang}
+                  isLoading={isLoading}
+                  kbOpen={kb.open}
+                  isMobileViewport={isMobileViewport}
+                  onSend={sendMessage}
+                />
               </>
             )}
           </div>

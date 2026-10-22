@@ -41,6 +41,20 @@ import { logger } from "./logger.js";
 
 export const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+// ── Multimodal content types (OpenAI-compatible vision format) ──
+// A message's content is a plain string OR an array of typed parts. Only the
+// LAST user message of a request may carry image parts (the router flattens
+// everything else to text), and when it does the request is routed ONLY to
+// vision-capable models.
+export type ContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+
+export interface ChatApiMessage {
+  role: string;
+  content: string | ContentPart[];
+}
+
 // ════════════════════════════════════════════════════════════════════════
 // PROVIDER CONFIG
 // ════════════════════════════════════════════════════════════════════════
@@ -61,6 +75,15 @@ export const GROQ_MODELS = [
   "llama-3.1-8b-instant",              // 200ms | Fastest, 131K context
   "meta-llama/llama-4-scout-17b-16e-instruct", // 435ms | New Llama 4
   "qwen/qwen3.6-27b",                  // 565ms | Qwen 3.6 latest
+];
+
+// ── VISION MODELS — image understanding (forced routing for image requests) ──
+// When the last user message carries an image, ONLY these models may serve it.
+// Text-only models (NVIDIA MiniMax-M3 and most OpenRouter ids) are EXCLUDED:
+// they would either reject the image parts or hallucinate around them.
+export const GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"; // multimodal Llama 4 Scout
+export const OPENROUTER_VISION_MODELS = [
+  "nvidia/nemotron-3.5-super-vl:free", // VL = vision-language (free tier)
 ];
 
 // ── TIER 1.5: OpenRouter — Secondary (22-model free cascade) ───────────
@@ -163,7 +186,7 @@ export function groqIsAvailable(): boolean {
 }
 
 export async function tryGroq(
-  messages: { role: string; content: string }[],
+  messages: ChatApiMessage[],
   systemPrompt: string,
   modelId: string,
   timeoutMs: number,
@@ -266,7 +289,7 @@ export function nvidiaIsAvailable(): boolean {
 }
 
 export async function tryNvidia(
-  messages: { role: string; content: string }[],
+  messages: ChatApiMessage[],
   systemPrompt: string,
   timeoutMs: number,
   tuning: ModeTuning = MODE_TUNING.thinking,
@@ -343,7 +366,7 @@ export async function tryNvidia(
 }
 
 export async function nvidiaFallback(
-  messages: { role: string; content: string }[],
+  messages: ChatApiMessage[],
   systemPrompt: string,
   tuning?: ModeTuning
 ): Promise<{ reply: string; model: string } | null> {
@@ -413,7 +436,7 @@ export async function validateOpenRouterKey(): Promise<boolean> {
 
 export async function tryModel(
   modelId: string,
-  messages: { role: string; content: string }[],
+  messages: ChatApiMessage[],
   systemPrompt: string,
   timeoutMs: number,
   tuning: ModeTuning = MODE_TUNING.thinking,
@@ -489,7 +512,7 @@ export async function tryModel(
 }
 
 export async function tryLastWorkingModel(
-  messages: { role: string; content: string }[],
+  messages: ChatApiMessage[],
   systemPrompt: string,
   tierTimeouts: Record<number, number>,
   tuning?: ModeTuning,
@@ -505,7 +528,7 @@ export async function tryLastWorkingModel(
 }
 
 export async function tryModelsByTier(
-  messages: { role: string; content: string }[],
+  messages: ChatApiMessage[],
   systemPrompt: string,
   tierTimeouts: Record<number, number>,
   globalStartTime: number,
@@ -537,7 +560,7 @@ export async function tryModelsByTier(
 }
 
 export async function tryAllModelsAsLastResort(
-  messages: { role: string; content: string }[],
+  messages: ChatApiMessage[],
   systemPrompt: string,
   tuning?: ModeTuning,
 ): Promise<{ reply: string; model: string } | null> {
@@ -551,7 +574,7 @@ export async function tryAllModelsAsLastResort(
 }
 
 export async function openRouterFallback(
-  messages: { role: string; content: string }[],
+  messages: ChatApiMessage[],
   systemPrompt: string,
   _language?: string,
   tuning?: ModeTuning
@@ -625,7 +648,7 @@ function buildAllTiersFailedResponse(language?: string): { success: boolean; err
 }
 
 export async function tryGroqTier(
-  messages: { role: string; content: string }[],
+  messages: ChatApiMessage[],
   systemPrompt: string,
   tuning: ModeTuning = MODE_TUNING.thinking
 ): Promise<{ success: boolean; reply?: string; model?: string } | null> {
@@ -673,14 +696,22 @@ export async function tryGroqTier(
  * Each mode gets its own system prompt + generation params (MODE_TUNING).
  * If every provider fails, a friendly error is returned. As long as ANY of the
  * three free providers has one working model, the user gets a reply.
+ *
+ * VISION OVERRIDE: when the request carries an image (request.vision), the
+ * mode cascade is bypassed ENTIRELY — getVisionResponse routes ONLY to
+ * vision-capable models (mandatory: text-only models never see image parts).
  */
 export async function getChatResponse(request: {
-  messages: { role: string; content: string }[];
+  messages: ChatApiMessage[];
   language?: string;
   mode?: "thinking" | "instant";
   /** Real course-catalog text (api/lib/course-catalog.ts) — injected into the system prompt. */
   catalog?: string;
+  /** Image attached to the last user message — force vision-only routing. */
+  vision?: boolean;
 }): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
+  if (request.vision) return getVisionResponse(request);
+
   const mode: ChatbotMode = request.mode === "instant" ? "instant" : "thinking";
   const tuning = MODE_TUNING[mode];
   const systemPrompt = getSystemPrompt(request.language, mode, request.catalog);
@@ -725,7 +756,7 @@ export async function getChatResponse(request: {
 // ════════════════════════════════════════════════════════════════════════
 
 export async function groqFallback(
-  messages: { role: string; content: string }[],
+  messages: ChatApiMessage[],
   systemPrompt: string,
   tuning: ModeTuning = MODE_TUNING.thinking
 ): Promise<{ reply: string; model: string } | null> {
@@ -737,6 +768,59 @@ export async function groqFallback(
     if (result) return result;
   }
   return null;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// VISION CASCADE (non-streaming) — image requests are routed ONLY to
+// vision-capable models: Groq Llama-4-Scout → OpenRouter VL ids.
+// The text-only tiers (NVIDIA MiniMax-M3 etc.) are deliberately excluded.
+// ════════════════════════════════════════════════════════════════════════
+
+function buildVisionUnavailableResponse(language?: string): { success: boolean; error: string } {
+  return {
+    success: false,
+    error: language === "ar"
+      ? "تعذر تحليل الصورة حالياً — خدمة تحليل الصور مشغولة. جرب مرة أخرى بعد قليل أو اكتب سؤالك نصاً ⚡"
+      : "Image analysis is temporarily busy. Please try again shortly, or send your question as text ⚡",
+  };
+}
+
+export async function tryOpenRouterVision(
+  messages: ChatApiMessage[],
+  systemPrompt: string,
+  timeoutMs: number,
+  tuning: ModeTuning = MODE_TUNING.thinking,
+): Promise<{ reply: string; model: string } | null> {
+  for (const modelId of OPENROUTER_VISION_MODELS) {
+    const result = await tryModel(modelId, messages, systemPrompt, timeoutMs, tuning);
+    if (result) return result;
+  }
+  return null;
+}
+
+export async function getVisionResponse(request: {
+  messages: ChatApiMessage[];
+  language?: string;
+  mode?: "thinking" | "instant";
+  catalog?: string;
+}): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
+  const mode: ChatbotMode = request.mode === "instant" ? "instant" : "thinking";
+  const tuning = MODE_TUNING[mode];
+  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, true);
+  const [firstTimeout, retryTimeout] = tuning.groqAttemptTimeouts;
+
+  // 1) Groq Llama-4-Scout (multimodal, ultra-fast) — 2 attempts
+  let result = await tryGroq(request.messages, systemPrompt, GROQ_VISION_MODEL, firstTimeout, tuning);
+  if (result) return buildSuccessResult(result);
+  result = await tryGroq(request.messages, systemPrompt, GROQ_VISION_MODEL, retryTimeout, tuning);
+  if (result) return buildSuccessResult(result);
+
+  // 2) OpenRouter vision-language models
+  const orResult = await tryOpenRouterVision(request.messages, systemPrompt, tuning.openRouterTierTimeouts[2] ?? 15000, tuning);
+  if (orResult) return buildSuccessResult(orResult);
+
+  logger.error("[Chatbot/Vision] All vision models failed.");
+  return buildVisionUnavailableResponse(request.language);
 }
 
 // ════════════════════════════════════════════════════════════════════════

@@ -7,10 +7,11 @@
  */
 
 import { Hono } from "hono";
-import { getChatResponse, getStreamResponse } from "./lib/chatbot.js";
+import { getChatResponse, getStreamResponse, type ChatApiMessage, type ContentPart } from "./lib/chatbot.js";
 import { getCourseCatalogText } from "./lib/course-catalog.js";
 import { sanitizeReplyOutput } from "./lib/chatbot-prompts.js";
 import { getClientIpFromHono as getChatbotIp } from "./lib/client-ip";
+import { getImageQuotaUsed, incrementImageQuota, DAILY_IMAGE_LIMIT } from "./lib/image-quota.js";
 import { logger } from "./lib/logger.js";
 // Removed checkRateLimit
 
@@ -48,18 +49,160 @@ setInterval(() => {
 // and an English (Latin) message an English one, regardless of site locale.
 const ARABIC_CHAR_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
 
+/** Plain text of a message — string content or the text parts of a parts array. */
+function messageText(m: ChatApiMessage): string {
+  if (typeof m.content === "string") return m.content;
+  return m.content
+    .filter((p): p is Extract<ContentPart, { type: "text" }> => p.type === "text")
+    .map((p) => p.text)
+    .join(" ");
+}
+
 function resolveChatLanguage(
   requested: string | undefined,
-  messages: { role: string; content: string }[],
+  messages: ChatApiMessage[],
 ): string | undefined {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
     if (!m || m.role !== "user") continue;
-    if (!m.content || !m.content.trim()) continue;
-    return ARABIC_CHAR_RE.test(m.content) ? "ar" : "en";
+    const text = messageText(m);
+    if (!text || !text.trim()) continue;
+    return ARABIC_CHAR_RE.test(text) ? "ar" : "en";
   }
   return requested;
 }
+
+// ── Multimodal input normalization (vision) ─────────────────────────────
+// Security/size rules:
+//   • Only data: URLs with an image mime are accepted (no remote URLs — the
+//     server must never be tricked into fetching attacker-chosen resources).
+//   • Per-image base64 cap + per-request image count cap keep the request
+//     far below the shield's 1MB payload guard.
+//   • ONLY the LAST user message may carry image parts — anything else is
+//     flattened to plain text so text-only providers are never exposed to
+//     image parts in history.
+const IMAGE_DATAURL_RE = /^data:image\/(jpeg|jpg|png|webp|gif);base64,/;
+const MAX_IMAGE_PART_BASE64 = 450_000; // ~337KB binary per image
+const MAX_IMAGES_PER_REQUEST = 2;
+
+interface NormalizedChatInput {
+  messages: ChatApiMessage[];
+  /** Last user message carries image parts — must route to vision models. */
+  vision: boolean;
+  imageCount: number;
+  totalTextChars: number;
+}
+
+type NormalizeFailure = { status: 400 | 413; en: string; ar: string };
+
+function normalizeChatInput(raw: unknown): { ok: true; data: NormalizedChatInput } | { ok: false; failure: NormalizeFailure } {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return { ok: false, failure: { status: 400, en: "Messages array is required", ar: "Messages array is required" } };
+  }
+  const sliced = raw.slice(-50);
+
+  // Locate the last user message — the only one allowed to carry images.
+  let lastUserIdx = -1;
+  for (let i = sliced.length - 1; i >= 0; i--) {
+    const m = sliced[i] as { role?: unknown } | null;
+    if (m && m.role === "user") { lastUserIdx = i; break; }
+  }
+
+  const messages: ChatApiMessage[] = [];
+  let imageCount = 0;
+  let totalTextChars = 0;
+
+  for (let i = 0; i < sliced.length; i++) {
+    const m = sliced[i] as { role?: unknown; content?: unknown } | null;
+    if (!m || typeof m !== "object") continue;
+    const role = m.role === "assistant" ? "assistant" : "user";
+    const content = m.content;
+
+    if (typeof content === "string") {
+      const clipped = content.slice(0, MAX_MESSAGE_CHARS);
+      totalTextChars += clipped.length;
+      messages.push({ role, content: clipped });
+      continue;
+    }
+
+    if (!Array.isArray(content)) {
+      messages.push({ role, content: "" });
+      continue;
+    }
+
+    // Parts array — split text vs image parts.
+    const textParts: string[] = [];
+    const imageUrls: string[] = [];
+    for (const part of content as unknown[]) {
+      if (!part || typeof part !== "object") continue;
+      const p = part as { type?: unknown; text?: unknown; image_url?: { url?: unknown } };
+      if (p.type === "text" && typeof p.text === "string") {
+        textParts.push(p.text);
+      } else if (p.type === "image_url" && typeof p.image_url?.url === "string") {
+        imageUrls.push(p.image_url.url);
+      }
+    }
+
+    const isLastUser = i === lastUserIdx && imageUrls.length > 0;
+    if (isLastUser) {
+      if (imageUrls.length > MAX_IMAGES_PER_REQUEST) {
+        return {
+          ok: false,
+          failure: {
+            status: 400,
+            en: `Too many images — max ${MAX_IMAGES_PER_REQUEST} per message`,
+            ar: `صور كثيرة — الحد الأقصى ${MAX_IMAGES_PER_REQUEST} صورة لكل رسالة`,
+          },
+        };
+      }
+      for (const url of imageUrls) {
+        if (!IMAGE_DATAURL_RE.test(url) || url.length > MAX_IMAGE_PART_BASE64) {
+          return {
+            ok: false,
+            failure: {
+              status: 413,
+              en: "Attached image is too large or in an unsupported format — try a smaller image",
+              ar: "الصورة المرفقة كبيرة جداً أو بصيغة غير مدعومة — جرب صورة أصغر",
+            },
+          };
+        }
+      }
+      imageCount = imageUrls.length;
+      const text = textParts.join(" ").slice(0, MAX_MESSAGE_CHARS);
+      totalTextChars += text.length;
+      const parts: ContentPart[] = [
+        ...(text ? [{ type: "text" as const, text }] : []),
+        ...imageUrls.map((url) => ({ type: "image_url" as const, image_url: { url } })),
+      ];
+      messages.push({ role, content: parts });
+    } else {
+      // History (or stray) image message — flatten to plain text.
+      const text = textParts.join(" ").slice(0, MAX_MESSAGE_CHARS);
+      const note = imageUrls.length > 0 ? `${text ? " " : ""}[صورة مرفقة]` : "";
+      totalTextChars += text.length + note.length;
+      messages.push({ role, content: text + note });
+    }
+  }
+
+  if (messages.length === 0) {
+    return { ok: false, failure: { status: 400, en: "Messages array is required", ar: "Messages array is required" } };
+  }
+  return { ok: true, data: { messages, vision: imageCount > 0, imageCount, totalTextChars } };
+}
+
+/** Bilingual daily-quota error (SonarCloud S3358 — no nested ternaries). */
+function imageQuotaExceededResponse(used: number): { en: string; ar: string } {
+  return {
+    en: `You've reached today's image limit (${used}/${DAILY_IMAGE_LIMIT}) — text chat still works, images reset tomorrow 🌅`,
+    ar: `وصلت الحد اليومي لإرسال الصور (${used}/${DAILY_IMAGE_LIMIT}) — الشات النصي شغال عادي، والصور بترجع بكرة 🌅`,
+  };
+}
+
+// ── Shared content caps (module scope — used by normalizeChatInput too) ──
+// ✅ SECURITY FIX (audit run-1): cap per-message content (previously a
+// single 1MB request could ship ~250k tokens to paid providers).
+const MAX_MESSAGE_CHARS = 8_000;
+const MAX_TOTAL_CHARS = 60_000;
 
 // ── Non-streaming chat endpoint ──
 chatbotRouter.post("/", async (c) => {
@@ -68,23 +211,28 @@ chatbotRouter.post("/", async (c) => {
     if (!checkChatbotRateLimit(ip)) {
       return c.json({ success: false, error: "Rate limit exceeded. Please try again later." }, 429);
     }
-    const body = await c.req.json<{ messages: { role: string; content: string }[]; language?: string; chatId?: string; mode?: "thinking" | "instant" }>();
+    const body = await c.req.json<{ messages: unknown; language?: string; chatId?: string; mode?: "thinking" | "instant" }>();
 
-    if (!body.messages || !Array.isArray(body.messages) || body.messages.length === 0) {
-      return c.json({ success: false, error: "Messages array is required" }, 400);
+    const normalized = normalizeChatInput(body.messages);
+    if (!normalized.ok) {
+      const isAr = resolveChatLanguage(body.language, []) === "ar";
+      const f = normalized.failure;
+      return c.json({ success: false, error: isAr ? f.ar : f.en }, f.status);
+    }
+    const { messages, vision, imageCount, totalTextChars } = normalized.data;
+
+    if (totalTextChars > MAX_TOTAL_CHARS) {
+      return c.json({ success: false, error: "Conversation too long. Please start a new chat." }, 413);
     }
 
-    // Limit message count to prevent abuse
-    // ✅ SECURITY FIX (audit run-1): cap per-message content (previously a
-    // single 1MB request could ship ~250k tokens to paid providers).
-    const MAX_MESSAGE_CHARS = 8_000;
-    const MAX_TOTAL_CHARS = 60_000;
-    const messages = body.messages
-      .slice(-50)
-      .map((m) => ({ role: String(m?.role ?? "user"), content: String(m?.content ?? "").slice(0, MAX_MESSAGE_CHARS) }));
-    const totalChars = messages.reduce((sum, m) => sum + m.content.length, 0);
-    if (totalChars > MAX_TOTAL_CHARS) {
-      return c.json({ success: false, error: "Conversation too long. Please start a new chat." }, 413);
+    // Vision quota — enforced BEFORE dispatch so no provider call is wasted.
+    if (vision) {
+      const used = await getImageQuotaUsed(ip);
+      if (used + imageCount > DAILY_IMAGE_LIMIT) {
+        const msg = imageQuotaExceededResponse(used);
+        const lang = resolveChatLanguage(body.language, messages);
+        return c.json({ success: false, error: lang === "ar" ? msg.ar : msg.en }, 429);
+      }
     }
 
     // Real course catalog (SWR-cached 10 min, fail-open to "") — lets the bot
@@ -96,9 +244,12 @@ chatbotRouter.post("/", async (c) => {
       language: resolveChatLanguage(body.language, messages),
       mode: body.mode,
       catalog,
+      vision,
     });
 
     if (result.success) {
+      // Quota is only consumed by SUCCESSFUL image analysis.
+      if (vision) await incrementImageQuota(ip, imageCount);
       return c.json({
         success: true,
         reply: sanitizeReplyOutput(result.reply ?? ""),
@@ -216,23 +367,31 @@ chatbotRouter.post("/stream", async (c) => {
       clearTimeout(timeoutId);
       return c.json({ success: false, error: "Rate limit exceeded. Please try again later." }, 429);
     }
-    const body = await c.req.json<{ messages: { role: string; content: string }[]; language?: string; chatId?: string; mode?: "thinking" | "instant" }>();
+    const body = await c.req.json<{ messages: unknown; language?: string; chatId?: string; mode?: "thinking" | "instant" }>();
 
-    if (!body.messages || !Array.isArray(body.messages) || body.messages.length === 0) {
+    const normalized = normalizeChatInput(body.messages);
+    if (!normalized.ok) {
       clearTimeout(timeoutId);
-      return c.json({ success: false, error: "Messages array is required" }, 400);
+      const isAr = resolveChatLanguage(body.language, []) === "ar";
+      const f = normalized.failure;
+      return c.json({ success: false, error: isAr ? f.ar : f.en, chatId: body.chatId }, f.status);
+    }
+    const { messages, vision, imageCount, totalTextChars } = normalized.data;
+
+    if (totalTextChars > MAX_TOTAL_CHARS) {
+      clearTimeout(timeoutId);
+      return c.json({ success: false, error: "Conversation too long. Please start a new chat.", chatId: body.chatId }, 413);
     }
 
-    // ✅ SECURITY FIX (audit run-1): per-message + total content caps (stream path).
-    const MAX_MESSAGE_CHARS = 8_000;
-    const MAX_TOTAL_CHARS = 60_000;
-    const messages = body.messages
-      .slice(-50)
-      .map((m) => ({ role: String(m?.role ?? "user"), content: String(m?.content ?? "").slice(0, MAX_MESSAGE_CHARS) }));
-    const totalChars = messages.reduce((sum, m) => sum + m.content.length, 0);
-    if (totalChars > MAX_TOTAL_CHARS) {
-      clearTimeout(timeoutId);
-      return c.json({ success: false, error: "Conversation too long. Please start a new chat." }, 413);
+    // Vision quota — enforced BEFORE dispatch so no provider call is wasted.
+    if (vision) {
+      const used = await getImageQuotaUsed(ip);
+      if (used + imageCount > DAILY_IMAGE_LIMIT) {
+        clearTimeout(timeoutId);
+        const msg = imageQuotaExceededResponse(used);
+        const lang = resolveChatLanguage(body.language, messages);
+        return c.json({ success: false, error: lang === "ar" ? msg.ar : msg.en, chatId: body.chatId }, 429);
+      }
     }
 
     // Real course catalog (same as non-streaming path) — fetched once here so
@@ -245,6 +404,7 @@ chatbotRouter.post("/stream", async (c) => {
       language: resolveChatLanguage(body.language, messages),
       mode: body.mode,
       catalog,
+      vision,
     });
 
     // Race between stream response and timeout
@@ -269,6 +429,12 @@ chatbotRouter.post("/stream", async (c) => {
     if ("error" in result) {
       clearTimeout(timeoutId);
       return c.json({ success: false, error: result.error, chatId: body.chatId }, 503);
+    }
+
+    // Quota is only consumed by SUCCESSFUL image analysis (a provider was
+    // actually reached and accepted the request).
+    if (vision) {
+      await incrementImageQuota(ip, imageCount);
     }
 
     // Send model name as first SSE event, then pipe the actual stream

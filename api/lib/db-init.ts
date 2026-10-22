@@ -654,6 +654,25 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         logger.warn("[DB] v7 articles migration warning", { error: (err as Error).message });
       }
 
+      // ── v8 feature: chatbot image quota (vision daily limit, per IP) ──
+      try {
+        logger.info("[DB] Running v8 features migration (chatbotImageQuota table)...");
+        await conn.query(`
+          CREATE TABLE IF NOT EXISTS \`chatbotImageQuota\` (
+            \`id\`        BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            \`quotaKey\`  VARCHAR(128)    NOT NULL,
+            \`quotaDay\`  DATE            NOT NULL,
+            \`imagesUsed\` INT UNSIGNED   NOT NULL DEFAULT 0,
+            \`updatedAt\` TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (\`id\`),
+            UNIQUE INDEX \`uq_quota_key_day\` (\`quotaKey\`, \`quotaDay\`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+        logger.info("[DB] v8 chatbotImageQuota table verified");
+      } catch (err) {
+        logger.warn("[DB] v8 image quota migration warning", { error: (err as Error).message });
+      }
+
       // ── Admin password sync (existing deployments) ──
       // The seed step below (which upserts the admin hash from
       // ADMIN_PASSWORD) only runs on FIRST boot. On existing databases we
