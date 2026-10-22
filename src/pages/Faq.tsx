@@ -166,7 +166,7 @@ export default function Faq() {
         title={lang === "ar" ? "الأسئلة الشائعة | منصة الباز" : "FAQ | Elbaz Platform"}
         description={lang === "ar" ? "إجابات على أكثر الأسئلة شيوعاً حول الكورسات والمدفوعات والشهادات" : "Answers to the most common questions about courses, payments, and certificates"}
       />
-      <div className="min-h-screen bg-background text-foreground">
+      <div className="min-h-screen bg-background pt-16 text-foreground">
         <div className="relative overflow-hidden border-b border-border bg-gradient-to-br from-cyan-600/10 to-blue-600/10">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgba(6,182,212,0.15),transparent_60%)]" />
           <div className="relative mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8 text-center">
