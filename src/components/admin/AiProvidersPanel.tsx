@@ -151,7 +151,12 @@ export function AiProvidersPanel() {
   }, [providers]);
 
   function openCreate() {
-    setForm({ ...emptyForm });
+    // Prefill from the default catalog entry (groq) so the dialog is fully
+    // valid on open — Radix Select does NOT fire onValueChange when the user
+    // re-picks the already-selected option, which would otherwise leave the
+    // baseUrl empty and silently block the save button.
+    const def = catalog.find((c) => c.slug === emptyForm.catalogSlug);
+    setForm({ ...emptyForm, displayName: def?.displayName || "", baseUrl: def?.baseUrl || "" });
     setShowForm(true);
   }
 
