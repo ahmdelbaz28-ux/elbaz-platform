@@ -17,7 +17,6 @@ import {
   Copy,
   RotateCcw,
   Brain,
-  Rocket,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -762,36 +761,76 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   const toggleChatMode = useCallback((mode: ChatMode) => {
     setChatMode(mode);
     saveChatMode(mode);
-  }, []);
+    if (mode !== chatMode) {
+      const modeToast = mode === "thinking"
+        ? (lang === "ar"
+          ? "تم تفعيل وضع التفكير العميق — إجابات أدق للمسائل المعقدة"
+          : "Thinking mode enabled — deeper analysis for complex problems")
+        : (lang === "ar"
+          ? "تم التحويل إلى الوضع السريع — ردود فورية مختصرة"
+          : "Instant mode enabled — fast, concise replies");
+      toast(modeToast, { duration: 2000 });
+    }
+  }, [chatMode, lang]);
 
   // ─── Handle FAB click: auth gate ───
-  // ✅ FIX (dead click): track how long the auth check has been running.
-  // Normally authLoading resolves in one network round-trip, but a stale
-  // session used to trap it in a 401 refetch loop — every FAB click then
-  // hit the "still checking" branch and was silently swallowed ("no
-  // reaction"). If loading somehow exceeds AUTH_LOADING_DEADMAN_MS we stop
-  // waiting and treat the visitor as logged out instead of eating clicks.
-  const authLoadingSinceRef = useRef<number | null>(null);
+  // ✅ FIX (mobile refresh): clicking the FAB while the auth check was still
+  // running used to misclassify logged-in users as guests once the deadman
+  // timer fired (slow mobile networks / cold server). The click is now QUEUED:
+  // it auto-resolves the moment auth settles — opens the chat for a signed-in
+  // user, redirects to /login only when they are genuinely signed out.
+  const [pendingOpen, setPendingOpen] = useState(false);
+  const pendingSinceRef = useRef<number | null>(null);
   useEffect(() => {
-    if (authLoading) {
-      if (authLoadingSinceRef.current === null) authLoadingSinceRef.current = Date.now();
+    if (pendingOpen) {
+      if (pendingSinceRef.current === null) pendingSinceRef.current = Date.now();
     } else {
-      authLoadingSinceRef.current = null;
+      pendingSinceRef.current = null;
     }
-  }, [authLoading]);
+  }, [pendingOpen]);
+
+  // Resolve the queued click as soon as the auth check settles.
+  useEffect(() => {
+    if (authLoading || !pendingOpen) return;
+    setPendingOpen(false);
+    if (isAuthenticated) {
+      setIsOpen(true);
+      setIsMinimized(false);
+      return;
+    }
+    const redirectMsg = lang === "ar"
+      ? "يجب تسجيل الدخول أولاً لاستخدام المساعد الذكي"
+      : "Please log in to use the AI assistant";
+    toast(redirectMsg, { duration: 2500 });
+    navigate("/login");
+  }, [authLoading, pendingOpen, isAuthenticated, navigate, lang]);
+
+  // Deadman: if the auth check somehow never settles, cancel the queued click
+  // instead of leaving the user waiting forever (no guest misclassification).
+  useEffect(() => {
+    if (!pendingOpen || !authLoading) return;
+    const waited = pendingSinceRef.current ? Date.now() - pendingSinceRef.current : 0;
+    const remaining = Math.max(0, AUTH_LOADING_DEADMAN_MS - waited);
+    const timer = setTimeout(() => {
+      setPendingOpen(false);
+      const stuckMsg = lang === "ar"
+        ? "تعذر التحقق من تسجيل الدخول — تحقق من الاتصال وحاول مرة أخرى"
+        : "Couldn't verify login — check your connection and try again";
+      toast(stuckMsg, { duration: 2500 });
+    }, remaining);
+    return () => clearTimeout(timer);
+  }, [pendingOpen, authLoading, lang]);
 
   const handleFabClick = useCallback(() => {
-    // While auth state is loading, show a toast and wait — don't silently ignore the click.
+    // While auth state is loading, queue the click — it auto-opens (or
+    // redirects) the instant the check resolves. No clicks are swallowed.
     if (authLoading) {
-      const waitedMs = authLoadingSinceRef.current ? Date.now() - authLoadingSinceRef.current : 0;
-      if (waitedMs < AUTH_LOADING_DEADMAN_MS) {
-        const loadingMsg = lang === "ar"
-          ? "جارٍ التحقق من تسجيل الدخول..."
-          : "Checking login status...";
-        toast(loadingMsg, { duration: 1500 });
-        return;
-      }
-      // Auth check stuck — fall through and treat as logged out.
+      const loadingMsg = lang === "ar"
+        ? "جارٍ التحقق من تسجيل الدخول..."
+        : "Checking login status...";
+      toast(loadingMsg, { duration: 1500 });
+      setPendingOpen(true);
+      return;
     }
     // Auth gate: redirect to login if not authenticated
     if (!isAuthenticated) {
@@ -981,6 +1020,32 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
+                      {/* ─── Thinking/Instant brain toggle (moved from its own
+                           full-width row — frees vertical chat space) ─── */}
+                      <button
+                        onClick={() => toggleChatMode(chatMode === "thinking" ? "instant" : "thinking")}
+                        disabled={isLoading}
+                        aria-pressed={chatMode === "thinking"}
+                        className={
+                          "relative flex h-9 w-9 items-center justify-center rounded-lg border transition-all disabled:opacity-50 disabled:cursor-not-allowed " +
+                          (chatMode === "thinking"
+                            ? "border-violet-500/50 bg-violet-500/20 text-violet-300 shadow-[0_0_12px_rgba(139,92,246,0.35)]"
+                            : "border-transparent text-slate-500 hover:border-cyan-500/30 hover:bg-cyan-400/10 hover:text-cyan-300")
+                        }
+                        title={chatMode === "thinking"
+                          ? (lang === "ar"
+                            ? "وضع التفكير العميق مفعّل — اضغط للتبديل إلى الوضع السريع"
+                            : "Thinking mode ON — click to switch to Instant")
+                          : (lang === "ar"
+                            ? "الوضع السريع — اضغط لتفعيل وضع التفكير العميق"
+                            : "Instant mode — click to enable Thinking")}
+                      >
+                        <Brain className="w-4 h-4" />
+                        {/* active pulse dot */}
+                        {chatMode === "thinking" && (
+                          <span className="absolute -top-0.5 -end-0.5 w-2 h-2 rounded-full bg-violet-400 border border-[#0a1019] animate-pulse" />
+                        )}
+                      </button>
                       {/* Clear chat button */}
                       <button
                         onClick={clearChat}
@@ -1007,62 +1072,6 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                       </button>
                     </div>
                   </div>
-                </div>
-
-                {/* ─── Mode Selector (Thinking / Instant) ─── */}
-                <div className="flex-shrink-0 px-3 py-2 bg-[#0d1620] border-b border-[#1e2d3d]">
-                  <div className="flex items-center gap-1.5 p-1 bg-[#0a1019] rounded-lg border border-[#1e2d3d]">
-                    {/* Thinking Mode Button */}
-                    <button
-                      onClick={() => toggleChatMode("thinking")}
-                      disabled={isLoading}
-                      className={
-                        "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-[11px] font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed " +
-                        (chatMode === "thinking"
-                          ? "bg-gradient-to-r from-violet-500/30 to-indigo-500/30 text-violet-300 border border-violet-500/40 shadow-sm"
-                          : "text-slate-500 hover:text-slate-300 border border-transparent")
-                      }
-                      title={lang === "ar"
-                        ? "وضع التفكير: أعمق تحليل وأعلى دقة — مثالي للحسابات والأسئلة المعقدة (أبطأ قليلاً)"
-                        : "Thinking mode: deeper analysis & higher accuracy — ideal for complex calculations (slower)"}
-                    >
-                      <Brain className="w-3.5 h-3.5" />
-                      <span>{lang === "ar" ? "\u062a\u0641\u0643\u064a\u0631" : "Thinking"}</span>
-                    </button>
-
-                    {/* Instant Mode Button */}
-                    <button
-                      onClick={() => toggleChatMode("instant")}
-                      disabled={isLoading}
-                      className={
-                        "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-[11px] font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed " +
-                        (chatMode === "instant"
-                          ? "bg-gradient-to-r from-cyan-500/30 to-blue-500/30 text-cyan-300 border border-cyan-500/40 shadow-sm"
-                          : "text-slate-500 hover:text-slate-300 border border-transparent")
-                      }
-                      title={lang === "ar"
-                        ? "وضع السرعة: أسرع رد وإجابات مختصرة للأسئلة المباشرة"
-                        : "Instant mode: fastest replies, concise answers for direct questions"}
-                    >
-                      <Rocket className="w-3.5 h-3.5" />
-                      <span>{lang === "ar" ? "\u0633\u0631\u064a\u0639" : "Instant"}</span>
-                    </button>
-                  </div>
-                  {/* Mode description */}
-                  {(() => {
-                    const thinkingDesc = lang === "ar"
-                      ? "تحليل هندسي عميق ومُتحقق منه — للمسائل والحسابات المعقدة"
-                      : "Deep, verified engineering analysis — for complex problems";
-                    const instantDesc = lang === "ar"
-                      ? "ردود فورية مختصرة — للأسئلة السريعة"
-                      : "Instant concise replies — for quick questions";
-                    const modeDesc = chatMode === "thinking" ? thinkingDesc : instantDesc;
-                    return (
-                      <p className={`text-[10px] text-slate-600 mt-1.5 text-center ${kb.open ? "hidden" : ""}`}>
-                        {modeDesc}
-                      </p>
-                    );
-                  })()}
                 </div>
 
                 {/* ─── Messages Area ─── */}

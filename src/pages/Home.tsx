@@ -167,6 +167,19 @@ const categoryIcons: Record<string, React.ReactNode> = {
   BarChart3: <BarChart3 className="h-5 w-5" />,
 };
 
+// ✅ Real (non-AI-generated) software covers for category cards, keyed by
+// category slug. The ETAP card uses an authentic ETAP application screenshot
+// (full window: menu bar, toolbars, component library, one-line diagram) so
+// visitors instantly recognize the actual software being taught. Served
+// locally from /public to avoid hotlink breakage.
+const CATEGORY_COVERS: Record<string, { src: string; alt: string; altAr: string }> = {
+  etap: {
+    src: "/etap-category.jpg",
+    alt: "ETAP software application window with a real power-system one-line diagram",
+    altAr: "نافذة برنامج ETAP الحقيقية مع مخطط الشبكة الكهربية أحادي الخط",
+  },
+};
+
 // Official software logos — downloaded from each vendor's official source and
 // stored locally in /public/software-logos/ to prevent broken external hotlinks.
 // Sources:
@@ -566,17 +579,31 @@ export default function Home() { // NOSONAR — landing page with hero + feature
               {(categories || []).map((cat: Category, idx: number) => {
                 const variants = ["glow", "pulse", "tilt", "ripple"] as const;
                 const variant = variants[idx % variants.length];
+                // ✅ Real (non-AI) software cover — ETAP card shows an authentic
+                // application screenshot instead of the icon-only design.
+                const cover = CATEGORY_COVERS[cat.slug];
                 return (
                   <ScrollReveal key={cat.id} delay={idx * 0.1}>
                     <Link to={`/courses?category=${cat.id}`}>
-                      <motion.div whileHover={{ y: -8, scale: 1.03 }} whileTap={{ scale: 0.98 }} transition={{ type: "spring", stiffness: 400, damping: 20 }} className="group rounded-xl border border-border bg-primary p-8 transition-all hover:border-accent-secondary/40 hover:shadow-[0_12px_32px_rgba(6,182,212,0.1)]">
-                        <AnimatedIcon icon={categoryIcons[cat.icon] || <Zap className="h-5 w-5" />} variant={variant} size="md" color="#06b6d4" />
-                        <h3 className="mt-4 text-lg font-semibold text-foreground">{lang === "ar" ? cat.nameAr : cat.nameEn}</h3>
-                        <p className="mt-2 text-sm leading-relaxed text-text-muted">{lang === "ar" ? cat.descriptionAr : cat.descriptionEn}</p>
-                        <motion.div className="mt-4 flex items-center gap-2 text-sm font-medium text-accent-secondary opacity-0 group-hover:opacity-100 transition-opacity">
-                          {lang === "en" ? "Explore" : "استكشف"}
-                          <ArrowRight className="h-4 w-4" />
-                        </motion.div>
+                      <motion.div whileHover={{ y: -8, scale: 1.03 }} whileTap={{ scale: 0.98 }} transition={{ type: "spring", stiffness: 400, damping: 20 }} className={"group rounded-xl border border-border bg-primary transition-all hover:border-accent-secondary/40 hover:shadow-[0_12px_32px_rgba(6,182,212,0.1)] " + (cover ? "overflow-hidden" : "p-8")}>
+                        {cover && (
+                          <div className="relative h-36 w-full overflow-hidden border-b border-border">
+                            <img src={cover.src} alt={lang === "ar" ? cover.altAr : cover.alt} loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-[#0a1019]/75 via-transparent to-transparent" aria-hidden="true" />
+                            <div className="absolute bottom-2.5 end-3 flex h-9 w-9 items-center justify-center rounded-lg border border-cyan-500/40 bg-[#0a1019]/85 text-[#06b6d4] backdrop-blur-sm">
+                              {categoryIcons[cat.icon] || <Zap className="h-5 w-5" />}
+                            </div>
+                          </div>
+                        )}
+                        <div className={cover ? "p-6" : ""}>
+                          {!cover && <AnimatedIcon icon={categoryIcons[cat.icon] || <Zap className="h-5 w-5" />} variant={variant} size="md" color="#06b6d4" />}
+                          <h3 className={"text-lg font-semibold text-foreground " + (cover ? "" : "mt-4")}>{lang === "ar" ? cat.nameAr : cat.nameEn}</h3>
+                          <p className="mt-2 text-sm leading-relaxed text-text-muted">{lang === "ar" ? cat.descriptionAr : cat.descriptionEn}</p>
+                          <motion.div className="mt-4 flex items-center gap-2 text-sm font-medium text-accent-secondary opacity-0 group-hover:opacity-100 transition-opacity">
+                            {lang === "en" ? "Explore" : "استكشف"}
+                            <ArrowRight className="h-4 w-4" />
+                          </motion.div>
+                        </div>
                       </motion.div>
                     </Link>
                   </ScrollReveal>

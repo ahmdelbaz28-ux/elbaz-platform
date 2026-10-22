@@ -1,9 +1,10 @@
-import { SignJWT, jwtVerify } from "jose";
+import { SignJWT, jwtVerify, compactVerify } from "jose";
 import { env } from "./env";
 import { logger } from "./logger.js";
 
 // ✅ SECURITY FIX: Use centralized env.ts — required() throws in production if missing
-function getSecret(): Uint8Array {
+// Exported so tests can mint tokens with the exact secret the module verifies against.
+export function getSecret(): Uint8Array {
   const secret = env.APP_SECRET;
 
   if (!secret) {
@@ -57,7 +58,7 @@ export async function verifyToken(token: string, expectedFingerprint?: string): 
       audience: AUDIENCE,
       clockTolerance: 30,
     });
-    
+
     const tokenPayload = payload as unknown as TokenPayload;
     
     // 🛡️ Elite Security: Verify device fingerprint if provided
@@ -72,6 +73,33 @@ export async function verifyToken(token: string, expectedFingerprint?: string): 
   }
 }
 
+/**
+ * ✅ SESSION PERSISTENCE FIX: verify a token whose signature/issuer/audience
+ * are valid but whose `exp` has passed. Used by the auth context to grant an
+ * expired session a transparent renewal (grace window) instead of a hard 401 —
+ * previously a user returning after the short access-token TTL (15m) got
+ * logged out on their very next page load even though the auth cookie still
+ * had a 30-day maxAge ("refresh → chatbot asks me to log in again").
+ * Returns the payload (including `exp`) or null when the token is invalid
+ * for any other reason (bad signature, wrong issuer/audience).
+ */
+export async function verifyExpiredToken(token: string): Promise<TokenPayload | null> {
+  try {
+    // jose v6 has no ignoreExpiration option — compactVerify validates ONLY
+    // the JWS signature (no registered-claim checks), then we decode the
+    // claims ourselves and enforce issuer/audience manually.
+    const { payload } = await compactVerify(token, getSecret());
+    const claims = JSON.parse(new TextDecoder().decode(payload)) as TokenPayload & {
+      iss?: string;
+      aud?: string;
+      exp?: number;
+    };
+    if (claims.iss !== ISSUER || claims.aud !== AUDIENCE) return null;
+    return claims as unknown as TokenPayload;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * ✅ SECURITY: Check how many seconds until the token expires.
