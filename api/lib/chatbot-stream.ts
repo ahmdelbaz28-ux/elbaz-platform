@@ -807,6 +807,7 @@ export async function getStreamResponse(request: {
     systemPrompt: getSystemPrompt(request.language, routerMode, request.catalog, !!request.vision, request.historySummary),
     mode: routerMode,
     vision: !!request.vision,
+    language: request.language,
     gen: routerMode === "instant"
       ? { temperature: routerTuning.temperature, maxTokens: routerTuning.maxTokens, attemptTimeoutMs: 10_000, globalBudgetMs: 12_000 }
       : { temperature: routerTuning.temperature, maxTokens: routerTuning.maxTokens, attemptTimeoutMs: 20_000, globalBudgetMs: 22_000 },
