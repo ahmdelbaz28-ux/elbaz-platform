@@ -8,7 +8,7 @@ import "@/elite-animations.css";
 import {
   LayoutDashboard, Users, BookOpen, Headphones, DollarSign, Phone, FileText, Palette, Tag, Megaphone,
   Plus, Pencil, Trash2, Save, Eye, Zap, TrendingUp, CheckCircle, ChevronLeft, ChevronRight,
-  LogOut, ArrowUpRight, Shield, PlayCircle,
+  LogOut, ArrowUpRight, Shield, PlayCircle, Newspaper,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,8 @@ interface PromotionItem { id: string; titleEn: string; titleAr: string; subtitle
 interface CourseItem { id: number; slug: string; titleEn: string; titleAr: string; descriptionEn: string | null; descriptionAr: string | null; shortDescEn?: string | null; shortDescAr?: string | null; thumbnailUrl: string | null; price: number; currency: string; isFeatured: boolean; isPublished: boolean; level: string; category: number | null; studentCount: number; createdAt: Date; updatedAt: Date; }
 interface LessonItem { id: number; courseId: number; titleEn: string; titleAr: string; descriptionEn: string | null; descriptionAr: string | null; videoUrl: string | null; durationMinutes: number | null; sortOrder: number; isFree: boolean; isPublished: boolean; }
 interface CategoryItem { id: number; slug: string; nameEn: string; nameAr: string; icon?: string; sortOrder?: number; }
+interface ArticleRow { id: number; slug: string; titleAr: string; titleEn: string; excerptAr: string | null; excerptEn: string | null; contentAr: string; contentEn: string | null; coverImage: string | null; category: string; tags: string | null; authorName: string | null; isPublished: boolean; viewCount: number; readMinutes: number; sortOrder: number; publishedAt: Date | string | null; createdAt: Date; updatedAt: Date; }
+const emptyArticleForm = { id: 0, slug: "", titleAr: "", titleEn: "", excerptAr: "", excerptEn: "", contentAr: "", coverImage: "", category: "كهرباء القوى", tags: "", isPublished: false };
 
 const CMS_SECTIONS: Record<string, { labelEn: string; labelAr: string; keys: string[] }> = {
   hero: { labelEn: "Hero Section", labelAr: "قسم البطل", keys: ["titleEn", "titleAr", "subtitleEn", "subtitleAr", "ctaTextEn", "ctaTextAr", "backgroundImage"] },
@@ -50,6 +52,7 @@ const SIDEBAR_ITEMS = [
   { id: "dashboard", icon: LayoutDashboard, labelEn: "Dashboard", labelAr: "لوحة التحكم" },
   { id: "users", icon: Users, labelEn: "Users", labelAr: "المستخدمين" },
   { id: "courses", icon: BookOpen, labelEn: "Courses", labelAr: "الكورسات" },
+  { id: "articles", icon: Newspaper, labelEn: "Articles", labelAr: "المقالات" },
   { id: "tickets", icon: Headphones, labelEn: "Tickets", labelAr: "التذاكر" },
   { id: "payments", icon: DollarSign, labelEn: "Payments", labelAr: "المدفوعات" },
   { id: "contact", icon: Phone, labelEn: "Contact", labelAr: "التواصل" },
@@ -96,6 +99,12 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
   const createLesson = trpc.admin.createLesson.useMutation({ onSuccess: () => { utils.admin.listLessons.invalidate(); setShowLessonForm(false); toast.success(lang === "en" ? "Lesson added" : "تمت إضافة الدرس"); }, onError: (err) => toast.error(err.message) });
   const updateLesson = trpc.admin.updateLesson.useMutation({ onSuccess: () => { utils.admin.listLessons.invalidate(); setShowLessonForm(false); toast.success(lang === "en" ? "Lesson updated" : "تم تحديث الدرس"); }, onError: (err) => toast.error(err.message) });
   const deleteLesson = trpc.admin.deleteLesson.useMutation({ onSuccess: () => { utils.admin.listLessons.invalidate(); toast.success(lang === "en" ? "Lesson deleted" : "تم حذف الدرس"); }, onError: (err) => toast.error(err.message) });
+  // ── Articles (blog) management ──
+  const { data: articlesData } = trpc.articles.adminList.useQuery(undefined, { enabled: !!isAdmin && activeTab === "articles" });
+  const createArticle = trpc.articles.create.useMutation({ onSuccess: () => { utils.articles.adminList.invalidate(); setShowArticleForm(false); toast.success(lang === "en" ? "Article saved" : "تم حفظ المقال"); }, onError: (err) => toast.error(err.message) });
+  const updateArticle = trpc.articles.update.useMutation({ onSuccess: () => { utils.articles.adminList.invalidate(); setShowArticleForm(false); toast.success(lang === "en" ? "Article updated" : "تم تحديث المقال"); }, onError: (err) => toast.error(err.message) });
+  const toggleArticlePublish = trpc.articles.togglePublish.useMutation({ onSuccess: () => { utils.articles.adminList.invalidate(); toast.success(lang === "en" ? "Publish state updated" : "تم تحديث حالة النشر"); }, onError: (err) => toast.error(err.message) });
+  const deleteArticle = trpc.articles.delete.useMutation({ onSuccess: () => { utils.articles.adminList.invalidate(); toast.success(lang === "en" ? "Article deleted" : "تم حذف المقال"); }, onError: (err) => toast.error(err.message) });
 
   // ✅ Manual payment approval (Vodafone Cash / InstaPay / bank transfer)
   const approveManualPayment = trpc.admin.approveManual.useMutation({ onSuccess: () => { utils.admin.payments.invalidate(); utils.admin.stats.invalidate(); toast.success(lang === "en" ? "Payment approved — course activated" : "تم اعتماد الدفع وتفعيل الكورس"); }, onError: (err) => toast.error(err.message) });
@@ -160,6 +169,9 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
 
   /* Course & lesson management state */
   const [showCourseForm, setShowCourseForm] = useState(false);
+  // ── Articles form state ──
+  const [showArticleForm, setShowArticleForm] = useState(false);
+  const [articleForm, setArticleForm] = useState(emptyArticleForm);
   const [courseForm, setCourseForm] = useState({ slug: "", categoryId: 0, titleEn: "", titleAr: "", shortDescEn: "", shortDescAr: "", descriptionEn: "", descriptionAr: "", thumbnailUrl: "/course-etap.jpg", level: "beginner", isPremium: false, price: 0, isPublished: false, isFeatured: false });
   const [showLessonForm, setShowLessonForm] = useState(false);
   const [editingLesson, setEditingLesson] = useState<LessonItem | null>(null);
@@ -270,6 +282,7 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
   const allPayments = paymentsData?.items ?? [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const allCourses = (coursesData as any)?.items ?? [];
+  const allArticles = (articlesData?.items ?? []) as unknown as ArticleRow[];
 
   // Status badge colour lookup maps — replace multi-branch ternaries that
   // SonarCloud S3358 flags.
@@ -528,6 +541,35 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
               )}
 
               {/* ═══════════════════ TICKETS ═══════════════════ */}
+              {activeTab === "articles" && (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h2 className="text-lg font-bold text-foreground">{isRTL ? "إدارة المقالات" : "Manage Articles"}</h2>
+                    <Button onClick={() => openArticleForm()} className="bg-[#06b6d4] text-background"><Plus className="h-4 w-4 mr-1" />{isRTL ? "مقال جديد" : "New Article"}</Button>
+                  </div>
+                  {allArticles.length === 0 && (
+                    <p className="text-sm text-text-muted text-center py-10">{isRTL ? "لا توجد مقالات بعد — اضغط مقال جديد" : "No articles yet — click New Article"}</p>
+                  )}
+                  <div className="grid gap-3">
+                    {allArticles.map((a) => (
+                      <div key={a.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-primary p-4">
+                        <div className="flex-1 min-w-[200px]">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-semibold text-foreground">{isRTL ? a.titleAr : a.titleEn}</p>
+                            <Badge className={a.isPublished ? "bg-[rgba(16,185,129,0.15)] text-emerald-500 text-[10px]" : "bg-[rgba(245,158,11,0.15)] text-amber-500 text-[10px]"}>{a.isPublished ? (isRTL ? "منشور" : "Published") : (isRTL ? "مسودة" : "Draft")}</Badge>
+                          </div>
+                          <p className="text-xs text-text-muted mt-1" dir="ltr">/articles/{a.slug} · {a.category} · {a.viewCount} {isRTL ? "مشاهدة" : "views"}</p>
+                        </div>
+                        <div className="flex gap-1">
+                          <Button size="sm" variant="ghost" className="h-8 text-xs text-accent-secondary" onClick={() => toggleArticlePublish.mutate({ id: a.id, isPublished: !a.isPublished })}>{a.isPublished ? (isRTL ? "إلغاء النشر" : "Unpublish") : (isRTL ? "نشر" : "Publish")}</Button>
+                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-accent-secondary" onClick={() => openArticleForm(a)}><Pencil className="h-3.5 w-3.5" /></Button>
+                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive" onClick={() => { if (window.confirm(isRTL ? "حذف هذا المقال؟" : "Delete this article?")) deleteArticle.mutate({ id: a.id }); }}><Trash2 className="h-3.5 w-3.5" /></Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {activeTab === "tickets" && (
                 <div className="space-y-6">
                   <div>
@@ -1170,8 +1212,58 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* ═══════════════ ARTICLE FORM DIALOG ═══════════════ */}
+      <Dialog open={showArticleForm} onOpenChange={setShowArticleForm}>
+        <DialogContent className="bg-[#0d1420] border-border max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">{articleForm.id ? (isRTL ? "تعديل المقال" : "Edit Article") : (isRTL ? "مقال جديد" : "New Article")}</DialogTitle>
+            <DialogDescription className="text-text-muted">{isRTL ? "المحتوى نصي — فقرات بأسطر فارغة، ## للعناوين الفرعية، - للقوائم" : "Plain text — blank-line paragraphs, ## subheadings, - list items"}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "العنوان (عربي)" : "Title (AR)"}</Label><Input value={articleForm.titleAr} onChange={(e) => setArticleForm((f) => ({ ...f, titleAr: e.target.value }))} dir="rtl" className="border-border bg-background text-foreground" /></div>
+              <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "العنوان (إنجليزي)" : "Title (EN)"}</Label><Input value={articleForm.titleEn} onChange={(e) => setArticleForm((f) => ({ ...f, titleEn: e.target.value }))} className="border-border bg-background text-foreground" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "الـ Slug (اختياري)" : "Slug (optional)"}</Label><Input value={articleForm.slug} onChange={(e) => setArticleForm((f) => ({ ...f, slug: e.target.value }))} placeholder="etap-guide" dir="ltr" className="border-border bg-background text-foreground" /></div>
+              <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "الفئة" : "Category"}</Label><Input value={articleForm.category} onChange={(e) => setArticleForm((f) => ({ ...f, category: e.target.value }))} className="border-border bg-background text-foreground" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "المقتطف (عربي)" : "Excerpt (AR)"}</Label><Textarea rows={2} value={articleForm.excerptAr} onChange={(e) => setArticleForm((f) => ({ ...f, excerptAr: e.target.value }))} dir="rtl" className="border-border bg-background text-foreground" /></div>
+              <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "المقتطف (إنجليزي)" : "Excerpt (EN)"}</Label><Textarea rows={2} value={articleForm.excerptEn} onChange={(e) => setArticleForm((f) => ({ ...f, excerptEn: e.target.value }))} className="border-border bg-background text-foreground" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "الوسوم (فاصلة بينها)" : "Tags (comma-separated)"}</Label><Input value={articleForm.tags} onChange={(e) => setArticleForm((f) => ({ ...f, tags: e.target.value }))} placeholder="ETAP, تحليل أنظمة" className="border-border bg-background text-foreground" /></div>
+              <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "رابط صورة الغلاف" : "Cover image URL"}</Label><Input value={articleForm.coverImage} onChange={(e) => setArticleForm((f) => ({ ...f, coverImage: e.target.value }))} placeholder="/course-etap.jpg" dir="ltr" className="border-border bg-background text-foreground" /></div>
+            </div>
+            <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "المحتوى (عربي)" : "Content (AR)"}</Label><Textarea rows={12} value={articleForm.contentAr} onChange={(e) => setArticleForm((f) => ({ ...f, contentAr: e.target.value }))} dir="rtl" className="border-border bg-background text-foreground leading-relaxed" /></div>
+            <div className="flex items-center gap-6 pt-1">
+              <div className="flex items-center gap-2"><Switch checked={articleForm.isPublished} onCheckedChange={(v) => setArticleForm((f) => ({ ...f, isPublished: v }))} /><Label className="text-text-muted">{isRTL ? "نشر" : "Published"}</Label></div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowArticleForm(false)} className="border-border text-text-muted">{isRTL ? "إلغاء" : "Cancel"}</Button>
+            <Button onClick={submitArticleForm} disabled={createArticle.isPending || updateArticle.isPending} className="bg-[#06b6d4] text-background">{isRTL ? "حفظ" : "Save"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
+
+  function openArticleForm(a?: ArticleRow) {
+    setArticleForm(a ? { id: a.id, slug: a.slug, titleAr: a.titleAr, titleEn: a.titleEn, excerptAr: a.excerptAr ?? "", excerptEn: a.excerptEn ?? "", contentAr: a.contentAr, coverImage: a.coverImage ?? "", category: a.category, tags: a.tags ?? "", isPublished: a.isPublished } : { ...emptyArticleForm });
+    setShowArticleForm(true);
+  }
+
+  function submitArticleForm() {
+    if (!articleForm.titleAr.trim() || !articleForm.titleEn.trim() || !articleForm.contentAr.trim()) {
+      toast.error(isRTL ? "العنوانان والمحتوى العربي مطلوبة" : "Both titles and Arabic content are required");
+      return;
+    }
+    const payload = { titleAr: articleForm.titleAr.trim(), titleEn: articleForm.titleEn.trim(), excerptAr: articleForm.excerptAr || undefined, excerptEn: articleForm.excerptEn || undefined, contentAr: articleForm.contentAr, coverImage: articleForm.coverImage || undefined, category: articleForm.category.trim() || "general", tags: articleForm.tags || undefined, isPublished: articleForm.isPublished, sortOrder: 0 };
+    if (articleForm.id) updateArticle.mutate({ id: articleForm.id, ...payload });
+    else createArticle.mutate({ slug: articleForm.slug || undefined, ...payload });
+  }
 
   function openEditTheme(theme: ThemeItem) { setEditingTheme({ ...theme }); setThemeDialogOpen(true); }
 }

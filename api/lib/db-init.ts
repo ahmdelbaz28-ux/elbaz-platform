@@ -616,6 +616,44 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         logger.warn("[DB] v6 migration warning", { error: (err as Error).message });
       }
 
+      // ── v7 features: articles table (blog / knowledge base) ──
+      try {
+        logger.info("[DB] Running v7 features migration (articles table)...");
+        await conn.query(`
+          CREATE TABLE IF NOT EXISTS \`articles\` (
+            \`id\`          BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+            \`slug\`        VARCHAR(300)     NOT NULL,
+            \`titleAr\`     VARCHAR(500)     NOT NULL,
+            \`titleEn\`     VARCHAR(500)     NOT NULL,
+            \`excerptAr\`   VARCHAR(1000)    NULL,
+            \`excerptEn\`   VARCHAR(1000)    NULL,
+            \`contentAr\`   MEDIUMTEXT       NOT NULL,
+            \`contentEn\`   MEDIUMTEXT       NULL,
+            \`coverImage\`  VARCHAR(1000)    NULL,
+            \`category\`    VARCHAR(100)     NOT NULL DEFAULT 'general',
+            \`tags\`        VARCHAR(500)     NULL,
+            \`authorId\`    BIGINT UNSIGNED  NULL,
+            \`authorName\`  VARCHAR(200)     NULL,
+            \`isPublished\` BOOLEAN          NOT NULL DEFAULT FALSE,
+            \`publishedAt\` TIMESTAMP        NULL,
+            \`viewCount\`   INT              NOT NULL DEFAULT 0,
+            \`readMinutes\` INT              NOT NULL DEFAULT 5,
+            \`sortOrder\`   INT              NOT NULL DEFAULT 0,
+            \`createdAt\`   TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            \`updatedAt\`   TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (\`id\`),
+            UNIQUE INDEX \`articles_slug_unique\` (\`slug\`),
+            INDEX \`articles_published_idx\` (\`isPublished\`),
+            INDEX \`articles_category_idx\` (\`category\`),
+            INDEX \`articles_published_at_idx\` (\`publishedAt\`),
+            CONSTRAINT \`fk_articles_author\` FOREIGN KEY (\`authorId\`) REFERENCES \`users\` (\`id\`) ON DELETE SET NULL ON UPDATE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+        logger.info("[DB] v7 articles table verified");
+      } catch (err) {
+        logger.warn("[DB] v7 articles migration warning", { error: (err as Error).message });
+      }
+
       // ── Admin password sync (existing deployments) ──
       // The seed step below (which upserts the admin hash from
       // ADMIN_PASSWORD) only runs on FIRST boot. On existing databases we

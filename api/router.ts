@@ -17,6 +17,7 @@ import { sessionsRouter } from "./sessions-router";
 import { licenseRouter } from "./license-router";
 import { exportRouter } from "./export-router";
 import { referencesRouter } from "./references-router";
+import { articlesRouter } from "./articles-router";
 import { faqRouter } from "./faq-router";
 import { wishlistRouter } from "./wishlist-router";
 import { commentsRouter } from "./comments-router";
@@ -46,6 +47,7 @@ export const appRouter = createRouter({
   license: licenseRouter,
   export: exportRouter,
   references: referencesRouter,
+  articles: articlesRouter,
   faq: faqRouter,
   wishlist: wishlistRouter,
   comments: commentsRouter,
