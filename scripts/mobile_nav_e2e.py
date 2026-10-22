@@ -256,17 +256,31 @@ with sync_playwright() as p:
 
     # F9 (Task 20): YouTube-style hide-on-scroll-down + reveal-on-stop.
     # Simulate a REAL finger drag: continuous scroll steps keep resetting the
-    # stop-debounce, so the hide transition (300ms) completes and the FABs
-    # stay fully hidden while scrolling. A single instant jump would only dip
-    # them 73% before the 220ms reveal fires (verified: DOM classes identical).
-    for step in range(8):
-        pg.evaluate(f"() => window.scrollTo(0, {200 + step * 250})")
-        pg.wait_for_timeout(55)
-    hid = pg.evaluate("() => !!document.querySelector('.whatsapp-fab-wrap.fab-scroll-hidden')")
-    chat_hid = pg.evaluate("() => document.querySelector('button.chatbot-fab')?.classList.contains('fab-scroll-hidden')")
-    top_hid = pg.evaluate("() => document.querySelector('button.scroll-top-fab')?.classList.contains('fab-scroll-hidden')")
+    # stop-debounce, so the hide transition completes and the FABs stay fully
+    # hidden while scrolling. A single instant jump would only dip them 73%
+    # before the 220ms reveal fires (verified: DOM classes identical).
+    # ✅ Task 22 update: under mobile emulation the compositor now applies
+    # programmatic scrollTo offsets asynchronously (the article page got
+    # heavier in Task 21 — offsets can lag ~1.5s behind the calls), so a fixed
+    # 8x55ms cadence checks the classes BEFORE any downward scroll event has
+    # even fired. Poll instead: keep scrolling downward (never letting the
+    # 220ms reveal fire) until all three FABs carry the class, with a bounded
+    # deadline so a genuinely broken feature still fails the check.
+    import time as _time
+    deadline = _time.time() + 8.0
+    hid = chat_hid = top_hid = False
+    step = 0
+    while _time.time() < deadline:
+        pg.evaluate(f"() => window.scrollTo(0, {400 + (step % 30) * 90})")
+        pg.wait_for_timeout(120)
+        hid = pg.evaluate("() => !!document.querySelector('.whatsapp-fab-wrap.fab-scroll-hidden')")
+        chat_hid = pg.evaluate("() => document.querySelector('button.chatbot-fab')?.classList.contains('fab-scroll-hidden')")
+        top_hid = pg.evaluate("() => document.querySelector('button.scroll-top-fab')?.classList.contains('fab-scroll-hidden')")
+        if hid and chat_hid and top_hid:
+            break
+        step += 1
     check("F9a FABs dip away while scrolling down", hid and chat_hid and top_hid,
-          f"wa={hid} chat={chat_hid} top={top_hid}")
+          f"wa={hid} chat={chat_hid} top={top_hid} steps={step}")
     pg.screenshot(path=f"{OUT}/F5_fabs_hidden_during_scroll.png")
     pg.wait_for_timeout(800)
     hid2 = pg.evaluate("() => !!document.querySelector('.whatsapp-fab-wrap.fab-scroll-hidden')")
