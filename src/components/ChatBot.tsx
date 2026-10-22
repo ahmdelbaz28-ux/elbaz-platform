@@ -1371,7 +1371,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
             {!isMinimized && (
               <>
                 {/* ─── Header (compact — every vertical px goes to the chat) ─── */}
-                <div className="flex-shrink-0 px-3 py-2 bg-gradient-to-r from-cyan-600/20 to-blue-600/20 border-b border-[#1e2d3d]">
+                <div className="chatbot-header flex-shrink-0 px-3 py-2 bg-gradient-to-r from-cyan-600/20 to-blue-600/20 border-b border-[#1e2d3d]">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <div className="relative">

@@ -751,6 +751,25 @@ button, a, [role="button"] {
   }
 }
 
+/* ── Chat header compaction (owner request: reclaim vertical chat space) ──
+   The global 44px coarse-pointer touch rule and the RTL Arabic line-height
+   rules (h3 1.4 / p 1.85) inflate the chat header on phones. Inside the
+   header only, restore the compact sizes: 32px icon buttons and tight title
+   lines. Chat MESSAGE bubbles keep the roomy Arabic line-height. */
+@media (pointer: coarse) {
+  .chatbot-header button,
+  .chatbot-header [role="button"] {
+    min-height: 32px;
+    min-width: 32px;
+  }
+}
+.chatbot-header h3 {
+  line-height: 1.25 !important;
+}
+.chatbot-header p {
+  line-height: 1.3 !important;
+}
+
 /* ── YouTube-style scroll behavior (useFabScrollVisibility) ─────────────
    While the user scrolls DOWN the FABs dip below the screen edge so they
    never cover the text being read; scrolling UP or pausing reveals them
