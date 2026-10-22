@@ -791,6 +791,33 @@ button, a, [role="button"] {
   }
 }
 
+/* Proactive WhatsApp welcome bubble — pops in shortly after the FAB
+   entrance with the custom greeting, anchored to the button. */
+@keyframes wa-welcome-in {
+  0% {
+    opacity: 0;
+    transform: translateY(0.5rem) scale(0.92);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.wa-welcome-bubble {
+  animation: wa-welcome-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: bottom right;
+}
+@media (min-width: 768px) {
+  .wa-welcome-bubble {
+    transform-origin: bottom left;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wa-welcome-bubble {
+    animation: none;
+  }
+}
+
 
 /* RTL overrides are now handled via Tailwind logical properties (end-, start-, ms-, me-)
    Legacy CSS RTL overrides removed — see ChatBot, CourseCard, CourseDetail, Home, Navbar */
