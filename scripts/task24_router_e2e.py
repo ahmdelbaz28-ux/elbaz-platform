@@ -198,11 +198,10 @@ def main() -> int:
         add_btn.click()
         pg.wait_for_timeout(800)
         dlg = pg.locator("[role=dialog]")
-        dlg.locator("select, [role=combobox]").first.click()
-        pg.wait_for_timeout(500)
-        # choose Groq type from the dropdown listbox (prefills baseUrl)
-        pg.locator("[role=option]:has-text('Groq')").first.click()
-        pg.wait_for_timeout(300)
+        # NOTE: re-picking the default catalog option does NOT fire Radix
+        # onValueChange, so we set the baseUrl explicitly.
+        base_input = dlg.locator("input[placeholder='https://api.groq.com/openai/v1']").first
+        base_input.fill("https://api.groq.com/openai/v1")
         name_input = dlg.locator("input[placeholder*='Groq'], input[placeholder*='مثال']").first
         name_input.fill("E2E Fake Provider")
         key_input = dlg.locator("input[type=password]").first
@@ -239,6 +238,14 @@ def main() -> int:
         body_final = pg.locator("body").inner_text()
         check("B3 fake provider deleted", "E2E Fake Provider" not in body_final)
         pg.screenshot(path=f"{OUT}/T24_B3_deleted.png")
+
+        # ---------- A6: re-scan all → vision models discovered (OpenRouter VL) ----------
+        pg.locator("button:has-text('فحص الكل')").first.click(timeout=8000)
+        wait_for_toast(pg, "فحص جميع المزودين", 90)
+        pg.wait_for_timeout(2500)
+        vision_stat = pg.locator("div.rounded-xl:has-text('نماذج الرؤية') div.text-2xl").first.inner_text()
+        check("A6 vision models > 0 after re-scan", vision_stat.strip() not in ("0", ""), f"vision stat = {vision_stat}")
+        pg.screenshot(path=f"{OUT}/T24_A6_rescan.png")
 
         # ---------- D1: no raw key leak ----------
         dom_all = pg.locator("body").inner_text()
