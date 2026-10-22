@@ -34,6 +34,7 @@
 import { env } from "../lib/env";
 import { getSystemPrompt, MODE_TUNING, type ChatbotMode, type ModeTuning } from "./chatbot-prompts.js";
 import { logger } from "./logger.js";
+import { routeChatCompletion } from "./ai-router.js";
 
 // ════════════════════════════════════════════════════════════════════════
 // HELPERS
@@ -716,6 +717,23 @@ export async function getChatResponse(request: {
   const tuning = MODE_TUNING[mode];
   const systemPrompt = getSystemPrompt(request.language, mode, request.catalog);
 
+  // ─── DYNAMIC ROUTER (v9) — admin-managed providers first ──────────────
+  // Any provider the admin configured in the dashboard (with a valid key and
+  // discovered models) is tried before the legacy env cascade: priority
+  // order → tier order, with automatic model↔provider failover. Null here
+  // (no pool / all cooling down / budget spent) drops to the legacy chain
+  // below, so the chatbot can never become LESS available than before.
+  const routed = await routeChatCompletion({
+    messages: request.messages,
+    systemPrompt,
+    mode,
+    vision: false,
+    gen: mode === "instant"
+      ? { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 10_000, globalBudgetMs: 12_000 }
+      : { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 20_000, globalBudgetMs: 22_000 },
+  });
+  if (routed.ok) return buildSuccessResult({ reply: routed.result.reply, model: routed.result.model });
+
   if (mode === "instant") {
     // INSTANT — fastest provider first: Groq → OpenRouter (fast model) → NVIDIA
     const groqResult = await tryGroqTier(request.messages, systemPrompt, tuning);
@@ -808,6 +826,19 @@ export async function getVisionResponse(request: {
   const tuning = MODE_TUNING[mode];
   const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, true);
   const [firstTimeout, retryTimeout] = tuning.groqAttemptTimeouts;
+
+  // ─── DYNAMIC ROUTER (v9) — vision-only failover across all providers ──
+  // Image requests are offered ONLY to models flagged supportsVision=true
+  // (discovery metadata / admin toggle). Text-only models are never
+  // contacted with image parts — same mandatory rule as the legacy chain.
+  const routedVision = await routeChatCompletion({
+    messages: request.messages,
+    systemPrompt,
+    mode,
+    vision: true,
+    gen: { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 25_000, globalBudgetMs: 26_000 },
+  });
+  if (routedVision.ok) return buildSuccessResult({ reply: routedVision.result.reply, model: routedVision.result.model });
 
   // 1) Groq Llama-4-Scout (multimodal, ultra-fast) — 2 attempts
   let result = await tryGroq(request.messages, systemPrompt, GROQ_VISION_MODEL, firstTimeout, tuning);

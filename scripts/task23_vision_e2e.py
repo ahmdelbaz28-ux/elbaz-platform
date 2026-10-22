@@ -111,8 +111,10 @@ with sync_playwright() as p:
 
     # ---------- login ----------
     pg.goto(PROD + "/login", wait_until="domcontentloaded", timeout=45000)
-    pg.wait_for_timeout(2500)
+    pg.wait_for_timeout(4000)
     dismiss_overlays(pg)
+    pg.wait_for_timeout(800)
+    dismiss_cookie(pg)  # the banner mounts late — second sweep after it appears
     pg.locator("form input").nth(0).fill("admin")
     pg.locator("form input[type=password]").first.fill(ADMIN_PW)
     pg.locator("form button[type=submit]").first.click()
@@ -120,8 +122,10 @@ with sync_playwright() as p:
 
     # ---------- open chat, clear previous conversation ----------
     pg.goto(PROD + "/", wait_until="domcontentloaded", timeout=45000)
-    pg.wait_for_timeout(2500)
+    pg.wait_for_timeout(4000)
     dismiss_overlays(pg)
+    pg.wait_for_timeout(800)
+    dismiss_cookie(pg)
     open_chat(pg)
     pg.wait_for_timeout(400)
     try:

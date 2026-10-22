@@ -74,3 +74,11 @@ export {
   type Article,
   type InsertArticle,
 } from "./schema/shared.js";
+
+export {
+  // AI Router (dynamic multi-provider chatbot gateway)
+  aiProviders,
+  aiModels,
+  type AiProvider,
+  type AiModel,
+} from "./schema/ai.js";
