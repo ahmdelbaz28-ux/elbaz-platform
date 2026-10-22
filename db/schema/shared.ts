@@ -13,6 +13,7 @@ import {
   boolean,
   timestamp,
   int,
+  mediumtext,
   index,
   uniqueIndex,
   foreignKey,
@@ -260,8 +261,50 @@ export const faqEntries = mysqlTable(
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Articles (blog / knowledge base — admin-authored editorial content)
+// ─────────────────────────────────────────────────────────────────────────────
+export const articles = mysqlTable(
+  "articles",
+  {
+    id: bigint("id", { mode: "number", unsigned: true }).primaryKey().autoincrement(),
+    slug: varchar("slug", { length: 300 }).notNull(),
+    titleAr: varchar("titleAr", { length: 500 }).notNull(),
+    titleEn: varchar("titleEn", { length: 500 }).notNull(),
+    excerptAr: varchar("excerptAr", { length: 1000 }),
+    excerptEn: varchar("excerptEn", { length: 1000 }),
+    contentAr: mediumtext("contentAr").notNull(),
+    contentEn: mediumtext("contentEn"),
+    coverImage: varchar("coverImage", { length: 1000 }),
+    category: varchar("category", { length: 100 }).notNull().default("general"),
+    tags: varchar("tags", { length: 500 }),
+    authorId: bigint("authorId", { mode: "number", unsigned: true }),
+    authorName: varchar("authorName", { length: 200 }),
+    isPublished: boolean("isPublished").notNull().default(false),
+    publishedAt: timestamp("publishedAt", { mode: "date" }),
+    viewCount: int("viewCount").notNull().default(0),
+    readMinutes: int("readMinutes").notNull().default(5),
+    sortOrder: int("sortOrder").notNull().default(0),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("articles_slug_unique").on(table.slug),
+    index("articles_published_idx").on(table.isPublished),
+    index("articles_category_idx").on(table.category),
+    index("articles_published_at_idx").on(table.publishedAt),
+    foreignKey({
+      columns: [table.authorId],
+      foreignColumns: [users.id],
+      name: "fk_articles_author",
+    }).onDelete("set null").onUpdate("cascade"),
+  ]
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 export type FaqEntry = typeof faqEntries.$inferSelect;
 export type ReferenceFile = typeof referenceFiles.$inferSelect;
 export type InsertReferenceFile = typeof referenceFiles.$inferInsert;
+export type Article = typeof articles.$inferSelect;
+export type InsertArticle = typeof articles.$inferInsert;

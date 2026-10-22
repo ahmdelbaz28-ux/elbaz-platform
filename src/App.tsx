@@ -44,6 +44,8 @@ const VerifyEmail = lazy(() => import("./pages/VerifyEmail").then(m => ({ defaul
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword").then(m => ({ default: m.default })));
 const ResetPassword = lazy(() => import("./pages/ResetPassword").then(m => ({ default: m.default })));
 const Documents = lazy(() => import("./pages/Documents").then(m => ({ default: m.default })));
+const Articles = lazy(() => import("./pages/Articles").then(m => ({ default: m.default })));
+const ArticleDetail = lazy(() => import("./pages/ArticleDetail").then(m => ({ default: m.default })));
 
 const CertificateView = lazy(() => import("./pages/CertificateView"));
 const CertificateVerify = lazy(() => import("./components/CertificateVerify"));
@@ -106,6 +108,8 @@ export default function App() {
                 <Route path="/" element={<Home />} />
                 <Route path="/courses" element={<Courses />} />
                 <Route path="/courses/:slug" element={<CourseDetail />} />
+                <Route path="/articles" element={<Articles />} />
+                <Route path="/articles/:slug" element={<ArticleDetail />} />
                 <Route path="/references" element={<References />} />
                 <Route path="/faq" element={<Faq />} />
                 <Route path="/login" element={<Login />} />

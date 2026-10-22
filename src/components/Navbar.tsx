@@ -9,7 +9,7 @@ import {
   Menu, X, LayoutDashboard, Headphones,
   Shield, LogOut, BookOpen, ChevronDown,
   UserCog, FileBox, HelpCircle, Heart, TrendingUp,
-  SunDim, BookMarked,
+  SunDim, BookMarked, Newspaper,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -129,6 +129,7 @@ export default function Navbar() {
             {[
               { path: "/", label: lang === "ar" ? "الرئيسية" : "Home" },
               { path: "/courses", label: lang === "ar" ? "الكورسات" : "Courses", icon: <BookOpen className="h-3.5 w-3.5" /> },
+              { path: "/articles", label: lang === "ar" ? "المقالات" : "Articles", icon: <Newspaper className="h-3.5 w-3.5" /> },
               { path: "/references", label: lang === "ar" ? "المراجع" : "References", icon: <FileBox className="h-3.5 w-3.5" /> },
               { path: "/faq", label: lang === "ar" ? "الأسئلة" : "FAQ", icon: <HelpCircle className="h-3.5 w-3.5" /> },
               ...(isAuthenticated ? [{ path: "/documents", label: lang === "ar" ? "المستندات" : "Documents", icon: <BookMarked className="h-3.5 w-3.5" /> }] : []),

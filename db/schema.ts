@@ -66,8 +66,11 @@ export {
   softwareDownloads,
   referenceFiles,
   faqEntries,
+  articles,
   // Shared types
   type FaqEntry,
   type ReferenceFile,
   type InsertReferenceFile,
+  type Article,
+  type InsertArticle,
 } from "./schema/shared.js";
