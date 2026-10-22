@@ -58,7 +58,7 @@ import {
   validateGroqKey,
   validateOpenRouterKey,
 } from "./chatbot.js";
-import { routeChatStream } from "./ai-router.js";
+import { routeChatStream, buildUpstreamSSETransform } from "./ai-router.js";
 
 // ════════════════════════════════════════════════════════════════════════
 // STREAMING — provider selection
@@ -401,33 +401,12 @@ async function streamNvidiaProvider(
 /**
  * Build a TransformStream that decodes upstream SSE chunks and re-emits
  * lightweight `data: {"text": "..."}` events for our client.
+ * Delegates to the SHARED parser in ai-router.ts — one implementation of
+ * the OpenAI-compatible SSE protocol for both the dynamic router and the
+ * legacy cascade (Sonar: no duplicated parsing logic).
  */
 function buildSSEContentTransformStream(encoder: TextEncoder): TransformStream<Uint8Array, Uint8Array> {
-  const decoder = new TextDecoder();
-  return new TransformStream<Uint8Array, Uint8Array>({
-    transform(chunk, controller) {
-      try {
-        const text = decoder.decode(chunk, { stream: true });
-        const lines = text.split("\n");
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || trimmed === "data: [DONE]") continue;
-          if (!trimmed.startsWith("data: ")) continue;
-          try {
-            const parsed = JSON.parse(trimmed.slice(6));
-            const delta = parsed.choices?.[0]?.delta;
-            if (delta?.content) {
-              try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: sanitizeReplyOutput(delta.content) })}\n\n`)); } catch { /* closed */ }
-            }
-          } catch { /* skip malformed JSON */ }
-        }
-      } catch { /* decode error */ }
-    },
-    flush(controller) {
-      try { controller.enqueue(encoder.encode("data: [DONE]\n\n")); } catch { /* closed */ }
-      try { controller.terminate(); } catch { /* terminated */ }
-    },
-  });
+  return buildUpstreamSSETransform(encoder);
 }
 
 /**
