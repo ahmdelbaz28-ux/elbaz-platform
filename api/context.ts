@@ -61,6 +61,47 @@ const SLIDING_REFRESH_THRESHOLD_S = 2 * 60 * 60; // 2 hours
 // The window matches the cookie maxAge so "logged in" == "cookie alive".
 const EXPIRED_TOKEN_GRACE_S = AUTH_COOKIE_MAX_AGE; // 30 days, matches the cookie
 
+/**
+ * ✅ SESSION PERSISTENCE FIX: renew a session carried by a token that failed
+ * normal verification ONLY because its `exp` passed. The signature, issuer and
+ * audience must still be valid and the expiry must fall within the grace
+ * window; the user is then re-loaded from the DB (tokenVersion revocation
+ * still applies) and a fresh 30-day cookie pair is minted transparently.
+ * Without this, a user returning after the short access TTL was logged out on
+ * the very next page load ("refresh → chatbot asks me to log in again").
+ * Returns the renewed SafeUser, or null when anything does not qualify.
+ * Kept as a standalone helper so createContext stays under the complexity bar.
+ */
+async function renewExpiredTokenSession(
+  req: Request,
+  resHeaders: Headers,
+): Promise<SafeUser | null> {
+  const token = extractAuthToken(req);
+  if (!token) return null;
+
+  const stale = await verifyExpiredToken(token);
+  if (!stale) return null;
+
+  const exp = (stale as unknown as Record<string, unknown>).exp;
+  const expS = typeof exp === "number" && Number.isFinite(exp) ? exp : 0;
+  const expiredAgoS = expS > 0 ? Math.floor(Date.now() / 1000) - expS : Number.POSITIVE_INFINITY;
+  if (expiredAgoS > EXPIRED_TOKEN_GRACE_S) return null;
+
+  const safeUser = await loadUserFromDb(stale, `${stale.userId}:${stale.tokenVersion}`);
+  if (!safeUser) return null;
+
+  const renewed = await createToken({
+    userId: stale.userId,
+    username: stale.username,
+    role: stale.role,
+    tokenVersion: stale.tokenVersion,
+  });
+  resHeaders.append("set-cookie", serializeAuthCookie(req.headers, renewed));
+  resHeaders.append("set-cookie", serializeAuthFlagCookie(req.headers));
+  logger.info("[Auth] Expired token renewed via grace window", { userId: stale.userId });
+  return safeUser;
+}
+
 function extractAuthToken(req: Request): string | undefined {
   // 1. Try httpOnly cookie (preferred — XSS cannot steal httpOnly cookies)
   const cookieHeader = req.headers.get("cookie") || "";
@@ -144,34 +185,11 @@ export async function createContext(
 
     const payload = await verifyToken(token);
     if (!payload) {
-      // ✅ SESSION PERSISTENCE FIX: the token failed normal verification. If the
-      // ONLY problem is an expired `exp` (signature still valid) and it expired
-      // within the grace window, transparently renew: re-load the user from DB
-      // (tokenVersion revocation still applies) and mint a fresh cookie pair.
-      // Without this, a user returning after the short access TTL was logged
-      // out on the very next page load.
-      const stale = await verifyExpiredToken(token);
-      if (stale) {
-        const exp = (stale as unknown as Record<string, unknown>).exp;
-        const expS = typeof exp === "number" && Number.isFinite(exp) ? exp : 0;
-        const expiredAgoS = expS > 0 ? Math.floor(Date.now() / 1000) - expS : Number.POSITIVE_INFINITY;
-        if (expS > 0 && expiredAgoS >= 0 && expiredAgoS <= EXPIRED_TOKEN_GRACE_S) {
-          const staleCacheKey = `${stale.userId}:${stale.tokenVersion}`;
-          const safeUser = await loadUserFromDb(stale, staleCacheKey);
-          if (safeUser) {
-            ctx.user = safeUser;
-            const renewed = await createToken({
-              userId: stale.userId,
-              username: stale.username,
-              role: stale.role,
-              tokenVersion: stale.tokenVersion,
-            });
-            ctx.resHeaders.append("set-cookie", serializeAuthCookie(opts.req.headers, renewed));
-            ctx.resHeaders.append("set-cookie", serializeAuthFlagCookie(opts.req.headers));
-            logger.info("[Auth] Expired token renewed via grace window", { userId: stale.userId });
-          }
-        }
-      }
+      // ✅ SESSION PERSISTENCE FIX: normal verification failed — renew the
+      // session if the token merely expired within the grace window (see
+      // renewExpiredTokenSession). Invalid/revoked tokens stay rejected.
+      const renewedUser = await renewExpiredTokenSession(opts.req, ctx.resHeaders);
+      if (renewedUser) ctx.user = renewedUser;
       return ctx;
     }
 

@@ -37,6 +37,12 @@ def check(name, cond, detail=""):
     if not cond:
         fails.append(f"{name}: {detail}")
 
+# Shared literals (SonarCloud python:S1192 — no duplicated literals)
+JS_SCROLL_Y = "window.scrollY"
+JS_SCROLL_BOTTOM = "window.scrollTo(0, document.body.scrollHeight)"
+TOAST_SEL = "[data-sonner-toast]"
+TOTAL_CHECKS = 18
+
 def dismiss_cookie(pg):
     for sel in ['[data-testid="cookie-accept-all"]', '[data-testid="cookie-accept-essential"]']:
         try:
@@ -121,14 +127,14 @@ with sync_playwright() as p:
     # ---------- B2: navigation opens at the TOP (the footer bug) ----------
     # user is deep in the page when they tap the card — reproduce exactly that
     card.scroll_into_view_if_needed()
-    pg.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+    pg.evaluate(JS_SCROLL_BOTTOM)
     pg.wait_for_timeout(700)
-    y_before = pg.evaluate("window.scrollY")
+    y_before = pg.evaluate(JS_SCROLL_Y)
     card.scroll_into_view_if_needed()
     pg.wait_for_timeout(500)
     card.click()
     pg.wait_for_timeout(2500)
-    y_after = pg.evaluate("window.scrollY")
+    y_after = pg.evaluate(JS_SCROLL_Y)
     on_courses = "/courses?category=" in pg.url
     check("B2a navigated to /courses?category=N", on_courses, f"url={pg.url}")
     check("B2b page opens at TOP (scrollY≈0, was deep)", y_after < 80, f"y_before={y_before} y_after={y_after}")
@@ -136,13 +142,13 @@ with sync_playwright() as p:
     # second path: scroll to absolute bottom of /courses, then use the FOOTER
     # quick link (always visible at the bottom — the exact "navigate while deep"
     # scenario; the mobile navbar auto-hides on scroll-down)
-    pg.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+    pg.evaluate(JS_SCROLL_BOTTOM)
     pg.wait_for_timeout(600)
     footer_courses = pg.locator("footer").get_by_text("الكورسات", exact=True).first
     try:
         footer_courses.click(timeout=6000)
         pg.wait_for_timeout(2200)
-        y2 = pg.evaluate("window.scrollY")
+        y2 = pg.evaluate(JS_SCROLL_Y)
         check("B2c footer navigation from bottom -> TOP", y2 < 80 and "/courses" in pg.url, f"y={y2} url={pg.url}")
     except Exception as e:
         check("B2c footer navigation from bottom -> TOP", False, f"exc={e!r:.80}")
@@ -173,7 +179,7 @@ with sync_playwright() as p:
     bt.click()
     pg.wait_for_timeout(900)
     pressed1 = bt.get_attribute("aria-pressed")
-    toast1 = pg.locator("[data-sonner-toast]").first.inner_text() if pg.locator("[data-sonner-toast]").count() else ""
+    toast1 = pg.locator(TOAST_SEL).first.inner_text() if pg.locator(TOAST_SEL).count() else ""
     check("B5c click -> INSTANT (aria-pressed flips)", pressed0 == "true" and pressed1 == "false",
           f"{pressed0} -> {pressed1}")
     check("B5d instant toast feedback", "الوضع السريع" in toast1, f"toast={toast1!r:.60}")
@@ -181,7 +187,7 @@ with sync_playwright() as p:
     bt.click()
     pg.wait_for_timeout(900)
     pressed2 = bt.get_attribute("aria-pressed")
-    toast2 = pg.locator("[data-sonner-toast]").first.inner_text() if pg.locator("[data-sonner-toast]").count() else ""
+    toast2 = pg.locator(TOAST_SEL).first.inner_text() if pg.locator(TOAST_SEL).count() else ""
     check("B5e second click -> THINKING again", pressed2 == "true", f"pressed={pressed2}")
     check("B5f thinking toast feedback", "التفكير" in toast2, f"toast={toast2!r:.60}")
     # messages area directly follows the header — no mode strip between them
@@ -235,7 +241,7 @@ with sync_playwright() as p:
     dp.wait_for_timeout(400)
     dcard.click()
     dp.wait_for_timeout(2500)
-    dy = dp.evaluate("window.scrollY")
+    dy = dp.evaluate(JS_SCROLL_Y)
     check("D2 desktop navigation opens at TOP", "/courses?category=" in dp.url and dy < 80, f"y={dy} url={dp.url}")
 
     # desktop chat + brain toggle (session was already proven on mobile)
@@ -260,7 +266,7 @@ with sync_playwright() as p:
 
 # ---------- summary ----------
 print()
-print(f"RESULT: {18 - len(fails)}/18 checks passed" if not fails else f"RESULT: {18 - len(fails)}/18 checks passed")
+print(f"RESULT: {TOTAL_CHECKS - len(fails)}/{TOTAL_CHECKS} checks passed")
 if fails:
     print("FAILURES:")
     for f in fails:
