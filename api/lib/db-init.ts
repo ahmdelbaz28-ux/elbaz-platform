@@ -616,6 +616,29 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         logger.warn("[DB] v6 migration warning", { error: (err as Error).message });
       }
 
+      // ── Admin password sync (existing deployments) ──
+      // The seed step below (which upserts the admin hash from
+      // ADMIN_PASSWORD) only runs on FIRST boot. On existing databases we
+      // return early here — leaving the owner no documented lever to set or
+      // rotate the admin password. Restore the documented behavior: when
+      // ADMIN_PASSWORD is explicitly set, keep the admin hash in sync (same
+      // ON DUPLICATE KEY UPDATE as the seed path). When it is NOT set, touch
+      // nothing — no accidental lockouts, no random churn.
+      if (env.ADMIN_PASSWORD) {
+        try {
+          const adminPasswordHash = await hashPassword(env.ADMIN_PASSWORD);
+          await conn.execute(
+            `INSERT INTO users (username, passwordHash, name, email, role, preferredLanguage, createdAt, updatedAt, lastSignInAt)
+             VALUES (?, ?, 'Ahmed Elbaz', 'admin@ahmedelbaz.qzz.io', 'admin', 'ar', NOW(), NOW(), NOW())
+             ON DUPLICATE KEY UPDATE passwordHash = VALUES(passwordHash)`,
+            ['admin', adminPasswordHash]
+          );
+          logger.info("[DB] Admin password synced from ADMIN_PASSWORD env variable");
+        } catch (err) {
+          logger.warn("[DB] Admin password sync warning", { error: (err as Error).message });
+        }
+      }
+
       migrationDone = true;
       return;
     }
