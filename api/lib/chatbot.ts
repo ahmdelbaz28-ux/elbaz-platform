@@ -730,6 +730,9 @@ export async function getChatResponse(request: {
     systemPrompt,
     mode,
     vision: false,
+    language: request.language,
+    // Instant lane hoists the general-purpose fast model (language compliance).
+    preferredModelId: tuning.openRouterPreferredModel,
     gen: mode === "instant"
       ? { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 10_000, globalBudgetMs: 12_000 }
       : { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 20_000, globalBudgetMs: 22_000 },

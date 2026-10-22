@@ -808,6 +808,9 @@ export async function getStreamResponse(request: {
     mode: routerMode,
     vision: !!request.vision,
     language: request.language,
+    // Instant lane hoists the general-purpose fast model above code/mini
+    // models so Arabic/English instructions (language mirror) are followed.
+    preferredModelId: routerTuning.openRouterPreferredModel,
     gen: routerMode === "instant"
       ? { temperature: routerTuning.temperature, maxTokens: routerTuning.maxTokens, attemptTimeoutMs: 10_000, globalBudgetMs: 12_000 }
       : { temperature: routerTuning.temperature, maxTokens: routerTuning.maxTokens, attemptTimeoutMs: 20_000, globalBudgetMs: 22_000 },
