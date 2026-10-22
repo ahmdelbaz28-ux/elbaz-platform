@@ -158,7 +158,7 @@ export default function LearningJourney() {
   return (
     <>
       <Seo title={lang === "ar" ? "رحلتي التعليمية | منصة الباز" : "Learning Journey | Elbaz Platform"} description={lang === "ar" ? "تتبع تقدمك وإنجازاتك" : "Track your progress and achievements"} />
-      <div className="min-h-screen bg-background text-foreground">
+      <div className="min-h-screen bg-background pt-16 text-foreground">
         <div className="border-b border-border bg-gradient-to-r from-violet-600/10 to-indigo-600/10">
           <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
             <h1 className="text-2xl font-bold text-foreground mb-1">

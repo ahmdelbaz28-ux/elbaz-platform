@@ -115,13 +115,13 @@ export default function Navbar() {
           }`}
         >
           {/* ── Brand Mark ── */}
-          <Link to="/" className="group flex items-center gap-3 outline-none">
+          <Link to="/" className="group flex shrink-0 items-center gap-3 outline-none">
             <img src="/logo-circle.png" alt="Eng. Ahmed Elbaz Logo" className="h-10 w-10 object-cover rounded-full transition-transform duration-300 group-hover:scale-105" />
             <div className="flex flex-col leading-none">
-              <span className="text-[13px] font-extrabold tracking-tight text-foreground">
+              <span className="whitespace-nowrap text-[13px] font-extrabold tracking-tight text-foreground">
                 {lang === "ar" ? "أحمد الباز" : "Eng. Ahmed Elbaz"}
               </span>
-              <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-accent">
+              <span className="whitespace-nowrap text-[10px] font-medium uppercase tracking-[0.12em] text-accent">
                 {lang === "ar" ? "كورسات الهندسة الكهربية" : "Electrical Engineering"}
               </span>
             </div>
@@ -135,13 +135,13 @@ export default function Navbar() {
               { path: "/articles", label: lang === "ar" ? "المقالات" : "Articles", icon: <Newspaper className="h-3.5 w-3.5" /> },
               { path: "/references", label: lang === "ar" ? "المراجع" : "References", icon: <FileBox className="h-3.5 w-3.5" /> },
               { path: "/faq", label: lang === "ar" ? "الأسئلة" : "FAQ", icon: <HelpCircle className="h-3.5 w-3.5" /> },
-              ...(isAuthenticated ? [{ path: "/documents", label: lang === "ar" ? "المستندات" : "Documents", icon: <BookMarked className="h-3.5 w-3.5" /> }] : []),
+              ...(isAuthenticated ? [{ path: "/documents", label: lang === "ar" ? "المستندات" : "Documents", icon: <BookMarked className="h-3.5 w-3.5" />, extraClass: "max-2xl:hidden" }] : []),
             ].map((link) => (
               <Magnetic key={link.path}>
                 <Link
                   to={link.path}
                   aria-current={isActive(link.path) ? "page" : undefined}
-                  className={`${navLinkBase} ${isActive(link.path) ? navLinkActive : navLinkInactive}`}
+                  className={`${navLinkBase} ${isActive(link.path) ? navLinkActive : navLinkInactive} ${link.extraClass || ""}`}
                 >
                   {link.icon}
                   {link.label}
@@ -153,7 +153,7 @@ export default function Navbar() {
             ))}
 
             {isAuthenticated && (
-              <Link to="/dashboard" aria-current={isActive("/dashboard") ? "page" : undefined} className={`${navLinkBase} ${isActive("/dashboard") ? navLinkActive : navLinkInactive}`}>
+              <Link to="/dashboard" aria-current={isActive("/dashboard") ? "page" : undefined} className={`${navLinkBase} ${isActive("/dashboard") ? navLinkActive : navLinkInactive} max-2xl:hidden`}>
                 <LayoutDashboard className="h-3.5 w-3.5" />
                 {lang === "ar" ? "لوحتي" : "Dashboard"}
               </Link>

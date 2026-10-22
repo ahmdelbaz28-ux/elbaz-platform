@@ -299,7 +299,7 @@ export default function References() {
           : "Engineering reference library — PDF books, Excel spreadsheets, AutoCAD files, and more"}
       />
 
-      <div className="min-h-screen bg-background text-foreground">
+      <div className="min-h-screen bg-background pt-16 text-foreground">
         {/* ─── Hero Section ─── */}
         <div className="relative overflow-hidden border-b border-border bg-gradient-to-br from-cyan-600/10 to-blue-600/10">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgba(6,182,212,0.15),transparent_60%)]" />

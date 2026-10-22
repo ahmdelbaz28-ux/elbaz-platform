@@ -114,7 +114,7 @@ export default function Wishlist() {
   return (
     <>
       <Seo title={lang === "ar" ? "المفضلة | منصة الباز" : "Wishlist | Elbaz Platform"} description={lang === "ar" ? "الكورسات المحفوظة في قائمتك" : "Your saved courses"} />
-      <div className="min-h-screen bg-background text-foreground">
+      <div className="min-h-screen bg-background pt-16 text-foreground">
         <div className="border-b border-border bg-gradient-to-r from-rose-600/10 to-pink-600/10">
           <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
             <div className="flex items-center gap-3">
