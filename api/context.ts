@@ -1,10 +1,10 @@
 import type { FetchCreateContextFnOptions } from "@trpc/server/adapters/fetch";
 import type { User } from "@db/schema";
-import { verifyToken, createToken, getTokenRemainingSeconds, type TokenPayload } from "./lib/jwt";
+import { verifyToken, verifyExpiredToken, createToken, getTokenRemainingSeconds, type TokenPayload } from "./lib/jwt";
 import { getDb } from "./queries/connection";
 import { users } from "@db/schema";
 import { eq } from "drizzle-orm";
-import { AUTH_COOKIE_NAME, serializeAuthCookie, serializeAuthFlagCookie } from './lib/cookies';
+import { AUTH_COOKIE_NAME, AUTH_COOKIE_MAX_AGE, serializeAuthCookie, serializeAuthFlagCookie } from './lib/cookies';
 import { parse } from "cookie";
 
 import { logger } from "./lib/logger";
@@ -49,6 +49,17 @@ setInterval(() => {
 // This keeps active users logged in indefinitely while inactive users get logged out
 // after 24h (the JWT TTL). No frontend changes required.
 const SLIDING_REFRESH_THRESHOLD_S = 2 * 60 * 60; // 2 hours
+
+// ✅ SESSION PERSISTENCE FIX: Grace window for EXPIRED-but-cryptographically
+// valid tokens. The access token TTL is short (15m default), while the auth
+// cookie persists 30 days. A user who returns after the TTL used to hit a hard
+// 401 on their next page load → the client cleared the session → the chatbot
+// FAB sent them to /login ("refresh → asks me to log in again"). Now a request
+// carrying a signature-valid token that expired within this window is treated
+// like the sliding refresh: DB user + tokenVersion are re-verified (revocation
+// still enforced) and a fresh 30-day cookie pair is minted transparently.
+// The window matches the cookie maxAge so "logged in" == "cookie alive".
+const EXPIRED_TOKEN_GRACE_S = AUTH_COOKIE_MAX_AGE; // 30 days, matches the cookie
 
 function extractAuthToken(req: Request): string | undefined {
   // 1. Try httpOnly cookie (preferred — XSS cannot steal httpOnly cookies)
@@ -132,7 +143,37 @@ export async function createContext(
     if (!token) return ctx;
 
     const payload = await verifyToken(token);
-    if (!payload) return ctx;
+    if (!payload) {
+      // ✅ SESSION PERSISTENCE FIX: the token failed normal verification. If the
+      // ONLY problem is an expired `exp` (signature still valid) and it expired
+      // within the grace window, transparently renew: re-load the user from DB
+      // (tokenVersion revocation still applies) and mint a fresh cookie pair.
+      // Without this, a user returning after the short access TTL was logged
+      // out on the very next page load.
+      const stale = await verifyExpiredToken(token);
+      if (stale) {
+        const exp = (stale as unknown as Record<string, unknown>).exp;
+        const expS = typeof exp === "number" && Number.isFinite(exp) ? exp : 0;
+        const expiredAgoS = expS > 0 ? Math.floor(Date.now() / 1000) - expS : Number.POSITIVE_INFINITY;
+        if (expS > 0 && expiredAgoS >= 0 && expiredAgoS <= EXPIRED_TOKEN_GRACE_S) {
+          const staleCacheKey = `${stale.userId}:${stale.tokenVersion}`;
+          const safeUser = await loadUserFromDb(stale, staleCacheKey);
+          if (safeUser) {
+            ctx.user = safeUser;
+            const renewed = await createToken({
+              userId: stale.userId,
+              username: stale.username,
+              role: stale.role,
+              tokenVersion: stale.tokenVersion,
+            });
+            ctx.resHeaders.append("set-cookie", serializeAuthCookie(opts.req.headers, renewed));
+            ctx.resHeaders.append("set-cookie", serializeAuthFlagCookie(opts.req.headers));
+            logger.info("[Auth] Expired token renewed via grace window", { userId: stale.userId });
+          }
+        }
+      }
+      return ctx;
+    }
 
     // ✅ PERFORMANCE FIX: Check cache first to avoid DB query
     const cacheKey = `${payload.userId}:${payload.tokenVersion}`;

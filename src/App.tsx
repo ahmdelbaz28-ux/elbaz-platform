@@ -1,5 +1,5 @@
 import { Routes, Route, useLocation } from "react-router";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Toaster } from "sonner";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -61,6 +61,31 @@ function PageLoader() {
   );
 }
 
+/**
+ * ✅ FIX (opened at the footer): React Router keeps the previous scroll offset
+ * across navigations. Clicking a category card (e.g. ETAP Software) from the
+ * middle of the homepage then landed the new page at the old offset — past a
+ * shorter target page the browser clamps to the bottom, so users saw the
+ * FOOTER first (most visible on mobile). Reset to the top on every path
+ * change; #anchor links still jump to their target. Search-only changes
+ * (e.g. switching the category filter while already on /courses) keep the
+ * scroll position so filtering doesn't yank the page around.
+ */
+function ScrollReset() {
+  const location = useLocation();
+  useEffect(() => {
+    if (location.hash) {
+      const targetId = decodeURIComponent(location.hash.slice(1));
+      const timer = setTimeout(() => {
+        document.getElementById(targetId)?.scrollIntoView();
+      }, 80);
+      return () => clearTimeout(timer);
+    }
+    window.scrollTo(0, 0);
+  }, [location.pathname, location.hash]);
+  return null;
+}
+
 function Layout({ children }: { readonly children: React.ReactNode }) {
   const { t } = useTranslation();
   const location = useLocation();
@@ -83,6 +108,7 @@ function Layout({ children }: { readonly children: React.ReactNode }) {
         {t("skipToContent")}
       </a>
       {!isAdminPage && <Navbar />}
+      <ScrollReset />
       <ScrollToTop />
       <main id="main-content" tabIndex={-1}><Suspense fallback={<PageLoader />}>{children}</Suspense></main>
       {!isAuthPage && !isAdminPage && <Footer />}

@@ -16,6 +16,8 @@ vi.stubEnv("NODE_ENV", "test");
 import {
   createToken,
   verifyToken,
+  verifyExpiredToken,
+  getSecret,
   getTokenRemainingSeconds,
   type TokenPayload,
 } from "./jwt";
@@ -248,6 +250,89 @@ describe("JWT Module", () => {
 
       expect(remaining2).toBeLessThan(remaining1);
       expect(remaining2).toBe(remaining1 - 60);
+    });
+  });
+
+  // ─── verifyExpiredToken (session-persistence grace path) ─────────────
+  // The auth context renews signature-valid tokens that merely expired, so a
+  // user returning after the short access-TTL is not hard-logged-out. These
+  // tests pin down that ONLY expired-but-authentic tokens pass.
+  describe("verifyExpiredToken()", () => {
+    const nowS = () => Math.floor(Date.now() / 1000);
+
+    async function mintExpired(secondsAgo: number): Promise<string> {
+      return new SignJWT(TEST_PAYLOAD as unknown as Record<string, unknown>)
+        .setProtectedHeader({ alg: "HS256" })
+        .setIssuedAt(nowS() - 3600)
+        .setIssuer("elbaz-platform")
+        .setAudience("elbaz-platform-users")
+        .setSubject("user:42")
+        .setExpirationTime(nowS() - secondsAgo)
+        .sign(getSecret());
+    }
+
+    it("accepts a recently expired token with a valid signature + issuer + audience", async () => {
+      const payload = await verifyExpiredToken(await mintExpired(60));
+      expect(payload).not.toBeNull();
+      expect(payload!.userId).toBe(42);
+      expect(payload!.username).toBe("testengineer");
+      expect(payload!.tokenVersion).toBe(3);
+      // exp must survive so the context can measure the grace window
+      expect(typeof (payload as unknown as { exp?: number }).exp).toBe("number");
+    });
+
+    it("also accepts a NON-expired token (harmless — context prefers verifyToken)", async () => {
+      const token = await new SignJWT(TEST_PAYLOAD as unknown as Record<string, unknown>)
+        .setProtectedHeader({ alg: "HS256" })
+        .setIssuedAt(nowS())
+        .setIssuer("elbaz-platform")
+        .setAudience("elbaz-platform-users")
+        .setSubject("user:42")
+        .setExpirationTime(nowS() + 600)
+        .sign(getSecret());
+      const payload = await verifyExpiredToken(token);
+      expect(payload?.userId).toBe(42);
+    });
+
+    it("rejects a forged token signed with a different secret", async () => {
+      const forged = await new SignJWT(TEST_PAYLOAD as unknown as Record<string, unknown>)
+        .setProtectedHeader({ alg: "HS256" })
+        .setIssuedAt(nowS() - 3600)
+        .setIssuer("elbaz-platform")
+        .setAudience("elbaz-platform-users")
+        .setSubject("user:42")
+        .setExpirationTime(nowS() - 60)
+        .sign(new TextEncoder().encode("different-secret-key-exactly-32-chars!!"));
+      expect(await verifyExpiredToken(forged)).toBeNull();
+    });
+
+    it("rejects a valid-signature token with a wrong issuer", async () => {
+      const foreign = await new SignJWT(TEST_PAYLOAD as unknown as Record<string, unknown>)
+        .setProtectedHeader({ alg: "HS256" })
+        .setIssuedAt(nowS() - 3600)
+        .setIssuer("attacker-platform")
+        .setAudience("elbaz-platform-users")
+        .setSubject("user:42")
+        .setExpirationTime(nowS() - 60)
+        .sign(getSecret());
+      expect(await verifyExpiredToken(foreign)).toBeNull();
+    });
+
+    it("rejects a valid-signature token with a wrong audience", async () => {
+      const foreign = await new SignJWT(TEST_PAYLOAD as unknown as Record<string, unknown>)
+        .setProtectedHeader({ alg: "HS256" })
+        .setIssuedAt(nowS() - 3600)
+        .setIssuer("elbaz-platform")
+        .setAudience("wrong-audience")
+        .setSubject("user:42")
+        .setExpirationTime(nowS() - 60)
+        .sign(getSecret());
+      expect(await verifyExpiredToken(foreign)).toBeNull();
+    });
+
+    it("rejects garbage input", async () => {
+      expect(await verifyExpiredToken("")).toBeNull();
+      expect(await verifyExpiredToken("not-a-jwt")).toBeNull();
     });
   });
 
