@@ -9,6 +9,12 @@ M3  Admin login on mobile -> /admin -> sticky top bar hamburger visible,
 M4  Tap top-bar hamburger -> drawer slides in (x == 0, width ~264 < viewport)
     -> tap "المقالات" -> drawer closes + articles tab shows ETAP row "منشور"
 M5  Backdrop tap closes the admin drawer
+M6  Admin drawer drag-to-close
+F   (Task 18) FAB stack: WhatsApp/chatbot/scroll-top hug the bottom edge
+    in one compact 40px column on mobile; WhatsApp tooltip toggles;
+    F5 chat auth-gate for guests (redirect to /login);
+    F6 scroll-top appears after scrolling and scrolls back to top;
+    F7 chat opens/minimizes-into-slot/closes for AUTHENTICATED user
 Shots: scripts/shots_mobile/
 """
 import json, re, subprocess, sys
@@ -124,6 +130,72 @@ with sync_playwright() as p:
         check("M2c ETAP content renders (RTL)", "الإيتاب" in body_txt and "ETAP" in body_txt, body_txt[:80].replace("\n", " "))
         pg.screenshot(path=f"{OUT}/M2_article_detail.png")
 
+    # ---------- F: floating FABs — compact bottom stack (Task 18) ----------
+    pg.wait_for_timeout(1200)
+    def bbox(sel):
+        loc = pg.locator(sel).first
+        return loc.bounding_box() if loc.count() else None
+
+    wa = bbox("button.whatsapp-fab")
+    check("F1a WhatsApp FAB exists", wa is not None, f"box={wa}")
+    if wa:
+        check("F1b WhatsApp FAB 40px on mobile",
+              abs(wa["width"] - 40) <= 2 and abs(wa["height"] - 40) <= 2,
+              f"w={wa['width']} h={wa['height']}")
+        gap_wa = VP["height"] - (wa["y"] + wa["height"])
+        check("F1c WhatsApp hugs bottom edge (<=18px)", gap_wa <= 18, f"bottom_gap={gap_wa}")
+
+    chat = bbox("button.chatbot-fab")
+    check("F2a chatbot FAB exists", chat is not None, f"box={chat}")
+    if chat and wa:
+        check("F2b chatbot FAB 40px", abs(chat["width"] - 40) <= 2, f"w={chat['width']}")
+        gap_c = wa["y"] - (chat["y"] + chat["height"])
+        check("F2c stacked above WhatsApp with ~10px gap", abs(gap_c - 10) <= 4, f"gap={gap_c}")
+        check("F2d same right column", abs(chat["x"] - wa["x"]) <= 2, f"dx={abs(chat['x'] - wa['x'])}")
+
+    stop = bbox("button.scroll-top-fab")
+    check("F3a scroll-top FAB exists", stop is not None, f"box={stop}")
+    if stop and wa:
+        check("F3b scroll-top 40px + same column",
+              abs(stop["width"] - 40) <= 2 and abs(stop["x"] - wa["x"]) <= 2,
+              f"w={stop['width']} dx={abs(stop['x'] - wa['x'])}")
+        if chat:
+            gap_s = chat["y"] - (stop["y"] + stop["height"])
+            check("F3c sits above chatbot slot", abs(gap_s - 10) <= 4, f"gap={gap_s}")
+        op0 = pg.evaluate("() => getComputedStyle(document.querySelector('button.scroll-top-fab span')).opacity")
+        check("F3d hidden at page top", op0 == "0", f"opacity={op0}")
+
+    pg.screenshot(path=f"{OUT}/F1_fab_stack_bottom.png")
+
+    # F4: WhatsApp tooltip toggle
+    pg.locator("button.whatsapp-fab").first.click()
+    pg.wait_for_timeout(700)
+    tip = pg.locator("#whatsapp-tooltip")
+    tip_ok = tip.count() == 1 and tip.evaluate("el => getComputedStyle(el).opacity") == "1" \
+        and "مساعدة" in tip.inner_text()
+    check("F4a WhatsApp tooltip opens above button", tip_ok, f"count={tip.count()}")
+    pg.screenshot(path=f"{OUT}/F2_whatsapp_tooltip.png")
+    pg.locator("button.whatsapp-fab").first.click()
+    pg.wait_for_timeout(500)
+
+    # F5 (guest): chat FAB is auth-gated by design — click -> toast + /login
+    pg.locator("button.chatbot-fab").first.click()
+    pg.wait_for_timeout(1800)
+    check("F5a chat GATED for guests -> redirect to /login", "/login" in pg.url, f"url={pg.url}")
+
+    # F6 (guest, scrollable article page): scroll-top appears and works
+    open_page(pg, "/articles/etap-power-system-analysis-guide")
+    pg.evaluate("() => window.scrollTo({top: 900, behavior: 'instant'})")
+    pg.wait_for_timeout(900)
+    op1 = pg.evaluate("() => getComputedStyle(document.querySelector('button.scroll-top-fab span')).opacity")
+    check("F6a scroll-top appears after scrolling", op1 == "1", f"opacity={op1}")
+    pg.screenshot(path=f"{OUT}/F4_scrolled_fabs.png")
+    y_before = pg.evaluate("() => window.scrollY")
+    pg.locator("button.scroll-top-fab").first.click()
+    pg.wait_for_timeout(2000)
+    y_after = pg.evaluate("() => window.scrollY")
+    check("F6b scroll-top scrolls back to top", y_before > 400 and y_after < 50, f"{y_before} -> {y_after}")
+
     # ---------- M3: admin login on mobile ----------
     open_page(pg, "/login")
     pg.locator("form input").nth(0).fill("admin")
@@ -216,6 +288,33 @@ with sync_playwright() as p:
         check("M6 admin drawer SWIPE-to-close works", sb_bb7 is not None and sb_bb7["x"] < -200, f"x={sb_bb7 and sb_bb7['x']}")
     else:
         check("M6 admin drawer SWIPE-to-close works", False, f"drawer did not open: {sb_bb6}")
+
+    # ---------- F7: chat opens for AUTHENTICATED user (admin, regular page) ----------
+    open_page(pg, "/articles")
+    pg.locator("button.chatbot-fab").first.click()
+    pg.wait_for_timeout(1600)
+    win = pg.locator(".chatbot-window")
+    win_open = win.count() == 1 and win.is_visible()
+    check("F7a chat window opens (authenticated)", win_open, f"count={win.count()}")
+    if win_open:
+        pg.screenshot(path=f"{OUT}/F3_chat_open.png")
+        pg.locator('.chatbot-window [title="تصغير"]').first.click()
+        pg.wait_for_timeout(900)
+        mini = pg.locator(".chatbot-window.chatbot-min")
+        mini_ok = mini.count() == 1
+        if mini_ok:
+            mb = mini.bounding_box()
+            mini_ok = bool(mb) and abs(mb["width"] - 40) <= 2 and wa and abs(mb["x"] - wa["x"]) <= 2
+        check("F7b minimize lands in chatbot slot (40px, same column)", mini_ok,
+              f"box={mini.bounding_box() if mini.count() else None}")
+        if mini.count():
+            mini.first.click()
+            pg.wait_for_timeout(1200)
+        close_btn = pg.locator('.chatbot-window [title="إغلاق"]')
+        if close_btn.count():
+            close_btn.first.click()
+            pg.wait_for_timeout(900)
+        check("F7c chat closes -> FAB returns", pg.locator("button.chatbot-fab").count() == 1)
 
     browser.close()
 
