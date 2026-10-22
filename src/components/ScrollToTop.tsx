@@ -23,7 +23,7 @@ export default function ScrollToTop() {
       className="scroll-top-fab fixed z-[95] group transform-gpu will-change-transform"
     >
       <span
-        className={`flex h-11 w-11 items-center justify-center transition-all duration-500 ease-out md:h-12 md:w-12 ${
+        className={`flex h-10 w-10 items-center justify-center transition-all duration-500 ease-out md:h-12 md:w-12 ${
           visible
             ? "translate-y-0 opacity-100 scale-100"
             : "pointer-events-none translate-y-6 opacity-0 scale-75"
@@ -39,7 +39,7 @@ export default function ScrollToTop() {
 
         {/* Glass button body */}
         <span
-          className="relative flex h-11 w-11 items-center justify-center rounded-full transition-all duration-300 ease-out md:h-12 md:w-12"
+          className="relative flex h-10 w-10 items-center justify-center rounded-full transition-all duration-300 ease-out md:h-12 md:w-12"
           style={{
             background: "linear-gradient(135deg, rgba(6,182,212,0.12) 0%, rgba(6,182,212,0.06) 50%, rgba(255,255,255,0.03) 100%)",
             backdropFilter: "blur(16px) saturate(180%)",
@@ -72,7 +72,7 @@ export default function ScrollToTop() {
 
           {/* Arrow icon */}
           <ArrowUp
-            className="relative z-10 h-5 w-5 transition-all duration-300"
+            className="relative z-10 h-4 w-4 md:h-5 md:w-5 transition-all duration-300"
             style={{
               color: "#06b6d4",
               filter: "drop-shadow(0 0 4px rgba(6,182,212,0.4))",
