@@ -41,10 +41,13 @@ function renderContent(content: string, isRTL: boolean): ReactNode {
   });
 }
 
-function formatDate(date: Date | string | null, lang: "ar" | "en"): string {
-  if (!date) return "";
-  const d = typeof date === "string" ? new Date(date) : date;
-  return d.toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US", { year: "numeric", month: "long", day: "numeric" });
+const DETAIL_AR_DATE = new Intl.DateTimeFormat("ar-EG", { day: "numeric", month: "long", year: "numeric" });
+const DETAIL_EN_DATE = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric" });
+
+function fmtDate(value: Date | string | null, lang: "ar" | "en"): string {
+  if (!value) return "";
+  const d = typeof value === "string" ? new Date(value) : value;
+  return lang === "ar" ? DETAIL_AR_DATE.format(d) : DETAIL_EN_DATE.format(d);
 }
 
 /* ── Main Component ── */
@@ -69,7 +72,10 @@ export default function ArticleDetail() {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background pt-20">
-        <Loader2 className="h-10 w-10 animate-spin text-accent-secondary" />
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-9 w-9 animate-spin text-accent-secondary" />
+          <p className="text-xs text-text-faint">{lang === "ar" ? "جارٍ فتح المقال..." : "Opening article..."}</p>
+        </div>
       </div>
     );
   }
@@ -77,19 +83,17 @@ export default function ArticleDetail() {
   if (error || !article) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-background pt-20 text-center">
-        <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-primary border border-border">
-          <Newspaper className="h-10 w-10 text-border" />
-        </div>
+        <Newspaper className="mb-5 h-12 w-12 text-border" />
         <h1 className="text-xl font-semibold text-foreground">
-          {lang === "ar" ? "المقال غير موجود" : "Article not found"}
+          {lang === "ar" ? "المقال غير متاح" : "Article unavailable"}
         </h1>
-        <p className="mt-2 text-sm text-text-faint">
-          {lang === "ar" ? "ربما تم حذف المقال أو أنه غير منشور بعد" : "The article may have been removed or is not published yet"}
+        <p className="mt-2 max-w-sm text-sm text-text-faint">
+          {lang === "ar" ? "ربما تم حذف المقال أو أنه غير منشور بعد — يمكنك العودة لقائمة المقالات" : "The article may have been removed or is not published yet — you can go back to the articles list"}
         </p>
         <Button asChild className="mt-6 bg-gradient-to-r from-accent-secondary to-accent-secondary/80 text-background font-semibold">
           <Link to="/articles">
             <ArrowRight className="h-4 w-4 rotate-180" />
-            <span className="ml-1.5">{lang === "ar" ? "كل المقالات" : "All articles"}</span>
+            <span className="ml-1.5">{lang === "ar" ? "عودة للمقالات" : "Back to articles"}</span>
           </Link>
         </Button>
       </div>
@@ -155,7 +159,7 @@ export default function ArticleDetail() {
                 <Eye className="h-3.5 w-3.5" />
                 {a.viewCount} {isRTL ? "مشاهدة" : "views"}
               </span>
-              <span>{formatDate(a.publishedAt, lang)}</span>
+              <span>{fmtDate(a.publishedAt, lang)}</span>
             </div>
           </div>
         </div>
