@@ -176,7 +176,10 @@ with sync_playwright() as p:
 
     # F8 (Task 20): WhatsApp 3s delayed entrance — fresh reload catches the
     # early window: absent before 3s, present after (entrance anim 0.7s).
-    pg.reload(wait_until="domcontentloaded")
+    # The reload response body is ALSO the raw served HTML — reused by F10
+    # (no extra requests: hammering the site trips the Cloudflare rate limit).
+    boot_resp = pg.reload(wait_until="domcontentloaded")
+    boot_html = boot_resp.text()
     pg.wait_for_timeout(1200)
     early = pg.locator("button.whatsapp-fab").count()
     check("F8a WhatsApp FAB hidden during first 3s", early == 0, f"count={early}")
@@ -252,12 +255,18 @@ with sync_playwright() as p:
     check("F6b scroll-top scrolls back to top", y_before > 400 and y_after < 50, f"{y_before} -> {y_after}")
 
     # F9 (Task 20): YouTube-style hide-on-scroll-down + reveal-on-stop.
-    # Single instant downward jump = one scroll event -> hidden at once;
-    # after the events stop, the 220ms reveal debounce glides FABs back.
-    pg.evaluate("() => window.scrollTo({top: 1600, behavior: 'instant'})")
-    pg.wait_for_timeout(100)
+    # Simulate a REAL finger drag: continuous scroll steps keep resetting the
+    # stop-debounce, so the hide transition (300ms) completes and the FABs
+    # stay fully hidden while scrolling. A single instant jump would only dip
+    # them 73% before the 220ms reveal fires (verified: DOM classes identical).
+    for step in range(8):
+        pg.evaluate(f"() => window.scrollTo(0, {200 + step * 250})")
+        pg.wait_for_timeout(55)
     hid = pg.evaluate("() => !!document.querySelector('.whatsapp-fab-wrap.fab-scroll-hidden')")
-    check("F9a FABs dip away while scrolling down", hid, f"hidden={hid}")
+    chat_hid = pg.evaluate("() => document.querySelector('button.chatbot-fab')?.classList.contains('fab-scroll-hidden')")
+    top_hid = pg.evaluate("() => document.querySelector('button.scroll-top-fab')?.classList.contains('fab-scroll-hidden')")
+    check("F9a FABs dip away while scrolling down", hid and chat_hid and top_hid,
+          f"wa={hid} chat={chat_hid} top={top_hid}")
     pg.screenshot(path=f"{OUT}/F5_fabs_hidden_during_scroll.png")
     pg.wait_for_timeout(800)
     hid2 = pg.evaluate("() => !!document.querySelector('.whatsapp-fab-wrap.fab-scroll-hidden')")
@@ -274,10 +283,10 @@ with sync_playwright() as p:
         r = pg.request.get(f"{PROD}/{asset}", timeout=15000)
         ct = r.headers.get("content-type", "")
         check(name, r.status == 200 and ct.startswith("image/"), f"status={r.status} ct={ct}")
-    html = pg.request.get(PROD + "/", timeout=15000).text()
-    check("F10f boot splash present in HTML", "boot-splash" in html)
+    check("F10f boot splash present in served HTML", "boot-splash" in boot_html,
+          f"len={len(boot_html)}")
     check("F10g favicon links = circular set (no broken svg)",
-          "favicon-32x32.png" in html and "mask-icon" not in html)
+          "favicon-32x32.png" in boot_html and "mask-icon" not in boot_html)
 
     # ---------- M3: admin login on mobile ----------
     open_page(pg, "/login")
