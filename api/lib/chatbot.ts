@@ -710,12 +710,14 @@ export async function getChatResponse(request: {
   catalog?: string;
   /** Image attached to the last user message — force vision-only routing. */
   vision?: boolean;
+  /** Rolling summary of this user's older conversations (chat-history.ts). */
+  historySummary?: string;
 }): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
   if (request.vision) return getVisionResponse(request);
 
   const mode: ChatbotMode = request.mode === "instant" ? "instant" : "thinking";
   const tuning = MODE_TUNING[mode];
-  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog);
+  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, false, request.historySummary);
 
   // ─── DYNAMIC ROUTER (v9) — admin-managed providers first ──────────────
   // Any provider the admin configured in the dashboard (with a valid key and
@@ -821,10 +823,12 @@ export async function getVisionResponse(request: {
   language?: string;
   mode?: "thinking" | "instant";
   catalog?: string;
+  /** Rolling summary of this user's older conversations (chat-history.ts). */
+  historySummary?: string;
 }): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
   const mode: ChatbotMode = request.mode === "instant" ? "instant" : "thinking";
   const tuning = MODE_TUNING[mode];
-  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, true);
+  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, true, request.historySummary);
   const [firstTimeout, retryTimeout] = tuning.groqAttemptTimeouts;
 
   // ─── DYNAMIC ROUTER (v9) — vision-only failover across all providers ──

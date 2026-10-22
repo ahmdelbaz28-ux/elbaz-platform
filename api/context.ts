@@ -173,6 +173,29 @@ async function loadUserFromDb(
   return safeUser;
 }
 
+/**
+ * Resolve the logged-in user for a plain Hono Request (optional auth).
+ * Shares the exact same pipeline as createContext (cookie/header token →
+ * verify → user cache → DB load with tokenVersion revocation check) so both
+ * the tRPC layer and Hono routes agree on who is logged in.
+ * Returns null for guests or any auth failure — callers treat chat as anonymous.
+ */
+export async function resolveOptionalUser(req: Request): Promise<SafeUser | null> {
+  try {
+    const token = extractAuthToken(req);
+    if (!token) return null;
+    const payload = await verifyToken(token);
+    if (!payload) return null;
+    const cacheKey = `${payload.userId}:${payload.tokenVersion}`;
+    const cached = userCache.get(cacheKey);
+    if (cached && cached.expiry > Date.now()) return cached.user;
+    return await loadUserFromDb(payload, cacheKey);
+  } catch {
+    // Authentication is optional — a guest simply gets null.
+    return null;
+  }
+}
+
 export async function createContext(
   opts: FetchCreateContextFnOptions,
 ): Promise<TrpcContext> {

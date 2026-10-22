@@ -749,10 +749,12 @@ async function getVisionStreamResponse(request: {
   language?: string;
   mode?: "thinking" | "instant";
   catalog?: string;
+  /** Rolling summary of this user's older conversations (chat-history.ts). */
+  historySummary?: string;
 }): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
   const mode: "thinking" | "instant" = request.mode === "instant" ? "instant" : "thinking";
   const tuning = MODE_TUNING[mode];
-  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, true);
+  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, true, request.historySummary);
   const encoder = new TextEncoder();
 
   // 1) Groq Llama-4-Scout streaming
@@ -789,6 +791,8 @@ export async function getStreamResponse(request: {
   catalog?: string;
   /** Image attached to the last user message — force vision-only routing. */
   vision?: boolean;
+  /** Rolling summary of this user's older conversations (chat-history.ts). */
+  historySummary?: string;
 }): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
   // ─── DYNAMIC ROUTER (v9) — admin-managed providers first ─────────────
   // Streams from any provider the admin configured (priority → tier order,
@@ -800,7 +804,7 @@ export async function getStreamResponse(request: {
   const routerTuning = MODE_TUNING[routerMode];
   const routed = await routeChatStream({
     messages: request.messages,
-    systemPrompt: getSystemPrompt(request.language, routerMode, request.catalog, !!request.vision),
+    systemPrompt: getSystemPrompt(request.language, routerMode, request.catalog, !!request.vision, request.historySummary),
     mode: routerMode,
     vision: !!request.vision,
     gen: routerMode === "instant"
