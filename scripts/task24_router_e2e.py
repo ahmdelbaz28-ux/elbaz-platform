@@ -89,8 +89,8 @@ def wait_for_toast(pg, needle, timeout_s=40):
 
 
 def provider_card(pg, name):
-    """Locate a provider card root: a div containing the display name badge row."""
-    return pg.locator(f"div.border-border:has(span:text-is('{name}'))").last
+    """Locate a provider card root: the rounded card containing its bold name span."""
+    return pg.locator(f"div.rounded-xl.border:has(span.font-bold:text-is('{name}'))").last
 
 
 def card_has_model_rows(pg, name):
@@ -227,17 +227,47 @@ def main() -> int:
         pg.screenshot(path=f"{OUT}/T24_B1_fake_card.png")
 
         # ---------- B2: router not broken by the dead provider ----------
-        groq_status_ok = ("healthy" in provider_card(pg, "Groq").inner_text()) or (card_has_model_rows(pg, "Groq") > 0)
-        check("B2 real providers unaffected", groq_status_ok)
+        groq_txt = provider_card(pg, "Groq").inner_text()
+        groq_status_ok = ("healthy" in groq_txt) and (card_has_model_rows(pg, "Groq") > 0)
+        check("B2 real providers unaffected", groq_status_ok, groq_txt[:80].replace("\n", " / "))
 
         # ---------- B3: delete fake provider ----------
         fake_card = provider_card(pg, "E2E Fake Provider")
         del_btn = fake_card.locator("button[title='حذف']").first
         del_btn.click()
-        pg.wait_for_timeout(2500)
-        body_final = pg.locator("body").inner_text()
-        check("B3 fake provider deleted", "E2E Fake Provider" not in body_final)
+        deleted = False
+        end = time.time() + 20
+        while time.time() < end:
+            pg.wait_for_timeout(800)
+            if "E2E Fake Provider" not in pg.locator("body").inner_text():
+                deleted = True
+                break
+        check("B3 fake provider deleted", deleted)
         pg.screenshot(path=f"{OUT}/T24_B3_deleted.png")
+
+        # Hard safety net: remove any leftover E2E fake providers via tRPC
+        leftovers = pg.evaluate("""
+            async () => {
+              const url = "/api/trpc/admin.aiProviders?batch=1&input=" +
+                encodeURIComponent(JSON.stringify({"0":{"json":null,"meta":{"values":["undefined"]}}}));
+              const r = await fetch(url, { credentials: "include" });
+              const j = await r.json();
+              const d = j[0]?.result?.data?.json ?? j[0]?.result?.data;
+              return (d?.providers || []).filter(p => p.displayName.includes("E2E Fake")).map(p => p.id);
+            }
+        """)
+        for lid in leftovers:
+            pg.evaluate("""
+                async (id) => {
+                  await fetch("/api/trpc/admin.aiProviderDelete?batch=1", {
+                    method: "POST", credentials: "include",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({"0":{"json":{"id": id}}}),
+                  });
+                }
+            """, lid)
+        if leftovers:
+            print(f"[cleanup] removed leftovers: {leftovers}", flush=True)
 
         # ---------- A6: re-scan all → vision models discovered (OpenRouter VL) ----------
         pg.locator("button:has-text('فحص الكل')").first.click(timeout=8000)
