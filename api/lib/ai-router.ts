@@ -557,8 +557,11 @@ export interface RouteCandidate {
  *   providers by priority (admin-controlled) → models by tier
  *   (thinking: 1 strongest first / instant: 3 fastest first), skipping
  *   disabled rows, capability mismatches and cooled-down breakers.
+ *   `preferredModelId` (instant lane) hoists a specific general-purpose
+ *   fast model above the tier sort so instant never lands first on a
+ *   code-specialized model that ignores language/format instructions.
  */
-export async function buildCandidates(opts: { vision: boolean; mode: ChatbotMode; onlyFree: boolean; exclude?: Set<string> }): Promise<RouteCandidate[]> {
+export async function buildCandidates(opts: { vision: boolean; mode: ChatbotMode; onlyFree: boolean; exclude?: Set<string>; preferredModelId?: string }): Promise<RouteCandidate[]> {
   const pool = await loadPool();
   if (!pool) return [];
 
@@ -582,6 +585,15 @@ export async function buildCandidates(opts: { vision: boolean; mode: ChatbotMode
   }
 
   // Mode-scoped last-working shortcut: hop straight to what worked recently.
+  // (Order: tier sort → preferred model → lastWorking pin — the pin still
+  // wins because it is only set by streams that actually completed.)
+  if (opts.preferredModelId) {
+    const idx = candidates.findIndex((c) => c.model.modelId === opts.preferredModelId);
+    if (idx > 0) {
+      const [first] = candidates.splice(idx, 1);
+      candidates.unshift(first);
+    }
+  }
   const lw = lastWorkingByMode[opts.mode];
   if (lw.key && !opts.exclude?.has(lw.key) && Date.now() - lw.time < LAST_WORKING_TTL_MS) {
     const idx = candidates.findIndex((c) => modelKey(c.provider.id, c.model.modelId) === lw.key);
@@ -753,6 +765,8 @@ export interface RouteRequest {
   language?: string;
   /** modelKeys to skip — e.g. the model whose stream just died mid-way. */
   exclude?: Set<string>;
+  /** Hoist this exact model id to the front (instant lane preference). */
+  preferredModelId?: string;
 }
 
 /**
@@ -760,7 +774,7 @@ export interface RouteRequest {
  * serve the request — callers MUST fall back to the legacy cascade.
  */
 export async function routeChatCompletion(req: RouteRequest): Promise<RoutingOutcome<RoutedReply>> {
-  const candidates = await buildCandidates({ vision: req.vision, mode: req.mode, onlyFree: true, exclude: req.exclude });
+  const candidates = await buildCandidates({ vision: req.vision, mode: req.mode, onlyFree: true, exclude: req.exclude, preferredModelId: req.preferredModelId });
   if (candidates.length === 0) return { ok: false };
 
   const deadline = Date.now() + req.gen.globalBudgetMs;
@@ -1064,7 +1078,7 @@ function buildResilientUpstreamStream(params: {
  * in-flight instead of surfacing truncated replies.
  */
 export async function routeChatStream(req: RouteRequest): Promise<RoutingOutcome<RoutedStream>> {
-  const candidates = await buildCandidates({ vision: req.vision, mode: req.mode, onlyFree: true, exclude: req.exclude });
+  const candidates = await buildCandidates({ vision: req.vision, mode: req.mode, onlyFree: true, exclude: req.exclude, preferredModelId: req.preferredModelId });
   if (candidates.length === 0) return { ok: false };
 
   const deadline = Date.now() + req.gen.globalBudgetMs;
