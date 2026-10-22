@@ -11,7 +11,7 @@ import { describe, it, expect } from "vitest";
 
 // classifyRawModel is exported from ai-router.ts — importing the module must
 // NOT require a database (lazy DB handle) by design.
-import { classifyRawModel, maskApiKey, PROVIDER_CATALOG } from "./ai-router.js";
+import { classifyRawModel, maskApiKey, parseUpstreamSseLine, looksComplete, PROVIDER_CATALOG } from "./ai-router.js";
 
 describe("AI Router — classifyRawModel", () => {
   it("classifies OpenRouter multimodal metadata as vision (authoritative signal)", () => {
@@ -103,5 +103,109 @@ describe("AI Router — provider catalog", () => {
       if (c.slug === "custom") continue;
       expect(c.baseUrl).toMatch(/^https:\/\/.+\/v1$/);
     }
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// GATED STREAMING REGRESSIONS — the "brain icon ON gives dumb fixed replies"
+// production incident (lyria music model classified as a tier-1 chat model
+// and pinned by lastWorkingByMode).
+// ════════════════════════════════════════════════════════════════════════
+
+describe("AI Router — non-chat guard (production incident regressions)", () => {
+  it("excludes the lyria MUSIC model even though its id matches TIER1_RE (pro\\b)", () => {
+    // google/lyria-3-pro-preview: "pro\b" made it tier 1 — the strongest
+    // slot — while it can only generate music. It must never be chat.
+    const cls = classifyRawModel({
+      id: "google/lyria-3-pro-preview",
+      pricing: { prompt: "0", completion: "0" },
+      context_length: 32768,
+    });
+    expect(cls).not.toBeNull();
+    expect(cls!.supportsChat).toBe(false);
+    expect(cls!.supportsVision).toBe(false);
+  });
+
+  it("excludes models whose declared output modalities lack text (authoritative metadata)", () => {
+    const audioOnly = classifyRawModel({
+      id: "future/unknown-audio-model",
+      architecture: { input_modalities: ["text"], output_modalities: ["audio"] },
+      pricing: { prompt: "0", completion: "0" },
+    });
+    expect(audioOnly!.supportsChat).toBe(false);
+
+    const imageOnly = classifyRawModel({
+      id: "future/unknown-image-model",
+      architecture: { input_modalities: ["text"], output_modalities: ["image"] },
+      pricing: { prompt: "0", completion: "0" },
+    });
+    expect(imageOnly!.supportsChat).toBe(false);
+  });
+
+  it("keeps real chat models when output modalities include text", () => {
+    const chat = classifyRawModel({
+      id: "deepseek/deepseek-r1:free",
+      architecture: { input_modalities: ["text"], output_modalities: ["text"] },
+      pricing: { prompt: "0", completion: "0" },
+    });
+    expect(chat!.supportsChat).toBe(true);
+    expect(chat!.isFree).toBe(true);
+  });
+
+  it("does not exclude genuine chat ids that merely CONTAIN a guard token substring", () => {
+    // word-boundary safety: "video"/"audio"/"voice" tokens must not swallow
+    // plausible chat model ids
+    const ok1 = classifyRawModel({ id: "meta-llama/llama-4-scout-17b-16e-instruct" });
+    expect(ok1!.supportsChat).toBe(true);
+    const ok2 = classifyRawModel({ id: "qwen/qwen3-235b-a22b:free" });
+    expect(ok2!.supportsChat).toBe(true);
+  });
+});
+
+describe("AI Router — parseUpstreamSseLine (gate parser)", () => {
+  it("parses content deltas", () => {
+    const ev = parseUpstreamSseLine('data: {"choices":[{"delta":{"content":"مرحبا"}}]}');
+    expect(ev).not.toBeNull();
+    expect(ev!.text).toBe("مرحبا");
+    expect(ev!.finish).toBeUndefined();
+  });
+
+  it("treats reasoning deltas as liveness without exposing them as text", () => {
+    const ev = parseUpstreamSseLine('data: {"choices":[{"delta":{"reasoning_content":"فكر..."}}]}');
+    expect(ev).not.toBeNull();
+    expect(ev!.reasoning).toBe(true);
+    expect(ev!.text).toBeUndefined();
+  });
+
+  it("parses finish_reason and [DONE]", () => {
+    expect(parseUpstreamSseLine('data: {"choices":[{"delta":{},"finish_reason":"stop"}]}')!.finish).toBe("stop");
+    expect(parseUpstreamSseLine("data: [DONE]")!.done).toBe(true);
+  });
+
+  it("flags upstream error events delivered inside HTTP 200 streams", () => {
+    const ev = parseUpstreamSseLine('data: {"error":{"message":"rate limited"}}');
+    expect(ev).not.toBeNull();
+    expect(ev!.error).toContain("rate limited");
+  });
+
+  it("ignores keep-alive comments, empty lines and malformed payloads", () => {
+    expect(parseUpstreamSseLine(": OPENROUTER PROCESSING")).toBeNull();
+    expect(parseUpstreamSseLine("")).toBeNull();
+    expect(parseUpstreamSseLine("data: not-json")).toBeNull();
+    expect(parseUpstreamSseLine("event: ping")).toBeNull();
+  });
+});
+
+describe("AI Router — looksComplete (rescue heuristic)", () => {
+  it("detects complete sentence endings (ar/en) and code fences", () => {
+    expect(looksComplete("تم إعداد القاطع بنجاح.")).toBe(true);
+    expect(looksComplete("That's the full procedure!")).toBe(true);
+    expect(looksComplete("النتيجة 12.5 كيلو وات**")).toBe(true);
+  });
+
+  it("detects mid-sentence cuts like the truncated greeting in the incident", () => {
+    expect(looksComplete("سأشرح لك خطوة بخطوة كيف تقوم")).toBe(false);
+    expect(looksComplete("بالإضافة إلى آلية التحكم (Control Mechanism")).toBe(false);
+    expect(looksComplete("")).toBe(false);
   });
 });

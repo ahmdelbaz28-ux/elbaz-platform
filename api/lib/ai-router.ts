@@ -142,13 +142,26 @@ const TIER1_RE = /(70b|120b|230b|550b|405b|ultra|super|pro\b|large|scout|maveric
 const TIER3_RE = /(nano|mini\b|flash|instant|small|lite|\b[1-8]b\b|a3b|a4b|lfm|preview)/i;
 
 /**
- * Non-chat models (speech-to-text, TTS, embeddings, guard/moderation).
+ * Non-chat models (speech-to-text, TTS, music/audio generation, image/video
+ * generation, embeddings, guard/moderation).
  * Providers like Groq list them on /models, but they cannot answer
  * chat/completions calls — routing to them would burn an attempt and a
  * cooldown on every message. They stay visible in the dashboard (no Chat
  * badge) but are excluded from both chat and vision lanes.
+ *
+ * ⚠ Production incident this list now guards against: OpenRouter's
+ * `google/lyria-3-pro-preview` (a MUSIC generation model) matched TIER1_RE
+ * via the "pro\b" token, got tier 1, was the FIRST thinking-lane candidate,
+ * and once pinned by lastWorkingByMode it served every thinking request with
+ * truncated nonsense — the "brain icon ON gives dumb fixed replies" bug.
+ * Never match loose family tokens here — keep ids precise (word boundaries).
  */
-const NON_CHAT_RE = /(whisper|orpheus|playai|\btts\b|\bnumina\b|embedding|\bembed\b|guard|moderation|rerank|\bsafety\b|distil-whisper)/i;
+const NON_CHAT_RE = new RegExp([
+  "whisper", "orpheus", "playai", "\\btts\\b", "\\bnumina\\b", "embedding", "\\bembed\\b", "guard", "moderation", "rerank", "\\bsafety\\b", "distil-whisper",
+  "\\blyria\\b", "\\bmusic\\b", "\\bcanary\\b", "\\baurora\\b", "\\bvoice\\b", "\\bspeech\\b", "\\baudio\\b",
+  "\\bimagen\\b", "\\bdall\\b", "\\bflux\\b", "stable-diffusion", "\\bsdxl\\b", "\\bsd3\\b", "\\bmidjourney\\b", "\\brecraft\\b", "\\bideogram\\b", "\\bphoton\\b", "\\bjanus\\b",
+  "\\bveo\\b", "\\bsora\\b", "\\bkling\\b", "\\brunway\\b", "\\bhailuo\\b", "\\bseedance\\b", "\\bvideo\\b",
+].join("|"), "i");
 
 export interface ClassifiedModel {
   modelId: string;
@@ -162,7 +175,7 @@ export interface ClassifiedModel {
 interface RawProviderModel {
   id?: unknown;
   pricing?: { prompt?: unknown; completion?: unknown };
-  architecture?: { input_modalities?: unknown; modality?: unknown };
+  architecture?: { input_modalities?: unknown; output_modalities?: unknown; modality?: unknown };
   context_length?: unknown;
   max_model_len?: unknown;
   context_window?: unknown;
@@ -206,7 +219,17 @@ export function classifyRawModel(raw: RawProviderModel): ClassifiedModel | null 
   if (TIER3_RE.test(modelId) && !TIER1_RE.test(modelId)) tier = 3;
   else if (TIER1_RE.test(modelId) || ctx >= 262144) tier = 1;
 
-  return { modelId, supportsChat: !NON_CHAT_RE.test(modelId), supportsVision: supportsVision && !NON_CHAT_RE.test(modelId), isFree, tier, contextLength: ctx };
+  // ── Chat capability: authoritative output-modality metadata first, then
+  //    the id heuristic. A model whose declared outputs do not include text
+  //    (e.g. google/lyria → ["audio"]) can NEVER answer chat/completions —
+  //    this is the signal the id regex exists to back up, not to replace.
+  const outMods = raw.architecture?.output_modalities;
+  const outputsText = Array.isArray(outMods)
+    ? outMods.some((m) => typeof m === "string" && m.toLowerCase() === "text")
+    : null; // unknown → fall back to the id heuristic
+  const supportsChat = outputsText === null ? !NON_CHAT_RE.test(modelId) : outputsText && !NON_CHAT_RE.test(modelId);
+
+  return { modelId, supportsChat, supportsVision: supportsVision && supportsChat, isFree, tier, contextLength: ctx };
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -453,6 +476,12 @@ function recordFailure(provider: AiProvider, model: AiModel, kind: Exclude<Route
   modelConsecFails.set(key, fails);
   pushEvent({ ts: Date.now(), provider: provider.slug, model: model.modelId, kind, detail: detail.slice(0, 160) });
 
+  // A failing model must never keep the lastWorking shortcut — the pin only
+  // ever points at models whose streams actually completed (honest pinning).
+  // recordFailure is mode-agnostic, so clear the key from both mode pins.
+  if (lastWorkingByMode.thinking.key === key) lastWorkingByMode.thinking = { key: "", time: 0 };
+  if (lastWorkingByMode.instant.key === key) lastWorkingByMode.instant = { key: "", time: 0 };
+
   switch (kind) {
     case "auth_fail":
       void markProviderAuthFail(provider.id);
@@ -529,7 +558,7 @@ export interface RouteCandidate {
  *   (thinking: 1 strongest first / instant: 3 fastest first), skipping
  *   disabled rows, capability mismatches and cooled-down breakers.
  */
-export async function buildCandidates(opts: { vision: boolean; mode: ChatbotMode; onlyFree: boolean }): Promise<RouteCandidate[]> {
+export async function buildCandidates(opts: { vision: boolean; mode: ChatbotMode; onlyFree: boolean; exclude?: Set<string> }): Promise<RouteCandidate[]> {
   const pool = await loadPool();
   if (!pool) return [];
 
@@ -540,15 +569,21 @@ export async function buildCandidates(opts: { vision: boolean; mode: ChatbotMode
     const rows = pool.models.get(provider.id) || [];
     const usable = rows
       .filter((m) => m.enabled && (opts.vision ? m.supportsVision : m.supportsChat))
+      // Runtime non-chat guard — re-derive the capability from the model id
+      // at routing time so rows poisoned by an older classifier (e.g. the
+      // lyria music model stored as supportsChat=true) are excluded
+      // IMMEDIATELY on deploy, without waiting for an admin re-discovery.
+      .filter((m) => !NON_CHAT_RE.test(m.modelId))
       .filter((m) => !opts.onlyFree || m.isFree)
-      .filter((m) => !modelIsCooling(provider.id, m.modelId));
+      .filter((m) => !modelIsCooling(provider.id, m.modelId))
+      .filter((m) => !opts.exclude?.has(modelKey(provider.id, m.modelId)));
     usable.sort((a, b) => (opts.mode === "instant" ? b.tier - a.tier : a.tier - b.tier));
     for (const m of usable) candidates.push({ provider, model: m });
   }
 
   // Mode-scoped last-working shortcut: hop straight to what worked recently.
   const lw = lastWorkingByMode[opts.mode];
-  if (lw.key && Date.now() - lw.time < LAST_WORKING_TTL_MS) {
+  if (lw.key && !opts.exclude?.has(lw.key) && Date.now() - lw.time < LAST_WORKING_TTL_MS) {
     const idx = candidates.findIndex((c) => modelKey(c.provider.id, c.model.modelId) === lw.key);
     if (idx > 0) {
       const [first] = candidates.splice(idx, 1);
@@ -590,17 +625,44 @@ async function attemptUpstream(p: AttemptParams): Promise<{ ok: true; response: 
   const started = Date.now();
   const url = `${p.provider.baseUrl.replace(/\/+$/, "")}/chat/completions`;
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${p.provider.apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://ahmedelbaz.qzz.io",
-        "X-Title": "Elbaz Platform Chatbot",
-      },
-      body: buildUpstreamBody(p, p.stream),
-      signal: AbortSignal.timeout(p.gen.attemptTimeoutMs),
-    });
+    // For STREAM requests the timeout must bound only the HEADER wait.
+    // AbortSignal.timeout() stays attached to the body and would kill any
+    // generation longer than attemptTimeoutMs mid-stream (a silent truncation
+    // source for long, detailed answers). A manual controller aborted by a
+    // timer that is cleared once headers arrive keeps the body unbounded —
+    // stall/death detection is the gated stream's job, not the fetch's.
+    let response: Response;
+    if (p.stream) {
+      const ctrl = new AbortController();
+      const headerTimer = setTimeout(() => ctrl.abort(new Error("upstream header timeout")), p.gen.attemptTimeoutMs);
+      try {
+        response = await fetch(url, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${p.provider.apiKey}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://ahmedelbaz.qzz.io",
+            "X-Title": "Elbaz Platform Chatbot",
+          },
+          body: buildUpstreamBody(p, p.stream),
+          signal: ctrl.signal,
+        });
+      } finally {
+        clearTimeout(headerTimer);
+      }
+    } else {
+      response = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${p.provider.apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://ahmedelbaz.qzz.io",
+          "X-Title": "Elbaz Platform Chatbot",
+        },
+        body: buildUpstreamBody(p, p.stream),
+        signal: AbortSignal.timeout(p.gen.attemptTimeoutMs),
+      });
+    }
 
     if (response.status === 401 || response.status === 403) {
       return { ok: false, failure: { kind: "auth_fail", detail: `HTTP ${response.status} — key rejected by ${p.provider.slug}` } };
@@ -687,6 +749,10 @@ export interface RouteRequest {
   mode: ChatbotMode;
   vision: boolean;
   gen: RouteGenParams;
+  /** Reply language hint (ar/en) — used by the mid-stream continuation rescue. */
+  language?: string;
+  /** modelKeys to skip — e.g. the model whose stream just died mid-way. */
+  exclude?: Set<string>;
 }
 
 /**
@@ -694,7 +760,7 @@ export interface RouteRequest {
  * serve the request — callers MUST fall back to the legacy cascade.
  */
 export async function routeChatCompletion(req: RouteRequest): Promise<RoutingOutcome<RoutedReply>> {
-  const candidates = await buildCandidates({ vision: req.vision, mode: req.mode, onlyFree: true });
+  const candidates = await buildCandidates({ vision: req.vision, mode: req.mode, onlyFree: true, exclude: req.exclude });
   if (candidates.length === 0) return { ok: false };
 
   const deadline = Date.now() + req.gen.globalBudgetMs;
@@ -727,16 +793,285 @@ export async function routeChatCompletion(req: RouteRequest): Promise<RoutingOut
   return { ok: false };
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// GATED STREAMING — first-event liveness gate + honest pinning + mid-stream
+// rescue. Root-cause fix for the "brain icon ON gives dumb fixed replies"
+// production incident: routeChatStream used to recordSuccess the moment the
+// upstream ACCEPTED the request (headers only), so a model that accepted and
+// then streamed nothing/garbage/truncated text was pinned as
+// lastWorkingByMode[mode] and kept serving every request in that mode.
+// ════════════════════════════════════════════════════════════════════════
+
+interface UpstreamEvent {
+  text?: string;
+  /** reasoning_content delta — proof of liveness, never forwarded. */
+  reasoning?: boolean;
+  finish?: string;
+  done?: boolean;
+  error?: string;
+}
+
+/** Parse one upstream SSE line into a typed event (null when ignorable). */
+export function parseUpstreamSseLine(line: string): UpstreamEvent | null {
+  const s = line.trim();
+  if (!s.startsWith("data: ")) return null;
+  const raw = s.slice(6).trim();
+  if (raw === "[DONE]") return { done: true };
+  if (!raw || raw.startsWith(":")) return null; // keep-alive comment
+  try {
+    const parsed = JSON.parse(raw) as {
+      error?: unknown;
+      choices?: { delta?: { content?: unknown; reasoning_content?: unknown; reasoning?: unknown }; finish_reason?: unknown }[];
+    };
+    if (parsed.error) {
+      return { error: typeof parsed.error === "string" ? parsed.error : JSON.stringify(parsed.error).slice(0, 200) };
+    }
+    const choice = parsed.choices?.[0];
+    if (!choice) return null;
+    const ev: UpstreamEvent = {};
+    const content = choice.delta?.content;
+    if (typeof content === "string" && content) ev.text = content;
+    const rs = choice.delta?.reasoning_content ?? choice.delta?.reasoning;
+    if (typeof rs === "string" && rs) ev.reasoning = true;
+    if (typeof choice.finish_reason === "string" && choice.finish_reason) ev.finish = choice.finish_reason;
+    if (!ev.text && !ev.reasoning && !ev.finish) return null;
+    return ev;
+  } catch {
+    return null;
+  }
+}
+
+interface PeekOk {
+  ok: true;
+  reader: ReadableStreamDefaultReader<Uint8Array>;
+  /** Same decoder the peek used — its multibyte state must survive. */
+  decoder: TextDecoder;
+  /** Unparsed partial line carried over from the peek. */
+  buffer: string;
+  /** Content captured during the peek ("" when liveness came from reasoning). */
+  headText: string;
+}
+
 /**
- * Streaming failover walk. Returns the first candidate whose upstream
- * accepted the request (HTTP-level ok + body); mid-stream failures are
- * handled by the caller's existing fallback pumps.
+ * Read the upstream just past its FIRST meaningful SSE event (content or
+ * reasoning delta). A candidate that cannot produce one within the timeout
+ * is recorded as a failure and the walk continues — accepting it is what
+ * poisoned the pin. The reader/decoder/buffer are returned so the winner's
+ * wrapper can continue streaming without losing bytes.
+ */
+async function peekUpstreamLiveness(body: ReadableStream<Uint8Array>, timeoutMs: number): Promise<PeekOk | { ok: false; detail: string }> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let headText = "";
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    let chunk: Awaited<ReturnType<ReadableStreamDefaultReader<Uint8Array>["read"]>>;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const readPromise = reader.read();
+    readPromise.catch(() => { /* settled via cancel below — never unhandled */ });
+    try {
+      chunk = await Promise.race([
+        readPromise,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("no first SSE event before timeout")), Math.max(250, deadline - Date.now()));
+        }),
+      ]);
+    } catch (err) {
+      try { await reader.cancel(); } catch { /* already dead */ }
+      return { ok: false, detail: err instanceof Error ? err.message : String(err) };
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (chunk.done) {
+      return { ok: false, detail: "upstream closed before any SSE event" };
+    }
+    buffer += decoder.decode(chunk.value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+    for (const line of lines) {
+      const ev = parseUpstreamSseLine(line);
+      if (!ev) continue;
+      if (ev.error) {
+        try { await reader.cancel(); } catch { /* already dead */ }
+        return { ok: false, detail: `upstream error event: ${ev.error}` };
+      }
+      if (ev.text) {
+        headText += ev.text;
+        return { ok: true, reader, decoder, buffer, headText };
+      }
+      if (ev.reasoning) {
+        // Model is alive and thinking — accept; the wrapper's rescue covers
+        // the rare case where it finishes without ever emitting content.
+        return { ok: true, reader, decoder, buffer, headText: "" };
+      }
+      if (ev.finish || ev.done) {
+        try { await reader.cancel(); } catch { /* already dead */ }
+        return { ok: false, detail: "upstream finished without any content" };
+      }
+    }
+  }
+  try { await reader.cancel(); } catch { /* already dead */ }
+  return { ok: false, detail: "no first SSE event before timeout" };
+}
+
+const SENTENCE_END_RE = /[.!?…:؛،"'”’）)\]】»*]\s*$/;
+
+/** Heuristic: the text ends like a finished sentence (not cut mid-thought). */
+export function looksComplete(text: string): boolean {
+  const t = text.trimEnd();
+  if (!t) return false;
+  return SENTENCE_END_RE.test(t);
+}
+
+function continuationInstruction(language?: string): string {
+  return language === "en"
+    ? "Continue your previous answer EXACTLY from where it stopped — no repetition of anything already written, no preamble, no apologies. Resume mid-sentence if needed."
+    : "أكمل إجابتك السابقة من حيث توقفت تماماً — دون تكرار أي كلمة سبق كتابتها، ودون مقدمات أو اعتذارات. تابع من منتصف الجملة إن لزم.";
+}
+
+/**
+ * One-shot in-flight rescue for a stream that died prematurely: continue the
+ * partial answer on the NEXT healthy candidate (assistant prefill + explicit
+ * continuation instruction), or regenerate from scratch when nothing usable
+ * arrived. Returns the rescue text or null.
+ */
+async function rescueRound(req: RouteRequest, deadKey: string, partial: string): Promise<string | null> {
+  const messages: RouteMessage[] = partial
+    ? [...req.messages, { role: "assistant", content: partial }, { role: "user", content: continuationInstruction(req.language) }]
+    : req.messages;
+  const rescued = await routeChatCompletion({ ...req, messages, exclude: new Set([deadKey]) });
+  if (!rescued.ok) return null;
+  const reply = rescued.result.reply?.trim();
+  if (!reply) return null;
+  if (partial) {
+    // Degenerate-restart guard: the rescue model repeated the answer from
+    // the beginning instead of continuing — emitting it would duplicate text.
+    const head = partial.trim().slice(0, 40);
+    if (reply.startsWith(head)) return null;
+  }
+  return reply;
+}
+
+/**
+ * The winner's public stream: re-emits the peeked head, pumps the rest of
+ * the upstream, and — when the upstream dies WITHOUT a finish marker —
+ * repairs the answer in-flight via rescueRound instead of leaving the user
+ * with a truncated reply. Success is recorded only when the stream actually
+ * completed, so the lastWorking pin never points at a broken model.
+ */
+function buildResilientUpstreamStream(params: {
+  winner: { provider: AiProvider; model: AiModel; key: string; latencyMs: number };
+  reader: ReadableStreamDefaultReader<Uint8Array>;
+  decoder: TextDecoder;
+  buffer: string;
+  headText: string;
+  req: RouteRequest;
+  encoder: TextEncoder;
+  /** Mid-stream idle watchdog — a stalled upstream counts as premature death. */
+  idleTimeoutMs: number;
+}): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      void (async () => {
+        const { provider, model, key, latencyMs } = params.winner;
+        let buffer = params.buffer;
+        let total = params.headText;
+        let finish: string | null = null;
+        let sawDone = false;
+        let streamError: string | null = null;
+
+        const emit = (text: string) => {
+          if (!text) return;
+          try { controller.enqueue(params.encoder.encode(`data: ${JSON.stringify({ text: sanitizeReplyOutput(text) })}\n\n`)); } catch { /* client gone */ }
+        };
+        emit(params.headText);
+
+        try {
+          while (true) {
+            let chunk: Awaited<ReturnType<ReadableStreamDefaultReader<Uint8Array>["read"]>>;
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            const readPromise = params.reader.read();
+            readPromise.catch(() => { /* settled via cancel — never unhandled */ });
+            try {
+              chunk = await Promise.race([
+                readPromise,
+                new Promise<never>((_, reject) => {
+                  timer = setTimeout(() => reject(new Error("upstream stalled mid-stream")), params.idleTimeoutMs);
+                }),
+              ]);
+            } finally {
+              clearTimeout(timer);
+            }
+            if (chunk.done) break;
+            buffer += params.decoder.decode(chunk.value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+            let fatal = false;
+            for (const line of lines) {
+              const ev = parseUpstreamSseLine(line);
+              if (!ev) continue;
+              if (ev.error) { streamError = ev.error; fatal = true; break; }
+              if (ev.text) { total += ev.text; emit(ev.text); }
+              if (ev.finish) finish = ev.finish;
+              if (ev.done) sawDone = true;
+            }
+            if (fatal) break;
+          }
+        } catch (err) {
+          streamError = err instanceof Error ? err.message : String(err);
+        } finally {
+          try { params.reader.releaseLock(); } catch { /* already released */ }
+        }
+
+        const premature = !finish && !sawDone;
+        const partial = total.trim();
+
+        if (!premature) {
+          recordSuccess(provider, model, latencyMs, params.req.mode);
+        } else if (partial && looksComplete(partial)) {
+          // Clean prose ending without a finish marker — some providers omit
+          // [DONE]; accept the answer instead of risking a junk continuation.
+          recordSuccess(provider, model, latencyMs, params.req.mode);
+        } else {
+          // Content-then-death / stall / reasoning-only death — repair live.
+          recordFailure(provider, model, "fail", `midstream death: ${String(streamError || "no finish marker").slice(0, 120)}`);
+          try {
+            const rescued = await rescueRound(params.req, key, partial);
+            if (rescued) {
+              total += rescued;
+              emit(rescued);
+            }
+          } catch { /* rescue failed — emit what we have (never worse than before) */ }
+        }
+
+        try { controller.enqueue(params.encoder.encode("data: [DONE]\n\n")); } catch { /* client gone */ }
+        try { controller.close(); } catch { /* already closed */ }
+      })();
+    },
+    cancel() {
+      try { params.reader.cancel(); } catch { /* already dead */ }
+    },
+  });
+}
+
+/**
+ * Streaming failover walk — now GATED: a candidate wins only after proving
+ * liveness with a real first SSE event, and its success is recorded only
+ * when the stream actually completes. Mid-stream deaths are repaired
+ * in-flight instead of surfacing truncated replies.
  */
 export async function routeChatStream(req: RouteRequest): Promise<RoutingOutcome<RoutedStream>> {
-  const candidates = await buildCandidates({ vision: req.vision, mode: req.mode, onlyFree: true });
+  const candidates = await buildCandidates({ vision: req.vision, mode: req.mode, onlyFree: true, exclude: req.exclude });
   if (candidates.length === 0) return { ok: false };
 
   const deadline = Date.now() + req.gen.globalBudgetMs;
+  // Reasoning models may emit thinking deltas for a while before content —
+  // the gate accepts ANY meaningful event, so these budgets are generous.
+  const firstEventTimeoutMs = req.mode === "instant" ? 8_000 : 20_000;
+  const idleTimeoutMs = req.mode === "instant" ? 15_000 : 30_000;
   let attempted = 0;
 
   for (const { provider, model } of candidates) {
@@ -753,13 +1088,29 @@ export async function routeChatStream(req: RouteRequest): Promise<RoutingOutcome
       continue;
     }
 
-    recordSuccess(provider, model, attempt.latencyMs, req.mode);
-    logger.info(`[AiRouter] streaming via ${provider.slug}/${model.modelId} (attempt ${attempted})`);
+    const peekBudget = Math.min(firstEventTimeoutMs, Math.max(2_000, deadline - Date.now()));
+    const peek = await peekUpstreamLiveness(attempt.response.body, peekBudget);
+    if (!peek.ok) {
+      recordFailure(provider, model, "fail", peek.detail);
+      continue;
+    }
+
+    const modelTag = `${provider.slug}/${model.modelId}`;
+    logger.info(`[AiRouter] streaming via ${modelTag} (attempt ${attempted}, first event peeked)`);
     return {
       ok: true,
       result: {
-        stream: attempt.response.body.pipeThrough(buildUpstreamSSETransform(new TextEncoder())),
-        model: `${provider.slug}/${model.modelId}`,
+        stream: buildResilientUpstreamStream({
+          winner: { provider, model, key: modelKey(provider.id, model.modelId), latencyMs: attempt.latencyMs },
+          reader: peek.reader,
+          decoder: peek.decoder,
+          buffer: peek.buffer,
+          headText: peek.headText,
+          req,
+          encoder: new TextEncoder(),
+          idleTimeoutMs,
+        }),
+        model: modelTag,
         providerId: provider.id,
         aiModelId: model.id,
       },
