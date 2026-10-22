@@ -247,7 +247,6 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
-  const [activeModel, setActiveModel] = useState<string>("");
   const [streamingContent, setStreamingContent] = useState<string>("");
   const [copiedId, setCopiedId] = useState<string>("");
   const [chatMode, setChatMode] = useState<ChatMode>(loadChatMode);
@@ -369,6 +368,19 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     };
   }, []);
 
+  // ─── Mobile fullscreen chat (owner request) ───
+  // On phones the chat opens edge-to-edge over the whole screen so the
+  // reading area is as large and as clear as possible. Desktop is unchanged.
+  const [isMobileViewport, setIsMobileViewport] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const onChange = (e: MediaQueryListEvent) => setIsMobileViewport(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
   // When the keyboard opens, keep the latest message + the caret in view
   const prevKbOpenRef = useRef(false);
   useEffect(() => {
@@ -446,18 +458,6 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     return undefined;
   }, [copiedId]);
 
-  // ─── Extract short model name ───
-  const getShortModelName = useCallback((modelId: string): string => {
-    if (!modelId) return "";
-    const parts = modelId.split("/");
-    const name = parts.length > 1 ? parts[1] : modelId;
-    // Strip `:free` suffix and any `:...` variant suffix. Using split +
-    // shift avoids the `.*` greedy quantifier that SonarCloud S8786
-    // flags for super-linear backtracking.
-    const colonIdx = name.indexOf(":");
-    return colonIdx === -1 ? name : name.slice(0, colonIdx);
-  }, []);
-
   // ─── Copy message to clipboard ───
   const copyMessage = useCallback((msgId: string, content: string) => {
     navigator.clipboard.writeText(content).then(() => {
@@ -497,7 +497,6 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     setInput("");
     setIsLoading(true);
     setStreamingContent("");
-    setActiveModel("");
 
     // Reset textarea height
     if (inputRef.current) {
@@ -575,7 +574,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                   const parsed = JSON.parse(payload);
                   if (parsed.model) {
                     receivedModel = parsed.model;
-                    setActiveModel(parsed.model);
+                    // Model identity stays server-side — never surfaced in the UI.
                   } else if (parsed.text) {
                     accumulated += parsed.text;
                     setStreamingContent(accumulated);
@@ -648,7 +647,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
         const data = await response.json();
 
         if (data.success && data.reply) {
-          if (data.model) setActiveModel(data.model);
+          // Model identity stays server-side — never surfaced in the UI.
 
           // ── Typewriter effect: simulate streaming for non-streaming fallback ──
           // When the streaming endpoint fails, the full reply arrives at once.
@@ -755,7 +754,6 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     chatIdRef.current = crypto.randomUUID();
     setMessages([WELCOME_MESSAGES[lang]]);
     setStreamingContent("");
-    setActiveModel("");
     setCopiedId("");
     try { localStorage.removeItem(STORAGE_KEY); } catch { /* Intentionally ignored: clearChat must proceed even if localStorage is unavailable. — SonarCloud S2486 */ }
   };
@@ -851,9 +849,10 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
         innerSeenCount);
 
   // ─── Streaming model display ───
-  const streamingModelName = activeModel ? getShortModelName(activeModel) : "";
-  const thinkingWithModel = `${(lang === "ar" ? "\u062c\u0627\u0631\u064d \u0627\u0644\u062a\u0641\u0643\u064a\u0631 \u0628\u0640 " : "Thinking with ") + streamingModelName}...`;
-  const thinkingWithoutModel = lang === "ar" ? "\u062c\u0627\u0631\u064d \u0627\u0644\u062a\u0641\u0643\u064a\u0631..." : "Thinking...";
+  // Neutral typing label — deliberately says nothing about which model or
+  // provider powers the bot (owner request: professional + private; the
+  // engine identity must never appear in the UI).
+  const thinkingLabel = lang === "ar" ? "\u062c\u0627\u0631\u064d \u0627\u0644\u062a\u0641\u0643\u064a\u0631..." : "Thinking...";
 
   return (
     <>
@@ -888,15 +887,44 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
           className={"fixed z-[100] transition-all duration-300 ease-out chatbot-window " +
             (isMinimized
               ? "chatbot-min w-10 h-10 md:w-14 md:h-14 rounded-full"
-              : "w-[calc(100vw-2rem)] md:w-[420px] h-[calc(100dvh-8rem)] md:h-[600px] rounded-2xl"
+              : isMobileViewport
+                ? "chatbot-fullscreen w-screen h-[100dvh] rounded-none"
+                : "w-[420px] h-[600px] rounded-2xl"
             )}
           style={(() => {
             if (isMinimized) return undefined;
+            if (isMobileViewport) {
+              // Fullscreen on phones: cover the viewport edge-to-edge. With
+              // the keyboard open, pin the bottom to the keyboard's top edge
+              // (iOS layout viewport does not shrink; Android does) and take
+              // the full visual height. transition:none keeps the window
+              // glued to the keyboard during its slide animation.
+              if (kb.open && kb.height > 0) {
+                return {
+                  bottom: `${kb.offsetBottom > 0 ? kb.offsetBottom : 0}px`,
+                  height: `${kb.height}px`,
+                  right: '0px',
+                  left: '0px',
+                  width: '100vw',
+                  maxWidth: '100vw',
+                  borderRadius: '0px',
+                  transition: 'none',
+                };
+              }
+              return {
+                bottom: '0px',
+                right: '0px',
+                left: '0px',
+                width: '100vw',
+                maxWidth: '100vw',
+                height: '100dvh',
+                borderRadius: '0px',
+              };
+            }
             if (kb.open && kb.small && kb.height > 0) {
-              // Keyboard is open on a phone — pin the window just above the
-              // keyboard and use the full visual viewport height (works on
-              // both iOS Safari and Android Chrome). transition:none keeps
-              // the window glued to the keyboard during its slide animation.
+              // Keyboard is open on a small window — pin the window just
+              // above the keyboard and use the full visual viewport height
+              // (works on both iOS Safari and Android Chrome).
               return {
                 bottom: `${(kb.offsetBottom > 0 ? kb.offsetBottom : 0) + 8}px`,
                 height: `${kb.height - 16}px`,
@@ -912,7 +940,8 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
             className={"relative h-full flex flex-col overflow-hidden " +
               (isMinimized
                 ? "bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full cursor-pointer"
-                : "bg-[#0a1019] border border-[#1e2d3d] rounded-2xl shadow-2xl shadow-black/50"
+                : "bg-[#0a1019] border border-[#1e2d3d] shadow-2xl shadow-black/50 " +
+                  (isMobileViewport ? "rounded-none" : "rounded-2xl")
               )}
           >
             {/* ─── Minimized: Just the button ─── */}
@@ -1022,11 +1051,11 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                   {/* Mode description */}
                   {(() => {
                     const thinkingDesc = lang === "ar"
-                      ? "أعمق نموذج + تحليل هندسي دقيق ومُتحقق منه — للمسائل والحسابات المعقدة"
-                      : "Strongest model + verified deep engineering analysis — for complex problems";
+                      ? "تحليل هندسي عميق ومُتحقق منه — للمسائل والحسابات المعقدة"
+                      : "Deep, verified engineering analysis — for complex problems";
                     const instantDesc = lang === "ar"
-                      ? "أسرع نموذج + ردود مختصرة فورية — للأسئلة السريعة"
-                      : "Fastest model + instant concise replies — for quick questions";
+                      ? "ردود فورية مختصرة — للأسئلة السريعة"
+                      : "Instant concise replies — for quick questions";
                     const modeDesc = chatMode === "thinking" ? thinkingDesc : instantDesc;
                     return (
                       <p className={`text-[10px] text-slate-600 mt-1.5 text-center ${kb.open ? "hidden" : ""}`}>
@@ -1069,7 +1098,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                       <div className="flex flex-col max-w-[85%] min-w-0">
                         <div
                           dir={ARABIC_RE.test(msg.content) ? "rtl" : "ltr"}
-                          className={"relative group px-3.5 py-2.5 rounded-2xl text-[13.5px] leading-relaxed break-words overflow-wrap-anywhere whitespace-pre-wrap word-break-break-word " +
+                          className={"chatbot-bubble relative group px-3.5 py-2.5 rounded-2xl text-[13.5px] leading-relaxed break-words overflow-wrap-anywhere whitespace-pre-wrap word-break-break-word " +
                             bubbleClass
                           }
                         >
@@ -1099,12 +1128,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                           )}
                         </div>
 
-                        {/* Model name label */}
-                        {msg.role === "assistant" && !msg.isError && msg.model && (
-                          <span className="text-[10px] text-slate-600 mt-1 ms-1">
-                            {getShortModelName(msg.model)}
-                          </span>
-                        )}
+                        {/* (No model label by design — engine identity is private.) */}
 
                         {/* Retry button (error messages) */}
                         {msg.isError && (
@@ -1128,7 +1152,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                         <Zap className="w-3.5 h-3.5 text-cyan-400" />
                       </div>
                       <div className="flex flex-col max-w-[85%] min-w-0">
-                        <div dir={ARABIC_RE.test(streamingContent) ? "rtl" : "ltr"} className="px-3.5 py-2.5 rounded-2xl rounded-ss-md bg-[#111827] border border-[#1e2d3d] text-[#e8f0fe] text-[13.5px] leading-relaxed break-words overflow-wrap-anywhere whitespace-pre-wrap word-break-break-word">
+                        <div dir={ARABIC_RE.test(streamingContent) ? "rtl" : "ltr"} className="chatbot-bubble px-3.5 py-2.5 rounded-2xl rounded-ss-md bg-[#111827] border border-[#1e2d3d] text-[#e8f0fe] text-[13.5px] leading-relaxed break-words overflow-wrap-anywhere whitespace-pre-wrap word-break-break-word">
                           {/* biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown() escapes all HTML entities first; only safe markdown tags are re-added */}
                           <span key={chunkIndex} className="animate-stream-fade" dangerouslySetInnerHTML={{ __html: renderMarkdown(streamingContent) }} />
                           {/* Blinking caret */}
@@ -1152,7 +1176,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                             <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
                           </div>
                           <span className="text-[11px] text-slate-500 ms-1">
-                            {streamingModelName ? thinkingWithModel : thinkingWithoutModel}
+                            {thinkingLabel}
                           </span>
                         </div>
                       </div>
@@ -1208,7 +1232,10 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                 )}
 
                 {/* ─── Input Area ─── */}
-                <div className="flex-shrink-0 px-3 py-3 border-t border-[#1e2d3d] bg-[#0a1019]">
+                <div
+                  className="flex-shrink-0 px-3 py-3 border-t border-[#1e2d3d] bg-[#0a1019]"
+                  style={isMobileViewport ? { paddingBottom: "max(env(safe-area-inset-bottom, 0px) + 0.5rem, 0.75rem)" } : undefined}
+                >
                   <div className="flex items-end gap-2">
                     <div className="flex-1 relative">
                       <textarea

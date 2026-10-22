@@ -818,6 +818,27 @@ button, a, [role="button"] {
   }
 }
 
+/* ── Mobile fullscreen chat (owner request) ──────────────────────────────
+   On phones the chat window opens edge-to-edge over the whole screen for a
+   larger, clearer reading area. Desktop (>767px) keeps the 420px card. */
+.chatbot-fullscreen {
+  border-radius: 0 !important;
+}
+.chatbot-fullscreen .chatbot-messages {
+  font-size: 15px;
+}
+.chatbot-fullscreen .chatbot-bubble {
+  font-size: 14.5px;
+  line-height: 1.75;
+}
+@media (min-width: 768px) {
+  /* Class is only attached under 768px by the component; this guard keeps
+     the fullscreen geometry from ever leaking into desktop layouts. */
+  .chatbot-fullscreen:not(.chatbot-min) {
+    max-width: 420px !important;
+  }
+}
+
 
 /* RTL overrides are now handled via Tailwind logical properties (end-, start-, ms-, me-)
    Legacy CSS RTL overrides removed — see ChatBot, CourseCard, CourseDetail, Home, Navbar */
