@@ -3,7 +3,6 @@ import { lazy, Suspense } from "react";
 import { Toaster } from "sonner";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import MobileBottomNav from "@/components/MobileBottomNav";
 import WhatsAppButton from "@/components/WhatsAppButton";
 import CookieConsent from "@/components/CookieConsent";
 import ScrollToTop from "@/components/ScrollToTop";
@@ -85,9 +84,8 @@ function Layout({ children }: { readonly children: React.ReactNode }) {
       </a>
       {!isAdminPage && <Navbar />}
       <ScrollToTop />
-      <main id="main-content" tabIndex={-1} className="pb-20 md:pb-0"><Suspense fallback={<PageLoader />}>{children}</Suspense></main>
+      <main id="main-content" tabIndex={-1}><Suspense fallback={<PageLoader />}>{children}</Suspense></main>
       {!isAuthPage && !isAdminPage && <Footer />}
-      {!isAdminPage && <MobileBottomNav />}
       {!isAdminPage && <WhatsAppButton />}
       {/* 🚀 PERFORMANCE: ChatBot wrapped in Suspense — loads on first interaction */}
       {!isAdminPage && <Suspense fallback={null}><ChatBot /></Suspense>}

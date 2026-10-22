@@ -514,11 +514,6 @@ body {
   -webkit-backdrop-filter: blur(20px);
 }
 
-/* ── Mobile bottom nav ── */
-.mobile-bottom-nav {
-  scrollbar-width: none;
-}
-
 /* ── WhatsApp FAB animations ── */
 .whatsapp-fab {
   transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
@@ -1679,13 +1674,6 @@ img[loading="lazy"] {
   color: #0f172a !important;
   border: 1px solid #e2e8f0 !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
-}
-
-/* ── Mobile bottom nav in light mode ─────────────────────────────── */
-[data-theme="light"] .mobile-bottom-nav {
-  background-color: rgba(255, 255, 255, 0.95) !important;
-  border-top-color: #e2e8f0 !important;
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.06) !important;
 }
 
 /* ── Dialog / Modal overlay in light mode ────────────────────────── */

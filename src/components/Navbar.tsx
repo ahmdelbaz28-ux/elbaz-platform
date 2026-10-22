@@ -28,6 +28,8 @@ export default function Navbar() {
   const lastScrollY = useRef(0);
   const location = useLocation();
   const mobileMenuRef = useRef<HTMLDivElement>(null);
+  // Guards against a tap firing right after a drag-to-close gesture
+  const drawerDragGuard = useRef(false);
 
   // Scroll detection: glass effect + hide/reveal
   useEffect(() => {
@@ -255,10 +257,26 @@ export default function Navbar() {
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "spring", stiffness: 320, damping: 32 }}
-            className="mobile-menu-backdrop fixed inset-y-0 right-0 z-[60] flex w-[300px] max-w-[85vw] flex-col shadow-2xl md:hidden"
+            drag="x"
+            dragDirectionLock
+            dragConstraints={{ left: 0, right: 0 }}
+            dragElastic={{ left: 0, right: 0.55 }}
+            onDragStart={() => { drawerDragGuard.current = true; }}
+            onDragEnd={(_, info) => {
+              if (info.offset.x > 90 || info.velocity.x > 600) setMobileOpen(false);
+              globalThis.setTimeout(() => { drawerDragGuard.current = false; }, 250);
+            }}
+            onClickCapture={(e) => {
+              if (drawerDragGuard.current) {
+                e.preventDefault();
+                e.stopPropagation();
+                drawerDragGuard.current = false;
+              }
+            }}
+            className="mobile-menu-backdrop fixed inset-y-0 right-0 z-[60] flex w-[300px] max-w-[85vw] flex-col shadow-2xl rounded-l-2xl md:hidden"
           >
             {/* Panel header */}
-            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+            <div className="flex items-center justify-between px-5 py-4">
               <div className="flex items-center gap-2.5">
                 <img src="/logo.jpg" alt="" className="h-8 w-8 rounded-lg object-contain" />
                 <span className="text-[13px] font-extrabold text-foreground">
@@ -273,6 +291,7 @@ export default function Navbar() {
                 <X className="h-5 w-5" />
               </button>
             </div>
+            <div className="h-px w-full bg-gradient-to-r from-transparent via-accent/60 to-transparent" />
 
             {/* Links */}
             <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
@@ -292,7 +311,7 @@ export default function Navbar() {
                 ] : []),
                 ...(isAdmin ? [{ path: "/admin", label: lang === "ar" ? "التحكم" : "Admin", icon: <Shield className="h-[18px] w-[18px]" /> }] : []),
               ].map((link, i) => (
-                <motion.div key={link.path} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.04 * i, duration: 0.25 }}>
+                <motion.div key={link.path} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.04 * i, duration: 0.25 }} whileTap={{ scale: 0.97 }}>
                   <Link
                     to={link.path}
                     onClick={() => setMobileOpen(false)}
@@ -301,7 +320,9 @@ export default function Navbar() {
                   >
                     {link.icon}
                     {link.label}
-                    {isActive(link.path) && <span className="ms-auto h-1.5 w-1.5 rounded-full bg-accent" />}
+                    {isActive(link.path) && (
+                      <motion.span layoutId="drawer-active-dot" className="ms-auto h-1.5 w-1.5 rounded-full bg-accent" />
+                    )}
                   </Link>
                 </motion.div>
               ))}
