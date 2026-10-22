@@ -12,6 +12,8 @@ import { getCourseCatalogText } from "./lib/course-catalog.js";
 import { sanitizeReplyOutput } from "./lib/chatbot-prompts.js";
 import { getClientIpFromHono as getChatbotIp } from "./lib/client-ip";
 import { getImageQuotaUsed, incrementImageQuota, DAILY_IMAGE_LIMIT } from "./lib/image-quota.js";
+import { persistChatRound, getChatHistory, getLatestSummaryText } from "./lib/chat-history.js";
+import { resolveOptionalUser } from "./context.js";
 import { logger } from "./lib/logger.js";
 // Removed checkRateLimit
 
@@ -204,6 +206,65 @@ function imageQuotaExceededResponse(used: number): { en: string; ar: string } {
 const MAX_MESSAGE_CHARS = 8_000;
 const MAX_TOTAL_CHARS = 60_000;
 
+// ── Chat-history persistence helpers (logged-in users only) ──
+// The assistant reply is only persisted on SUCCESS so error banners and
+// quota warnings never pollute the restored history.
+
+/** Plain text + vision note for the last user message of a normalized round. */
+function lastUserRoundText(messages: ChatApiMessage[], vision: boolean): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (!m || m.role !== "user") continue;
+    const text = messageText(m).trim();
+    if (!text && !vision) continue;
+    const note = vision ? (text ? " [صورة مرفقة]" : "[صورة مرفقة]") : "";
+    return (text + note).slice(0, MAX_MESSAGE_CHARS);
+  }
+  return "";
+}
+
+function persistRoundSafe(userId: number, messages: ChatApiMessage[], vision: boolean, reply: string, model?: string, mode?: string): void {
+  const userText = lastUserRoundText(messages, vision);
+  const assistantText = reply.trim().slice(0, MAX_MESSAGE_CHARS);
+  if (!userText || !assistantText) return;
+  void persistChatRound(userId, { userText, assistantText, model, vision, mode }).catch(() => {
+    // persistChatRound already fails open internally — belt and braces.
+  });
+}
+
+// ── GET /api/chatbot/history — last 50 rounds + rolling summary (auth required) ──
+chatbotRouter.get("/history", async (c) => {
+  const user = await resolveOptionalUser(c.req.raw);
+  if (!user) {
+    return c.json({ success: false, error: "UNAUTHORIZED" }, 401);
+  }
+  try {
+    const data = await getChatHistory(user.id);
+    return c.json({ success: true, messages: data.messages, summary: data.summary });
+  } catch (err) {
+    logger.error("[Chatbot] history load failed", { error: err instanceof Error ? err.message : String(err) });
+    return c.json({ success: false, error: "History temporarily unavailable" }, 500);
+  }
+});
+
+// ── DELETE /api/chatbot/history — user cleared the chat (auth required) ──
+chatbotRouter.delete("/history", async (c) => {
+  const user = await resolveOptionalUser(c.req.raw);
+  if (!user) {
+    return c.json({ success: false, error: "UNAUTHORIZED" }, 401);
+  }
+  try {
+    const { getDb } = await import("./queries/connection.js");
+    const { chatMessages } = await import("@db/schema");
+    const { eq } = await import("drizzle-orm");
+    await getDb().delete(chatMessages).where(eq(chatMessages.userId, user.id));
+    return c.json({ success: true });
+  } catch (err) {
+    logger.error("[Chatbot] history clear failed", { error: err instanceof Error ? err.message : String(err) });
+    return c.json({ success: false, error: "Could not clear history" }, 500);
+  }
+});
+
 // ── Non-streaming chat endpoint ──
 chatbotRouter.post("/", async (c) => {
   try {
@@ -239,17 +300,24 @@ chatbotRouter.post("/", async (c) => {
     // quote actual course names/levels/prices instead of hallucinating them.
     const catalog = await getCourseCatalogText();
 
+    // ── Chat-history continuity (logged-in users only, fail-open) ──
+    const chatUser = await resolveOptionalUser(c.req.raw);
+    const historySummary = chatUser ? await getLatestSummaryText(chatUser.id).catch(() => null) : null;
+
     const result = await getChatResponse({
       messages,
       language: resolveChatLanguage(body.language, messages),
       mode: body.mode,
       catalog,
       vision,
+      historySummary: historySummary ?? undefined,
     });
 
     if (result.success) {
       // Quota is only consumed by SUCCESSFUL image analysis.
       if (vision) await incrementImageQuota(ip, imageCount);
+      // Persist the round for logged-in users (fails open internally).
+      if (chatUser) persistRoundSafe(chatUser.id, messages, vision, result.reply ?? "", result.model, body.mode);
       return c.json({
         success: true,
         reply: sanitizeReplyOutput(result.reply ?? ""),
@@ -290,6 +358,8 @@ function closeControllerIfOpen(state: StreamPipeState): void {
 async function pipeStreamToController( // NOSONAR — complex function, refactoring would risk breaking critical behavior
   stream: ReadableStream<Uint8Array>,
   state: StreamPipeState,
+  onChunk?: (chunk: Uint8Array) => void,
+  onDone?: () => void,
 ): Promise<void> {
   try {
     const reader = stream.getReader();
@@ -300,6 +370,7 @@ async function pipeStreamToController( // NOSONAR — complex function, refactor
         if (done || state.isStreamClosed) break;
         if (value && !state.isStreamClosed) {
           try {
+            onChunk?.(value);
             state.controllerRef?.enqueue(value);
           } catch {
             state.isStreamClosed = true;
@@ -315,11 +386,13 @@ async function pipeStreamToController( // NOSONAR — complex function, refactor
     }
     clearTimeout(state.timeoutId);
     closeControllerIfOpen(state);
+    onDone?.();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (pipeErr: any) {
     logger.warn("[Chatbot] Stream pipe error", { error: pipeErr.message });
     clearTimeout(state.timeoutId);
     closeControllerIfOpen(state);
+    onDone?.();
   }
 }
 
@@ -398,6 +471,10 @@ chatbotRouter.post("/stream", async (c) => {
     // the streamed system prompt carries the live course data.
     const catalog = await getCourseCatalogText();
 
+    // ── Chat-history continuity (logged-in users only, fail-open) ──
+    const chatUser = await resolveOptionalUser(c.req.raw);
+    const historySummary = chatUser ? await getLatestSummaryText(chatUser.id).catch(() => null) : null;
+
     // Create promise that rejects on timeout
     const streamPromise = getStreamResponse({
       messages,
@@ -405,6 +482,7 @@ chatbotRouter.post("/stream", async (c) => {
       mode: body.mode,
       catalog,
       vision,
+      historySummary: historySummary ?? undefined,
     });
 
     // Race between stream response and timeout
@@ -451,10 +529,48 @@ chatbotRouter.post("/stream", async (c) => {
 
     const combinedStream = createCombinedStream(modelEvent, state);
 
+    // Server-side accumulation of the assistant text — the normalized SSE
+    // events ("data: {\"text\"}") are parsed so the full reply can be
+    // persisted for logged-in users when the stream ends (success OR client
+    // disconnect — the user saw whatever accumulated).
+    let accumulatedReply = "";
+    let sseCarry = "";
+    const accumulateFromStream = (chunk: Uint8Array) => {
+      try {
+        sseCarry += new TextDecoder().decode(chunk, { stream: true });
+        const lines = sseCarry.split("\n");
+        sseCarry = lines.pop() || ""; // incomplete line waits for the next chunk
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data: ") || trimmed === "data: [DONE]") continue;
+          try {
+            const parsed = JSON.parse(trimmed.slice(6)) as { text?: string };
+            if (typeof parsed.text === "string") accumulatedReply += parsed.text;
+          } catch { /* malformed line — skip */ }
+        }
+      } catch { /* decode error — skip chunk */ }
+    };
+    const flushAccumulator = () => {
+      const rest = sseCarry.trim();
+      sseCarry = "";
+      if (rest.startsWith("data: ") && rest !== "data: [DONE]") {
+        try {
+          const parsed = JSON.parse(rest.slice(6)) as { text?: string };
+          if (typeof parsed.text === "string") accumulatedReply += parsed.text;
+        } catch { /* incomplete trailing event — drop */ }
+      }
+    };
+
     // Pipe the actual content stream in background (non-blocking).
     // .catch: belt-and-braces — the piper handles its own errors internally,
     // but an unhandled rejection here would crash the Node process (S9383).
-    pipeStreamToController(result.stream, state).catch(() => {
+    void pipeStreamToController(result.stream, state, accumulateFromStream, () => {
+      flushAccumulator();
+      const reply = accumulatedReply.trim();
+      if (chatUser && reply) {
+        persistRoundSafe(chatUser.id, messages, vision, reply, result.model, body.mode);
+      }
+    }).catch(() => {
       // Intentionally ignored: stream piper already finalizes `state` on error.
     });
 

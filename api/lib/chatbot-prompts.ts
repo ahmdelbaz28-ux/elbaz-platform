@@ -304,8 +304,15 @@ Golden rules: never invent critical values; always include units; distinguish Lo
  *                 Injected verbatim into the catalog block in both modes.
  *                 Empty/undefined → fallback line (never invented courses).
  */
-export function getSystemPrompt(language?: string, mode: ChatbotMode = "thinking", catalog?: string, vision = false): string {
+export function getSystemPrompt(language?: string, mode: ChatbotMode = "thinking", catalog?: string, vision = false, historySummary?: string): string {
   const catalogBlock = buildCourseCatalogBlock(catalog ?? "");
+
+  // ── Rolling-summary block — continuity with conversations older than the
+  // recent-message window (~1 day). Injected ONLY when a persisted summary
+  // exists for the logged-in user; guests never see it.
+  const summaryBlock = historySummary?.trim()
+    ? `\n\n🧠 سياق المحادثات الأقدم مع هذا المستخدم (ملخص متداول — استخدمه للاستمرارية دون أن تذكره صراحةً):\n"""\n${historySummary.trim().slice(0, 1500)}\n"""`
+    : "";
 
   // ── Vision block — appended ONLY when the user attached an image ──
   // The model must ground its answer in what it actually sees (single-line
@@ -335,7 +342,7 @@ export function getSystemPrompt(language?: string, mode: ChatbotMode = "thinking
 🚫 محظورات:
 - لا تخترع روابط (URLs) غير موجودة.
 - لا تذكر أبداً أنك ذكاء اصطناعي أو نموذج لغوي أو من أي مزود مثل OpenRouter.
-- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${instantModeAr}${reasoningGuard}${langAndFormatRuleAr}${etapQuickCore}${instantSkillsAr}${platformCoreAr}${safetyRuleAr}${visionBlockAr}${catalogBlock}`;
+- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${instantModeAr}${reasoningGuard}${langAndFormatRuleAr}${etapQuickCore}${instantSkillsAr}${platformCoreAr}${safetyRuleAr}${visionBlockAr}${summaryBlock}${catalogBlock}`;
     }
     return `You are the official AI Assistant of the "Elbaz Platform" (specializing in engineering courses).
 You are a highly professional, balanced, and interactive technical assistant. Do NOT use any personal name for yourself; introduce yourself only as the platform's smart assistant.
@@ -352,7 +359,7 @@ You are a highly professional, balanced, and interactive technical assistant. Do
 🚫 Rules:
 - Do NOT hallucinate fake URLs.
 - NEVER mention you are an AI, a language model, or from OpenRouter or any other provider.
-- If asked about non-engineering topics, politely decline and state your expertise.${instantModeEn}${reasoningGuard}${langAndFormatRuleEn}${etapQuickCore}${instantSkillsEn}${platformCoreEn}${safetyRuleEn}${visionBlockEn}${catalogBlock}`;
+- If asked about non-engineering topics, politely decline and state your expertise.${instantModeEn}${reasoningGuard}${langAndFormatRuleEn}${etapQuickCore}${instantSkillsEn}${platformCoreEn}${safetyRuleEn}${visionBlockEn}${summaryBlock}${catalogBlock}`;
   }
 
   // ── thinking (default) ──
@@ -375,7 +382,7 @@ You are a highly professional, balanced, and interactive technical assistant. Do
 🚫 محظورات:
 - لا تخترع روابط (URLs) غير موجودة.
 - لا تذكر أبداً أنك ذكاء اصطناعي أو نموذج لغوي أو من أي مزود مثل OpenRouter.
-- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${thinkingModeAr}${reasoningGuard}${langAndFormatRuleAr}${versionRuleAr}${mentorProtocolAr}${researchSkillAr}${pfCore}${skmCore}${pvsystCore}${etapExpertCore}${platformCoreAr}${safetyRuleAr}${visionBlockAr}${catalogBlock}`;
+- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${thinkingModeAr}${reasoningGuard}${langAndFormatRuleAr}${versionRuleAr}${mentorProtocolAr}${researchSkillAr}${pfCore}${skmCore}${pvsystCore}${etapExpertCore}${platformCoreAr}${safetyRuleAr}${visionBlockAr}${summaryBlock}${catalogBlock}`;
   }
   return `You are the official AI Assistant of the "Elbaz Platform" (specializing in engineering courses).
 You are a highly professional, balanced, and interactive technical assistant. Do NOT use any personal name for yourself; introduce yourself only as the platform's smart assistant.
@@ -395,5 +402,5 @@ You are a highly professional, balanced, and interactive technical assistant. Do
 🚫 Rules:
 - Do NOT hallucinate fake URLs.
 - NEVER mention you are an AI, a language model, or from OpenRouter or any other provider.
-- If asked about non-engineering topics, politely decline and state your expertise.${thinkingModeEn}${reasoningGuard}${langAndFormatRuleEn}${versionRuleEn}${mentorProtocolEn}${researchSkillEn}${pfCore}${skmCore}${pvsystCore}${etapExpertCore}${platformCoreEn}${safetyRuleEn}${visionBlockEn}${catalogBlock}`;
+- If asked about non-engineering topics, politely decline and state your expertise.${thinkingModeEn}${reasoningGuard}${langAndFormatRuleEn}${versionRuleEn}${mentorProtocolEn}${researchSkillEn}${pfCore}${skmCore}${pvsystCore}${etapExpertCore}${platformCoreEn}${safetyRuleEn}${visionBlockEn}${summaryBlock}${catalogBlock}`;
 }

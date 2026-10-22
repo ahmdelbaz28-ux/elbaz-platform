@@ -51,6 +51,12 @@ const AUTH_LOADING_DEADMAN_MS = 4000;
 
 type ChatMode = "thinking" | "instant";
 
+// Single API origin — same pattern as the two chat fetch sites (native builds
+// must hit the absolute production URL, web builds use same-origin).
+const API_BASE = globalThis.Capacitor?.isNativePlatform()
+  ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io")
+  : "";
+
 function loadChatMode(): ChatMode {
   try {
     const stored = localStorage.getItem(MODE_STORAGE_KEY);
@@ -666,6 +672,38 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
   }, [streamingContent, typingVisible, messages.length]);
 
+  const historySyncedRef = useRef(false);
+  // ─── Server history sync (logged-in users) ───
+  // On first open after login: pull the last 50 rounds from chatMessages.
+  // SERVER WINS over localStorage whenever it has content (requirement) —
+  // localStorage stays as the instant cache + guest fallback. Fails open:
+  // any network error keeps the local conversation untouched.
+  useEffect(() => {
+    if (isAuthenticated === false) { historySyncedRef.current = false; return; }
+    if (!isOpen || isAuthenticated !== true || historySyncedRef.current) return;
+    historySyncedRef.current = true;
+    void (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/chatbot/history`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data?.success || !Array.isArray(data.messages) || data.messages.length === 0) return;
+        const serverMsgs: Message[] = data.messages.map((m: { id?: string; role?: string; content?: string; createdAt?: string; model?: string }) => ({
+          id: m.id || crypto.randomUUID(),
+          role: m.role === "user" ? "user" : "assistant",
+          content: m.content || "",
+          timestamp: new Date(m.createdAt || Date.now()),
+          model: m.model || undefined,
+        }));
+        const restored = serverMsgs.slice(-MAX_STORAGE_MESSAGES);
+        setMessages(restored);
+        saveMessagesToStorage(restored);
+      } catch {
+        // History sync is best-effort — the local conversation keeps working.
+      }
+    })();
+  }, [isOpen, isAuthenticated]);
+
   const scrollToBottom = useCallback((smooth = false) => {
     const el = chatContainerRef.current;
     if (!el) return;
@@ -1139,6 +1177,11 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     setStreamingContent("");
     setCopiedId("");
     try { localStorage.removeItem(STORAGE_KEY); } catch { /* Intentionally ignored: clearChat must proceed even if localStorage is unavailable. — SonarCloud S2486 */ }
+    // Logged-in users: clear the persisted server history too, otherwise the
+    // rounds come straight back on the next chat open (server wins).
+    if (isAuthenticated === true) {
+      fetch(`${API_BASE}/api/chatbot/history`, { method: "DELETE" }).catch(() => { /* best-effort */ });
+    }
   };
 
   // ─── Toggle chat mode (Thinking/Instant) ───
