@@ -9,7 +9,7 @@ import {
   Menu, X, LayoutDashboard, Headphones,
   Shield, LogOut, BookOpen, ChevronDown,
   UserCog, FileBox, HelpCircle, Heart, TrendingUp,
-  SunDim, BookMarked, Newspaper,
+  SunDim, BookMarked, Newspaper, Home,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -46,8 +46,9 @@ export default function Navbar() {
     return () => globalThis.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Close mobile menu on route change
-  useEffect(() => setMobileOpen(false), []); // eslint-disable-line react-hooks/set-state-in-effect
+  // Close mobile menu on route change (deps MUST include pathname — otherwise the
+  // fullscreen overlay stays open after navigating and the page seems "frozen")
+  useEffect(() => { setMobileOpen(false); }, [location.pathname]); // eslint-disable-line react-hooks/set-state-in-effect
 
   // Focus trap for mobile menu
   useEffect(() => {
@@ -227,45 +228,106 @@ export default function Navbar() {
         </div>
       </nav>
 
-      {/* ── Mobile Menu ── */}
+      {/* ── Mobile Menu: professional slide-in side drawer ── */}
       <AnimatePresence>
         {mobileOpen && (
-          <motion.div ref={mobileMenuRef} role="dialog" aria-modal="true" aria-label={lang === "ar" ? "قائمة التنقل" : "Navigation menu"} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="fixed inset-0 z-40 md:hidden mobile-menu-backdrop">
-            <div className="flex h-full flex-col items-center justify-center gap-6 pt-16">
-              {[
-                { path: "/", label: lang === "ar" ? "الرئيسية" : "Home" },
-                { path: "/courses", label: lang === "ar" ? "الكورسات" : "Courses" },
-                { path: "/references", label: lang === "ar" ? "المراجع" : "References" },
-                { path: "/faq", label: lang === "ar" ? "الأسئلة الشائعة" : "FAQ" },
-                ...(isAuthenticated ? [
-                  { path: "/dashboard", label: lang === "ar" ? "لوحتي" : "Dashboard" },
-                  { path: "/wishlist", label: lang === "ar" ? "المفضلة" : "Wishlist" },
-                  { path: "/journey", label: lang === "ar" ? "رحلتي" : "My Journey" },
-                  { path: "/documents", label: lang === "ar" ? "المستندات" : "Documents" },
-                  { path: "/profile", label: lang === "ar" ? "الملف الشخصي" : "Profile" },
-                  { path: "/support", label: lang === "ar" ? "الدعم" : "Support" },
-                ] : []),
-                ...(isAdmin ? [{ path: "/admin", label: lang === "ar" ? "التحكم" : "Admin" }] : []),
-              ].map((link) => (
-                <Link key={link.path} to={link.path} className={`text-2xl font-bold transition-colors ${isActive(link.path) ? "text-accent" : "text-text-secondary hover:text-foreground"}`}>
-                  {link.label}
-                </Link>
-              ))}
-
-              <div className="mt-6 flex flex-col items-center gap-3">
-                <button onClick={() => setLang(lang === "en" ? "ar" : "en")} className="rounded-xl border border-border px-6 py-2.5 text-base font-medium text-text-secondary hover:border-accent hover:text-accent transition-colors">
-                  {lang === "en" ? "العربية" : "English"}
-                </button>
-                {isAuthenticated ? (
-                  <button onClick={() => { logout(); setMobileOpen(false); }} className="text-base font-medium text-destructive transition-colors hover:text-destructive/80">
-                    {lang === "ar" ? "تسجيل الخروج" : "Sign Out"}
-                  </button>
-                ) : (
-                  <Link to="/register" className="btn-primary">{lang === "ar" ? "ابدأ مجاناً" : "Start Free"}</Link>
-                )}
+          <motion.div
+            key="mobile-menu-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm md:hidden"
+            onClick={() => setMobileOpen(false)}
+            aria-hidden="true"
+          />
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {mobileOpen && (
+          <motion.aside
+            key="mobile-menu-panel"
+            ref={mobileMenuRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={lang === "ar" ? "قائمة التنقل" : "Navigation menu"}
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ type: "spring", stiffness: 320, damping: 32 }}
+            className="mobile-menu-backdrop fixed inset-y-0 right-0 z-[60] flex w-[300px] max-w-[85vw] flex-col shadow-2xl md:hidden"
+          >
+            {/* Panel header */}
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <div className="flex items-center gap-2.5">
+                <img src="/logo.jpg" alt="" className="h-8 w-8 rounded-lg object-contain" />
+                <span className="text-[13px] font-extrabold text-foreground">
+                  {lang === "ar" ? "أحمد الباز" : "Eng. Ahmed Elbaz"}
+                </span>
               </div>
+              <button
+                onClick={() => setMobileOpen(false)}
+                aria-label={lang === "ar" ? "إغلاق القائمة" : "Close menu"}
+                className="rounded-lg p-2 text-text-secondary transition-colors hover:bg-white/5 hover:text-foreground"
+              >
+                <X className="h-5 w-5" />
+              </button>
             </div>
-          </motion.div>
+
+            {/* Links */}
+            <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+              {[
+                { path: "/", label: lang === "ar" ? "الرئيسية" : "Home", icon: <Home className="h-[18px] w-[18px]" /> },
+                { path: "/courses", label: lang === "ar" ? "الكورسات" : "Courses", icon: <BookOpen className="h-[18px] w-[18px]" /> },
+                { path: "/articles", label: lang === "ar" ? "المقالات" : "Articles", icon: <Newspaper className="h-[18px] w-[18px]" /> },
+                { path: "/references", label: lang === "ar" ? "المراجع" : "References", icon: <FileBox className="h-[18px] w-[18px]" /> },
+                { path: "/faq", label: lang === "ar" ? "الأسئلة الشائعة" : "FAQ", icon: <HelpCircle className="h-[18px] w-[18px]" /> },
+                ...(isAuthenticated ? [
+                  { path: "/dashboard", label: lang === "ar" ? "لوحتي" : "Dashboard", icon: <LayoutDashboard className="h-[18px] w-[18px]" /> },
+                  { path: "/wishlist", label: lang === "ar" ? "المفضلة" : "Wishlist", icon: <Heart className="h-[18px] w-[18px]" /> },
+                  { path: "/journey", label: lang === "ar" ? "رحلتي" : "My Journey", icon: <TrendingUp className="h-[18px] w-[18px]" /> },
+                  { path: "/documents", label: lang === "ar" ? "المستندات" : "Documents", icon: <BookMarked className="h-[18px] w-[18px]" /> },
+                  { path: "/profile", label: lang === "ar" ? "الملف الشخصي" : "Profile", icon: <UserCog className="h-[18px] w-[18px]" /> },
+                  { path: "/support", label: lang === "ar" ? "الدعم" : "Support", icon: <Headphones className="h-[18px] w-[18px]" /> },
+                ] : []),
+                ...(isAdmin ? [{ path: "/admin", label: lang === "ar" ? "التحكم" : "Admin", icon: <Shield className="h-[18px] w-[18px]" /> }] : []),
+              ].map((link, i) => (
+                <motion.div key={link.path} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.04 * i, duration: 0.25 }}>
+                  <Link
+                    to={link.path}
+                    onClick={() => setMobileOpen(false)}
+                    aria-current={isActive(link.path) ? "page" : undefined}
+                    className={`flex items-center gap-3 rounded-xl px-4 py-3 text-[15px] font-medium transition-colors ${isActive(link.path) ? "bg-accent/10 text-accent" : "text-text-secondary hover:bg-white/5 hover:text-foreground"}`}
+                  >
+                    {link.icon}
+                    {link.label}
+                    {isActive(link.path) && <span className="ms-auto h-1.5 w-1.5 rounded-full bg-accent" />}
+                  </Link>
+                </motion.div>
+              ))}
+            </nav>
+
+            {/* Footer actions */}
+            <div className="space-y-3 border-t border-border px-5 py-4">
+              <button onClick={() => setLang(lang === "en" ? "ar" : "en")} className="w-full rounded-xl border border-border px-4 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:border-accent hover:text-accent">
+                {lang === "en" ? "العربية" : "English"}
+              </button>
+              {isAuthenticated ? (
+                <button onClick={() => { logout(); setMobileOpen(false); }} className="w-full rounded-xl px-4 py-2.5 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10">
+                  {lang === "ar" ? "تسجيل الخروج" : "Sign Out"}
+                </button>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <Link to="/login" onClick={() => setMobileOpen(false)} className="rounded-xl border border-border px-3 py-2.5 text-center text-sm font-medium text-text-secondary transition-colors hover:border-accent hover:text-accent">
+                    {lang === "ar" ? "دخول" : "Sign In"}
+                  </Link>
+                  <Link to="/register" onClick={() => setMobileOpen(false)} className="btn-primary rounded-xl px-3 py-2.5 text-center text-sm font-semibold">
+                    {lang === "ar" ? "ابدأ مجاناً" : "Start Free"}
+                  </Link>
+                </div>
+              )}
+            </div>
+          </motion.aside>
         )}
       </AnimatePresence>
     </>

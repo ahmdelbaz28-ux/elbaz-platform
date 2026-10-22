@@ -8,7 +8,7 @@ import "@/elite-animations.css";
 import {
   LayoutDashboard, Users, BookOpen, Headphones, DollarSign, Phone, FileText, Palette, Tag, Megaphone,
   Plus, Pencil, Trash2, Save, Eye, Zap, TrendingUp, CheckCircle, ChevronLeft, ChevronRight,
-  LogOut, ArrowUpRight, Shield, PlayCircle, Newspaper,
+  LogOut, ArrowUpRight, Shield, PlayCircle, Newspaper, X, Menu,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,6 +68,32 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Mobile: sidebar becomes an off-canvas drawer (slides from the side) instead of
+  // a permanently visible column that squeezes the content on small screens.
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const onChange = (e: MediaQueryListEvent) => {
+      setIsDesktop(e.matches);
+      if (e.matches) setMobileSidebarOpen(false);
+    };
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  // Mobile drawer: lock body scroll + close on Escape
+  useEffect(() => {
+    if (isDesktop || !mobileSidebarOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMobileSidebarOpen(false); };
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [mobileSidebarOpen, isDesktop]);
 
   useEffect(() => {
     if (!isLoading && (!isAuthenticated || !isAdmin)) navigate("/");
@@ -296,46 +322,98 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
     pending: "bg-[rgba(245,158,11,0.15)] text-amber-500",
   };
 
+  const sidebarWidth = isDesktop ? (sidebarCollapsed ? 64 : 240) : 264;
+  const sidebarHidden = !isDesktop && !mobileSidebarOpen;
+
   if (isLoading) return <div className="flex min-h-screen items-center justify-center bg-background"><div className="h-10 w-10 animate-spin rounded-full border-4 border-border border-t-[#06b6d4]" /></div>;
   if (!isAdmin) return null;
 
   return (
     <div className="flex min-h-screen bg-background">
-      {/* Sidebar */}
-      <motion.aside initial={{ width: sidebarCollapsed ? 64 : 240 }} animate={{ width: sidebarCollapsed ? 64 : 240 }} transition={{ type: "spring", stiffness: 300, damping: 30 }} className="admin-sidebar fixed left-0 top-0 z-50 h-screen flex flex-col">
+      {/* Mobile backdrop (drawer mode only) */}
+      <AnimatePresence>
+        {!isDesktop && mobileSidebarOpen && (
+          <motion.div
+            key="admin-sidebar-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => setMobileSidebarOpen(false)}
+            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
+            aria-hidden="true"
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Sidebar — fixed column on desktop, slide-in drawer from the side on mobile */}
+      <motion.aside
+        initial={{ width: sidebarWidth, x: sidebarHidden ? "-100%" : 0 }}
+        animate={{ width: sidebarWidth, x: sidebarHidden ? "-100%" : 0 }}
+        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+        className="admin-sidebar fixed left-0 top-0 z-50 h-screen flex flex-col shadow-2xl lg:shadow-none"
+        aria-label={isRTL ? "قائمة لوحة التحكم" : "Admin navigation"}
+      >
         <div className="flex items-center justify-between p-4 border-b border-border">
-          {!sidebarCollapsed && (
+          {(!isDesktop || !sidebarCollapsed) && (
             <div className="flex items-center gap-2">
               <Shield className="h-5 w-5 text-accent-secondary" />
               <span className="text-sm font-bold text-foreground">{t("adminPanel")}</span>
             </div>
           )}
-          <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)} className="p-1.5 rounded-lg hover:bg-[#1f2d44] text-text-muted transition-colors">
-            {sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-          </button>
+          {isDesktop ? (
+            <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)} aria-label={sidebarCollapsed ? (isRTL ? "توسيع القائمة" : "Expand sidebar") : (isRTL ? "تصغير القائمة" : "Collapse sidebar")} className="p-1.5 rounded-lg hover:bg-[#1f2d44] text-text-muted transition-colors">
+              {sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            </button>
+          ) : (
+            <button onClick={() => setMobileSidebarOpen(false)} aria-label={isRTL ? "إغلاق القائمة" : "Close menu"} className="p-1.5 rounded-lg hover:bg-[#1f2d44] text-text-muted transition-colors">
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
           {SIDEBAR_ITEMS.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             return (
-              <motion.button key={item.id} whileHover={{ x: 4 }} whileTap={{ scale: 0.98 }} onClick={() => setActiveTab(item.id)} className={`admin-sidebar-item w-full ${isActive ? "active" : ""}`}>
+              <motion.button
+                key={item.id}
+                whileHover={{ x: 4 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => { setActiveTab(item.id); if (!isDesktop) setMobileSidebarOpen(false); }}
+                className={`admin-sidebar-item w-full ${isActive ? "active" : ""}`}
+              >
                 <Icon className="h-4 w-4 shrink-0" />
-                {!sidebarCollapsed && <span>{isRTL ? item.labelAr : item.labelEn}</span>}
+                {(!isDesktop || !sidebarCollapsed) && <span>{isRTL ? item.labelAr : item.labelEn}</span>}
               </motion.button>
             );
           })}
         </nav>
         <div className="p-3 border-t border-border">
-          <button onClick={() => navigate("/")} className="admin-sidebar-item w-full text-destructive hover:bg-[rgba(244,63,94,0.08)]">
+          <button onClick={() => { navigate("/"); if (!isDesktop) setMobileSidebarOpen(false); }} className="admin-sidebar-item w-full text-destructive hover:bg-[rgba(244,63,94,0.08)]">
             <LogOut className="h-4 w-4 shrink-0" />
-            {!sidebarCollapsed && <span>{isRTL ? "خروج" : "Exit Admin"}</span>}
+            {(!isDesktop || !sidebarCollapsed) && <span>{isRTL ? "خروج" : "Exit Admin"}</span>}
           </button>
         </div>
       </motion.aside>
 
       {/* Main Content */}
-      <main className="flex-1 ml-[240px] transition-all" style={{ marginLeft: sidebarCollapsed ? 64 : 240 }}>
+      <main className="flex-1 transition-all" style={{ marginLeft: isDesktop ? (sidebarCollapsed ? 64 : 240) : 0 }}>
+        {/* Mobile top bar with hamburger to open the drawer */}
+        <div className="sticky top-0 z-30 flex items-center gap-3 border-b border-border bg-[rgba(10,14,23,0.9)] backdrop-blur-xl px-4 py-3 lg:hidden">
+          <button
+            data-testid="admin-mobile-menu"
+            onClick={() => setMobileSidebarOpen(true)}
+            aria-label={isRTL ? "فتح قائمة التحكم" : "Open admin menu"}
+            aria-expanded={mobileSidebarOpen}
+            className="rounded-lg p-2 text-text-secondary transition-colors hover:bg-white/5 hover:text-foreground"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <span className="text-sm font-bold text-foreground">
+            {(() => { const cur = SIDEBAR_ITEMS.find((i) => i.id === activeTab); return cur ? (isRTL ? cur.labelAr : cur.labelEn) : t("adminPanel"); })()}
+          </span>
+        </div>
         <div className="p-6 lg:p-8">
           <AnimatePresence mode="wait">
             <motion.div key={activeTab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
