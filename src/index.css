@@ -678,39 +678,76 @@ button, a, [role="button"] {
   -webkit-touch-callout: none;
 }
 
-/* Scroll-to-top FAB placement. On mobile the bottom nav (~65px + safe area)
-   owns the bottom edge — the button sits alone on the LEFT at the same 5rem
-   baseline as the chatbot FAB (symmetric with the right-side FAB column).
-   Desktop (md+) has no bottom nav and keeps the original corner. */
+/* ── Floating action buttons — compact bottom-corner stack ───────────
+   All three FABs (WhatsApp, chatbot, scroll-top) form ONE tidy vertical
+   column hugging the bottom edge: smaller on mobile (40px) so they cover
+   minimal reading space, and thumb-reachable. Step = 40px btn + 10px gap
+   = 3.125rem. Desktop (md+) uses full-size buttons in the real corners:
+   WhatsApp + scroll-top stacked bottom-left, chatbot bottom-right. */
+:root {
+  --fab-edge: max(env(safe-area-inset-bottom, 0px) + 0.75rem, 0.75rem);
+}
+
+/* Scroll-top: top of the mobile column (appears only after scrolling). */
 .scroll-top-fab {
-  /* Mobile: sits alone on the LEFT at the same baseline as the chatbot
-     FAB (5rem) — symmetric single button, no longer stacked on top of
-     the WhatsApp button (declutter fix). */
-  bottom: max(env(safe-area-inset-bottom, 0px) + 5rem, 5rem);
-  left: 1rem;
+  right: 0.75rem;
+  left: auto;
+  bottom: calc(var(--fab-edge) + 6.25rem);
 }
 @media (min-width: 768px) {
   .scroll-top-fab {
-    bottom: max(env(safe-area-inset-bottom, 0px) + 1.5rem, 1.5rem);
-    left: 1.25rem;
+    bottom: calc(max(env(safe-area-inset-bottom, 0px) + 1.5rem, 1.5rem) + 4.25rem);
+    left: 1.5rem;
+    right: auto;
   }
 }
 
-/* ── WhatsApp FAB placement (mobile bottom-bar decluttering) ─────────
-   Mobile (<768px): stacks DIRECTLY above the chatbot FAB on the right
-   edge — one tidy vertical column (48px buttons + 12px gap) instead of
-   two pulsing circles scattered across both bottom corners.
-   Desktop (≥768px): unchanged original position — bottom-left corner
-   at the same 5rem baseline as before. */
+/* WhatsApp: bottom-most on mobile (primary contact, best reach). */
 .whatsapp-fab-wrap {
-  right: 1rem;
-  bottom: calc(max(env(safe-area-inset-bottom, 0px) + 5rem, 5rem) + 3.75rem);
+  right: 0.75rem;
+  bottom: var(--fab-edge);
 }
 @media (min-width: 768px) {
   .whatsapp-fab-wrap {
     right: auto;
     left: 1.5rem;
-    bottom: max(env(safe-area-inset-bottom, 0px) + 5rem, 5rem);
+    bottom: max(env(safe-area-inset-bottom, 0px) + 1.5rem, 1.5rem);
+  }
+}
+
+/* Chatbot FAB: middle of the mobile column, bottom-right corner on md+. */
+.chatbot-fab {
+  overflow: visible;
+  right: 0.75rem;
+  bottom: calc(var(--fab-edge) + 3.125rem);
+}
+@media (min-width: 768px) {
+  .chatbot-fab {
+    right: 1.5rem;
+    bottom: max(env(safe-area-inset-bottom, 0px) + 1.5rem, 1.5rem);
+  }
+}
+
+/* Minimized chat bubble lands exactly in the chatbot FAB slot. */
+.chatbot-min {
+  right: 0.75rem;
+  bottom: calc(var(--fab-edge) + 3.125rem);
+}
+@media (min-width: 768px) {
+  .chatbot-min {
+    right: 1.5rem;
+    bottom: max(env(safe-area-inset-bottom, 0px) + 1.5rem, 1.5rem);
+  }
+}
+
+/* The 44px coarse-pointer minimum does not apply to the compact FABs —
+   they are 40px on mobile by design (still comfortable tap targets). */
+@media (pointer: coarse) {
+  button.chatbot-fab,
+  button.whatsapp-fab,
+  button.scroll-top-fab {
+    min-height: 0;
+    min-width: 0;
   }
 }
 

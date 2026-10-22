@@ -858,8 +858,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
         <button
           ref={fabRef}
           onClick={handleFabClick}
-          className="fixed right-4 md:right-6 z-[100] w-12 h-12 md:w-14 md:h-14 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/25 flex items-center justify-center transition-all duration-300 hover:scale-110 hover:shadow-cyan-500/40 active:scale-95 chatbot-fab transform-gpu will-change-transform"
-          style={{ bottom: 'max(env(safe-area-inset-bottom, 0px) + 5rem, 5rem)' }}
+          className="fixed z-[100] w-10 h-10 md:w-14 md:h-14 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/25 flex items-center justify-center transition-all duration-300 hover:scale-110 hover:shadow-cyan-500/40 active:scale-95 chatbot-fab transform-gpu will-change-transform"
           aria-label={lang === "ar" ? "\u0641\u062a\u062d \u0627\u0644\u0645\u0633\u0627\u0639\u062f \u0627\u0644\u0630\u0643\u064a" : "Open AI Assistant"}
         >
           <div className="relative">
@@ -883,11 +882,11 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
         <div
           className={"fixed z-[100] transition-all duration-300 ease-out chatbot-window " +
             (isMinimized
-              ? "w-12 h-12 md:w-14 md:h-14 rounded-full"
+              ? "chatbot-min w-10 h-10 md:w-14 md:h-14 rounded-full"
               : "w-[calc(100vw-2rem)] md:w-[420px] h-[calc(100dvh-8rem)] md:h-[600px] rounded-2xl"
             )}
           style={(() => {
-            if (isMinimized) return { bottom: 'max(env(safe-area-inset-bottom, 0px) + 4.5rem, 4.5rem)', right: '1rem' };
+            if (isMinimized) return undefined;
             if (kb.open && kb.small && kb.height > 0) {
               // Keyboard is open on a phone — pin the window just above the
               // keyboard and use the full visual viewport height (works on
