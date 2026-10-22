@@ -67,6 +67,10 @@ function Layout({ children }: { readonly children: React.ReactNode }) {
   const location = useLocation();
   const AUTH_PAGES = new Set(["/login", "/register", "/forgot-password", "/reset-password"]);
   const isAuthPage = AUTH_PAGES.has(location.pathname);
+  // Admin is a standalone app-like dashboard with its own sidebar navigation —
+  // the site chrome (navbar/footer/bottom-nav/widgets) would overlap its sticky
+  // top bar and floating UI on mobile.
+  const isAdminPage = location.pathname.startsWith("/admin");
 
   return (
     <div className="min-h-screen overflow-x-hidden w-full relative flex flex-col">
@@ -79,14 +83,14 @@ function Layout({ children }: { readonly children: React.ReactNode }) {
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:rounded-lg focus:bg-[#06b6d4] focus:px-4 focus:py-2 focus:text-[#0a0e17] focus:font-semibold focus:outline-none focus:ring-2 focus:ring-[#06b6d4]">
         {t("skipToContent")}
       </a>
-      <Navbar />
+      {!isAdminPage && <Navbar />}
       <ScrollToTop />
       <main id="main-content" tabIndex={-1} className="pb-20 md:pb-0"><Suspense fallback={<PageLoader />}>{children}</Suspense></main>
-      {!isAuthPage && <Footer />}
-      <MobileBottomNav />
-      <WhatsAppButton />
+      {!isAuthPage && !isAdminPage && <Footer />}
+      {!isAdminPage && <MobileBottomNav />}
+      {!isAdminPage && <WhatsAppButton />}
       {/* 🚀 PERFORMANCE: ChatBot wrapped in Suspense — loads on first interaction */}
-      <Suspense fallback={null}><ChatBot /></Suspense>
+      {!isAdminPage && <Suspense fallback={null}><ChatBot /></Suspense>}
       <CookieConsent />
     </div>
   );

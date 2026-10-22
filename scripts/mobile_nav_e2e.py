@@ -1,0 +1,186 @@
+"""PRODUCTION E2E — mobile UX verification (Task 16)
+https://ahmedelbaz.qzz.io  |  viewport 390x844, touch, Arabic
+
+M1  Navbar hamburger -> side drawer opens (300px, NOT fullscreen)
+    -> tap "المقالات" -> navigates to /articles AND drawer closes (the root bug fix)
+M2  /articles shows ETAP card -> opens /articles/etap-power-system-analysis-guide
+M3  Admin login on mobile -> /admin -> sticky top bar hamburger visible,
+    admin sidebar OFF-canvas (x < 0)
+M4  Tap top-bar hamburger -> drawer slides in (x == 0, width ~264 < viewport)
+    -> tap "المقالات" -> drawer closes + articles tab shows ETAP row "منشور"
+M5  Backdrop tap closes the admin drawer
+Shots: scripts/shots_mobile/
+"""
+import json, re, subprocess, sys
+from playwright.sync_api import sync_playwright
+
+PROD = "https://ahmedelbaz.qzz.io"
+OUT = "/home/z/my-project/work/elbaz-platform/scripts/shots_mobile"
+subprocess.run(["mkdir", "-p", OUT], check=True)
+ADMIN_PW = open("/home/z/my-project/.admin_pw").read().strip()
+UA = ("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 "
+      "(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36")
+VP = {"width": 390, "height": 844}
+
+fails = []
+def check(name, cond, detail=""):
+    print(f"{'PASS' if cond else 'FAIL'} {name}" + (f" — {detail}" if detail else ""))
+    if not cond:
+        fails.append(f"{name}: {detail}")
+
+def dismiss_cookie(pg):
+    """Cookie banner sits at z-[100] and intercepts ALL taps — must go first."""
+    for sel in ['[data-testid="cookie-accept-all"]', '[data-testid="cookie-accept-essential"]']:
+        try:
+            loc = pg.locator(sel).first
+            if loc.is_visible(timeout=1200):
+                loc.click(timeout=3000)
+                pg.wait_for_timeout(500)
+                return
+        except Exception:
+            continue
+    try:  # fallback: backdrop itself is a dismiss button
+        pg.locator('[data-testid="cookie-consent-backdrop"]').click(timeout=3000, force=True)
+        pg.wait_for_timeout(500)
+    except Exception:
+        pass
+
+def open_page(pg, path="/"):
+    pg.goto(PROD + path, wait_until="domcontentloaded", timeout=45000)
+    pg.wait_for_timeout(3000)
+    dismiss_cookie(pg)
+    pg.wait_for_timeout(400)
+
+def fetch(pg, js, arg=None):
+    return pg.evaluate(js, arg)
+
+with sync_playwright() as p:
+    browser = p.chromium.launch(headless=False,
+        args=["--disable-blink-features=AutomationControlled", "--no-sandbox"])
+    ctx = browser.new_context(viewport=VP, user_agent=UA, service_workers="block",
+                              is_mobile=True, has_touch=True)
+    ctx.add_init_script("try{localStorage.setItem('language','ar');}catch(e){}")
+    pg = ctx.new_page()
+
+    # ---------- M1: navbar hamburger -> drawer -> navigation ----------
+    open_page(pg, "/")
+    burger = pg.locator('nav[aria-label="التنقل الرئيسي"] button[aria-label="فتح القائمة"]')
+    check("M0 hamburger exists (mobile)", burger.count() >= 1, f"count={burger.count()}")
+    dismiss_cookie(pg)
+    burger.first.click()
+    pg.wait_for_timeout(1100)
+    panel = pg.locator('aside[aria-label="قائمة التنقل"]')
+    check("M1a drawer panel opens", panel.count() == 1 and panel.is_visible(), f"count={panel.count()}")
+    if panel.count() == 1:
+        bb = panel.bounding_box()
+        check("M1b drawer is side panel not fullscreen",
+              bb and bb["width"] < 340 and bb["width"] > 240 and bb["x"] >= 0,
+              f"box={bb}")
+        pg.screenshot(path=f"{OUT}/M1_drawer_open.png")
+        art_link = panel.locator("a", has_text="المقالات")
+        check("M1c drawer has Articles link", art_link.count() == 1, f"count={art_link.count()}")
+        art_link.first.click()
+        pg.wait_for_timeout(1500)
+        on_articles = "/articles" in pg.url and "/articles/" not in pg.url
+        check("M1d NAVIGATION WORKS -> /articles", on_articles, f"url={pg.url}")
+        gone = pg.locator('aside[aria-label="قائمة التنقل"]').count() == 0
+        check("M1e drawer closed after navigation", gone, f"panels={pg.locator('aside[aria-label=\"قائمة التنقل\"]').count()}")
+
+    # ---------- M2: articles public pages ----------
+    etap_card = pg.locator("a", has_text="برنامج الإيتاب")
+    for _ in range(8):  # list loads async — poll before judging
+        if etap_card.count() >= 1:
+            break
+        pg.wait_for_timeout(800)
+    check("M2a ETAP article card on /articles", etap_card.count() >= 1, f"count={etap_card.count()}")
+    pg.screenshot(path=f"{OUT}/M2_articles_list.png")
+    if etap_card.count() >= 1:
+        etap_card.first.click()
+        pg.wait_for_timeout(2500)
+        check("M2b article detail opens", "/articles/etap-power-system-analysis-guide" in pg.url, f"url={pg.url}")
+        body_txt = pg.locator("main").inner_text() if pg.locator("main").count() else pg.inner_text("body")
+        check("M2c ETAP content renders (RTL)", "الإيتاب" in body_txt and "ETAP" in body_txt, body_txt[:80].replace("\n", " "))
+        pg.screenshot(path=f"{OUT}/M2_article_detail.png")
+
+    # ---------- M3: admin login on mobile ----------
+    open_page(pg, "/login")
+    pg.locator("form input").nth(0).fill("admin")
+    pg.locator("form input[type=password]").first.fill(ADMIN_PW)
+    pg.locator("form button[type=submit]").first.click()
+    pg.wait_for_timeout(6000)
+    me = fetch(pg, """async () => {
+        try { const r = await fetch('/api/trpc/auth.me', {credentials:'include'});
+              return {status: r.status, body: await r.text()}; }
+        catch (e) { return {status: 0, body: String(e)}; }
+    }""")
+    check("M3a admin login (auth.me 200)", me.get("status") == 200, f"status={me.get('status')}")
+    check("M3b role=admin", re.search(r'"role"\s*:\s*"admin"', str(me.get("body", ""))) is not None)
+
+    open_page(pg, "/admin")
+    pg.wait_for_timeout(2500)
+    # Diagnostic: cold-load /admin sometimes races the auth guard — retry with logs
+    for attempt in range(4):
+        if pg.locator("aside.admin-sidebar").count() >= 1:
+            break
+        me2 = fetch(pg, """async () => {
+            try { const r = await fetch('/api/trpc/auth.me', {credentials:'include'});
+                  return {status: r.status, body: (await r.text()).slice(0, 120)}; }
+            catch (e) { return {status: 0, body: String(e)}; }
+        }""")
+        body_snip = pg.inner_text("body")[:120].replace("\n", " ")
+        print(f"DIAG{attempt}: url={pg.url} | auth.me={me2} | body={body_snip}")
+        pg.goto(PROD + "/admin", wait_until="domcontentloaded", timeout=45000)
+        pg.wait_for_timeout(4000)
+        dismiss_cookie(pg)
+    pg.wait_for_timeout(1500)
+    top_burger = pg.locator('[data-testid="admin-mobile-menu"]')
+    check("M3c mobile top bar hamburger visible", top_burger.count() == 1 and top_burger.is_visible(),
+          f"count={top_burger.count()}")
+    sb = pg.locator("aside.admin-sidebar")
+    check("M3d admin sidebar element exists", sb.count() == 1, f"count={sb.count()}")
+    sb_bb = sb.bounding_box() if sb.count() == 1 else None
+    check("M3e sidebar OFF-canvas initially", sb_bb is not None and sb_bb["x"] < -200, f"x={sb_bb and sb_bb['x']}")
+    main_ml = pg.evaluate("""() => { const m = document.querySelector('main'); return m ? getComputedStyle(m).marginLeft : null; }""")
+    check("M3f main content full-width on mobile", main_ml in ("0px", "0"), f"marginLeft={main_ml}")
+    pg.screenshot(path=f"{OUT}/M3_admin_mobile.png")
+
+    # ---------- M4: drawer slide-in + articles tab ----------
+    dismiss_cookie(pg)
+    top_burger.click()
+    pg.wait_for_timeout(1100)
+    sb_bb2 = sb.bounding_box()
+    check("M4a drawer slides in (x≈0, not fullscreen)",
+          sb_bb2 and abs(sb_bb2["x"]) < 4 and sb_bb2["width"] < 300,
+          f"box={sb_bb2}")
+    pg.screenshot(path=f"{OUT}/M4_admin_drawer_open.png")
+    item = sb.locator("button", has_text="المقالات")
+    check("M4b articles item in drawer", item.count() >= 1, f"count={item.count()}")
+    if item.count() >= 1:
+        item.first.click()
+        pg.wait_for_timeout(1800)
+        sb_bb3 = sb.bounding_box()
+        check("M4c drawer closes after selecting tab", sb_bb3 is not None and sb_bb3["x"] < -200, f"x={sb_bb3 and sb_bb3['x']}")
+        content = pg.inner_text("body")
+        check("M4d articles tab shows ETAP row", "برنامج الإيتاب" in content, content[:100].replace("\n", " "))
+        check("M4e row badge = منشور", "منشور" in content)
+        pg.screenshot(path=f"{OUT}/M4_admin_articles_tab.png")
+
+    # ---------- M5: backdrop closes drawer ----------
+    dismiss_cookie(pg)
+    top_burger.click()
+    pg.wait_for_timeout(1100)
+    sb_bb4 = sb.bounding_box()
+    if sb_bb4 and abs(sb_bb4["x"]) < 4:
+        pg.mouse.click(VP["width"] - 30, 400)  # tap backdrop area (right edge)
+        pg.wait_for_timeout(1100)
+        sb_bb5 = sb.bounding_box()
+        check("M5 backdrop tap closes drawer", sb_bb5 is not None and sb_bb5["x"] < -200, f"x={sb_bb5 and sb_bb5['x']}")
+    else:
+        check("M5 backdrop tap closes drawer", False, f"drawer did not open: {sb_bb4}")
+
+    browser.close()
+
+print("-" * 50)
+if fails:
+    print(f"RESULT: {len(fails)} FAILURES"); [print(" -", f) for f in fails]; sys.exit(1)
+print("RESULT: ALL MOBILE CHECKS PASSED")
