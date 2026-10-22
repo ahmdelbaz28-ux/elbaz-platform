@@ -1,4 +1,4 @@
-import { Routes, Route, useLocation } from "react-router";
+import { Routes, Route, useLocation, useNavigationType } from "react-router";
 import { lazy, Suspense, useEffect } from "react";
 import { Toaster } from "sonner";
 import Navbar from "@/components/Navbar";
@@ -66,14 +66,16 @@ function PageLoader() {
  * across navigations. Clicking a category card (e.g. ETAP Software) from the
  * middle of the homepage then landed the new page at the old offset — past a
  * shorter target page the browser clamps to the bottom, so users saw the
- * FOOTER first (most visible on mobile). Reset to the top on every path
- * change; #anchor links still jump to their target. Search-only changes
- * (e.g. switching the category filter while already on /courses) keep the
- * scroll position so filtering doesn't yank the page around.
+ * FOOTER first (most visible on mobile). Every LINK navigation (PUSH, and
+ * REPLACE) scrolls back to the top — including search-only changes like
+ * /courses?category=10 → /courses via a footer link. #anchor links jump to
+ * their target. Back/forward (POP) keeps natural browser behavior.
  */
 function ScrollReset() {
   const location = useLocation();
+  const navType = useNavigationType();
   useEffect(() => {
+    if (navType === "POP") return;
     if (location.hash) {
       const targetId = decodeURIComponent(location.hash.slice(1));
       const timer = setTimeout(() => {
@@ -82,7 +84,7 @@ function ScrollReset() {
       return () => clearTimeout(timer);
     }
     window.scrollTo(0, 0);
-  }, [location.pathname, location.hash]);
+  }, [navType, location.pathname, location.search, location.hash]);
   return null;
 }
 
