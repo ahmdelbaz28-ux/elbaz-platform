@@ -465,20 +465,40 @@ chatbotRouter.post("/stream", async (c) => {
   // disconnect — the user saw whatever accumulated).
   let accumulatedReply = "";
   let sseCarry = "";
-  const accumulateFromStream = (chunk: Uint8Array) => {
+  const decoder = new TextDecoder();
+  const forwardEncoder = new TextEncoder();
+  /**
+   * Parse one winner-stream chunk and return the CLIENT-facing bytes.
+   * Text events are accumulated AND re-emitted; the winner's own
+   * `data: [DONE]` terminator is SWALLOWED — the endpoint owns the only
+   * [DONE] the client may ever see, emitted when the whole persistence is
+   * finished. (Live-verified root cause: a dud winner that died silently
+   * forwarded its internal [DONE] to the client, which read it as
+   * "response finished, zero text" and abandoned the connection while the
+   * zero-content re-walk was still working for it.)
+   * Returns null when the chunk produced nothing client-facing.
+   */
+  const forwardFromStream = (chunk: Uint8Array): Uint8Array | null => {
     try {
-      sseCarry += new TextDecoder().decode(chunk, { stream: true });
+      sseCarry += decoder.decode(chunk, { stream: true });
       const lines = sseCarry.split("\n");
       sseCarry = lines.pop() || ""; // incomplete line waits for the next chunk
+      let out = "";
       for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed.startsWith("data: ") || trimmed === "data: [DONE]") continue;
         try {
-          const parsed = JSON.parse(trimmed.slice(6)) as { text?: string };
-          if (typeof parsed.text === "string") accumulatedReply += parsed.text;
+          const parsed = JSON.parse(trimmed.slice(6)) as { text?: string; error?: string };
+          if (typeof parsed.text === "string") {
+            accumulatedReply += parsed.text;
+            out += `data: ${JSON.stringify({ text: parsed.text })}\n\n`;
+          }
+          // parsed.error events are NOT forwarded: the endpoint decides when
+          // (and whether) to surface a soft-busy note after its own retries.
         } catch { /* malformed line — skip */ }
       }
-    } catch { /* decode error — skip chunk */ }
+      return out ? forwardEncoder.encode(out) : null;
+    } catch { /* decode error — skip chunk */ return null; }
   };
   const flushAccumulator = () => {
     const rest = sseCarry.trim();
@@ -566,8 +586,11 @@ chatbotRouter.post("/stream", async (c) => {
               const { done, value } = await reader.read();
               if (done || closed) break;
               if (value) {
-                accumulateFromStream(value);
-                if (!safeEnqueue(value)) break;
+                // Re-emit ONLY text events; swallow the winner's internal
+                // [DONE] so an early dud termination can never tell the
+                // client "finished" while the persistence loop keeps working.
+                const clientBytes = forwardFromStream(value);
+                if (clientBytes && !safeEnqueue(clientBytes)) break;
               }
             }
           } catch (readErr) {
@@ -614,6 +637,9 @@ chatbotRouter.post("/stream", async (c) => {
           return;
         }
 
+        // Served — the winner's internal [DONE] was swallowed by the
+        // forwarder, so the endpoint owns the single client-facing terminator.
+        safeEnqueue(encoder.encode("data: [DONE]\n\n"));
         finalize();
       } catch (err) {
         logger.warn("[Chatbot] stream handler error", { error: err instanceof Error ? err.message : String(err) });
