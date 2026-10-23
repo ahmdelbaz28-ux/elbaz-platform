@@ -541,7 +541,15 @@ chatbotRouter.post("/stream", async (c) => {
         // peeked alive then died silently). The user waits behind the calm
         // "thinking" indicator until real text flows or the mode deadline
         // expires — a silent empty reply must NEVER reach the client.
-        const deadline = startedAt + streamPersistDeadlineMs(mode);
+        // Vision requests carry a two-pass pipeline (image read ≤45s worst
+        // case + reasoning walk ~22s) whose healthy path completes in
+        // ~30-45s and whose worst HEALTHY case is ~70s. An 80s vision
+        // deadline (a) covers every healthy path end-to-end and (b) turns
+        // the client's silent retry loop around faster when the vision lane
+        // is saturated — the user's total worst-case wait drops from
+        // ~5min (3 × 100s rounds) to ~4min while healthy answers are
+        // never cut mid-walk.
+        const deadline = startedAt + (vision ? Math.min(streamPersistDeadlineMs(mode), 80_000) : streamPersistDeadlineMs(mode));
         let served = false;
         let rounds = 0;
 
