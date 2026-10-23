@@ -671,6 +671,13 @@ interface AttemptFailure {
 
 export const WEB_PLUGIN_BODY = { id: "web", max_results: 3 } as const;
 
+/**
+ * Small-window signal for ids whose stored context is unknown: a single-digit
+ * parameter token (7b, 3b, a4b, lfm-3b…). Deliberately does NOT match family
+ * names ("minimax", "flash") — those appear on huge MoE models too.
+ */
+const SMALL_CTX_ID_RE = /(?:^|[^\d])(?:[1-9]b|1[0-2]b|a[1-9]b)(?:$|[^\da-z])/i;
+
 /** True only for providers whose API supports the web plugin field. */
 export function isOpenRouterProvider(p: { slug?: string | null; baseUrl: string }): boolean {
   return p.slug === "openrouter" || /openrouter\.ai/i.test(p.baseUrl);
@@ -698,13 +705,16 @@ export function buildUpstreamBody(p: AttemptParams, stream: boolean): string {
   const wantsWeb = p.webSearch === true && !isWebPluginDisabled() && isOpenRouterProvider(p.provider);
   // MAX_TOKENS CLAMP — small-context models (e.g. groq allam-2-7b, ctx 4096)
   // reject thinking's 8192 max_tokens with a 400, which used to take out the
-  // whole tier-3 safety net during free-tier 429 storms. Clamp to a third of
-  // the model's context when that is smaller than the requested budget; big
-  // models are unaffected (ctx/3 ≥ 8192 for anything ≥ 24k context).
+  // whole tier-3 safety net during free-tier 429 storms. Primary signal: the
+  // stored contextLength (v10 + boot discovery). Safety net for rows whose
+  // ctx is still unknown: a single-digit parameter token in the id (7b, a4b,
+  // lfm-3b…) implies a small window → cap at 2048. Big ids never match.
   const requested = p.gen.maxTokens;
   const ctx = p.model.contextLength ?? 0;
-  const maxTokens = ctx > 0
-    ? Math.min(requested, Math.max(512, Math.floor(ctx / 3)))
+  const smallById = ctx <= 0 && SMALL_CTX_ID_RE.test(p.model.modelId);
+  const effectiveCtx = ctx > 0 ? ctx : smallById ? 6144 : 0;
+  const maxTokens = effectiveCtx > 0
+    ? Math.min(requested, Math.max(512, Math.floor(effectiveCtx / 3)))
     : requested;
   return JSON.stringify({
     model: p.model.modelId,

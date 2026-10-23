@@ -15,6 +15,7 @@ import { createContext } from "./context.js";
 import { appRouter } from "./router.js";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { ensureDatabase } from "./lib/db-init.js";
+import { discoverAllProviders } from "./lib/ai-router.js";
 import { randomBytes } from "node:crypto";
 
 /**
@@ -387,6 +388,12 @@ async function start() {
   // ── Auto-migrate database on startup ──
   try {
     await ensureDatabase();
+    // BOOT-TIME MODEL DISCOVERY (fire-and-forget): refreshes the dynamic
+    // pool's metadata (contextLength, isFree, tiers, chat/vision flags) on
+    // every restart without waiting for an admin "فحص النماذج" click — e.g. a
+    // fresh v10 column stays NULL forever without this. Best-effort: any
+    // failure is logged inside and routing still works on the existing rows.
+    void discoverAllProviders().catch(() => { /* logged inside */ });
   } catch (err) {
     appLogger.warn("[Server] DB migration warning", { error: (err as Error).message });
   }

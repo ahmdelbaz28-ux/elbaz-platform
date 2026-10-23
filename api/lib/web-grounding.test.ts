@@ -254,3 +254,21 @@ describe("buildUpstreamBody max_tokens clamp", () => {
     expect(JSON.parse(buildUpstreamBody({ ...base, model: unknown }, false)).max_tokens).toBe(8192);
   });
 });
+
+describe("SMALL_CTX_ID_RE safety net (unknown-context small models)", () => {
+  it("clamps thinking's 8192 to 2048 for a 7b id with NULL context", () => {
+    const unknownCtx = { ...model, modelId: "groq/allam-2-7b", contextLength: null } as unknown as AiModel;
+    const gen = { ...GEN, maxTokens: 8192 };
+    const body = JSON.parse(buildUpstreamBody({ provider: openrouterProvider, model: unknownCtx, systemPrompt: "s", messages: MESSAGES, gen, stream: false }, false));
+    expect(body.max_tokens).toBe(2048);
+  });
+
+  it("does not clamp big or family-named ids (minimax-m3, 70b, 120b)", () => {
+    const gen = { ...GEN, maxTokens: 8192 };
+    for (const id of ["minimaxai/minimax-m3", "meta/llama-3.3-70b", "nvidia/nemotron-3-ultra-550b-a55b:free"]) {
+      const m = { ...model, modelId: id, contextLength: null } as unknown as AiModel;
+      const body = JSON.parse(buildUpstreamBody({ provider: openrouterProvider, model: m, systemPrompt: "s", messages: MESSAGES, gen, stream: false }, false));
+      expect(body.max_tokens).toBe(8192);
+    }
+  });
+});
