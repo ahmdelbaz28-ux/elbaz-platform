@@ -90,6 +90,19 @@ if (mode === "seed-429") {
     [gq.insertId, "mock/grounded"]
   );
   console.log(`seeded openrouter=${or.insertId} (daily-429) + groq=${gq.insertId} (grounded)`);
+} else if (mode === "seed-dud") {
+  // NEVER-BUSY T4: a dud tier-1 winner that peeks alive (reasoning delta)
+  // then dies with zero visible content, + a healthy tier-2 streamer. The
+  // endpoint's zero-content re-walk must serve the user from tier-2 within
+  // the SAME request — the client never sees an empty reply.
+  const [ins] = await conn.query(
+    "INSERT INTO aiProviders (slug, displayName, baseUrl, apiKey, priority, enabled, status) VALUES ('openrouter','OpenRouter Mock','http://127.0.0.1:47777/v1','mock-key',1,1,'healthy')"
+  );
+  await conn.query(
+    "INSERT INTO aiModels (providerId, modelId, supportsChat, supportsVision, isFree, enabled, tier) VALUES (?,?,1,0,1,1,1),(?,?,1,0,1,1,2)",
+    [ins.insertId, "mock/dud-stream", ins.insertId, "mock/grounded-stream"]
+  );
+  console.log(`seeded provider ${ins.insertId}: mock/dud-stream (tier1) + mock/grounded-stream (tier2)`);
 } else if (mode === "seed") {
   const [ins] = await conn.query(
     "INSERT INTO aiProviders (slug, displayName, baseUrl, apiKey, priority, enabled, status) VALUES ('openrouter','OpenRouter Mock','http://127.0.0.1:47777/v1','mock-key',1,1,'healthy')"

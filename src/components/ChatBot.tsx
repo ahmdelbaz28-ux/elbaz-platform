@@ -1016,12 +1016,26 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
 
     /** One silent retry attempt — returns "ok" | "failed" | "unreachable". */
     const tryStreamOnce = async (): Promise<"ok" | "failed" | "unreachable"> => {
+      // Per-attempt controller: chained to the main abort (clearChat) AND to
+      // a liveness watchdog. The server emits `: ping` keepalives every 4s —
+      // TOTAL silence for 45s means the transport is dead (dying server /
+      // stalled proxy / black-holed connection). Without this watchdog a
+      // half-dead connection used to hold the user on "thinking…" forever;
+      // now the attempt aborts and the silent retry loop takes over.
+      const attemptCtrl = new AbortController();
+      const mainSignal = abortControllerRef.current?.signal ?? null;
+      const onMainAbort = () => attemptCtrl.abort();
+      mainSignal?.addEventListener("abort", onMainAbort, { once: true });
+      let lastByteAt = Date.now();
+      const watchdog = setInterval(() => {
+        if (Date.now() - lastByteAt > 45_000) attemptCtrl.abort();
+      }, 5_000);
       try {
         const streamResponse = await fetch(`${apiOrigin}/api/chatbot/stream`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(requestBody),
-          signal: abortControllerRef.current?.signal,
+          signal: attemptCtrl.signal,
         });
         if (!streamResponse.ok) return "unreachable";
         const reader = streamResponse.body?.getReader();
@@ -1060,6 +1074,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
         while (true) {
           if (isStale()) break; // chat was cleared mid-stream — stop consuming
           const result = await reader.read();
+          lastByteAt = Date.now(); // any bytes (pings included) prove liveness
           if (result.done) break;
 
           buffer += decoder.decode(result.value, { stream: true });
@@ -1100,20 +1115,32 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
         }
         return "failed"; // no content — server walk exhausted; retry silently
       } catch {
-        // Aborted (clearChat) or the network layer itself failed — the loop
-        // distinguishes via isStale; otherwise treat as unreachable.
+        // Aborted (clearChat, liveness watchdog) or the network layer itself
+        // failed — the loop distinguishes via isStale; otherwise treat as
+        // unreachable so the silent retry chain continues.
         return "unreachable";
+      } finally {
+        clearInterval(watchdog);
+        mainSignal?.removeEventListener("abort", onMainAbort);
       }
     };
 
     /** Non-streaming fallback — used when the stream transport is unreachable. */
     const tryNonStreamOnce = async (): Promise<boolean> => {
+      // Same per-attempt protection as the stream: chained to the main abort
+      // (clearChat) + a hard 60s cap — a black-holed non-stream request must
+      // never park the silent retry chain forever.
+      const attemptCtrl = new AbortController();
+      const mainSignal = abortControllerRef.current?.signal ?? null;
+      const onMainAbort = () => attemptCtrl.abort();
+      mainSignal?.addEventListener("abort", onMainAbort, { once: true });
+      const hardCap = setTimeout(() => attemptCtrl.abort(), 60_000);
       try {
         const response = await fetch(`${apiOrigin}/api/chatbot`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(requestBody),
-          signal: abortControllerRef.current?.signal,
+          signal: attemptCtrl.signal,
         });
         const data = await response.json().catch(() => null);
         if (data?.success && data.reply) {
@@ -1152,6 +1179,9 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
         return false; // soft-busy 503 or unknown — retryable
       } catch {
         return false;
+      } finally {
+        clearTimeout(hardCap);
+        mainSignal?.removeEventListener("abort", onMainAbort);
       }
     };
 
@@ -1263,7 +1293,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   // Resolve the queued click as soon as the auth check settles.
   useEffect(() => {
     if (authLoading || !pendingOpen) return;
-    setPendingOpen(false);
+    setPendingOpen(false); // eslint-disable-line react-hooks/set-state-in-effect
     if (isAuthenticated) {
       setIsOpen(true);
       setIsMinimized(false);
