@@ -67,7 +67,7 @@ describe("Chatbot Module", () => {
 
       // Tier 2 (OpenRouter) defaults
       expect(stats.tier2.provider).toBe("openrouter");
-      expect(stats.tier2.totalModels).toBe(16);
+      expect(stats.tier2.totalModels).toBe(17);
       expect(stats.tier2.lastWorkingModel).toBe("");
       expect(stats.tier2.lastWorkingTimeAgo).toBe("never");
       expect(stats.tier2.modelSuccessCounts).toEqual({});
@@ -82,9 +82,9 @@ describe("Chatbot Module", () => {
   // ─── Model pool ────────────────────────────────────────────────────────
 
   describe("model pool", () => {
-    it("has 16 models", async () => {
+    it("has 17 models", async () => {
       const { getChatbotStats } = await importChatbot();
-      expect(getChatbotStats().tier2.totalModels).toBe(16);
+      expect(getChatbotStats().tier2.totalModels).toBe(17);
     });
 
     it("models are ordered by tier (all tier 1 before tier 2, etc.)", async () => {
@@ -649,13 +649,13 @@ describe("Chatbot Module", () => {
         messages: [{ role: "user", content: "quick question" }],
         mode: "instant",
       });
-      expect(instantRes.model).toBe("google/gemma-4-26b-a4b-it:free");
+      expect(instantRes.model).toBe("openai/gpt-oss-120b:free");
       expect(instantRes.model).not.toBe(thinkRes.model);
 
       // 4) streaming picker agrees: instant stays on its fast model
       const instantPick = await mod.pickWorkingModel([{ role: "user", content: "hi" }], "en", "instant");
       expect(instantPick?.provider).toBe("openrouter");
-      expect(instantPick?.modelId).toBe("google/gemma-4-26b-a4b-it:free");
+      expect(instantPick?.modelId).toBe("openai/gpt-oss-120b:free");
     });
 
     it("instant fast lane: skips dead fast models and never falls straight to thinking's tier-1", async () => {
@@ -664,9 +664,9 @@ describe("Chatbot Module", () => {
         if (url.includes("/auth/key")) return { ok: true, json: async () => ({}) };
         const model = JSON.parse(options.body).model;
         calledModels.push(model);
-        // gemma (preferred) is dead, xingchen (2nd fast) works,
+        // gpt-oss (preferred) is dead, xingchen (2nd fast) works,
         // nemotron-ultra (thinking tier-1) would also work but must not be reached first
-        if (model === "google/gemma-4-26b-a4b-it:free") {
+        if (model === "openai/gpt-oss-120b:free") {
           return { ok: false, status: 429, json: async () => ({ error: "rate limited" }) };
         }
         return { ok: true, json: async () => ({ choices: [{ message: { content: `reply from ${model}` } }] }) };
@@ -691,12 +691,12 @@ describe("Chatbot Module", () => {
 
       const mod = await importChatbot();
 
-      // 1) instant succeeds first → instant-lane lastWorking = fast gemma
+      // 1) instant succeeds first → instant-lane lastWorking = fast gpt-oss
       const instantRes = await mod.getChatResponse({
         messages: [{ role: "user", content: "quick" }],
         mode: "instant",
       });
-      expect(instantRes.model).toBe("google/gemma-4-26b-a4b-it:free");
+      expect(instantRes.model).toBe("openai/gpt-oss-120b:free");
 
       // 2) thinking must NOT reuse the fast-lane model — it goes to tier-1
       const thinkRes = await mod.getChatResponse({
@@ -793,10 +793,57 @@ describe("Chatbot Module", () => {
       });
 
       expect(res.success).toBe(true);
-      // PASS 2 ran with the persona prompt and the honesty note + question
-      expect(prompts[2]).toContain("DEEP-ANALYSIS PROTOCOL");
-      expect(userContents[2]).toContain("تعذّر قراءة الصورة");
-      expect(userContents[2]).toContain("اشرح");
+      // Call 1 = the single PASS-1 scout read (too-short garbage → read fails).
+      // Call 2 = PASS 2 with the persona prompt and the honesty note + question.
+      // (The second scout attempt was removed — worst-case read time halved.)
+      expect(prompts[0]).toContain("محرك تحليل صور");
+      expect(prompts[1]).toContain("DEEP-ANALYSIS PROTOCOL");
+      expect(userContents[1]).toContain("تعذّر قراءة الصورة");
+      expect(userContents[1]).toContain("اشرح");
+    });
+
+    it("vision policy: when the text cascade fails, NO vision model ever writes the final answer (garbled-Arabic incident)", async () => {
+      const multimodalCalls: string[] = [];   // system prompts of calls that saw RAW image parts
+      const visionPersonaCalls: string[] = []; // system prompts carrying the vision persona
+      mockFetch.mockImplementation(async (url: string, options: any) => {
+        if (url.includes("/auth/key")) return { ok: true, json: async () => ({}) };
+        if (url.includes("groq.com")) {
+          const body = JSON.parse(options.body);
+          const sys = String(body.messages?.[0]?.content ?? "");
+          const user = body.messages?.find((m: any) => m.role === "user");
+          const isMultimodal = Array.isArray(user?.content);
+          if (isMultimodal) multimodalCalls.push(sys);
+          if (sys.includes("DEEP-ANALYSIS PROTOCOL") && isMultimodal) visionPersonaCalls.push(sys);
+          // EVERY call fails — the whole cascade is down.
+          return { ok: false, status: 503, json: async () => ({}) };
+        }
+        return { ok: false, status: 429, json: async () => ({}) };
+      });
+
+      const mod = await importChatbot({ groq: true, openrouter: false });
+      const res = await mod.getChatResponse({
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: "اشرح" },
+            { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } },
+          ],
+        } as any],
+        language: "ar",
+        mode: "thinking",
+        vision: true,
+      });
+
+      // The calm unavailable response — never a weak-model answer.
+      expect(res.success).toBe(false);
+      expect(res.error).toContain("تعذر تحليل الصورة");
+      // The ONLY call that saw the raw image was the PASS-1 reader (extraction
+      // prompt). The old last-resort sweep (raw multimodal + persona vision
+      // prompt to vision models) is REMOVED — no vision model is ever offered
+      // the persona to write the final answer.
+      expect(multimodalCalls).toHaveLength(1);
+      expect(multimodalCalls[0]).toContain("محرك تحليل صور");
+      expect(visionPersonaCalls).toHaveLength(0);
     });
   });
 });

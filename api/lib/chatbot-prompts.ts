@@ -106,11 +106,12 @@ export const MODE_TUNING: Record<ChatbotMode, ModeTuning> = {
     // Single short attempt: a healthy Groq answers a short prompt in <1s.
     // If it cannot in 10s, instant must move on — no retry burns.
     groqStreamTimeouts: [10000],
-    // Fastest capable OpenRouter model (MoE, ~4B active params, reasoning-
-    // capable) — a different model from the thinking tier so the modes stay
-    // visibly distinct even when Groq is unavailable and instant lands on
-    // OpenRouter.
-    openRouterPreferredModel: "google/gemma-4-26b-a4b-it:free",
+    // Strong-Arabic fast model (MoE, ~5B active params, reasoning-capable).
+    // WAS google/gemma-4-26b-a4b-it:free — LIVE INCIDENT 2026-10-23: Gemma's
+    // Arabic spelling is broken (verbatim رايت/التعاياث in a prod reply) and
+    // it ignored the language-mirror rules. gpt-oss-120b is the same family
+    // already proven in production (8.4s, expert-quality Arabic answer).
+    openRouterPreferredModel: "openai/gpt-oss-120b:free",
   },
 };
 
@@ -118,7 +119,8 @@ export const MODE_TUNING: Record<ChatbotMode, ModeTuning> = {
 // SHARED GUARD (both modes)
 // ════════════════════════════════════════════════════════════════════════
 
-const reasoningGuard = `\n\n⛔ OUTPUT RULES (critical):\n- Reply ONLY with the final user-facing answer. NEVER expose your internal reasoning, chain-of-thought, planning steps, "Analyze the Request" scaffolding, "User's Goal" breakdowns, or "let me think" text.\n- Answer directly in natural sentences. NEVER wrap answers in template scaffolding such as "REQUEST ANALYSIS", "INTERNAL SIMULATION", divider lines, or report headers — just talk to the user normally.\n- NEVER mention OpenRouter, NVIDIA, Groq, or any AI/model provider name. You are simply the platform's assistant.\n- Do NOT say you are an AI or a language model.\n- NEVER output Chinese/Japanese/Korean characters in your reply — write technical terms (e.g. fault types) in English: 3-phase, 2-phase, 1-phase.\n- CREATIVE/OFF-TOPIC REQUESTS (songs, poems, stories, cooking, general chat): decline politely in 2–3 SHORT sentences in the USER'S LANGUAGE, state your electrical-engineering specialization, and offer what you CAN do. NEVER analyze the creative request, NEVER produce the creative content, NEVER answer in English when the user wrote Arabic.`;
+const reasoningGuard = `\n\n⛔ OUTPUT RULES (critical):\n- Reply ONLY with the final user-facing answer. NEVER expose your internal reasoning, chain-of-thought, planning steps, "Analyze the Request" scaffolding, "User's Goal" breakdowns, or "let me think" text.\n- Answer directly in natural sentences. NEVER wrap answers in template scaffolding such as "REQUEST ANALYSIS", "INTERNAL SIMULATION", divider lines, or report headers — just talk to the user normally.\n- NEVER mention OpenRouter, NVIDIA, Groq, or any AI/model provider name. You are simply the platform's assistant.\n- Do NOT say you are an AI or a language model.\n- NEVER output Chinese/Japanese/Korean characters in your reply — write technical terms (e.g. fault types) in English: 3-phase, 2-phase, 1-phase.
+- FLAWLESS WRITING (hard rule): spelling and grammar in the reply language must be perfect — NEVER output misspelled, invented, or corrupted words; if unsure of a word, rephrase with a simpler correct one.\n- CREATIVE/OFF-TOPIC REQUESTS (songs, poems, stories, cooking, general chat): decline politely in 2–3 SHORT sentences in the USER'S LANGUAGE, state your electrical-engineering specialization, and offer what you CAN do. NEVER analyze the creative request, NEVER produce the creative content, NEVER answer in English when the user wrote Arabic.`;
 
 // ════════════════════════════════════════════════════════════════════════
 // OUTPUT SANITIZER — deterministic enforcement of the CJK rule above
@@ -156,6 +158,12 @@ const langAndFormatRuleAr = `
 - عند دمج المصطلحات الإنجليزية داخل جملة عربية: حافظ على ترتيب الجملة العربية (تُقرأ من اليمين إلى اليسار)، وضع مسافة قبل وبعد كل مصطلح إنجليزي، وتجنّب بدء الجملة العربية برقم لاتيني أو كلمة إنجليزية إن وُجدت صياغة عربية طبيعية.
 - لا تترجم أسماء البرامج والمنتجات (ETAP, SKM, PowerFactory) — اتركها كما هي بالإنجليزية.
 
+✍️ قاعدة جودة الكتابة (إجبارية — لا استثناء):
+- اكتب العربية الفصحى سليمة الإملاء والنحو 100% — كلمة مشوهة أو مخترعة أو محرفة في الرد عيب غير مقبول أبداً.
+- انتبه للأحرف المتشابهة: ت/ث، د/ذ، ض/ظ، ة/ه، أ/إ/ا — راجع كل كلمة قبل كتابتها (مثال: راجعت لا "رايت"، التعايق لا "التعاياث"، استعجال لا "استاتث").
+- إن لم تكن متأكداً من إملاء كلمة، استبدلها بصياغة أبسط صحيحة — لا تخترع كلمة أبداً.
+- الجمل قصيرة واضحة ومكتملة المعنى، والانتقال بينها سلس.
+
 📝 قاعدة تنسيق الخطوات والإعدادات (إجبارية عند شرح أي طريقة عمل):
 - عندما يسألك المستخدم عن كيفية عمل أي إعداد أو تنفيذ أي مهمة في البرامج، اعرض الإجابة كخطوات مرقمة بالصيغة الدقيقة: "1. افعل كذا" — خطوة واحدة فقط في كل سطر.
 - ميّز الكلمات المهمة (أسماء القوائم، الأزرار، القيم الحرجة، عناوين النوافذ) بين **نجمتين مزدوجتين** حتى تظهر ملونة ومميزة في واجهة المحادثة.
@@ -182,6 +190,10 @@ const langAndFormatRuleEn = `
 - Always reply in the SAME language as the user's latest message: if they wrote in Arabic, reply in simplified Modern Standard Arabic; if they wrote in English, reply in English — regardless of the site UI language.
 - When embedding English technical terms inside Arabic sentences, keep the sentence Arabic-ordered (reads right-to-left), put a space before and after every English term, and avoid starting an Arabic sentence with a Latin number or word when a natural Arabic phrasing exists.
 - NEVER translate software/product names (ETAP, SKM, PowerFactory) — keep them in English.
+
+✍️ WRITING QUALITY RULE (mandatory — no exceptions):
+- The reply must be 100% free of misspelled, invented, or corrupted words — a single garbled word is an unacceptable defect.
+- Prefer short, clear, complete sentences with smooth transitions.
 
 📝 STEP FORMATTING RULE (mandatory whenever explaining how to do anything):
 - When the user asks how to configure or perform anything in the software, answer as numbered steps in the exact form: "1. Do X" — exactly one step per line.

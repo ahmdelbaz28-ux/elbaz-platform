@@ -168,4 +168,30 @@ describe("chatbot-vision (two-pass read)", () => {
     expect(read.description).not.toContain("سأصف مكوناتها");
     expect(read.description).toContain("ETAP");
   });
+
+  it("memoizes the read per messages array — router persistence rounds never re-read the image", async () => {
+    const routed = vi.fn(async () => GOOD_ROUTED);
+    vi.doMock("./chatbot.js", () => ({
+      GROQ_API_KEY: "", OPENROUTER_API_KEY: "",
+      OPENROUTER_VISION_MODELS: [],
+      tryGroq: vi.fn(async () => null),
+      tryOpenRouterVision: vi.fn(async () => null),
+    }));
+    vi.doMock("./ai-router.js", () => ({ routeChatCompletion: routed }));
+    const mod = await import("./chatbot-vision.js");
+
+    const r1 = await mod.readImageViaVisionModels(MULTIMODAL_MESSAGES, "ar");
+    const r2 = await mod.readImageViaVisionModels(MULTIMODAL_MESSAGES, "ar");
+    const r3 = await mod.readImageViaVisionModels(MULTIMODAL_MESSAGES, "ar");
+    expect(r1.ok).toBe(true);
+    expect(r2.ok).toBe(true);
+    expect(r3.ok).toBe(true);
+    // ONE network read for THREE calls with the same request messages —
+    // the streaming router's re-walk rounds hit the cache, not the vision lane.
+    expect(routed).toHaveBeenCalledTimes(1);
+    // A DIFFERENT messages array (a new request) reads again.
+    const other = [{ role: "user", content: "سؤال آخر" }];
+    await mod.readImageViaVisionModels(other as typeof MULTIMODAL_MESSAGES, "ar");
+    expect(routed).toHaveBeenCalledTimes(2);
+  });
 });

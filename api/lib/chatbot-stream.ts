@@ -35,8 +35,6 @@ import {
   OPENROUTER_API_KEY,
   AI_MODELS,
   INSTANT_FAST_MODELS,
-  GROQ_VISION_MODEL,
-  OPENROUTER_VISION_MODELS,
 
   // ── Shared types ──
   type ChatApiMessage,
@@ -53,14 +51,13 @@ import {
   groqFallback,
   nvidiaFallback,
   openRouterFallback,
-  getVisionResponse,
 
   // ── Validation functions ──
   validateNvidiaKey,
   validateGroqKey,
   validateOpenRouterKey,
 } from "./chatbot.js";
-import { routeChatStream, buildUpstreamSSETransform, isWebPluginDisabled, disableWebPluginFor, WEB_PLUGIN_BODY, noteOpenRouterDailyLimit } from "./ai-router.js";
+import { routeChatStream, buildUpstreamSSETransform, isWebPluginDisabled, disableWebPluginFor, WEB_PLUGIN_BODY, noteOpenRouterDailyLimit, isChatLaneModel } from "./ai-router.js";
 
 // ════════════════════════════════════════════════════════════════════════
 // STREAMING — provider selection
@@ -130,20 +127,21 @@ async function tryPickOpenRouterProvider(systemPrompt: string, tuning: ModeTunin
     lastEntry?.model &&
     (Date.now() - lastEntry.time) < 600000 &&
     (modelFailCount[lastEntry.model] || 0) < 3 &&
-    (!preferred || lastEntry.model === preferred)
+    (!preferred || lastEntry.model === preferred) &&
+    isChatLaneModel(lastEntry.model)
   ) {
     logger.info("[Chatbot] Using last working OpenRouter model", { model: lastEntry.model, mode: modeKey });
     return { provider: "openrouter", modelId: lastEntry.model, systemPrompt, tuning, webSearch: modeKey === "thinking" };
   }
 
   // Mode's preferred fast model (instant), if healthy
-  if (preferred && (modelFailCount[preferred] || 0) < 3 && AI_MODELS.some(m => m.id === preferred)) {
+  if (preferred && isChatLaneModel(preferred) && (modelFailCount[preferred] || 0) < 3 && AI_MODELS.some(m => m.id === preferred)) {
     logger.info("[Chatbot] Using preferred fast OpenRouter model", { model: preferred });
     return { provider: "openrouter", modelId: preferred, systemPrompt, tuning, webSearch: modeKey === "thinking" };
   }
 
-  // Use best tier-1 model directly — no probing needed
-  const bestModel = AI_MODELS.find(m => m.tier === 1);
+  // Use best tier-1 chat-lane model directly — no probing needed
+  const bestModel = AI_MODELS.find(m => m.tier === 1 && isChatLaneModel(m.id));
   if (bestModel) {
     logger.info("[Chatbot] Using best OpenRouter model", { model: bestModel.id });
     return { provider: "openrouter", modelId: bestModel.id, systemPrompt, tuning, webSearch: modeKey === "thinking" };
@@ -562,10 +560,12 @@ async function streamOpenRouterProvider(
   // the thinking tier-1 model is tried only after every fast option.
   if (picked.tuning.openRouterPreferredModel) {
     for (const fastModel of INSTANT_FAST_MODELS) {
+      if (!isChatLaneModel(fastModel)) continue; // gate: specialists out of the instant lane
       if (!candidates.includes(fastModel) && (modelFailCount[fastModel] || 0) < 3) candidates.push(fastModel);
     }
   }
   for (const m of AI_MODELS) {
+    if (!isChatLaneModel(m.id)) continue; // gate: specialists never write chat answers
     if (!candidates.includes(m.id) && (modelFailCount[m.id] || 0) < 3) candidates.push(m.id);
   }
 
@@ -705,95 +705,14 @@ async function streamOpenRouterFallback(
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// VISION STREAMING — image requests are routed ONLY to vision-capable models:
-//   1. Groq Llama-4-Scout (multimodal, streaming)
-//   2. OpenRouter vision-language ids (streaming)
-//   3. Non-streaming vision cascade emitted as a single SSE chunk
-// Text-only providers are never contacted with image parts (mandatory rule).
+// VISION STREAMING POLICY (2026-10-23 live incident):
+// The legacy "direct vision streaming" fallbacks (Groq Scout / OpenRouter VL
+// writing the FINAL answer) were REMOVED on purpose. Under load they let a
+// weak vision model serve the final reply — its broken Arabic spelling
+// (verbatim words like رايت/التعاياث) reached users and broke the first-
+// impression contract. The answer writer is ALWAYS the text reasoning
+// cascade; vision models only ever READ (PASS 1 in chatbot-vision.ts).
 // ════════════════════════════════════════════════════════════════════════
-
-/**
- * Groq vision stream — Llama-4-Scout with the mode's stream timeouts.
- * Returns null when every attempt fails so the caller can move on.
- */
-async function streamGroqVisionProvider(
-  request: { messages: ChatApiMessage[]; language?: string },
-  systemPrompt: string,
-  tuning: ModeTuning,
-  encoder: TextEncoder,
-): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | null> {
-  const timeouts: number[] = tuning.groqStreamTimeouts;
-  const visionPick: PickedProvider = { provider: "groq", modelId: GROQ_VISION_MODEL, systemPrompt, tuning };
-
-  for (let attempt = 0; attempt < timeouts.length; attempt++) {
-    const response = await tryGroqStreamFetch(request, visionPick, GROQ_VISION_MODEL, timeouts[attempt], attempt, timeouts.length);
-    if (!response) continue;
-
-    const evaluation = await evaluateGroqStreamResponse(response, GROQ_VISION_MODEL, attempt, timeouts.length);
-    if (evaluation.kind === "retry") continue;
-    if (evaluation.kind === "nextModel") break;
-
-    // SUCCESS
-    chatHealth.groqConsecFails = 0;
-    chatHealth.groqLastSuccess = Date.now();
-    chatHealth.groqKeyValid = true;
-    logger.info(`[Chatbot/Vision] Groq ${GROQ_VISION_MODEL} SUCCESS`);
-    return { stream: response.body!.pipeThrough(buildSSEContentTransformStream(encoder)), model: GROQ_VISION_MODEL };
-  }
-  return null;
-}
-
-/**
- * OpenRouter vision stream — sweeps the vision-language ids only.
- */
-async function streamOpenRouterVisionProvider(
-  request: { messages: ChatApiMessage[]; language?: string },
-  systemPrompt: string,
-  tuning: ModeTuning,
-  encoder: TextEncoder,
-): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | null> {
-  for (const modelId of OPENROUTER_VISION_MODELS) {
-    if ((modelFailCount[modelId] || 0) >= 3) continue;
-    try {
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://ahmedelbaz.qzz.io",
-          "X-Title": "Elbaz LMS Chatbot",
-        },
-        body: JSON.stringify({
-          model: modelId,
-          messages: [
-            { role: "system", content: systemPrompt },
-            ...request.messages.map((m) => ({ role: m.role, content: m.content })),
-          ],
-          temperature: tuning.temperature,
-          max_tokens: tuning.maxTokens,
-          stream: true,
-        }),
-        signal: AbortSignal.timeout(tuning.openRouterStreamTimeoutMs),
-      });
-
-      if (!response.ok || !response.body) {
-        if (response.status === 404) {
-          modelFailCount[modelId] = 3; // dead id — hard-skip
-          continue;
-        }
-        modelFailCount[modelId] = (modelFailCount[modelId] || 0) + 1;
-        logger.warn(`[Chatbot/Vision] OpenRouter ${modelId} failed (HTTP ${response.status})`);
-        continue;
-      }
-      logger.info(`[Chatbot/Vision] OpenRouter ${modelId} SUCCESS`);
-      return { stream: response.body.pipeThrough(buildSSEContentTransformStream(encoder)), model: modelId };
-    } catch (e) {
-      modelFailCount[modelId] = (modelFailCount[modelId] || 0) + 1;
-      logger.warn(`[Chatbot/Vision] OpenRouter ${modelId} threw`, { error: String(e) });
-    }
-  }
-  return null;
-}
 
 /**
  * MAIN VISION streaming entry point — mirrors getStreamResponse but with a
@@ -821,6 +740,10 @@ async function getVisionStreamResponse(request: {
 
   // ── PASS 2 (ANSWER): streaming reasoning-first cascade over the TEXT
   // description — the strongest available model writes the answer.
+  // Vision+image requests get a PATIENTER budget than plain instant text:
+  // the user already waited for the read — a busy moment must not downgrade
+  // the answer writer to a weak vision model (live incident: garbled Arabic
+  // spelling served by a VL model under the old 12s instant budget).
   const routed = await routeChatStream({
     messages: pass2Messages,
     systemPrompt,
@@ -830,15 +753,15 @@ async function getVisionStreamResponse(request: {
     preferredModelId: tuning.openRouterPreferredModel,
     webSearch: mode === "thinking",
     gen: mode === "instant"
-      ? { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 10_000, globalBudgetMs: 12_000 }
+      ? { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 15_000, globalBudgetMs: 24_000 }
       : { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 20_000, globalBudgetMs: 22_000 },
   });
   if (routed.ok) return { stream: routed.result.stream, model: routed.result.model };
 
   // Legacy streaming text cascade over the augmented (text-only) messages.
+  const pass2Request = { ...request, messages: pass2Messages };
   const picked = await pickWorkingModel(pass2Messages, request.language, mode, request.catalog);
   if (picked) {
-    const pass2Request = { ...request, messages: pass2Messages };
     if (picked.provider === "nvidia") {
       return await streamNvidiaProvider(pass2Request, picked, encoder);
     }
@@ -848,20 +771,18 @@ async function getVisionStreamResponse(request: {
     return await streamOpenRouterProvider(pass2Request, picked, encoder);
   }
 
-  // ── Last resort: raw multimodal → vision models directly (better than a
-  // bare error) — legacy streaming vision sweep, then non-streaming two-pass.
-  logger.warn("[Chatbot/Vision/Stream] reasoning cascade unavailable — falling back to direct vision streaming.");
-  const visionSystemPrompt = getSystemPrompt(request.language, mode, request.catalog, true, request.historySummary);
-  const groqVision = await streamGroqVisionProvider(request, visionSystemPrompt, tuning, encoder);
-  if (groqVision) return groqVision;
-
-  const orVision = await streamOpenRouterVisionProvider(request, visionSystemPrompt, tuning, encoder);
-  if (orVision) return orVision;
-
-  const nv = await getVisionResponse({ messages: request.messages, language: request.language, mode, catalog: request.catalog, historySummary: request.historySummary });
-  if (nv.success && nv.reply) {
-    return { stream: singleChunkStream(nv.reply, encoder), model: nv.model ?? "vision" };
-  }
+  // ── Last resort: the reasoning cascade is text-only by POLICY — a vision
+  // model NEVER writes the final answer (live incident 2026-10-23: a VL model
+  // served the final reply under load and its broken Arabic spelling reached
+  // the user — exactly what the two-pass policy exists to prevent). Instead
+  // of offering the raw multimodal request to vision models, run the
+  // non-streaming TEXT cascade over the SAME description (already paid for —
+  // the read is memoized) and emit it as one clean chunk; the client reveal
+  // queue paces it like normal typing. If even that fails → calm busy note
+  // (the client silently retries; no weak-model garbage ever reaches the UI).
+  logger.warn("[Chatbot/Vision/Stream] reasoning cascade unavailable — falling back to the non-streaming text cascade over the description.");
+  const textFallback = await streamOpenRouterFallback(pass2Request, systemPrompt, tuning);
+  if (textFallback) return textFallback;
 
   return {
     error: request.language === "ar"

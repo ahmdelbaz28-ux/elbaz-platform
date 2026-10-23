@@ -113,6 +113,36 @@ def t3(_persist_ms):
     check("T3 follow-up request also answers (breaker only skips OpenRouter)", any(k == "text" for k, _ in events) and not any(k == "error" for k, _ in events))
 
 
+def t5(_persist_ms):
+    """VISION POLICY (garbled-Arabic incident): an image message must be
+    answered by the TEXT reasoning cascade — never by a vision model.
+    mock/vl-reader (vision, tier1) serves the PASS-1 read when the request
+    carries image parts and REFUSES (500) persona-prompt requests; the final
+    answer must therefore come from mock/grounded-stream (tier2, text)."""
+    msg = {
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "ما الذي تشاهده في الصورة؟"},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}},
+            ],
+        }],
+        "language": "ar",
+        "mode": "instant",
+    }
+    ttfb, ctype, events, total = post_stream(msg)
+    kinds = [k for k, _ in events]
+    reply = text_of(events)
+    models = [p for k, p in events if k == "model"]
+    check("T5 vision reply served (two-pass pipeline completed)", len(reply) > 0, f"reply={reply[:60]!r} total={total}ms")
+    check("T5 answer came from the TEXT cascade (grounded-stream marker)", "موثق" in reply and "متدفق" in reply, repr(reply[:60]))
+    check("T5 winner is the text model, never the VL id", any("grounded-stream" in m for m in models) and not any("vl-reader" in m for m in models), f"models={models}")
+    check("T5 progressive deltas (streamed, not one dump)", sum(1 for k, _ in events if k == "text") >= 2, f"deltas={sum(1 for k,_ in events if k=='text')}")
+    check("T5 no error event reached the client", not any(k == "error" for k, _ in events))
+    check("T5 terminated with [DONE]", kinds[-1] == "done" if kinds else False)
+    check("T5 completes well inside the vision deadline (< 40s)", total < 40_000, f"total={total}ms")
+
+
 def t4(_persist_ms):
     """Dud winner: peeks alive (reasoning delta) then dies with ZERO visible
     content. The resilient-stream layer must repair the answer in-flight
@@ -135,7 +165,7 @@ def t4(_persist_ms):
 if __name__ == "__main__":
     phase = (sys.argv[1] if len(sys.argv) > 1 else "t1").lower()
     persist_ms = int(sys.argv[2]) if len(sys.argv) > 2 else 8000
-    {"t1": t1, "t2": t2, "t3": t3, "t4": t4}[phase](persist_ms)
+    {"t1": t1, "t2": t2, "t3": t3, "t4": t4, "t5": t5}[phase](persist_ms)
     print()
     if fails:
         print(f"PHASE {phase.upper()} FAILED: {len(fails)} — {fails}")

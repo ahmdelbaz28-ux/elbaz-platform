@@ -11,7 +11,7 @@ import { describe, it, expect } from "vitest";
 
 // classifyRawModel is exported from ai-router.ts — importing the module must
 // NOT require a database (lazy DB handle) by design.
-import { classifyRawModel, maskApiKey, parseUpstreamSseLine, looksComplete, PROVIDER_CATALOG, SPECIALIST_CHAT_RE, isOpenRouterDailyLimited, resetOpenRouterDailyLimit, sniffOpenRouterDailyLimit } from "./ai-router.js";
+import { classifyRawModel, maskApiKey, parseUpstreamSseLine, looksComplete, PROVIDER_CATALOG, SPECIALIST_CHAT_RE, isChatLaneModel, isOpenRouterDailyLimited, resetOpenRouterDailyLimit, sniffOpenRouterDailyLimit } from "./ai-router.js";
 
 describe("AI Router — classifyRawModel", () => {
   it("classifies OpenRouter multimodal metadata as vision (authoritative signal)", () => {
@@ -235,9 +235,7 @@ describe("AI Router — SPECIALIST_CHAT_RE (wrong-specialization guard)", () => 
     for (const id of [
       "nvidia/nemotron-3-ultra-550b-a55b:free",
       "nvidia/nemotron-3.5-super-vl:free",
-      "google/gemma-4-31b-it:free",
       "thinkingmachines/inkling:free",
-      "google/gemma-4-26b-a4b-it:free",
       "nvidia/nemotron-3.5-lightning:free",
       "meta-llama/llama-4-scout-17b-16e-instruct",
     ]) {
@@ -296,13 +294,21 @@ describe("AI Router — OpenRouter daily-quota breaker", () => {
   });
 });
 
-describe("AI Router — SPECIALIST_CHAT_RE (allam incident regression)", () => {
+describe("AI Router — SPECIALIST_CHAT_RE (allam + gemma incidents regression)", () => {
   it("excludes the allam 7B dialect family from the general chat lane", () => {
     expect(SPECIALIST_CHAT_RE.test("allam-2-7b")).toBe(true);
     expect(SPECIALIST_CHAT_RE.test("groq/allam-2-7b")).toBe(true);
     // The vetted fast models stay untouched.
     expect(SPECIALIST_CHAT_RE.test("llama-3.1-8b-instant")).toBe(false);
     expect(SPECIALIST_CHAT_RE.test("llama-3.3-70b-versatile")).toBe(false);
-    expect(SPECIALIST_CHAT_RE.test("google/gemma-4-26b-a4b-it:free")).toBe(false);
+  });
+
+  it("excludes the Gemma family from the chat lane (2026-10-23 garbled-Arabic incident) — stays in the vision reader lane", () => {
+    expect(SPECIALIST_CHAT_RE.test("google/gemma-4-26b-a4b-it:free")).toBe(true);
+    expect(SPECIALIST_CHAT_RE.test("google/gemma-4-31b-it:free")).toBe(true);
+    expect(SPECIALIST_CHAT_RE.test("groq/gemma-2-9b-it")).toBe(true);
+    // The chat-lane gate helper agrees.
+    expect(isChatLaneModel("google/gemma-4-26b-a4b-it:free")).toBe(false);
+    expect(isChatLaneModel("openai/gpt-oss-120b:free")).toBe(true);
   });
 });

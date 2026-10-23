@@ -698,9 +698,10 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     revealTimerRef.current = setInterval(() => {
       const pending = pendingTextRef.current;
       if (!pending) return;
-      // Adaptive step: ~1 glyph on trickles, up to 8 chars on bursts —
-      // a 3000-char backlog drains in ~3s (fast typing, never a freeze).
-      const step = Math.max(1, Math.min(8, Math.ceil(pending.length / 12)));
+      // Adaptive step: ~1 glyph on trickles, 8 chars on bursts, and up to 16
+      // chars for very long backlogs — ANY reply (even 6k chars) finishes its
+      // reveal in ≲10s while small trickles still render glyph-by-glyph.
+      const step = Math.max(1, Math.min(pending.length > 4000 ? 16 : 8, Math.ceil(pending.length / 12)));
       pendingTextRef.current = pending.slice(step);
       setStreamingContent((prev) => prev + pending.slice(0, step));
     }, 30);
@@ -1100,8 +1101,10 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
 
         if (receivedAny) {
           // Let the reveal catch up so the committed bubble continues the
-          // exact text the user watched being typed (bounded wait).
-          await drainReveal();
+          // exact text the user watched being typed. The cap scales with the
+          // backlog: even a 6k-char reply reveals ≲10s — the deadline exists
+          // only as a pathological-case safety net (never a mid-commit jump).
+          await drainReveal(45_000);
           if (isStale()) return "ok";
           const botMessage: Message = {
             id: crypto.randomUUID(),
@@ -1149,7 +1152,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
           accumulatedRef.current = data.reply;
           pendingTextRef.current += data.reply;
           startReveal();
-          await drainReveal(30_000);
+          await drainReveal(60_000);
           if (isStale()) return true;
           const botMsg: Message = {
             id: crypto.randomUUID(),
