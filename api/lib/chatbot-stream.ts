@@ -60,7 +60,7 @@ import {
   validateGroqKey,
   validateOpenRouterKey,
 } from "./chatbot.js";
-import { routeChatStream, buildUpstreamSSETransform, isWebPluginDisabled, disableWebPluginFor, WEB_PLUGIN_BODY } from "./ai-router.js";
+import { routeChatStream, buildUpstreamSSETransform, isWebPluginDisabled, disableWebPluginFor, WEB_PLUGIN_BODY, noteOpenRouterDailyLimit } from "./ai-router.js";
 
 // ════════════════════════════════════════════════════════════════════════
 // STREAMING — provider selection
@@ -196,9 +196,12 @@ export async function pickWorkingModel(
 
 function buildStreamErrorResponse(kind: "noProvider" | "openRouterError" | "openRouterConnectError", language?: string): { error: string } {
   const messages: Record<typeof kind, { ar: string; en: string }> = {
+    // Never-error tone: this copy only reaches the user after the endpoint's
+    // full persistence loop AND the client's silent retries are exhausted.
+    // It must read like a busy assistant, never like a failure screen.
     noProvider: {
-      ar: "جميع نماذج الذكاء الاصطناعي مشغولة حالياً. يرجى المحاولة بعد قليل.",
-      en: "All AI models are temporarily busy. Please try again in a few seconds.",
+      ar: "الخدمة تمر بضغط عالٍ في هذه اللحظات — أعد إرسال سؤالك بعد لحظة وسأجيبك فوراً ⚡",
+      en: "The service is under heavy load right now — please send your question again in a moment and I'll answer right away ⚡",
     },
     openRouterError: {
       ar: "عذراً، حدث خطأ. يرجى المحاولة مرة أخرى.",
@@ -623,6 +626,14 @@ async function streamOpenRouterProvider(
           logger.warn(`[Chatbot/Stream/OpenRouter] ${modelId} unavailable (HTTP 404) — hard-skipped (no budget cost)`);
           continue;
         }
+        // Daily-quota sniff — an account-level 429 arms the shared breaker
+        // so the next request skips OpenRouter instantly (Groq answers).
+        if (response.status === 429) {
+          try {
+            const body = (await response.text()).slice(0, 2_000);
+            if (/free-models-per-(day|month)/i.test(body)) noteOpenRouterDailyLimit();
+          } catch { /* body unreadable — normal 429 handling */ }
+        }
         modelFailCount[modelId] = (modelFailCount[modelId] || 0) + 1;
         realAttempts++;
         logger.warn(`[Chatbot/Stream/OpenRouter] ${modelId} failed (HTTP ${response.status}) — trying next model...`);
@@ -688,8 +699,8 @@ async function streamOpenRouterFallback(
 
   return {
     error: request.language === "ar"
-      ? "جميع نماذج الذكاء الاصطناعي مشغولة حالياً. يرجى المحاولة بعد قليل."
-      : "All AI models are temporarily busy. Please try again in a few seconds.",
+      ? "الخدمة تمر بضغط عالٍ في هذه اللحظات — أعد إرسال سؤالك بعد لحظة وسأجيبك فوراً ⚡"
+      : "The service is under heavy load right now — please send your question again in a moment and I'll answer right away ⚡",
   };
 }
 

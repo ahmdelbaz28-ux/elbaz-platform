@@ -21,7 +21,7 @@ const chatbotRouter = new Hono();
 
 // ── Simple in-memory rate limiter for chatbot (no auth required) ──
 const chatbotRequests = new Map<string, { count: number; resetAt: number }>();
-const CHATBOT_RATE_LIMIT = 20; // requests per window per IP
+const CHATBOT_RATE_LIMIT = 30; // requests per window per IP (client silent retries included)
 const CHATBOT_WINDOW_MS = 60_000; // 1 minute window
 
 function checkChatbotRateLimit(ip: string): boolean {
@@ -304,14 +304,26 @@ chatbotRouter.post("/", async (c) => {
     const chatUser = await resolveOptionalUser(c.req.raw);
     const historySummary = chatUser ? await getLatestSummaryText(chatUser.id).catch(() => null) : null;
 
-    const result = await getChatResponse({
+    // Bounded persistence for the fallback path: when every provider is
+    // momentarily saturated, wait and re-walk instead of failing fast (the
+    // streaming endpoint — the primary path — persists far longer).
+    const nonStreamPersistDeadline = Date.now()
+      + (Number.isFinite(Number(process.env.CHATBOT_NONSTREAM_PERSIST_MS)) && Number(process.env.CHATBOT_NONSTREAM_PERSIST_MS) > 0
+        ? Number(process.env.CHATBOT_NONSTREAM_PERSIST_MS)
+        : 30_000);
+    const chatRequest = {
       messages,
       language: resolveChatLanguage(body.language, messages),
       mode: body.mode,
       catalog,
       vision,
       historySummary: historySummary ?? undefined,
-    });
+    };
+    let result = await getChatResponse(chatRequest);
+    while (!result.success && Date.now() < nonStreamPersistDeadline) {
+      await new Promise((r) => setTimeout(r, 4_000));
+      result = await getChatResponse(chatRequest);
+    }
 
     if (result.success) {
       // Quota is only consumed by SUCCESSFUL image analysis.
@@ -338,256 +350,255 @@ chatbotRouter.post("/", async (c) => {
 });
 
 // ── Streaming chat endpoint (SSE) ──
-interface StreamPipeState {
-  controllerRef: ReadableStreamDefaultController | null;
-  isStreamClosed: boolean;
-  timeoutController: AbortController;
-  timeoutId: ReturnType<typeof setTimeout>;
+// SSE-FIRST + NEVER-BUSY contract (owner requirement: the user must NEVER
+// see a "network busy" error — the bot may keep "thinking" until a model
+// answers, without the user ever sensing a failure):
+//
+//   1. The SSE Response (200 + headers) is returned IMMEDIATELY and the
+//      model walk runs INSIDE the stream. No proxy (Cloudflare / HF Spaces)
+//      can idle-kill a connection that is already emitting bytes, and the
+//      client's typing indicator stays alive from the first millisecond.
+//   2. While any walk is in flight, `: ping` keepalives (SSE comments —
+//      ignored by every client parser) are emitted every 4s.
+//   3. When a full walk fails, the walk is RETRIED in rounds (fresh
+//      circuit-breaker state each round) until the mode's persistence
+//      deadline — thinking 100s, instant 55s (env-overridable for tests).
+//      Only deadline exhaustion emits a soft busy event, which the client
+//      answers with its own silent retries — an error UI is a last resort
+//      of a last resort.
+
+const SSE_HEADERS = {
+  "Content-Type": "text/event-stream",
+  "Cache-Control": "no-cache, no-transform",
+  "Connection": "keep-alive",
+  "X-Accel-Buffering": "no",
+} as const;
+
+const SSE_PING_INTERVAL_MS = 4_000;
+/** Hard cap for the whole request (walk rounds + generation). */
+const SSE_ENDPOINT_HARD_CAP_MS = 180_000;
+
+/** How long the endpoint keeps re-walking before it admits failure. */
+function streamPersistDeadlineMs(mode: "thinking" | "instant"): number {
+  const override = Number(process.env.CHATBOT_STREAM_PERSIST_MS || 0);
+  if (Number.isFinite(override) && override > 0) return override;
+  return mode === "instant" ? 55_000 : 100_000;
 }
 
-function closeControllerIfOpen(state: StreamPipeState): void {
-  if (state.isStreamClosed) return;
-  try {
-    state.controllerRef?.close();
-  } catch {// Intentionally ignored: best-effort cleanup, the error has already
-    // been logged upstream and re-throwing would mask the original cause.
-  }
-  state.isStreamClosed = true;
+function streamRoundGapMs(mode: "thinking" | "instant"): number {
+  return mode === "instant" ? 2_000 : 3_000;
 }
 
-async function pipeStreamToController( // NOSONAR — complex function, refactoring would risk breaking critical behavior
-  stream: ReadableStream<Uint8Array>,
-  state: StreamPipeState,
-  onChunk?: (chunk: Uint8Array) => void,
-  onDone?: () => void,
-): Promise<void> {
-  try {
-    const reader = stream.getReader();
-    while (true) {
-      if (state.timeoutController.signal.aborted || state.isStreamClosed) break;
-      try {
-        const { done, value } = await reader.read();
-        if (done || state.isStreamClosed) break;
-        if (value && !state.isStreamClosed) {
-          try {
-            onChunk?.(value);
-            state.controllerRef?.enqueue(value);
-          } catch {
-            state.isStreamClosed = true;
-            break;
-          }
-        }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } catch (readErr: any) {
-        if (readErr.name === "AbortError") break;
-        logger.warn("[Chatbot] Stream read error", { error: readErr.message });
-        break;
-      }
-    }
-    clearTimeout(state.timeoutId);
-    closeControllerIfOpen(state);
-    onDone?.();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (pipeErr: any) {
-    logger.warn("[Chatbot] Stream pipe error", { error: pipeErr.message });
-    clearTimeout(state.timeoutId);
-    closeControllerIfOpen(state);
-    onDone?.();
-  }
-}
-
-/**
- * Build the combined SSE ReadableStream: emits the model-name event first,
- * then is pumped by pipeStreamToController in the background. Extracted from
- * the /stream handler to keep cognitive complexity manageable.
- */
-function createCombinedStream(modelEvent: Uint8Array, state: StreamPipeState): ReadableStream<Uint8Array> {
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      state.controllerRef = controller;
-      // Send model name first so client can show "Thinking with [model]..."
-      try {
-        controller.enqueue(modelEvent);
-      } catch {
-        state.isStreamClosed = true;
-      }
-    },
-    cancel() {
-      // Handle client disconnect
-      state.isStreamClosed = true;
-      clearTimeout(state.timeoutId);
-      try { state.timeoutController.abort(); } catch {
-        // Intentionally ignored: best-effort cleanup, the error has already
-        // been logged upstream and re-throwing would mask the original cause.
-      }
-    },
-  });
+/** Soft busy copy — reads like a busy assistant, never like a failure. */
+function softBusyText(language?: string): string {
+  return language === "ar"
+    ? "الخدمة تمر بضغط عالٍ في هذه اللحظات — أعد إرسال سؤالك بعد لحظة وسأجيبك فوراً ⚡"
+    : "The service is under heavy load right now — please send your question again in a moment and I'll answer right away ⚡";
 }
 
 chatbotRouter.post("/stream", async (c) => {
-  // Cascade may reach NVIDIA MiniMax-M3 (reasoning model) — needs 60-120s
-  // 180s timeout: 2 minutes for reasoning models
-  const timeoutMs = 180_000; // 3 minutes - give reasoning models time to think
+  const ip = getChatbotIp(c);
+  if (!checkChatbotRateLimit(ip)) {
+    return c.json({ success: false, error: "Rate limit exceeded. Please try again later." }, 429);
+  }
+  const body = await c.req.json<{ messages: unknown; language?: string; chatId?: string; mode?: "thinking" | "instant" }>();
+
+  const normalized = normalizeChatInput(body.messages);
+  if (!normalized.ok) {
+    const isAr = resolveChatLanguage(body.language, []) === "ar";
+    const f = normalized.failure;
+    return c.json({ success: false, error: isAr ? f.ar : f.en, chatId: body.chatId }, f.status);
+  }
+  const { messages, vision, imageCount, totalTextChars } = normalized.data;
+
+  if (totalTextChars > MAX_TOTAL_CHARS) {
+    return c.json({ success: false, error: "Conversation too long. Please start a new chat.", chatId: body.chatId }, 413);
+  }
+
+  // Vision quota — enforced BEFORE dispatch so no provider call is wasted.
+  if (vision) {
+    const used = await getImageQuotaUsed(ip);
+    if (used + imageCount > DAILY_IMAGE_LIMIT) {
+      const msg = imageQuotaExceededResponse(used);
+      const lang = resolveChatLanguage(body.language, messages);
+      return c.json({ success: false, error: lang === "ar" ? msg.ar : msg.en, chatId: body.chatId }, 429);
+    }
+  }
+
+  const startedAt = Date.now();
+  const mode: "thinking" | "instant" = body.mode === "instant" ? "instant" : "thinking";
+  const language = resolveChatLanguage(body.language, messages);
+
+  // Real course catalog + chat-history continuity — prepared ONCE here so
+  // every persistence round inside the stream reuses them (fail-open).
+  const catalog = await getCourseCatalogText();
+  const chatUser = await resolveOptionalUser(c.req.raw);
+  const historySummary = chatUser ? await getLatestSummaryText(chatUser.id).catch(() => null) : null;
+
   const timeoutController = new AbortController();
   const timeoutId = setTimeout(() => {
-    logger.warn("[Chatbot] Stream timeout (180s) - aborting request");
-    timeoutController.abort();
-  }, timeoutMs);
+    logger.warn("[Chatbot] Stream hard cap (180s) — aborting");
+    timeoutController.abort(new Error("endpoint hard cap"));
+  }, SSE_ENDPOINT_HARD_CAP_MS);
 
-  try {
-    const ip = getChatbotIp(c);
-    if (!checkChatbotRateLimit(ip)) {
-      clearTimeout(timeoutId);
-      return c.json({ success: false, error: "Rate limit exceeded. Please try again later." }, 429);
-    }
-    const body = await c.req.json<{ messages: unknown; language?: string; chatId?: string; mode?: "thinking" | "instant" }>();
+  const encoder = new TextEncoder();
+  const runWalk = () => getStreamResponse({
+    messages,
+    language,
+    mode,
+    catalog,
+    vision,
+    historySummary: historySummary ?? undefined,
+  });
 
-    const normalized = normalizeChatInput(body.messages);
-    if (!normalized.ok) {
-      clearTimeout(timeoutId);
-      const isAr = resolveChatLanguage(body.language, []) === "ar";
-      const f = normalized.failure;
-      return c.json({ success: false, error: isAr ? f.ar : f.en, chatId: body.chatId }, f.status);
-    }
-    const { messages, vision, imageCount, totalTextChars } = normalized.data;
-
-    if (totalTextChars > MAX_TOTAL_CHARS) {
-      clearTimeout(timeoutId);
-      return c.json({ success: false, error: "Conversation too long. Please start a new chat.", chatId: body.chatId }, 413);
-    }
-
-    // Vision quota — enforced BEFORE dispatch so no provider call is wasted.
-    if (vision) {
-      const used = await getImageQuotaUsed(ip);
-      if (used + imageCount > DAILY_IMAGE_LIMIT) {
-        clearTimeout(timeoutId);
-        const msg = imageQuotaExceededResponse(used);
-        const lang = resolveChatLanguage(body.language, messages);
-        return c.json({ success: false, error: lang === "ar" ? msg.ar : msg.en, chatId: body.chatId }, 429);
-      }
-    }
-
-    // Real course catalog (same as non-streaming path) — fetched once here so
-    // the streamed system prompt carries the live course data.
-    const catalog = await getCourseCatalogText();
-
-    // ── Chat-history continuity (logged-in users only, fail-open) ──
-    const chatUser = await resolveOptionalUser(c.req.raw);
-    const historySummary = chatUser ? await getLatestSummaryText(chatUser.id).catch(() => null) : null;
-
-    // Create promise that rejects on timeout
-    const streamPromise = getStreamResponse({
-      messages,
-      language: resolveChatLanguage(body.language, messages),
-      mode: body.mode,
-      catalog,
-      vision,
-      historySummary: historySummary ?? undefined,
-    });
-
-    // Race between stream response and timeout
-    type StreamResult = { stream: ReadableStream<Uint8Array>; model: string } | { error: string };
-    let result: StreamResult;
+  // Server-side accumulation of the assistant text — the normalized SSE
+  // events ("data: {\"text\"}") are parsed so the full reply can be
+  // persisted for logged-in users when the stream ends (success OR client
+  // disconnect — the user saw whatever accumulated).
+  let accumulatedReply = "";
+  let sseCarry = "";
+  const accumulateFromStream = (chunk: Uint8Array) => {
     try {
-      result = await Promise.race<StreamResult>([
-        streamPromise,
-        new Promise<never>((_, reject) => {
-          timeoutController.signal.addEventListener("abort", () => {
-            reject(new Error("AI response timeout (180s)"));
-          });
-        }),
-      ]);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (raceErr: any) {
-      clearTimeout(timeoutId);
-      logger.warn("[Chatbot] Stream race failed", { error: raceErr.message });
-      return c.json({ success: false, error: "Request timeout. The assistant is thinking, please try again.", chatId: body.chatId }, 504);
-    }
-
-    if ("error" in result) {
-      clearTimeout(timeoutId);
-      return c.json({ success: false, error: result.error, chatId: body.chatId }, 503);
-    }
-
-    // Quota is only consumed by SUCCESSFUL image analysis (a provider was
-    // actually reached and accepted the request).
-    if (vision) {
-      await incrementImageQuota(ip, imageCount);
-    }
-
-    // Send model name as first SSE event, then pipe the actual stream
-    const encoder = new TextEncoder();
-    const modelEvent = encoder.encode(`data: ${JSON.stringify({ model: result.model })}\n\n`);
-
-    // Create a combined stream: model event FIRST, then actual content stream
-    const state: StreamPipeState = {
-      controllerRef: null,
-      isStreamClosed: false,
-      timeoutController,
-      timeoutId,
-    };
-
-    const combinedStream = createCombinedStream(modelEvent, state);
-
-    // Server-side accumulation of the assistant text — the normalized SSE
-    // events ("data: {\"text\"}") are parsed so the full reply can be
-    // persisted for logged-in users when the stream ends (success OR client
-    // disconnect — the user saw whatever accumulated).
-    let accumulatedReply = "";
-    let sseCarry = "";
-    const accumulateFromStream = (chunk: Uint8Array) => {
-      try {
-        sseCarry += new TextDecoder().decode(chunk, { stream: true });
-        const lines = sseCarry.split("\n");
-        sseCarry = lines.pop() || ""; // incomplete line waits for the next chunk
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith("data: ") || trimmed === "data: [DONE]") continue;
-          try {
-            const parsed = JSON.parse(trimmed.slice(6)) as { text?: string };
-            if (typeof parsed.text === "string") accumulatedReply += parsed.text;
-          } catch { /* malformed line — skip */ }
-        }
-      } catch { /* decode error — skip chunk */ }
-    };
-    const flushAccumulator = () => {
-      const rest = sseCarry.trim();
-      sseCarry = "";
-      if (rest.startsWith("data: ") && rest !== "data: [DONE]") {
+      sseCarry += new TextDecoder().decode(chunk, { stream: true });
+      const lines = sseCarry.split("\n");
+      sseCarry = lines.pop() || ""; // incomplete line waits for the next chunk
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data: ") || trimmed === "data: [DONE]") continue;
         try {
-          const parsed = JSON.parse(rest.slice(6)) as { text?: string };
+          const parsed = JSON.parse(trimmed.slice(6)) as { text?: string };
           if (typeof parsed.text === "string") accumulatedReply += parsed.text;
-        } catch { /* incomplete trailing event — drop */ }
+        } catch { /* malformed line — skip */ }
       }
-    };
+    } catch { /* decode error — skip chunk */ }
+  };
+  const flushAccumulator = () => {
+    const rest = sseCarry.trim();
+    sseCarry = "";
+    if (rest.startsWith("data: ") && rest !== "data: [DONE]") {
+      try {
+        const parsed = JSON.parse(rest.slice(6)) as { text?: string };
+        if (typeof parsed.text === "string") accumulatedReply += parsed.text;
+      } catch { /* incomplete trailing event — drop */ }
+    }
+  };
 
-    // Pipe the actual content stream in background (non-blocking).
-    // .catch: belt-and-braces — the piper handles its own errors internally,
-    // but an unhandled rejection here would crash the Node process (S9383).
-    void pipeStreamToController(result.stream, state, accumulateFromStream, () => {
-      flushAccumulator();
-      const reply = accumulatedReply.trim();
-      if (chatUser && reply) {
-        persistRoundSafe(chatUser.id, messages, vision, reply, result.model, body.mode);
+  type StreamResult = { stream: ReadableStream<Uint8Array>; model: string } | { error: string };
+
+  const sse = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let closed = false;
+      const safeEnqueue = (chunk: Uint8Array): boolean => {
+        if (closed) return false;
+        try { controller.enqueue(chunk); return true; } catch { closed = true; return false; }
+      };
+      const finalize = () => {
+        clearInterval(ping);
+        clearTimeout(timeoutId);
+        if (!closed) {
+          try { controller.close(); } catch { /* already closed */ }
+          closed = true;
+        }
+      };
+      const ping = setInterval(() => {
+        safeEnqueue(encoder.encode(": ping\n\n"));
+      }, SSE_PING_INTERVAL_MS);
+
+      try {
+        // ── Persistent walk — full cascade rounds until the deadline ──
+        const deadline = startedAt + streamPersistDeadlineMs(mode);
+        let result: StreamResult | null = null;
+        let rounds = 0;
+        while (!timeoutController.signal.aborted) {
+          rounds++;
+          const remaining = deadline - Date.now();
+          if (remaining <= 0) break;
+          let timerId: ReturnType<typeof setTimeout> | null = null;
+          let onAbort: (() => void) | null = null;
+          try {
+            result = await Promise.race<StreamResult | null>([
+              runWalk(),
+              new Promise<null>((resolve) => {
+                timerId = setTimeout(() => resolve(null), remaining);
+                onAbort = () => resolve(null);
+                timeoutController.signal.addEventListener("abort", onAbort, { once: true });
+              }),
+            ]);
+          } finally {
+            // Clean up the losing branch of the race (timer + listener) so
+            // persistence rounds never leak either.
+            if (timerId) clearTimeout(timerId);
+            if (onAbort) timeoutController.signal.removeEventListener("abort", onAbort);
+          }
+          if (result && !("error" in result)) break; // a model is streaming
+          result = null;
+          if (timeoutController.signal.aborted || Date.now() >= deadline) break;
+          logger.warn("[Chatbot] stream walk failed — persisting silently", { mode, round: rounds, elapsedMs: Date.now() - startedAt });
+          await new Promise((r) => setTimeout(r, Math.min(streamRoundGapMs(mode), Math.max(0, deadline - Date.now()))));
+        }
+
+        if (timeoutController.signal.aborted) {
+          // Hard cap (or client disconnect — enqueue is a no-op then).
+          if (result && !("error" in result)) { try { await result.stream.cancel(); } catch { /* already dead */ } }
+          safeEnqueue(encoder.encode(`data: ${JSON.stringify({ error: softBusyText(language) })}\n\n`));
+          safeEnqueue(encoder.encode("data: [DONE]\n\n"));
+          finalize();
+          return;
+        }
+
+        if (!result) {
+          // Every round failed within the deadline — one soft busy event.
+          // The client retries silently; only a total blackout ever shows it.
+          logger.error("[Chatbot] stream persistence exhausted", { mode, rounds, elapsedMs: Date.now() - startedAt });
+          safeEnqueue(encoder.encode(`data: ${JSON.stringify({ error: softBusyText(language) })}\n\n`));
+          safeEnqueue(encoder.encode("data: [DONE]\n\n"));
+          finalize();
+          return;
+        }
+
+        // ── Winner — model event first, then pump the content stream ──
+        // Quota is only consumed by SUCCESSFUL image analysis.
+        if (vision) await incrementImageQuota(ip, imageCount);
+        safeEnqueue(encoder.encode(`data: ${JSON.stringify({ model: result.model })}\n\n`));
+
+        const reader = result.stream.getReader();
+        try {
+          while (true) {
+            if (closed || timeoutController.signal.aborted) break;
+            const { done, value } = await reader.read();
+            if (done || closed) break;
+            if (value) {
+              accumulateFromStream(value);
+              if (!safeEnqueue(value)) break;
+            }
+          }
+        } catch (readErr) {
+          logger.warn("[Chatbot] content stream read error", { error: readErr instanceof Error ? readErr.message : String(readErr) });
+        } finally {
+          try { await reader.cancel(); } catch { /* already dead */ }
+        }
+
+        flushAccumulator();
+        const reply = accumulatedReply.trim();
+        if (chatUser && reply) {
+          persistRoundSafe(chatUser.id, messages, vision, reply, result.model, mode);
+        }
+        finalize();
+      } catch (err) {
+        logger.warn("[Chatbot] stream handler error", { error: err instanceof Error ? err.message : String(err) });
+        safeEnqueue(encoder.encode(`data: ${JSON.stringify({ error: softBusyText(language) })}\n\n`));
+        safeEnqueue(encoder.encode("data: [DONE]\n\n"));
+        finalize();
       }
-    }).catch(() => {
-      // Intentionally ignored: stream piper already finalizes `state` on error.
-    });
+    },
+    cancel() {
+      // Client disconnect — abort the race + timers; dangling walk results
+      // are cancelled in the start() body via the aborted branch.
+      timeoutController.abort(new Error("client disconnected"));
+    },
+  });
 
-    return new Response(combinedStream, {
-      status: 200,
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache, no-transform",
-        "Connection": "keep-alive",
-        "X-Accel-Buffering": "no",
-      },
-    });
-  } catch (err) {
-    clearTimeout(timeoutId);
-    logger.error("[Chatbot] Error in /api/chatbot/stream", { error: err instanceof Error ? err.message : String(err) });
-    return c.json({ success: false, error: "Internal server error" }, 500);
-  }
+  return new Response(sse, { status: 200, headers: SSE_HEADERS });
 });
 
 export { chatbotRouter };

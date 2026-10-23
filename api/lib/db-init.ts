@@ -719,6 +719,35 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
             logger.info(`[DB] v9 seeded provider "${slug}" from env key`);
           }
         }
+
+        // ── Env→DB key sync (EVERY boot, built-in slugs only) ──
+        // Space secrets are the authoritative source for the three built-in
+        // providers: when an env key exists and differs from the stored row
+        // (e.g. the owner rotated GROQ_API_KEY in the Space settings), the
+        // fresh key is synced in and the provider is re-enabled. Custom
+        // dashboard-only providers are never touched.
+        const envKeys: [string, string][] = [
+          ["nvidia", env.NVIDIA_API_KEY || process.env.NVIDIA_API_KEY || ""],
+          ["openrouter", env.OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY || process.env.CHATBOT_API_KEY || ""],
+          ["groq", env.GROQ_API_KEY || process.env.GROQ_API_KEY || ""],
+        ];
+        for (const [slug, key] of envKeys) {
+          if (!key) continue;
+          try {
+            const [rows] = await conn.query("SELECT id, apiKey, enabled FROM `aiProviders` WHERE slug = ? LIMIT 1", [slug]);
+            const row = (rows as { id: number; apiKey: string; enabled: number }[])[0];
+            if (!row) continue; // first-run seeding above owns creation
+            if (row.apiKey !== key) {
+              await conn.execute("UPDATE `aiProviders` SET apiKey = ?, enabled = TRUE, status = 'unknown', lastError = NULL WHERE id = ?", [key, row.id]);
+              logger.info(`[DB] env key synced into aiProviders row "${slug}" (key rotated at the provider source)`);
+            } else if (!row.enabled) {
+              // Key matches but the row was left disabled — keep the owner's
+              // explicit toggle (do NOT re-enable silently).
+            }
+          } catch (syncErr) {
+            logger.warn("[DB] env key sync warning", { slug, error: (syncErr as Error).message });
+          }
+        }
       } catch (err) {
         logger.warn("[DB] v9 ai router migration warning", { error: (err as Error).message });
       }

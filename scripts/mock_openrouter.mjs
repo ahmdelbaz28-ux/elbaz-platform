@@ -37,6 +37,25 @@ function jsonReply(res, content) {
   res.end(JSON.stringify({ choices: [{ message: { content } }] }));
 }
 
+/** SSE winner whose first byte lands after 6s (SSE-first + keepalive probe). */
+function slowReply(res) {
+  res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
+  const deltas = ["بداية الرد البطيء ", " والكمال بعده"];
+  setTimeout(() => {
+    let i = 0;
+    const timer = setInterval(() => {
+      if (i < deltas.length) {
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: deltas[i] } }] })}\n\n`);
+        i++;
+      } else {
+        res.write("data: [DONE]\n\n");
+        res.end();
+        clearInterval(timer);
+      }
+    }, 40);
+  }, 6000);
+}
+
 const server = http.createServer((req, res) => {
   const url = req.url || "";
   if (url === "/__log") {
@@ -64,6 +83,22 @@ const server = http.createServer((req, res) => {
         plugins: parsed.plugins ?? null,
         systemChars: (parsed.messages?.[0]?.content || "").length,
       });
+      // NOTE: model-specific behaviors BEFORE the generic stream short-circuit,
+      // otherwise a stream:true request would never see the 429/slow paths.
+      if (modelId === "mock/daily-429") {
+        // Account-level daily-quota exhaustion — arms the 30-min breaker.
+        res.writeHead(429, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          error: { code: 429, message: "Rate limit exceeded: free-models-per-day (Limit: 50, Used: 50, Requested: 1). Please try again in 12h." },
+        }));
+        return;
+      }
+      if (modelId === "mock/slow-stream") {
+        // First byte delayed 6s — proves the endpoint streams SSE headers +
+        // `: ping` keepalives BEFORE any content is available (SSE-first).
+        slowReply(res);
+        return;
+      }
       if (parsed.stream === true) return sseReply(res); // any streaming model
       if (modelId === "mock/charged") {
         chargedCalls += 1;

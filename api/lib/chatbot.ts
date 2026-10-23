@@ -34,7 +34,7 @@
 import { env } from "../lib/env";
 import { getSystemPrompt, MODE_TUNING, type ChatbotMode, type ModeTuning } from "./chatbot-prompts.js";
 import { logger } from "./logger.js";
-import { routeChatCompletion, isWebPluginDisabled, disableWebPluginFor, WEB_PLUGIN_BODY } from "./ai-router.js";
+import { routeChatCompletion, isWebPluginDisabled, disableWebPluginFor, WEB_PLUGIN_BODY, isOpenRouterDailyLimited, noteOpenRouterDailyLimit } from "./ai-router.js";
 import { stripThinkBlocks } from "./think-filter.js";
 import { buildAugmentedTextMessages, buildVisionFailureMessages, readImageViaVisionModels } from "./chatbot-vision.js";
 
@@ -69,15 +69,22 @@ export const NVIDIA_ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/complet
 export const NVIDIA_MODEL = "minimaxai/minimax-m3";
 
 // ── TIER 2: Groq — Tertiary (free ultra-fast models) ──────────────────
+// Order matters for BOTH lanes: instant starts at index 0 (Groq is its FIRST
+// provider — a fast non-reasoning model keeps the 10-15s budgets safe), and
+// thinking lands here as its LAST tier (reasoning-strong ids upgrade quality
+// when the first candidates fail). The <think> filter guarantees reasoning
+// models never leak their chains of thought.
 export const GROQ_API_KEY =
   env.GROQ_API_KEY || process.env.GROQ_API_KEY || "";
 export const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
 export const GROQ_MODELS = [
-  "llama-3.3-70b-versatile",           // 374ms | Best quality free
-  "qwen/qwen3-32b",                    // 732ms | New reasoning model
-  "llama-3.1-8b-instant",              // 200ms | Fastest, 131K context
-  "meta-llama/llama-4-scout-17b-16e-instruct", // 435ms | New Llama 4
-  "qwen/qwen3.6-27b",                  // 565ms | Qwen 3.6 latest
+  "llama-3.3-70b-versatile",                    // fast, best all-round quality — safe for instant's short budgets
+  "openai/gpt-oss-120b",                        // 120B reasoning — thinking-grade quality on Groq
+  "moonshotai/kimi-k2-instruct",                // very strong instruct MoE
+  "qwen/qwen3-32b",                             // reasoning (think-filter strips <think>)
+  "qwen/qwen3.6-27b",                           // newer Qwen generation
+  "llama-3.1-8b-instant",                       // fastest safety net
+  "meta-llama/llama-4-scout-17b-16e-instruct",  // multimodal-capable fallback
 ];
 
 // ── VISION MODELS — image understanding (forced routing for image requests) ──
@@ -525,6 +532,14 @@ export async function tryModel(
     }
 
     if (!response.ok) {
+      // Daily-quota sniff — an account-level OpenRouter 429 arms the shared
+      // 30-min breaker so the WHOLE legacy sweep is skipped next round.
+      if (response.status === 429) {
+        try {
+          const body = (await response.text()).slice(0, 2_000);
+          if (/free-models-per-(day|month)/i.test(body)) noteOpenRouterDailyLimit();
+        } catch { /* body unreadable — normal 429 handling */ }
+      }
       modelFailCount[modelId] = (modelFailCount[modelId] || 0) + 1;
       return null;
     }
@@ -641,6 +656,12 @@ export async function openRouterFallback(
     await validateOpenRouterKey();
   }
   if (chatHealth.openrouterKeyValid === false) return null;
+  // Daily-quota breaker — while OpenRouter's free allowance is exhausted
+  // every candidate 429s; skip the whole sweep so Groq/NVIDIA answer now.
+  if (isOpenRouterDailyLimited()) {
+    logger.warn("[Chatbot/OpenRouter] daily free quota exhausted — skipping the OpenRouter sweep (breaker active)");
+    return null;
+  }
 
   if (!chatHealth.modelFailResetTime || Date.now() - chatHealth.modelFailResetTime > 600000) {
     for (const k in modelFailCount) { modelFailCount[k] = 0; }
@@ -700,8 +721,8 @@ function buildAllTiersFailedResponse(language?: string): { success: boolean; err
   return {
     success: false,
     error: language === "ar"
-      ? "جميع نماذج الذكاء الاصطناعي مشغولة حالياً. يرجى المحاولة بعد قليل."
-      : "All AI models are temporarily busy. Please try again in a few seconds.",
+      ? "الخدمة تمر بضغط عالٍ في هذه اللحظات — أعد إرسال سؤالك بعد لحظة وسأجيبك فوراً ⚡"
+      : "The service is under heavy load right now — please send your question again in a moment and I'll answer right away ⚡",
   };
 }
 

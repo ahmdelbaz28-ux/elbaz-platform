@@ -42,13 +42,55 @@ if (mode === "enable-charged") {
 }
 
 // seed | clean: wipe any previous mock provider (models cascade via FK)
-const [providers] = await conn.query("SELECT id FROM aiProviders WHERE slug='openrouter'");
+const [providers] = await conn.query("SELECT id FROM aiProviders WHERE slug IN ('openrouter','groq')");
 for (const p of providers) {
   await conn.query("DELETE FROM aiModels WHERE providerId=?", [p.id]);
 }
-await conn.query("DELETE FROM aiProviders WHERE slug='openrouter'");
+await conn.query("DELETE FROM aiProviders WHERE slug IN ('openrouter','groq')");
 
-if (mode === "seed") {
+if (mode === "seed-429") {
+  // NEVER-BUSY T1: an OpenRouter whose ONLY model 429s with the account-level
+  // daily-quota body — the walk must trip the breaker, persist silently, and
+  // only surface the soft busy event after the deadline.
+  const [ins] = await conn.query(
+    "INSERT INTO aiProviders (slug, displayName, baseUrl, apiKey, priority, enabled, status) VALUES ('openrouter','OpenRouter Mock','http://127.0.0.1:47777/v1','mock-key',1,1,'healthy')"
+  );
+  await conn.query(
+    "INSERT INTO aiModels (providerId, modelId, supportsChat, supportsVision, isFree, enabled, tier) VALUES (?,?,1,0,1,1,1)",
+    [ins.insertId, "mock/daily-429"]
+  );
+  console.log(`seeded provider ${ins.insertId}: mock/daily-429 (tier1, on)`);
+} else if (mode === "seed-slow") {
+  // NEVER-BUSY T2: a winner whose first byte lands after 6s — proves SSE
+  // headers + `: ping` keepalives reach the client BEFORE any content.
+  const [ins] = await conn.query(
+    "INSERT INTO aiProviders (slug, displayName, baseUrl, apiKey, priority, enabled, status) VALUES ('openrouter','OpenRouter Mock','http://127.0.0.1:47777/v1','mock-key',1,1,'healthy')"
+  );
+  await conn.query(
+    "INSERT INTO aiModels (providerId, modelId, supportsChat, supportsVision, isFree, enabled, tier) VALUES (?,?,1,0,1,1,1)",
+    [ins.insertId, "mock/slow-stream"]
+  );
+  console.log(`seeded provider ${ins.insertId}: mock/slow-stream (tier1, on)`);
+} else if (mode === "seed-429-groq") {
+  // NEVER-BUSY T3: OpenRouter daily-429 (trips the breaker) + an independent
+  // Groq provider with a healthy model — after the breaker trips, Groq must
+  // answer immediately on the same request.
+  const [or] = await conn.query(
+    "INSERT INTO aiProviders (slug, displayName, baseUrl, apiKey, priority, enabled, status) VALUES ('openrouter','OpenRouter Mock','http://127.0.0.1:47777/v1','mock-key',1,1,'healthy')"
+  );
+  await conn.query(
+    "INSERT INTO aiModels (providerId, modelId, supportsChat, supportsVision, isFree, enabled, tier) VALUES (?,?,1,0,1,1,1)",
+    [or.insertId, "mock/daily-429"]
+  );
+  const [gq] = await conn.query(
+    "INSERT INTO aiProviders (slug, displayName, baseUrl, apiKey, priority, enabled, status) VALUES ('groq','Groq Mock','http://127.0.0.1:47777/v1','mock-key',2,1,'healthy')"
+  );
+  await conn.query(
+    "INSERT INTO aiModels (providerId, modelId, supportsChat, supportsVision, isFree, enabled, tier) VALUES (?,?,1,0,1,1,1)",
+    [gq.insertId, "mock/grounded"]
+  );
+  console.log(`seeded openrouter=${or.insertId} (daily-429) + groq=${gq.insertId} (grounded)`);
+} else if (mode === "seed") {
   const [ins] = await conn.query(
     "INSERT INTO aiProviders (slug, displayName, baseUrl, apiKey, priority, enabled, status) VALUES ('openrouter','OpenRouter Mock','http://127.0.0.1:47777/v1','mock-key',1,1,'healthy')"
   );

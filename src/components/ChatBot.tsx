@@ -637,7 +637,6 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   const [streamingContent, setStreamingContent] = useState<string>("");
   const [copiedId, setCopiedId] = useState<string>("");
   const [chatMode, setChatMode] = useState<ChatMode>(loadChatMode);
-  const [chunkIndex, setChunkIndex] = useState(0);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -676,6 +675,46 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     if (!chatContainerRef.current || !stickToBottomRef.current) return;
     chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
   }, [streamingContent, typingVisible, messages.length]);
+
+  // ─── Smooth streaming reveal (professional typing feel) ───
+  // Incoming text (SSE deltas OR a full non-streaming reply) lands in a
+  // pending buffer; a 30ms ticker drains it into the visible bubble at an
+  // adaptive rate — small trickles render glyph-by-glyph, big bursts catch
+  // up fast so the reveal finishes with the stream. The blinking caret and
+  // the stick-to-bottom scroll are therefore ALWAYS in sync with the text
+  // the user actually sees — even when the upstream delivers one huge chunk
+  // or long bursts (owner requirement: typing must look live, never "all at
+  // once").
+  const pendingTextRef = useRef("");
+  const revealTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stopReveal = useCallback(() => {
+    if (revealTimerRef.current) {
+      clearInterval(revealTimerRef.current);
+      revealTimerRef.current = null;
+    }
+  }, []);
+  const startReveal = useCallback(() => {
+    if (revealTimerRef.current) return;
+    revealTimerRef.current = setInterval(() => {
+      const pending = pendingTextRef.current;
+      if (!pending) return;
+      // Adaptive step: ~1 glyph on trickles, up to 8 chars on bursts —
+      // a 3000-char backlog drains in ~3s (fast typing, never a freeze).
+      const step = Math.max(1, Math.min(8, Math.ceil(pending.length / 12)));
+      pendingTextRef.current = pending.slice(step);
+      setStreamingContent((prev) => prev + pending.slice(0, step));
+    }, 30);
+  }, []);
+  /** Resolve once the reveal caught up with everything received (bounded). */
+  const drainReveal = useCallback(async (maxMs = 10_000) => {
+    const deadline = Date.now() + maxMs;
+    while (pendingTextRef.current && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 30));
+    }
+  }, []);
+  // Component teardown safety (the widget effectively never unmounts, but
+  // an interval must never outlive its owner).
+  useEffect(() => () => stopReveal(), [stopReveal]);
 
   const historySyncedRef = useRef(false);
   // ─── Server history sync (logged-in users) ───
@@ -869,13 +908,6 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     };
   }, [isLoading, streamingContent, typingVisible]);
 
-  // ─── Increment chunk index on each streaming update (for fade animation) ───
-  useEffect(() => {
-    if (streamingContent) {
-      setChunkIndex((i) => i + 1); // eslint-disable-line react-hooks/set-state-in-effect
-    }
-  }, [streamingContent]);
-
   // ─── Clear copied tooltip after 2s ───
   useEffect(() => {
     if (copiedId) {
@@ -905,7 +937,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   }, []);
 
   // ─── Send message (with streaming + optional image → vision routing) ───
-  const sendMessage = useCallback(async (overrideText?: string, image?: AttachedImage | null) => { // NOSONAR — orchestrates streaming + fallback + abort + UI state; extraction would split inter-dependent closures and shared mutable locals (accumulated/buffer/streamError) across helpers, risking regressions
+  const sendMessage = useCallback(async (overrideText?: string, image?: AttachedImage | null) => { // NOSONAR — orchestrates silent retries + streaming reveal + fallback + abort + UI state; extraction would split inter-dependent closures across helpers, risking regressions
     const trimmed = (overrideText ?? "").trim();
     if ((!trimmed && !image) || isLoading) return;
 
@@ -924,6 +956,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     setMessages((prev) => [...prev.slice(-MAX_HISTORY), userMessage]);
     setIsLoading(true);
     setStreamingContent("");
+    pendingTextRef.current = "";
 
     // Build API messages — history stays plain text; ONLY the new message may
     // carry image parts (OpenAI-compatible multimodal format). The server
@@ -956,210 +989,223 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
 
     // Create abort controller
     abortControllerRef.current = new AbortController();
+    const apiOrigin = globalThis.Capacitor?.isNativePlatform()
+      ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io")
+      : "";
 
-    const addErrorMessage = (errText: string) => {
-      const errorMessage: Message = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: errText,
-        timestamp: new Date(),
-        isError: true,
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+    // NEVER-BUSY UX contract (owner requirement): the user must never see a
+    // failure. The server already persists through provider storms (SSE-first
+    // + keepalives + in-stream walk rounds); this loop adds the client-side
+    // layer — silent retries behind the calm "thinking" indicator, and only a
+    // soft, non-error-looking note if EVERY attempt everywhere is exhausted.
+    const SOFT_BUSY = lang === "ar"
+      ? "الخدمة تمر بضغط عالٍ في هذه اللحظات — أعد إرسال سؤالك بعد لحظة وسأجيبك فوراً ⚡"
+      : "The service is under heavy load right now — please send your question again in a moment and I'll answer right away ⚡";
+    const MAX_STREAM_ATTEMPTS = 3;
+    const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+    // Full received text of the CURRENT attempt — a ref object so the SSE
+    // consume closures below can mutate it across attempt boundaries.
+    const accumulatedRef = { current: "" };
+
+    const resetAttemptBuffers = () => {
+      accumulatedRef.current = "";
+      pendingTextRef.current = "";
+      setStreamingContent("");
     };
 
-    try {
-      // ─── Try streaming endpoint first ───
-      let streamSuccess = false;
+    /** One silent retry attempt — returns "ok" | "failed" | "unreachable". */
+    const tryStreamOnce = async (): Promise<"ok" | "failed" | "unreachable"> => {
       try {
-        const streamResponse = await fetch(`${globalThis.Capacitor?.isNativePlatform() ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io") : ""}/api/chatbot/stream`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(requestBody),
-          signal: abortControllerRef.current.signal,
-        });
-
-        if (streamResponse.ok) {
-          const reader = streamResponse.body?.getReader();
-          if (reader) {
-            const decoder = new TextDecoder();
-            let accumulated = "";
-            let buffer = "";
-            let streamError: string | null = null;
-            let receivedModel = "";
-
-            while (true) {
-              if (isStale()) break; // chat was cleared mid-stream — stop consuming
-              const result = await reader.read();
-              if (result.done) break;
-
-              buffer += decoder.decode(result.value, { stream: true });
-              // Parse SSE lines
-              const lines = buffer.split("\n");
-              buffer = lines.pop() || ""; // Keep incomplete line in buffer
-
-              for (const rawLine of lines) {
-                const line = rawLine.trim();
-                if (!line.startsWith("data: ")) continue;
-                const payload = line.slice(6).trim();
-
-                if (payload === "[DONE]") {
-                  continue;
-                }
-
-                try {
-                  const parsed = JSON.parse(payload);
-                  if (parsed.model) {
-                    receivedModel = parsed.model;
-                    // Model identity stays server-side — never surfaced in the UI.
-                  } else if (parsed.text) {
-                    accumulated += parsed.text;
-                    setStreamingContent(accumulated);
-                  } else if (parsed.error) {
-                    streamError = parsed.error;
-                  }
-                } catch {
-                  // Intentionally ignored: SSE payload is not valid JSON — treat as raw text chunk. — SonarCloud S2486
-                  accumulated += payload;
-                  setStreamingContent(accumulated);
-                }
-              }
-            }
-
-            // Process remaining buffer
-            if (buffer.trim()) {
-              const remainingLine = buffer.trim();
-              if (remainingLine.startsWith("data: ")) {
-                const remainingPayload = remainingLine.slice(6).trim();
-                if (remainingPayload !== "[DONE]") {
-                  try {
-                    const rParsed = JSON.parse(remainingPayload);
-                    if (rParsed.text) accumulated += rParsed.text;
-                  } catch {
-                    // Intentionally ignored: trailing payload is not valid JSON — append as raw text. — SonarCloud S2486
-                    accumulated += remainingPayload;
-                  }
-                }
-              }
-            }
-
-            if (!isStale()) {
-              if (streamError || !accumulated.trim()) {
-                // Both error and empty-response branches share the same
-                // user-facing message (SonarCloud S1871 — merged with `||`).
-                addErrorMessage(
-                  lang === "ar"
-                    ? "يبدو أن هناك ضغط على الشبكة، حاول إرسال رسالتك مرة أخرى ⚡"
-                    : "The network seems busy. Please try sending your message again ⚡"
-                );
-              } else {
-                const botMessage: Message = {
-                  id: crypto.randomUUID(),
-                  role: "assistant",
-                  content: accumulated.trim(),
-                  timestamp: new Date(),
-                  model: receivedModel || undefined,
-                };
-                setMessages((prev) => [...prev, botMessage]);
-              }
-            }
-            streamSuccess = true;
-          }
-        }
-      } catch {
-        // Intentionally ignored: streaming endpoint failed — fall through to regular /api/chatbot endpoint. — SonarCloud S2486
-        streamSuccess = false;
-      }
-
-      // ─── Fallback: regular /api/chatbot ───
-      if (!streamSuccess) {
-        setStreamingContent("");
-        const response = await fetch(`${globalThis.Capacitor?.isNativePlatform() ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io") : ""}/api/chatbot`, {
+        const streamResponse = await fetch(`${apiOrigin}/api/chatbot/stream`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(requestBody),
           signal: abortControllerRef.current?.signal,
         });
+        if (!streamResponse.ok) return "unreachable";
+        const reader = streamResponse.body?.getReader();
+        if (!reader) return "unreachable";
 
-        const data = await response.json();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let receivedAny = false;
+        let receivedModel = "";
 
-        if (data.success && data.reply) {
-          // Model identity stays server-side — never surfaced in the UI.
-
-          // ── Typewriter effect: simulate streaming for non-streaming fallback ──
-          // When the streaming endpoint fails, the full reply arrives at once.
-          // To keep the UX consistent (text appearing word-by-word), we reveal
-          // the reply incrementally using a word-by-word interval.
-          const fullReply = data.reply;
-          const words = fullReply.split(/(\s+)/); // Split keeping whitespace
-          let displayed = "";
-
-          for (const word of words) {
-            if (isStale() || abortControllerRef.current?.signal.aborted) break;
-            displayed += word;
-            setStreamingContent(displayed);
-
-            // Vary the delay slightly to feel natural:
-            // - Shorter delay for short words (a, the, و، في)
-            // - Longer delay after punctuation
-            const trimmed = word.trim();
-            const isPunctuation = /[.!?,،؛:]/.test(trimmed);
-            // Compute delay without a nested ternary (SonarCloud S3358).
-            let delay: number;
-            if (isPunctuation) {
-              delay = 80;
-            } else if (trimmed.length <= 2) {
-              delay = 20;
-            } else {
-              delay = 35;
+        const consumePayload = (payload: string) => {
+          if (payload === "[DONE]") return;
+          try {
+            const parsed = JSON.parse(payload);
+            if (parsed.model) {
+              receivedModel = parsed.model;
+              // Model identity stays server-side — never surfaced in the UI.
+            } else if (parsed.text) {
+              accumulatedRef.current += parsed.text;
+              pendingTextRef.current += parsed.text;
+              startReveal();
+              receivedAny = true;
             }
-
-            // Use a promise + setTimeout to yield to the event loop
-            await new Promise<void>((resolve) => {
-              setTimeout(resolve, delay);
-            });
+            // parsed.error events are IGNORED here on purpose: the server
+            // only emits them pre-content, the attempt simply ends with no
+            // text and the retry loop handles it — no error UI, ever.
+          } catch {
+            // Intentionally ignored: SSE payload is not valid JSON — treat as raw text chunk. — SonarCloud S2486
+            accumulatedRef.current += payload;
+            pendingTextRef.current += payload;
+            startReveal();
+            receivedAny = true;
           }
+        };
 
+        while (true) {
+          if (isStale()) break; // chat was cleared mid-stream — stop consuming
+          const result = await reader.read();
+          if (result.done) break;
+
+          buffer += decoder.decode(result.value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || ""; // keep incomplete line in buffer
+
+          for (const rawLine of lines) {
+            const line = rawLine.trim();
+            // `: ping` keepalives and comments never start with "data: " —
+            // silently ignored, the typing indicator stays untouched.
+            if (!line.startsWith("data: ")) continue;
+            consumePayload(line.slice(6).trim());
+          }
+        }
+
+        // Process remaining buffer
+        if (buffer.trim()) {
+          const remainingLine = buffer.trim();
+          if (remainingLine.startsWith("data: ")) consumePayload(remainingLine.slice(6).trim());
+        }
+
+        if (isStale()) return "ok"; // cleared — nothing more to do
+
+        if (receivedAny) {
+          // Let the reveal catch up so the committed bubble continues the
+          // exact text the user watched being typed (bounded wait).
+          await drainReveal();
+          if (isStale()) return "ok";
+          const botMessage: Message = {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: accumulatedRef.current.trim(),
+            timestamp: new Date(),
+            model: receivedModel || undefined,
+          };
+          setMessages((prev) => [...prev, botMessage]);
+          return "ok";
+        }
+        return "failed"; // no content — server walk exhausted; retry silently
+      } catch {
+        // Aborted (clearChat) or the network layer itself failed — the loop
+        // distinguishes via isStale; otherwise treat as unreachable.
+        return "unreachable";
+      }
+    };
+
+    /** Non-streaming fallback — used when the stream transport is unreachable. */
+    const tryNonStreamOnce = async (): Promise<boolean> => {
+      try {
+        const response = await fetch(`${apiOrigin}/api/chatbot`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody),
+          signal: abortControllerRef.current?.signal,
+        });
+        const data = await response.json().catch(() => null);
+        if (data?.success && data.reply) {
+          // Full reply through the SAME reveal queue — the caret, pacing and
+          // auto-scroll stay identical to the streaming experience.
+          accumulatedRef.current = data.reply;
+          pendingTextRef.current += data.reply;
+          startReveal();
+          await drainReveal(30_000);
+          if (isStale()) return true;
+          const botMsg: Message = {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: data.reply,
+            timestamp: new Date(),
+            model: data.model || undefined,
+          };
+          setMessages((prev) => [...prev, botMsg]);
+          return true;
+        }
+        // Specific product notices (image quota / rate limit — localized by
+        // the router) are legitimate user-facing messages, not "busy" noise.
+        if (response.status === 429 && typeof data?.error === "string" && data.error
+          && !/heavy load|ضغط عالٍ/.test(data.error)) {
           if (!isStale()) {
-            const botMsg: Message = {
+            setMessages((prev) => [...prev, {
               id: crypto.randomUUID(),
               role: "assistant",
-              content: fullReply,
+              content: data.error,
               timestamp: new Date(),
-              model: data.model || undefined,
-            };
-            setMessages((prev) => [...prev, botMsg]);
+              isError: true,
+            }]);
           }
-        } else if (!isStale()) {
-          // Surface the server's SPECIFIC error (vision busy, image quota,
-          // rate limit — already localized by the router) instead of masking
-          // it with the generic network message.
-          const serverError = typeof data?.error === "string" ? data.error : "";
-          addErrorMessage(
-            serverError ||
-              (lang === "ar"
-                ? "يبدو أن هناك ضغط على الشبكة، حاول إرسال رسالتك مرة أخرى ⚡"
-                : "The network seems busy. Please try sending your message again ⚡")
-          );
+          return true; // handled — do not retry a deliberate notice
         }
+        return false; // soft-busy 503 or unknown — retryable
+      } catch {
+        return false;
+      }
+    };
+
+    try {
+      let handled = false;
+      let attempt = 0;
+      while (attempt < MAX_STREAM_ATTEMPTS && !handled && !isStale()) {
+        attempt++;
+        if (attempt > 1) resetAttemptBuffers();
+        const outcome = await tryStreamOnce();
+        if (outcome === "ok") { handled = true; break; }
+        if (isStale()) break;
+        if (outcome === "unreachable") {
+          // Transport-level failure — try the non-stream endpoint once.
+          handled = await tryNonStreamOnce();
+          if (handled || isStale()) break;
+          await sleep(2500);
+          continue;
+        }
+        // "failed" — the server exhausted its own persistence deadline.
+        // Brief pause (cooldown rotation benefits) then retry silently.
+        if (attempt < MAX_STREAM_ATTEMPTS) await sleep(attempt === 1 ? 1500 : 4000);
+      }
+
+      if (!handled && !isStale()) {
+        // Every silent attempt everywhere failed — one calm note styled as a
+        // normal assistant message (never a red error screen).
+        setMessages((prev) => [...prev, {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: SOFT_BUSY,
+          timestamp: new Date(),
+        }]);
       }
     } catch (error) {
       console.warn("ChatBot send failed:", error);
-      // After clearChat the aborted request lands here — never surface an
-      // error bubble into the freshly cleared conversation.
+      // After clearChat the aborted request lands here — never surface a
+      // bubble into the freshly cleared conversation.
       if (!isStale()) {
-        addErrorMessage(
-          lang === "ar"
-            ? "يبدو أن هناك ضغط على الشبكة، حاول إرسال رسالتك مرة أخرى ⚡"
-            : "The network seems busy. Please try sending your message again ⚡"
-        );
+        setMessages((prev) => [...prev, {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: SOFT_BUSY,
+          timestamp: new Date(),
+        }]);
       }
     } finally {
+      stopReveal();
+      pendingTextRef.current = "";
       setIsLoading(false);
       setStreamingContent("");
       abortControllerRef.current = null;
     }
-  }, [isLoading, messages, lang, chatMode]);
+  }, [isLoading, messages, lang, chatMode, startReveal, stopReveal, drainReveal]);
 
   // ─── Persist messages to localStorage when they change ───
   useEffect(() => {
@@ -1511,7 +1557,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                       <div className="flex flex-col max-w-[85%] min-w-0">
                         <div dir={ARABIC_RE.test(streamingContent) ? "rtl" : "ltr"} className="chatbot-bubble px-3.5 py-2.5 rounded-2xl rounded-ss-md bg-[#111827] border border-[#1e2d3d] text-[#e8f0fe] text-[13.5px] leading-relaxed break-words overflow-wrap-anywhere whitespace-pre-wrap word-break-break-word">
                           {/* biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown() escapes all HTML entities first; only safe markdown tags are re-added */}
-                          <span key={chunkIndex} className="animate-stream-fade" dangerouslySetInnerHTML={{ __html: renderMarkdown(streamingContent) }} />
+                          <span dangerouslySetInnerHTML={{ __html: renderMarkdown(streamingContent) }} />
                           {/* Blinking caret */}
                           <span className="inline-block w-[2px] h-[1.1em] ms-0.5 bg-cyan-400/90 rounded-sm animate-typing-cursor align-text-bottom shadow-[0_0_6px_rgba(6,182,212,0.5)]" />
                         </div>

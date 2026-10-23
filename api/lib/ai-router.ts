@@ -602,6 +602,10 @@ export async function buildCandidates(opts: { vision: boolean; mode: ChatbotMode
   for (const provider of pool.providers) {
     if (!provider.enabled || !provider.apiKey) continue;
     if (providerIsCooling(provider.id)) continue;
+    // Daily-quota breaker: when OpenRouter's account-level free allowance is
+    // exhausted, EVERY model there 429s — skip the whole provider so the walk
+    // reaches the next provider (Groq) instantly instead of after ~40-60s.
+    if (isOpenRouterProvider(provider) && isOpenRouterDailyLimited()) continue;
     const rows = pool.models.get(provider.id) || [];
     const usable = rows
       .filter((m) => m.enabled && (opts.vision ? m.supportsVision : m.supportsChat))
@@ -701,6 +705,40 @@ export function disableWebPluginFor(ms = 10 * 60_000): void {
   webPluginDisabledUntil = Math.max(webPluginDisabledUntil, Date.now() + ms);
 }
 
+// ── OPENROUTER DAILY-QUOTA BREAKER ───────────────────────────────────────
+// A 429 whose body mentions "free-models-per-day" means the account's DAILY
+// free-model allowance is exhausted — EVERY OpenRouter model will 429 until
+// the daily reset. Walking 16+ candidates per request used to waste 40-60s
+// BEFORE the next provider (Groq) was ever tried — the exact storm that
+// surfaced the "network seems busy" banner to users. Trip a 30-minute
+// breaker so the candidate walk skips OpenRouter instantly and the next
+// healthy provider answers in seconds. Auto-expires at the daily reset.
+let orDailyLimitUntil = 0;
+export function isOpenRouterDailyLimited(): boolean {
+  return Date.now() < orDailyLimitUntil;
+}
+export function noteOpenRouterDailyLimit(ms = 30 * 60_000): void {
+  orDailyLimitUntil = Math.max(orDailyLimitUntil, Date.now() + ms);
+}
+export function resetOpenRouterDailyLimit(): void {
+  orDailyLimitUntil = 0;
+}
+
+/** Sniff one 429 response body — trips the daily breaker when it is the
+ *  account-level free allowance (as opposed to a per-model rate limit). */
+const OR_DAILY_LIMIT_BODY_RE = /free-models-per-(day|month)/i;
+
+export async function sniffOpenRouterDailyLimit(provider: { slug?: string | null; baseUrl: string }, response: Response): Promise<void> {
+  if (response.status !== 429 || !isOpenRouterProvider(provider)) return;
+  try {
+    const body = (await response.text()).slice(0, 2_000);
+    if (OR_DAILY_LIMIT_BODY_RE.test(body)) {
+      noteOpenRouterDailyLimit();
+      logger.warn("[AiRouter] OpenRouter daily free quota exhausted — skipping OpenRouter for 30 min (next provider answers)");
+    }
+  } catch { /* body unreadable — treat as a normal 429 */ }
+}
+
 export function buildUpstreamBody(p: AttemptParams, stream: boolean): string {
   const wantsWeb = p.webSearch === true && !isWebPluginDisabled() && isOpenRouterProvider(p.provider);
   // MAX_TOKENS CLAMP — small-context models (e.g. groq allam-2-7b, ctx 4096)
@@ -780,6 +818,9 @@ async function rawUpstreamFetch(p: AttemptParams): Promise<{ ok: true; response:
       return { ok: false, failure: { kind: "auth_fail", status: response.status, detail: `HTTP ${response.status} — key rejected by ${p.provider.slug}` } };
     }
     if (response.status === 429) {
+      // Body sniff AFTER the classification — a daily-quota 429 arms the
+      // 30-minute OpenRouter breaker so the rest of the walk skips it fast.
+      await sniffOpenRouterDailyLimit(p.provider, response);
       return { ok: false, failure: { kind: "rate_limited", status: 429, detail: `HTTP 429 — ${p.provider.slug}/${p.model.modelId} quota/rate exhausted` } };
     }
     if (response.status === 404) {
@@ -1313,6 +1354,8 @@ export interface RouterHealthSnapshot {
   lastWorking: { thinking: string; instant: string };
   events: RouterEvent[];
   poolSize: number;
+  /** True while the OpenRouter daily free-quota breaker is tripped (30 min). */
+  openRouterDailyLimited: boolean;
 }
 
 export async function getRouterHealthSnapshot(): Promise<RouterHealthSnapshot> {
@@ -1334,6 +1377,7 @@ export async function getRouterHealthSnapshot(): Promise<RouterHealthSnapshot> {
     lastWorking: { thinking: fmt(lastWorkingByMode.thinking), instant: fmt(lastWorkingByMode.instant) },
     events: recentEvents.slice(0, 25),
     poolSize: candidatesPoolSize(),
+    openRouterDailyLimited: isOpenRouterDailyLimited(),
   };
 }
 
