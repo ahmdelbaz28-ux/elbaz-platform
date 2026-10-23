@@ -6,7 +6,7 @@ import json
 import sys
 import time
 
-BASE_HOST = "ahmdelbaz28-ahmdrtap.hf.space"
+BASE_HOST = "ahmedelbaz.qzz.io"
 PASSED = []
 FAILED = []
 
@@ -19,9 +19,11 @@ def check(name, cond, detail=""):
 def stream_chat(mode, question, timeout=200):
     conn = http.client.HTTPSConnection(BASE_HOST, timeout=timeout)
     headers = {
-        "Sec-Fetch-Dest": "iframe",
         "Content-Type": "application/json",
         "Accept": "text/event-stream",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+        "Origin": "https://ahmedelbaz.qzz.io",
+        "Referer": "https://ahmedelbaz.qzz.io/",
     }
     body = json.dumps({
         "messages": [{"role": "user", "content": question}],
