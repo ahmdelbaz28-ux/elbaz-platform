@@ -11,7 +11,7 @@ import { describe, it, expect } from "vitest";
 
 // classifyRawModel is exported from ai-router.ts — importing the module must
 // NOT require a database (lazy DB handle) by design.
-import { classifyRawModel, maskApiKey, parseUpstreamSseLine, looksComplete, PROVIDER_CATALOG, SPECIALIST_CHAT_RE } from "./ai-router.js";
+import { classifyRawModel, maskApiKey, parseUpstreamSseLine, looksComplete, PROVIDER_CATALOG, SPECIALIST_CHAT_RE, isOpenRouterDailyLimited, noteOpenRouterDailyLimit, resetOpenRouterDailyLimit, sniffOpenRouterDailyLimit } from "./ai-router.js";
 
 describe("AI Router — classifyRawModel", () => {
   it("classifies OpenRouter multimodal metadata as vision (authoritative signal)", () => {
@@ -243,5 +243,55 @@ describe("AI Router — SPECIALIST_CHAT_RE (wrong-specialization guard)", () => 
     ]) {
       expect(SPECIALIST_CHAT_RE.test(id), `${id} must stay in the chat lane`).toBe(false);
     }
+  });
+});
+
+describe("AI Router — OpenRouter daily-quota breaker", () => {
+  const OR = { slug: "openrouter", baseUrl: "https://openrouter.ai/api/v1" };
+  const GROQ = { slug: "groq", baseUrl: "https://api.groq.com/openai/v1" };
+
+  function fakeResponse(status: number, body: string): Response {
+    return new Response(body, { status, headers: { "Content-Type": "application/json" } });
+  }
+
+  it("starts clean", () => {
+    resetOpenRouterDailyLimit();
+    expect(isOpenRouterDailyLimited()).toBe(false);
+  });
+
+  it("sniffs a daily-quota 429 body and trips the 30-min breaker", async () => {
+    resetOpenRouterDailyLimit();
+    const res = fakeResponse(429, JSON.stringify({
+      error: { message: "Rate limit exceeded: free-models-per-day (Limit: 50, Used: 50, Requested: 1). Please try again in 12h." },
+    }));
+    await sniffOpenRouterDailyLimit(OR, res);
+    expect(isOpenRouterDailyLimited()).toBe(true);
+    resetOpenRouterDailyLimit();
+  });
+
+  it("ignores per-model 429s (no daily-quota marker in the body)", async () => {
+    resetOpenRouterDailyLimit();
+    const res = fakeResponse(429, JSON.stringify({ error: { message: "Rate limit exceeded: free-models-per-minute" } }));
+    await sniffOpenRouterDailyLimit(OR, res);
+    expect(isOpenRouterDailyLimited()).toBe(false);
+  });
+
+  it("never trips for non-OpenRouter providers (Groq 429 stays a normal 429)", async () => {
+    resetOpenRouterDailyLimit();
+    const res = fakeResponse(429, JSON.stringify({ error: { message: "free-models-per-day exhausted" } }));
+    await sniffOpenRouterDailyLimit(GROQ, res);
+    expect(isOpenRouterDailyLimited()).toBe(false);
+  });
+
+  it("ignores non-429 responses and unreadable bodies without throwing", async () => {
+    resetOpenRouterDailyLimit();
+    await sniffOpenRouterDailyLimit(OR, fakeResponse(503, "free-models-per-day"));
+    expect(isOpenRouterDailyLimited()).toBe(false);
+    // Body that cannot be read (already-consumed stream) — must not throw.
+    const res = fakeResponse(429, "free-models-per-day");
+    await res.text(); // consume
+    await expect(sniffOpenRouterDailyLimit(OR, res)).resolves.toBeUndefined();
+    expect(isOpenRouterDailyLimited()).toBe(false);
+    resetOpenRouterDailyLimit();
   });
 });
