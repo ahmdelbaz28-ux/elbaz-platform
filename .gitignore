@@ -131,3 +131,4 @@ dist-electron/
 
 update_hf_secrets.py
 __pycache__/
+scripts/shots_user_test/
