@@ -96,13 +96,18 @@ describe("AI Router — maskApiKey", () => {
 describe("AI Router — provider catalog", () => {
   it("contains the seeded providers with valid OpenAI-compatible base URLs", () => {
     const slugs = PROVIDER_CATALOG.map((c) => c.slug);
-    for (const required of ["groq", "openrouter", "nvidia", "custom"]) {
+    for (const required of ["kilocode", "groq", "openrouter", "nvidia", "custom"]) {
       expect(slugs).toContain(required);
     }
     for (const c of PROVIDER_CATALOG) {
       if (c.slug === "custom") continue;
       expect(c.baseUrl).toMatch(/^https:\/\/.+\/v1$/);
     }
+  });
+
+  it("lists kilocode FIRST — the owner-required lead provider", () => {
+    expect(PROVIDER_CATALOG[0].slug).toBe("kilocode");
+    expect(PROVIDER_CATALOG[0].baseUrl).toBe("https://ai-gateway.kilo.ai/api/v1");
   });
 });
 
@@ -213,6 +218,21 @@ describe("AI Router — looksComplete (rescue heuristic)", () => {
 describe("AI Router — SPECIALIST_CHAT_RE (wrong-specialization guard)", () => {
   it("excludes the live incident: cohere/north-mini-code never serves the chat lane", () => {
     expect(SPECIALIST_CHAT_RE.test("cohere/north-mini-code")).toBe(true);
+  });
+
+  it("excludes the kilo gateway META/ALIAS models (live-probed: slow + empty content)", () => {
+    // 2026-10-24 kilo probe: kilo-auto/free 12.4s→EMPTY, stealth/glyph-cluster
+    // 13.1s→EMPTY, openrouter/free 3.2s→EMPTY, reflection/beam-free swaps its
+    // inner model id. None may carry the general chat lane.
+    for (const id of [
+      "kilo-auto/free",
+      "stealth/glyph-cluster",
+      "openrouter/free",
+      "reflection/beam-free",
+      "xingchen-agi/xing4.0-29b-a4b:free",
+    ]) {
+      expect(SPECIALIST_CHAT_RE.test(id)).toBe(true);
+    }
   });
 
   it("catches the known code-only families", () => {

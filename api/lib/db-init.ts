@@ -702,10 +702,15 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         const [providerRows] = await conn.query("SELECT COUNT(*) AS n FROM `aiProviders`");
         const providerCount = Number((providerRows as { n?: number }[])[0]?.n ?? 0);
         if (providerCount === 0) {
+          const kiloKey = env.KILOCODE_API_KEY || process.env.KILOCODE_API_KEY || "";
           const groqKey = env.GROQ_API_KEY || process.env.GROQ_API_KEY || "";
           const orKey = env.OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY || process.env.CHATBOT_API_KEY || "";
           const nvidiaKey = env.NVIDIA_API_KEY || process.env.NVIDIA_API_KEY || "";
+          // kilocode FIRST (priority 5) — owner requirement: the bot's first
+          // provider is the kilo gateway (flagship free models), the others
+          // are its safety net in tier order.
           const seeds: [string, string, string, string, number][] = [
+            ["kilocode", "Kilo Code Gateway", "https://ai-gateway.kilo.ai/api/v1", kiloKey, 5],
             ["nvidia", "NVIDIA NIM", "https://integrate.api.nvidia.com/v1", nvidiaKey, 10],
             // groq BEFORE openrouter (live-verified 2026-10-23): OpenRouter's
             // free pool storms (whole-pool 429s) and leaks weak/dud winners
@@ -728,12 +733,21 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         }
 
         // ── Env→DB key sync (EVERY boot, built-in slugs only) ──
-        // Space secrets are the authoritative source for the three built-in
+        // Space secrets are the authoritative source for the built-in
         // providers: when an env key exists and differs from the stored row
         // (e.g. the owner rotated GROQ_API_KEY in the Space settings), the
         // fresh key is synced in and the provider is re-enabled. Custom
         // dashboard-only providers are never touched.
+        // Env-created providers with their boot priority. kilocode leads the
+        // walk (priority 5) — owner requirement.
+        const envDefaults: Record<string, [string, string, number]> = {
+          kilocode: ["Kilo Code Gateway", "https://ai-gateway.kilo.ai/api/v1", 5],
+          nvidia: ["NVIDIA NIM", "https://integrate.api.nvidia.com/v1", 10],
+          openrouter: ["OpenRouter", "https://openrouter.ai/api/v1", 20],
+          groq: ["Groq", "https://api.groq.com/openai/v1", 30],
+        };
         const envKeys: [string, string][] = [
+          ["kilocode", env.KILOCODE_API_KEY || process.env.KILOCODE_API_KEY || ""],
           ["nvidia", env.NVIDIA_API_KEY || process.env.NVIDIA_API_KEY || ""],
           ["openrouter", env.OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY || process.env.CHATBOT_API_KEY || ""],
           ["groq", env.GROQ_API_KEY || process.env.GROQ_API_KEY || ""],
@@ -743,7 +757,20 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
           try {
             const [rows] = await conn.query("SELECT id, apiKey, enabled FROM `aiProviders` WHERE slug = ? LIMIT 1", [slug]);
             const row = (rows as { id: number; apiKey: string; enabled: number }[])[0];
-            if (!row) continue; // first-run seeding above owns creation
+            if (!row) {
+              // Existing deployment that never had this provider (first-run
+              // seeding only fires on an EMPTY table): create it now from the
+              // env key — this is how kilocode lands on production without
+              // any manual dashboard step. INSERT IGNORE = idempotent.
+              const def = envDefaults[slug];
+              if (!def) continue;
+              await conn.execute(
+                "INSERT IGNORE INTO `aiProviders` (slug, displayName, baseUrl, apiKey, priority, enabled, status) VALUES (?, ?, ?, ?, ?, TRUE, 'unknown')",
+                [slug, def[0], def[1], key, def[2]],
+              );
+              logger.info(`[DB] env key created missing aiProviders row "${slug}" (priority ${def[2]})`);
+              continue;
+            }
             if (row.apiKey !== key) {
               await conn.execute("UPDATE `aiProviders` SET apiKey = ?, enabled = TRUE, status = 'unknown', lastError = NULL WHERE id = ?", [key, row.id]);
               logger.info(`[DB] env key synced into aiProviders row "${slug}" (key rotated at the provider source)`);
