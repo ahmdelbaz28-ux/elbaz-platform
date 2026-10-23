@@ -34,7 +34,7 @@
 import { env } from "../lib/env";
 import { getSystemPrompt, MODE_TUNING, type ChatbotMode, type ModeTuning } from "./chatbot-prompts.js";
 import { logger } from "./logger.js";
-import { routeChatCompletion, isWebPluginDisabled, disableWebPluginFor, WEB_PLUGIN_BODY, isOpenRouterDailyLimited, noteOpenRouterDailyLimit, isChatLaneModel } from "./ai-router.js";
+import { routeChatCompletion, isWebPluginDisabled, disableWebPluginFor, WEB_PLUGIN_BODY, isOpenRouterDailyLimited, noteOpenRouterDailyLimit, isChatLaneModel, isDiscoveredModelId } from "./ai-router.js";
 import { stripThinkBlocks } from "./think-filter.js";
 import { buildAugmentedTextMessages, buildVisionFailureMessages, readImageViaVisionModels } from "./chatbot-vision.js";
 
@@ -86,6 +86,15 @@ export const GROQ_MODELS = [
   "llama-3.1-8b-instant",                       // fastest safety net
   "meta-llama/llama-4-scout-17b-16e-instruct",  // multimodal-capable fallback
 ];
+
+/**
+ * Groq ids worth dialing — static list filtered by the LIVE discovery
+ * registry (2026-10-23: Groq 404s six of seven static ids after a catalog
+ * rotation; the registry keeps the sweep on models that actually exist).
+ */
+export function liveGroqModels(): string[] {
+  return GROQ_MODELS.filter((id) => isDiscoveredModelId("groq", id));
+}
 
 // ── VISION MODELS — image understanding (forced routing for image requests) ──
 // When the last user message carries an image, ONLY these models may serve it.
@@ -755,9 +764,10 @@ export async function tryGroqTier(
   if (!groqIsAvailable()) return null;
 
   const [firstTimeout, retryTimeout] = tuning.groqAttemptTimeouts;
-  for (let i = 0; i < GROQ_MODELS.length; i++) {
-    chatHealth.groqCurrentModelIndex = i;
-    const modelId = GROQ_MODELS[i];
+  const liveModels = liveGroqModels();
+  for (let i = 0; i < liveModels.length; i++) {
+    chatHealth.groqCurrentModelIndex = GROQ_MODELS.indexOf(liveModels[i]);
+    const modelId = liveModels[i];
 
     let result = await tryGroq(messages, systemPrompt, modelId, firstTimeout, tuning);
     if (result) return buildSuccessResult(result);
@@ -912,7 +922,7 @@ export async function groqFallback(
   tuning: ModeTuning = MODE_TUNING.thinking
 ): Promise<{ reply: string; model: string } | null> {
   const [firstTimeout, retryTimeout] = tuning.groqAttemptTimeouts;
-  for (const modelId of GROQ_MODELS) {
+  for (const modelId of liveGroqModels()) {
     let result = await tryGroq(messages, systemPrompt, modelId, firstTimeout, tuning);
     if (result) return result;
     result = await tryGroq(messages, systemPrompt, modelId, retryTimeout, tuning);
@@ -943,6 +953,9 @@ export async function tryOpenRouterVision(
   tuning: ModeTuning = MODE_TUNING.thinking,
 ): Promise<{ reply: string; model: string } | null> {
   for (const modelId of OPENROUTER_VISION_MODELS) {
+    // Live-catalog gate — never dial VL ids the provider's current /models
+    // catalog no longer lists (catalog rotation made several legacy ids 404).
+    if (!isDiscoveredModelId("openrouter", modelId)) continue;
     const result = await tryModel(modelId, messages, systemPrompt, timeoutMs, tuning);
     if (result) return result;
   }

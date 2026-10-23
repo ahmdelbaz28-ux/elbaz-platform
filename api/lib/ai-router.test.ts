@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
 /**
  * AI ROUTER — pure-function tests (model classification + key masking)
@@ -11,7 +11,7 @@ import { describe, it, expect } from "vitest";
 
 // classifyRawModel is exported from ai-router.ts — importing the module must
 // NOT require a database (lazy DB handle) by design.
-import { classifyRawModel, maskApiKey, parseUpstreamSseLine, looksComplete, PROVIDER_CATALOG, SPECIALIST_CHAT_RE, isChatLaneModel, isOpenRouterDailyLimited, resetOpenRouterDailyLimit, sniffOpenRouterDailyLimit } from "./ai-router.js";
+import { classifyRawModel, maskApiKey, parseUpstreamSseLine, looksComplete, PROVIDER_CATALOG, SPECIALIST_CHAT_RE, isChatLaneModel, isDiscoveredModelId, resetDiscoveredModelRegistry, isOpenRouterDailyLimited, resetOpenRouterDailyLimit, sniffOpenRouterDailyLimit } from "./ai-router.js";
 
 describe("AI Router — classifyRawModel", () => {
   it("classifies OpenRouter multimodal metadata as vision (authoritative signal)", () => {
@@ -241,6 +241,41 @@ describe("AI Router — SPECIALIST_CHAT_RE (wrong-specialization guard)", () => 
     ]) {
       expect(SPECIALIST_CHAT_RE.test(id), `${id} must stay in the chat lane`).toBe(false);
     }
+  });
+});
+
+describe("AI Router — live model registry (catalog-drift guard)", () => {
+  it("trusts the static list until discovery runs, then gates on the live catalog", async () => {
+    resetDiscoveredModelRegistry();
+    // No discovery knowledge → the static list is the best knowledge.
+    expect(isDiscoveredModelId("groq", "llama-3.3-70b-versatile")).toBe(true);
+
+    // Discovery sees a rotated catalog: gpt-oss survives, llama-3.3 is gone.
+    const payload = {
+      data: [
+        { id: "openai/gpt-oss-120b", architecture: { output_modalities: ["text"] }, context_length: 131072 },
+        { id: "allam-2-7b", architecture: { output_modalities: ["text"] }, context_length: 4096 },
+      ],
+    };
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(payload), { status: 200 })));
+    const fakeDb = () => ({
+      select: () => ({ from: () => ({ where: () => Promise.resolve([]) }) }),
+      insert: () => ({ values: async () => ({}) }),
+      update: () => ({ set: () => ({ where: () => ({ execute: async () => {} }) }) }),
+    });
+    vi.doMock("../queries/connection.js", () => ({ getDb: () => fakeDb() }));
+    try {
+      const { discoverProviderModels } = await import("./ai-router.js");
+      await discoverProviderModels({ id: 1, slug: "groq", baseUrl: "https://api.groq.com/openai/v1", apiKey: "k" } as never);
+    } finally {
+      vi.doUnmock("../queries/connection.js");
+      vi.resetModules();
+    }
+    expect(isDiscoveredModelId("groq", "openai/gpt-oss-120b")).toBe(true);
+    expect(isDiscoveredModelId("groq", "llama-3.3-70b-versatile")).toBe(false); // rotated out — never dialed again
+    expect(isDiscoveredModelId("openrouter", "anything")).toBe(true);           // other providers unaffected
+    resetDiscoveredModelRegistry();
+    vi.unstubAllGlobals();
   });
 });
 

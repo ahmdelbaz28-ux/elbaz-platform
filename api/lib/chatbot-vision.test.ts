@@ -49,6 +49,7 @@ describe("chatbot-vision (two-pass read)", () => {
       tryOpenRouterVision: vi.fn(async () => null),
     }));
     vi.doMock("./ai-router.js", () => ({
+      isDiscoveredModelId: () => true,
       routeChatCompletion: opts?.routedThrows
         ? vi.fn(async () => { throw new Error("db down"); })
         : vi.fn(async () => opts?.routed ?? { ok: false }),
@@ -103,7 +104,7 @@ describe("chatbot-vision (two-pass read)", () => {
           : null),
       tryOpenRouterVision: vi.fn(async () => null),
     }));
-    vi.doMock("./ai-router.js", () => ({ routeChatCompletion: vi.fn(async () => ({ ok: false })) }));
+    vi.doMock("./ai-router.js", () => ({ isDiscoveredModelId: () => true, routeChatCompletion: vi.fn(async () => ({ ok: false })) }));
     const mod = await import("./chatbot-vision.js");
     const read = await mod.readImageViaVisionModels(MULTIMODAL_MESSAGES, "ar");
     expect(read.ok).toBe(true);
@@ -156,6 +157,7 @@ describe("chatbot-vision (two-pass read)", () => {
       tryOpenRouterVision: vi.fn(async () => null),
     }));
     vi.doMock("./ai-router.js", () => ({
+      isDiscoveredModelId: () => true,
       routeChatCompletion: vi.fn(async () => ({
         ok: true,
         result: { reply: `<think>هذه لقطة شاشة، سأصف مكوناتها</think>${EXTRACTION_REPLY}`, model: "x/y", providerId: 1, aiModelId: 1 },

@@ -308,6 +308,31 @@ function extractRawModels(payload: unknown): RawProviderModel[] {
 }
 
 /**
+ * LIVE MODEL REGISTRY — provider slug → model ids seen by the last successful
+ * /models discovery. The LEGACY static sweeps (GROQ_MODELS, GROQ_VISION_MODEL,
+ * OPENROUTER_VISION_MODELS) drift as providers rotate their catalogs: 2026-10-23
+ * live logs show Groq returning 404 for SIX of SEVEN static ids (llama-3.3,
+ * kimi, qwen ×2, llama-3.1, llama-4-scout) — only gpt-oss-120b survived. The
+ * legacy sweeps consult this registry when it is populated, so dead ids are
+ * never attempted again until discovery sees them once more.
+ */
+const discoveredModelIdsByProvider = new Map<string, Set<string>>();
+
+/** True when the id may be attempted on that provider: either discovery has
+ *  not run for it yet (static list is the best knowledge) or the id was seen
+ *  in the provider's live catalog. */
+export function isDiscoveredModelId(providerSlug: string, modelId: string): boolean {
+  const seen = discoveredModelIdsByProvider.get(providerSlug.toLowerCase());
+  if (!seen || seen.size === 0) return true; // no discovery knowledge — trust the static list
+  return seen.has(modelId);
+}
+
+/** Test/admin helper — clears the live registry. */
+export function resetDiscoveredModelRegistry(): void {
+  discoveredModelIdsByProvider.clear();
+}
+
+/**
  * Discover models for one provider row: fetch {baseUrl}/models, classify,
  * then upsert. EXISTING rows keep their admin toggles (enabled/supportsChat/
  * supportsVision) — discovery only inserts new models and refreshes
@@ -359,6 +384,10 @@ export async function discoverProviderModels(provider: Pick<AiProvider, "id" | "
     for (const raw of rawModels) {
       const cls = classifyRawModel(raw);
       if (!cls) continue;
+      // Live registry — the legacy sweeps consult this before dialing.
+      const slugKey = provider.slug.toLowerCase();
+      if (!discoveredModelIdsByProvider.has(slugKey)) discoveredModelIdsByProvider.set(slugKey, new Set());
+      discoveredModelIdsByProvider.get(slugKey)!.add(cls.modelId);
       if (existingSet.has(cls.modelId)) {
         // Refresh routing metadata only — admin toggles (enabled /
         // supportsVision) untouched. supportsChat is DERIVED (non-chat ids
