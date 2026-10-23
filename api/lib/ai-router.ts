@@ -164,6 +164,20 @@ const NON_CHAT_RE = new RegExp([
   "\\bveo\\b", "\\bsora\\b", "\\bkling\\b", "\\brunway\\b", "\\bhailuo\\b", "\\bseedance\\b", "\\bvideo\\b",
 ].join("|"), "i");
 
+/**
+ * CODE-SPECIALIZED models — they CAN answer chat/completions, but their
+ * tuning is optimized for code generation: on general (especially Arabic)
+ * engineering questions they ignore the language mirror and formatting rules
+ * and produce a bad first impression. Excluded from the CHAT lane at
+ * discovery AND re-checked at routing time (same self-heal pattern as
+ * NON_CHAT_RE). Live example: cohere/north-mini-code served an instant-mode
+ * Arabic question when the preferred fast model was rate-limited.
+ */
+export const CODE_SPECIALIZED_RE = new RegExp([
+  "coder", "codestral", "cobuddy", "laguna", "codegeex", "starcoder", "devstral",
+  "\\bcode\\b", "\\bcode-", "-code\\b", "\\bdev\\b-",
+].join("|"), "i");
+
 export interface ClassifiedModel {
   modelId: string;
   supportsChat: boolean;
@@ -578,6 +592,9 @@ export async function buildCandidates(opts: { vision: boolean; mode: ChatbotMode
       // lyria music model stored as supportsChat=true) are excluded
       // IMMEDIATELY on deploy, without waiting for an admin re-discovery.
       .filter((m) => !NON_CHAT_RE.test(m.modelId))
+      // Code-specialized models never serve the GENERAL chat lane (they can
+      // still appear in the dashboard). Vision lane unaffected — no overlap.
+      .filter((m) => opts.vision || !CODE_SPECIALIZED_RE.test(m.modelId))
       .filter((m) => !opts.onlyFree || m.isFree)
       .filter((m) => !modelIsCooling(provider.id, m.modelId))
       .filter((m) => !opts.exclude?.has(modelKey(provider.id, m.modelId)));

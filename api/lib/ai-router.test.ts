@@ -11,7 +11,7 @@ import { describe, it, expect } from "vitest";
 
 // classifyRawModel is exported from ai-router.ts — importing the module must
 // NOT require a database (lazy DB handle) by design.
-import { classifyRawModel, maskApiKey, parseUpstreamSseLine, looksComplete, PROVIDER_CATALOG } from "./ai-router.js";
+import { classifyRawModel, maskApiKey, parseUpstreamSseLine, looksComplete, PROVIDER_CATALOG, CODE_SPECIALIZED_RE } from "./ai-router.js";
 
 describe("AI Router — classifyRawModel", () => {
   it("classifies OpenRouter multimodal metadata as vision (authoritative signal)", () => {
@@ -207,5 +207,39 @@ describe("AI Router — looksComplete (rescue heuristic)", () => {
     expect(looksComplete("سأشرح لك خطوة بخطوة كيف تقوم")).toBe(false);
     expect(looksComplete("بالإضافة إلى آلية التحكم (Control Mechanism")).toBe(false);
     expect(looksComplete("")).toBe(false);
+  });
+});
+
+describe("AI Router — CODE_SPECIALIZED_RE (wrong-specialization guard)", () => {
+  it("excludes the live incident: cohere/north-mini-code never serves the chat lane", () => {
+    expect(CODE_SPECIALIZED_RE.test("cohere/north-mini-code")).toBe(true);
+  });
+
+  it("catches the known code-only families", () => {
+    for (const id of [
+      "qwen/qwen3-coder:free",
+      "poolside/laguna-s-2.1:free",
+      "mistralai/devstral-small",
+      "bigcode/starcoder2-15b",
+      "baidu/cobuddy:free",
+      "zai-org/codegeex-4",
+    ]) {
+      expect(`${id} excluded`, id).toBeTruthy();
+      expect(CODE_SPECIALIZED_RE.test(id)).toBe(true);
+    }
+  });
+
+  it("never touches the vetted general models", () => {
+    for (const id of [
+      "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "nvidia/nemotron-3.5-super-vl:free",
+      "google/gemma-4-31b-it:free",
+      "thinkingmachines/inkling:free",
+      "google/gemma-4-26b-a4b-it:free",
+      "nvidia/nemotron-3.5-lightning:free",
+      "meta-llama/llama-4-scout-17b-16e-instruct",
+    ]) {
+      expect(CODE_SPECIALIZED_RE.test(id), `${id} must stay in the chat lane`).toBe(false);
+    }
   });
 });
