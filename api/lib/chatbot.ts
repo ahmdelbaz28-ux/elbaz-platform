@@ -34,7 +34,7 @@
 import { env } from "../lib/env";
 import { getSystemPrompt, MODE_TUNING, type ChatbotMode, type ModeTuning } from "./chatbot-prompts.js";
 import { logger } from "./logger.js";
-import { routeChatCompletion } from "./ai-router.js";
+import { routeChatCompletion, isWebPluginDisabled, disableWebPluginFor, WEB_PLUGIN_BODY } from "./ai-router.js";
 import { stripThinkBlocks } from "./think-filter.js";
 import { buildAugmentedTextMessages, buildVisionFailureMessages, readImageViaVisionModels } from "./chatbot-vision.js";
 
@@ -450,15 +450,30 @@ export async function tryModel(
   systemPrompt: string,
   timeoutMs: number,
   tuning: ModeTuning = MODE_TUNING.thinking,
+  webSearch = false,
 ): Promise<{ reply: string; model: string } | null> {
   let controller: AbortController | null = null;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  // Web plugin only on OpenRouter (the only API that understands `plugins`),
+  // honoring the shared 10-minute circuit breaker from ai-router.
+  const wantsWeb = webSearch && !isWebPluginDisabled();
+  const buildBody = () => JSON.stringify({
+    model: modelId,
+    messages: [
+      { role: "system", content: systemPrompt },
+      ...messages.map((m) => ({ role: m.role, content: m.content })),
+    ],
+    temperature: tuning.temperature,
+    max_tokens: tuning.maxTokens,
+    ...(wantsWeb ? { plugins: [WEB_PLUGIN_BODY] } : {}),
+  });
 
   try {
     controller = new AbortController();
     timeoutId = setTimeout(() => { controller!.abort(); }, timeoutMs);
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    let response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
@@ -467,16 +482,35 @@ export async function tryModel(
         "X-Title": "Elbaz LMS Chatbot",
       },
       signal: controller.signal,
-      body: JSON.stringify({
-        model: modelId,
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...messages.map((m) => ({ role: m.role, content: m.content })),
-        ],
-        temperature: tuning.temperature,
-        max_tokens: tuning.maxTokens,
-      }),
+      body: buildBody(),
     });
+
+    // Same breaker contract as ai-router.attemptUpstream: a 402/400 received
+    // WITH the plugin attached is billing/compat, not a model problem —
+    // disable the plugin and retry this model once without it.
+    if (!response.ok && wantsWeb && (response.status === 402 || response.status === 400)) {
+      disableWebPluginFor();
+      logger.warn(`[Chatbot/OpenRouter] web plugin rejected (HTTP ${response.status}) — retrying ${modelId} without it`);
+      response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://ahmedelbaz.qzz.io",
+          "X-Title": "Elbaz LMS Chatbot",
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: modelId,
+          messages: [
+            { role: "system", content: systemPrompt },
+            ...messages.map((m) => ({ role: m.role, content: m.content })),
+          ],
+          temperature: tuning.temperature,
+          max_tokens: tuning.maxTokens,
+        }),
+      });
+    }
 
     if (timeoutId) clearTimeout(timeoutId);
 
@@ -527,6 +561,7 @@ export async function tryLastWorkingModel(
   systemPrompt: string,
   tierTimeouts: Record<number, number>,
   tuning?: ModeTuning,
+  webSearch = false,
 ): Promise<{ reply: string; model: string } | null> {
   // Mode-scoped shortcut: each mode only reuses a model that THIS mode
   // previously succeeded with — no cross-mode inheritance in either direction.
@@ -535,7 +570,7 @@ export async function tryLastWorkingModel(
   if (!entry || !entry.model) return null;
   if ((Date.now() - entry.time) >= 300000) return null;
   if ((modelFailCount[entry.model] || 0) >= 3) return null;
-  return await tryModel(entry.model, messages, systemPrompt, tierTimeouts[1], tuning);
+  return await tryModel(entry.model, messages, systemPrompt, tierTimeouts[1], tuning, webSearch);
 }
 
 export async function tryModelsByTier(
@@ -545,6 +580,7 @@ export async function tryModelsByTier(
   globalStartTime: number,
   globalTimeoutMs: number,
   tuning?: ModeTuning,
+  webSearch = false,
 ): Promise<{ reply: string; model: string } | null> {
   for (let tier = 1; tier <= 4; tier++) {
     let tierTried = 0;
@@ -557,7 +593,7 @@ export async function tryModelsByTier(
         continue;
       }
       tierTried++;
-      const result = await tryModel(model.id, messages, systemPrompt, tierTimeouts[tier], tuning);
+      const result = await tryModel(model.id, messages, systemPrompt, tierTimeouts[tier], tuning, webSearch);
       if (result) return result;
     }
 
@@ -574,11 +610,12 @@ export async function tryAllModelsAsLastResort(
   messages: ChatApiMessage[],
   systemPrompt: string,
   tuning?: ModeTuning,
+  webSearch = false,
 ): Promise<{ reply: string; model: string } | null> {
   logger.warn("[Chatbot/OpenRouter] All tiers exhausted with skips. Trying all models as last resort...");
   for (const model of AI_MODELS) {
     modelFailCount[model.id] = 0;
-    const result = await tryModel(model.id, messages, systemPrompt, 10000, tuning);
+    const result = await tryModel(model.id, messages, systemPrompt, 10000, tuning, webSearch);
     if (result) return result;
   }
   return null;
@@ -588,7 +625,8 @@ export async function openRouterFallback(
   messages: ChatApiMessage[],
   systemPrompt: string,
   _language?: string,
-  tuning?: ModeTuning
+  tuning?: ModeTuning,
+  webSearch = false,
 ): Promise<{ reply: string; model: string } | null> {
   const t = tuning ?? MODE_TUNING.thinking;
   if (!chatHealth.openrouterKeyValidated) {
@@ -603,7 +641,7 @@ export async function openRouterFallback(
 
   const globalStartTime = Date.now();
 
-  const lastResult = await tryLastWorkingModel(messages, systemPrompt, t.openRouterTierTimeouts, t);
+  const lastResult = await tryLastWorkingModel(messages, systemPrompt, t.openRouterTierTimeouts, t, webSearch);
   if (lastResult) return lastResult;
 
   // Mode's fast lane (instant): try every fast MoE model with a SHORT
@@ -613,15 +651,15 @@ export async function openRouterFallback(
   if (t.openRouterPreferredModel) {
     for (const fastModel of INSTANT_FAST_MODELS) {
       if ((modelFailCount[fastModel] || 0) >= 3) continue;
-      const fastResult = await tryModel(fastModel, messages, systemPrompt, 8000, t);
+      const fastResult = await tryModel(fastModel, messages, systemPrompt, 8000, t, webSearch);
       if (fastResult) return fastResult;
     }
   }
 
-  const tierResult = await tryModelsByTier(messages, systemPrompt, t.openRouterTierTimeouts, globalStartTime, t.openRouterGlobalTimeoutMs, t);
+  const tierResult = await tryModelsByTier(messages, systemPrompt, t.openRouterTierTimeouts, globalStartTime, t.openRouterGlobalTimeoutMs, t, webSearch);
   if (tierResult) return tierResult;
 
-  const lastResort = await tryAllModelsAsLastResort(messages, systemPrompt, t);
+  const lastResort = await tryAllModelsAsLastResort(messages, systemPrompt, t, webSearch);
   if (lastResort) return lastResort;
 
   return null;
@@ -749,6 +787,11 @@ async function runTextCascade(request: {
   const mode: ChatbotMode = request.mode === "instant" ? "instant" : "thinking";
   const tuning = MODE_TUNING[mode];
   const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, false, request.historySummary);
+  // WEB GROUNDING policy: thinking mode (the accuracy lane) gets live web
+  // search on OpenRouter so answers stay documented; instant stays plugin-
+  // free for latency. Every failure degrades gracefully (breaker in ai-router
+  // + prompt-level no-guess contract) — grounding never blocks the reply.
+  const webSearch = mode === "thinking";
 
   // ─── DYNAMIC ROUTER (v9) — admin-managed providers first ──────────────
   // Any provider the admin configured in the dashboard (with a valid key and
@@ -764,6 +807,7 @@ async function runTextCascade(request: {
     language: request.language,
     // Instant lane hoists the general-purpose fast model (language compliance).
     preferredModelId: tuning.openRouterPreferredModel,
+    webSearch,
     gen: mode === "instant"
       ? { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 10_000, globalBudgetMs: 12_000 }
       : { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 20_000, globalBudgetMs: 22_000 },
@@ -775,7 +819,7 @@ async function runTextCascade(request: {
     const groqResult = await tryGroqTier(request.messages, systemPrompt, tuning);
     if (groqResult) return groqResult;
 
-    const orResult = await openRouterFallback(request.messages, systemPrompt, request.language, tuning);
+    const orResult = await openRouterFallback(request.messages, systemPrompt, request.language, tuning, false);
     if (orResult) return buildSuccessResult(orResult);
 
     if (nvidiaIsAvailable()) {
@@ -795,7 +839,7 @@ async function runTextCascade(request: {
       }
     }
 
-    const orResult = await openRouterFallback(request.messages, systemPrompt, request.language, tuning);
+    const orResult = await openRouterFallback(request.messages, systemPrompt, request.language, tuning, true);
     if (orResult) return buildSuccessResult(orResult);
 
     const groqResult = await tryGroqTier(request.messages, systemPrompt, tuning);

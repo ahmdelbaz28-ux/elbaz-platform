@@ -146,7 +146,8 @@ function loadMessagesFromStorage(): Message[] | null {
 // isolated automatically by the Unicode bidi algorithm; code blocks and inline
 // code are pinned LTR so terminal-style content stays readable in both
 // directions. Markdown supports: fenced code blocks, inline code, **bold**
-// (rendered as cyan-highlighted key terms), *italic*, ### headings, numbered
+// (rendered as cyan-highlighted key terms), *italic*, [links](https://…)
+// (safe anchors for documented-answer citations), ### headings, numbered
 // step lists ("1. …"), bullet lists ("- " / "• "), and paragraphs.
 
 const ARABIC_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
@@ -160,11 +161,15 @@ function escapeHtml(s: string): string {
     .replaceAll("'", "&#x27;");
 }
 
-/** Inline markdown (code / bold / italic) — input must already be escaped. */
+/** Inline markdown (code / links / bold / italic) — input must already be escaped. */
 function renderInline(md: string): string {
   // Inline code first, so ** inside code is never bolded. dir="ltr" isolates
   // the code run from the surrounding RTL/LTR paragraph.
   let html = md.replaceAll(/`([^`]+)`/g, '<code dir="ltr" class="bg-black/30 border border-[#1e2d3d] px-1.5 py-0.5 rounded text-[12px] text-cyan-300">$1</code>');
+  // Markdown links → safe anchors (documented-answer citations from web
+  // search). URL is restricted to http/https and the input was already
+  // HTML-escaped, so no attribute injection is possible.
+  html = html.replaceAll(/\[([^\]\n]+)\]\((https?:\/\/[^\s<>()]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-cyan-300 underline decoration-cyan-300/40 hover:decoration-cyan-200 break-all" dir="ltr">$1</a>');
   // Bold → highlighted key term (the UI colors important words cyan)
   html = html.replaceAll(/\*\*([^*]+)\*\*/g, '<strong class="font-semibold text-cyan-300">$1</strong>');
   // Italic

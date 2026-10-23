@@ -60,7 +60,7 @@ import {
   validateGroqKey,
   validateOpenRouterKey,
 } from "./chatbot.js";
-import { routeChatStream, buildUpstreamSSETransform } from "./ai-router.js";
+import { routeChatStream, buildUpstreamSSETransform, isWebPluginDisabled, disableWebPluginFor, WEB_PLUGIN_BODY } from "./ai-router.js";
 
 // ════════════════════════════════════════════════════════════════════════
 // STREAMING — provider selection
@@ -75,6 +75,8 @@ type PickedProvider = {
   modelId: string;
   systemPrompt: string;
   tuning: ModeTuning;
+  /** Web-grounding (OpenRouter web plugin) — thinking accuracy lane only. */
+  webSearch?: boolean;
 };
 
 /**
@@ -131,20 +133,20 @@ async function tryPickOpenRouterProvider(systemPrompt: string, tuning: ModeTunin
     (!preferred || lastEntry.model === preferred)
   ) {
     logger.info("[Chatbot] Using last working OpenRouter model", { model: lastEntry.model, mode: modeKey });
-    return { provider: "openrouter", modelId: lastEntry.model, systemPrompt, tuning };
+    return { provider: "openrouter", modelId: lastEntry.model, systemPrompt, tuning, webSearch: modeKey === "thinking" };
   }
 
   // Mode's preferred fast model (instant), if healthy
   if (preferred && (modelFailCount[preferred] || 0) < 3 && AI_MODELS.some(m => m.id === preferred)) {
     logger.info("[Chatbot] Using preferred fast OpenRouter model", { model: preferred });
-    return { provider: "openrouter", modelId: preferred, systemPrompt, tuning };
+    return { provider: "openrouter", modelId: preferred, systemPrompt, tuning, webSearch: modeKey === "thinking" };
   }
 
   // Use best tier-1 model directly — no probing needed
   const bestModel = AI_MODELS.find(m => m.tier === 1);
   if (bestModel) {
     logger.info("[Chatbot] Using best OpenRouter model", { model: bestModel.id });
-    return { provider: "openrouter", modelId: bestModel.id, systemPrompt, tuning };
+    return { provider: "openrouter", modelId: bestModel.id, systemPrompt, tuning, webSearch: modeKey === "thinking" };
   }
 
   return null;
@@ -571,8 +573,22 @@ async function streamOpenRouterProvider(
   let realAttempts = 0;
   for (const modelId of candidates) {
     if (realAttempts >= 8) break;
+    // Web plugin (thinking accuracy lane): OpenRouter-only, honoring the
+    // shared breaker. On 402/400 → disable + retry THIS model without it.
+    const wantsWeb = picked.webSearch === true && !isWebPluginDisabled();
+    const orBody = (withPlugin: boolean) => JSON.stringify({
+      model: modelId,
+      messages: [
+        { role: "system", content: picked.systemPrompt },
+        ...request.messages.map((m) => ({ role: m.role, content: m.content })),
+      ],
+      temperature: picked.tuning.temperature,
+      max_tokens: picked.tuning.maxTokens,
+      stream: true,
+      ...(withPlugin ? { plugins: [WEB_PLUGIN_BODY] } : {}),
+    });
     try {
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      let response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
@@ -580,18 +596,25 @@ async function streamOpenRouterProvider(
           "HTTP-Referer": "https://ahmedelbaz.qzz.io",
           "X-Title": "Elbaz LMS Chatbot",
         },
-        body: JSON.stringify({
-          model: modelId,
-          messages: [
-            { role: "system", content: picked.systemPrompt },
-            ...request.messages.map((m) => ({ role: m.role, content: m.content })),
-          ],
-          temperature: picked.tuning.temperature,
-          max_tokens: picked.tuning.maxTokens,
-          stream: true,
-        }),
+        body: orBody(wantsWeb),
         signal: AbortSignal.timeout(picked.tuning.openRouterStreamTimeoutMs),
       });
+
+      if (!response.ok && wantsWeb && (response.status === 402 || response.status === 400)) {
+        disableWebPluginFor();
+        logger.warn(`[Chatbot/Stream/OpenRouter] web plugin rejected (HTTP ${response.status}) — retrying ${modelId} without it`);
+        response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://ahmedelbaz.qzz.io",
+            "X-Title": "Elbaz LMS Chatbot",
+          },
+          body: orBody(false),
+          signal: AbortSignal.timeout(picked.tuning.openRouterStreamTimeoutMs),
+        });
+      }
 
       if (!response.ok || !response.body) {
         if (response.status === 404) {
@@ -794,6 +817,7 @@ async function getVisionStreamResponse(request: {
     vision: false,
     language: request.language,
     preferredModelId: tuning.openRouterPreferredModel,
+    webSearch: mode === "thinking",
     gen: mode === "instant"
       ? { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 10_000, globalBudgetMs: 12_000 }
       : { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 20_000, globalBudgetMs: 22_000 },
@@ -874,6 +898,8 @@ export async function getStreamResponse(request: {
     // Instant lane hoists the general-purpose fast model above code/mini
     // models so Arabic/English instructions (language mirror) are followed.
     preferredModelId: routerTuning.openRouterPreferredModel,
+    // Web grounding: thinking = documented-answer lane (OpenRouter plugin).
+    webSearch: routerMode === "thinking",
     gen: routerMode === "instant"
       ? { temperature: routerTuning.temperature, maxTokens: routerTuning.maxTokens, attemptTimeoutMs: 10_000, globalBudgetMs: 12_000 }
       : { temperature: routerTuning.temperature, maxTokens: routerTuning.maxTokens, attemptTimeoutMs: 20_000, globalBudgetMs: 22_000 },
