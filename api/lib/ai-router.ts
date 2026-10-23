@@ -183,6 +183,10 @@ export const SPECIALIST_CHAT_RE = new RegExp([
   "\\bdots\\b", "dots-", "-note\\b", "\\bocr\\b", "\\bdoc\\b", "docmat", "\\bpdf\\b",
   // too-small-for-expert-answers families
   "\\blfm\\b", "minicpm", "moondream", "smolvlm", "\\bphi\\b-",
+  // live incident (prod verify 2026-10-23): allam-2-7b carried the instant
+  // lane after an OpenRouter quota breaker trip and answered with broken
+  // Arabic grammar — a 7B dialect model is below the expert-answer bar.
+  "\\ballam\\b",
 ].join("|"), "i");
 
 export interface ClassifiedModel {

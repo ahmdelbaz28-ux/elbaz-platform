@@ -295,3 +295,14 @@ describe("AI Router — OpenRouter daily-quota breaker", () => {
     resetOpenRouterDailyLimit();
   });
 });
+
+describe("AI Router — SPECIALIST_CHAT_RE (allam incident regression)", () => {
+  it("excludes the allam 7B dialect family from the general chat lane", () => {
+    expect(SPECIALIST_CHAT_RE.test("allam-2-7b")).toBe(true);
+    expect(SPECIALIST_CHAT_RE.test("groq/allam-2-7b")).toBe(true);
+    // The vetted fast models stay untouched.
+    expect(SPECIALIST_CHAT_RE.test("llama-3.1-8b-instant")).toBe(false);
+    expect(SPECIALIST_CHAT_RE.test("llama-3.3-70b-versatile")).toBe(false);
+    expect(SPECIALIST_CHAT_RE.test("google/gemma-4-26b-a4b-it:free")).toBe(false);
+  });
+});
