@@ -103,6 +103,19 @@ if (mode === "seed-429") {
     [ins.insertId, "mock/dud-stream", ins.insertId, "mock/grounded-stream"]
   );
   console.log(`seeded provider ${ins.insertId}: mock/dud-stream (tier1) + mock/grounded-stream (tier2)`);
+} else if (mode === "seed-vision") {
+  // NEVER-BUSY T5 (vision policy): a vision-capable tier-1 reader + a healthy
+  // tier-2 TEXT streamer. PASS 1 reads the image from mock/vl-reader; PASS 2
+  // must answer from mock/grounded-stream — the VL model itself refuses to
+  // write chat answers (mock returns 500 for persona-prompt requests).
+  const [ins] = await conn.query(
+    "INSERT INTO aiProviders (slug, displayName, baseUrl, apiKey, priority, enabled, status) VALUES ('openrouter','OpenRouter Mock','http://127.0.0.1:47777/v1','mock-key',1,1,'healthy')"
+  );
+  await conn.query(
+    "INSERT INTO aiModels (providerId, modelId, supportsChat, supportsVision, isFree, enabled, tier) VALUES (?,?,1,1,1,1,1),(?,?,1,0,1,1,2)",
+    [ins.insertId, "mock/vl-reader", ins.insertId, "mock/grounded-stream"]
+  );
+  console.log(`seeded provider ${ins.insertId}: mock/vl-reader (tier1, vision) + mock/grounded-stream (tier2, text)`);
 } else if (mode === "seed") {
   const [ins] = await conn.query(
     "INSERT INTO aiProviders (slug, displayName, baseUrl, apiKey, priority, enabled, status) VALUES ('openrouter','OpenRouter Mock','http://127.0.0.1:47777/v1','mock-key',1,1,'healthy')"

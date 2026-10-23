@@ -72,6 +72,14 @@ function dudReply(res) {
   }, 300);
 }
 
+/**
+ * VISION PASS-1 reader reply — a factual extraction description. Used ONLY
+ * for requests whose messages contain image_url parts (the extraction pass).
+ */
+function visionReadReply(res) {
+  jsonReply(res, "لقطة شاشة من ETAP — نافذة Load Flow Study. القيمة 0.95 p.u وحقل [غير مقروء]. العنوان: Study Report.");
+}
+
 const server = http.createServer((req, res) => {
   const url = req.url || "";
   if (url === "/__log") {
@@ -113,6 +121,21 @@ const server = http.createServer((req, res) => {
         // First byte delayed 6s — proves the endpoint streams SSE headers +
         // `: ping` keepalives BEFORE any content is available (SSE-first).
         slowReply(res);
+        return;
+      }
+      if (modelId === "mock/vl-reader") {
+        // TWO-PASS VISION policy probe: with image parts → this is PASS 1
+        // (the read) → serve the factual description. Plain text → this is
+        // PASS 2 (the persona answer) → the VL model REFUSES to serve it (500)
+        // — the answer writer must be the text cascade, never a vision model.
+        const hasImage = (parsed.messages || []).some((m) =>
+          Array.isArray(m.content) && m.content.some((part) => part?.type === "image_url"));
+        if (hasImage) {
+          visionReadReply(res);
+        } else {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: { code: 500, message: "VL model never writes chat answers" } }));
+        }
         return;
       }
       if (modelId === "mock/dud-stream") {

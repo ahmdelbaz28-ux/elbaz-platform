@@ -34,7 +34,7 @@
 import { env } from "../lib/env";
 import { getSystemPrompt, MODE_TUNING, type ChatbotMode, type ModeTuning } from "./chatbot-prompts.js";
 import { logger } from "./logger.js";
-import { routeChatCompletion, isWebPluginDisabled, disableWebPluginFor, WEB_PLUGIN_BODY, isOpenRouterDailyLimited, noteOpenRouterDailyLimit } from "./ai-router.js";
+import { routeChatCompletion, isWebPluginDisabled, disableWebPluginFor, WEB_PLUGIN_BODY, isOpenRouterDailyLimited, noteOpenRouterDailyLimit, isChatLaneModel } from "./ai-router.js";
 import { stripThinkBlocks } from "./think-filter.js";
 import { buildAugmentedTextMessages, buildVisionFailureMessages, readImageViaVisionModels } from "./chatbot-vision.js";
 
@@ -156,6 +156,10 @@ export const AI_MODELS = [
   // tier 1: strongest free reasoning models first (verified live 2026-10-21)
   { id: "nvidia/nemotron-3-ultra-550b-a55b:free",           ctx: 1000000, tier: 1 },
   { id: "nvidia/nemotron-3-super-120b-a12b:free",           ctx: 262144,  tier: 1 },
+  // gpt-oss-120b: strong-Arabic reasoning MoE — the instant lane's preferred
+  // OpenRouter model (must stay in this list for the preferred-branch check;
+  // positioned after nemotron-ultra so the thinking lane keeps its head).
+  { id: "openai/gpt-oss-120b:free",                         ctx: 262144,  tier: 1 },
   { id: "nvidia/nemotron-3.5-lightning:free",               ctx: 1000000, tier: 1 },
   { id: "google/gemma-4-31b-it:free",                       ctx: 262144,  tier: 1 },
   { id: "thinkingmachines/inkling:free",                    ctx: 1048576, tier: 1 },
@@ -400,7 +404,7 @@ export async function nvidiaFallback(
 // ════════════════════════════════════════════════════════════════════════
 
 export const INSTANT_FAST_MODELS = [
-  "google/gemma-4-26b-a4b-it:free",                      // MoE A4B — fastest capable (live)
+  "openai/gpt-oss-120b:free",                            // MoE ~5B active — strong Arabic (gemma incident replacement)
   "xingchen-agi/xing4.0-29b-a4b:free",                   // MoE A4B (live)
   "minimax/minimax-m3.1-flash:free",                     // flash — built for speed (live)
   "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",  // MoE A3B — proven live in prod 2026-10-21
@@ -588,6 +592,9 @@ export async function tryLastWorkingModel(
   if (!entry || !entry.model) return null;
   if ((Date.now() - entry.time) >= 300000) return null;
   if ((modelFailCount[entry.model] || 0) >= 3) return null;
+  // Chat-lane gate — a below-bar specialist must never be re-picked because
+  // it happened to be the last model that returned HTTP 200.
+  if (!isChatLaneModel(entry.model)) return null;
   return await tryModel(entry.model, messages, systemPrompt, tierTimeouts[1], tuning, webSearch);
 }
 
@@ -609,6 +616,9 @@ export async function tryModelsByTier(
 
     for (const model of AI_MODELS) {
       if (model.tier !== tier) continue;
+      // Chat-lane gate — specialists (code/docs/tiny/allam/gemma) never write
+      // chat answers even from the legacy static sweep.
+      if (!isChatLaneModel(model.id)) continue;
       if ((modelFailCount[model.id] || 0) >= 3) {
         tierSkipped++;
         continue;
@@ -637,6 +647,9 @@ export async function tryAllModelsAsLastResort(
 ): Promise<{ reply: string; model: string } | null> {
   logger.warn("[Chatbot/OpenRouter] All tiers exhausted with skips. Trying all models as last resort...");
   for (const model of AI_MODELS) {
+    // Chat-lane gate holds even at the last resort — a garbled specialist
+    // answer is WORSE than admitting busy (owner contract).
+    if (!isChatLaneModel(model.id)) continue;
     modelFailCount[model.id] = 0;
     const result = await tryModel(model.id, messages, systemPrompt, 10000, tuning, webSearch);
     if (result) return result;
@@ -679,6 +692,7 @@ export async function openRouterFallback(
   // while any fast model is alive.
   if (t.openRouterPreferredModel) {
     for (const fastModel of INSTANT_FAST_MODELS) {
+      if (!isChatLaneModel(fastModel)) continue; // gate: specialists out of the instant lane
       if ((modelFailCount[fastModel] || 0) >= 3) continue;
       const fastResult = await tryModel(fastModel, messages, systemPrompt, 8000, t, webSearch);
       if (fastResult) return fastResult;
@@ -964,32 +978,15 @@ export async function getVisionResponse(request: {
     historySummary: request.historySummary,
   });
 
-  // Every vision reader AND the whole text cascade failed — the legacy
-  // vision-only sweep is the last resort: offer the raw multimodal request
-  // to the vision models directly (better than a bare error message).
+  // POLICY (2026-10-23 live incident): no "last-resort direct vision answer".
+  // Offering the raw multimodal request (with the persona prompt) to vision
+  // models let a weak VL model write the final reply under load — broken
+  // Arabic spelling reached users. The answer writer is ALWAYS the text
+  // reasoning cascade; vision models only ever READ. When the cascade fails
+  // the endpoint's persistence/retry layers take over — the user waits
+  // behind the calm thinking indicator, never receives a garbled reply.
   if (!result.success) {
-    const mode: ChatbotMode = request.mode === "instant" ? "instant" : "thinking";
-    const tuning = MODE_TUNING[mode];
-    const visionSystemPrompt = getSystemPrompt(request.language, mode, request.catalog, true, request.historySummary);
-    const [firstTimeout, retryTimeout] = tuning.groqAttemptTimeouts;
-
-    const routedVision = await routeChatCompletion({
-      messages: request.messages,
-      systemPrompt: visionSystemPrompt,
-      mode,
-      vision: true,
-      gen: { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 25_000, globalBudgetMs: 26_000 },
-    });
-    if (routedVision.ok) return buildSuccessResult({ reply: routedVision.result.reply, model: routedVision.result.model });
-
-    let lastChance = await tryGroq(request.messages, visionSystemPrompt, GROQ_VISION_MODEL, firstTimeout, tuning);
-    if (!lastChance) lastChance = await tryGroq(request.messages, visionSystemPrompt, GROQ_VISION_MODEL, retryTimeout, tuning);
-    if (lastChance) return buildSuccessResult(lastChance);
-
-    const orVision = await tryOpenRouterVision(request.messages, visionSystemPrompt, tuning.openRouterTierTimeouts[2] ?? 15000, tuning);
-    if (orVision) return buildSuccessResult(orVision);
-
-    logger.error("[Chatbot/Vision] two-pass + legacy vision sweep all failed.");
+    logger.error("[Chatbot/Vision] two-pass failed — text cascade unavailable.");
     return buildVisionUnavailableResponse(request.language);
   }
 

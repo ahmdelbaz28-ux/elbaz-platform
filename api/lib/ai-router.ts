@@ -187,7 +187,25 @@ export const SPECIALIST_CHAT_RE = new RegExp([
   // lane after an OpenRouter quota breaker trip and answered with broken
   // Arabic grammar — a 7B dialect model is below the expert-answer bar.
   "\\ballam\\b",
+  // live incident (prod user report 2026-10-23, screenshot): a Gemma model
+  // wrote the final Arabic answer with corrupted spelling (verbatim
+  // رايت / التعاياث / للاستاتث). Gemma's Arabic generation is below the
+  // expert bar — it stays in the VISION READER lane (PASS 1) and the board,
+  // but never writes chat answers.
+  "\\bgemma\\b",
 ].join("|"), "i");
+
+/**
+ * Chat-lane gate — true when a model id may WRITE chat answers.
+ * Combines the non-chat guard (music/classification/tool families) and the
+ * specialist guard (code/docs/tiny/allam/gemma). Applied in BOTH routing
+ * layers: the dynamic pool (buildCandidates) and the legacy static sweeps
+ * (tryModelsByTier / INSTANT_FAST_MODELS / streamOpenRouterProvider) so no
+ * code path can ever hand a chat answer to a below-bar model.
+ */
+export function isChatLaneModel(modelId: string): boolean {
+  return !NON_CHAT_RE.test(modelId) && !SPECIALIST_CHAT_RE.test(modelId);
+}
 
 export interface ClassifiedModel {
   modelId: string;

@@ -34,8 +34,20 @@ import { stripThinkBlocks } from "./think-filter.js";
 import { logger } from "./logger.js";
 
 /** Overall PASS-1 budget — must leave room for the reasoning cascade. */
-const VISION_READ_BUDGET_MS = 45_000;
-const VISION_READ_TIMEOUT_MS = 25_000;
+const VISION_READ_BUDGET_MS = 35_000;
+const VISION_READ_TIMEOUT_MS = 20_000;
+/** Minimum remaining budget before starting ANOTHER reader stage — a stage
+ *  started with less left is guaranteed to blow the request deadline. */
+const VISION_STAGE_MIN_REMAINING_MS = 12_000;
+
+// ── PASS-1 memoization (per-request) ──
+// The streaming router persistence loop re-calls getStreamResponse on every
+// round with the SAME messages array reference (runWalk closure). Re-running
+// the vision read on each round used to burn up to 35s per round AND re-charge
+// the vision providers — the reason image questions felt frozen under load.
+// A WeakMap keyed on the messages array caches the read for the lifetime of
+// that one request (the array is garbage-collected with the request). */
+const visionReadCache = new WeakMap<ChatApiMessage[], VisionReadResult>();
 /** Max description chars injected into the reasoning prompt. */
 const MAX_DESCRIPTION_CHARS = 6_000;
 
@@ -149,14 +161,30 @@ const MIN_DESCRIPTION_CHARS = 20;
 /**
  * PASS 1 — read the image via the vision-capable lane.
  * Order: dynamic pool (supportsVision, all providers) → Groq Llama-4-Scout
- * (×2 attempts) → OpenRouter VL models. Never throws.
+ * (single attempt) → OpenRouter VL models. Never throws.
+ * Memoized per messages-array: repeated calls within one request (router
+ * persistence rounds) return the cached read instantly.
  */
 export async function readImageViaVisionModels(
   messages: ChatApiMessage[],
   language?: string,
 ): Promise<VisionReadResult> {
+  const cached = visionReadCache.get(messages);
+  if (cached) return cached;
+
+  const result = await performVisionRead(messages, language);
+  visionReadCache.set(messages, result);
+  return result;
+}
+
+async function performVisionRead(
+  messages: ChatApiMessage[],
+  language?: string,
+): Promise<VisionReadResult> {
   const systemPrompt = visionExtractionPrompt(language);
   const startedAt = Date.now();
+  /** True when another reader stage still fits inside the overall budget. */
+  const stageFits = () => Date.now() - startedAt + VISION_STAGE_MIN_REMAINING_MS < VISION_READ_BUDGET_MS;
 
   const accept = (reply: string | null | undefined, model: string): VisionReadResult | null => {
     const cleaned = stripThinkBlocks(reply ?? "");
@@ -173,13 +201,13 @@ export async function readImageViaVisionModels(
 
   // 1) Dynamic pool — vision-capable models across every configured provider.
   try {
-    if (Date.now() - startedAt < VISION_READ_BUDGET_MS) {
+    if (stageFits()) {
       const routed = await routeChatCompletion({
         messages,
         systemPrompt,
         mode: "thinking",
         vision: true,
-        gen: { temperature: 0.1, maxTokens: 1500, attemptTimeoutMs: VISION_READ_TIMEOUT_MS, globalBudgetMs: 26_000 },
+        gen: { temperature: 0.1, maxTokens: 1500, attemptTimeoutMs: VISION_READ_TIMEOUT_MS, globalBudgetMs: 20_000 },
       });
       if (routed.ok) {
         const hit = accept(routed.result.reply, routed.result.model);
@@ -190,21 +218,21 @@ export async function readImageViaVisionModels(
     logger.warn("[Chatbot/Vision] dynamic vision read failed — trying legacy chain", { error: String(err) });
   }
 
-  // 2) Legacy chain — Groq Scout ×2 then OpenRouter VL sweep.
-  if (GROQ_API_KEY && Date.now() - startedAt < VISION_READ_BUDGET_MS) {
+  // 2) Legacy chain — one Groq Scout attempt, then the OpenRouter VL sweep.
+  //    (The second Scout attempt doubled the worst-case read to ~50s and blew
+  //    the instant persistence deadline — removed: one scout + VL sweep is
+  //    enough redundancy alongside the dynamic pool.)
+  if (GROQ_API_KEY && stageFits()) {
     try {
       const r1 = await tryGroq(messages, systemPrompt, GROQ_VISION_MODEL, VISION_READ_TIMEOUT_MS);
       const hit1 = r1 ? accept(r1.reply, `groq/${GROQ_VISION_MODEL}`) : null;
       if (hit1) return hit1;
-      const r2 = await tryGroq(messages, systemPrompt, GROQ_VISION_MODEL, VISION_READ_TIMEOUT_MS);
-      const hit2 = r2 ? accept(r2.reply, `groq/${GROQ_VISION_MODEL}`) : null;
-      if (hit2) return hit2;
     } catch (err) {
       logger.warn("[Chatbot/Vision] Groq scout read failed", { error: String(err) });
     }
   }
 
-  if (Date.now() - startedAt < VISION_READ_BUDGET_MS) {
+  if (stageFits()) {
     try {
       const or = await tryOpenRouterVision(messages, systemPrompt, 15_000);
       const hit = or ? accept(or.reply, or.model) : null;
