@@ -76,7 +76,10 @@ export const MODE_TUNING: Record<ChatbotMode, ModeTuning> = {
   // DEEP THINKING — accuracy first: low temperature, large budget, patient timeouts
   thinking: {
     temperature: 0.3,
-    maxTokens: 4096,
+    // 8192: the reasoning-first pool (Nemotron Ultra 550B, Inkling, …) spends
+    // completion tokens on internal reasoning BEFORE the visible answer —
+    // 4096 risked a zero-content burn on the biggest models.
+    maxTokens: 8192,
     groqAttemptTimeouts: [45000, 60000],
     openRouterTierTimeouts: { 1: 20000, 2: 15000, 3: 10000, 4: 8000 },
     openRouterGlobalTimeoutMs: 60000,
@@ -87,7 +90,10 @@ export const MODE_TUNING: Record<ChatbotMode, ModeTuning> = {
   // INSTANT — speed first: concise output, short timeouts, fail fast downstream
   instant: {
     temperature: 0.7,
-    maxTokens: 1024,
+    // 2048 (was 1024): reasoning models burn internal-thought tokens first.
+    // The concise prompt still keeps the VISIBLE answer short; the extra
+    // budget only guarantees content survives the hidden reasoning phase.
+    maxTokens: 2048,
     groqAttemptTimeouts: [10000, 15000],
     openRouterTierTimeouts: { 1: 12000, 2: 10000, 3: 8000, 4: 8000 },
     openRouterGlobalTimeoutMs: 30000,
@@ -96,9 +102,10 @@ export const MODE_TUNING: Record<ChatbotMode, ModeTuning> = {
     // Single short attempt: a healthy Groq answers a short prompt in <1s.
     // If it cannot in 10s, instant must move on — no retry burns.
     groqStreamTimeouts: [10000],
-    // Fastest capable OpenRouter model (MoE, ~4B active params) — a different
-    // model from the thinking tier so the modes stay visibly distinct even
-    // when Groq is unavailable and instant lands on OpenRouter.
+    // Fastest capable OpenRouter model (MoE, ~4B active params, reasoning-
+    // capable) — a different model from the thinking tier so the modes stay
+    // visibly distinct even when Groq is unavailable and instant lands on
+    // OpenRouter.
     openRouterPreferredModel: "google/gemma-4-26b-a4b-it:free",
   },
 };
