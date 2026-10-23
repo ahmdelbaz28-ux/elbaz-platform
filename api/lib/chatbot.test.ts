@@ -560,7 +560,7 @@ describe("Chatbot Module", () => {
       expect(thinkingPick?.provider).toBe("nvidia");
     });
 
-    it("modes send different generation params: instant 0.7/1024 vs thinking 0.3/4096", async () => {
+    it("modes send different generation params: instant 0.7/2048 vs thinking 0.3/8192", async () => {
       const capturedBodies: any[] = [];
       mockFetch.mockImplementation(async (url: string, options: any) => {
         if (url.includes("/auth/key")) return { ok: true, json: async () => ({}) };
@@ -578,9 +578,12 @@ describe("Chatbot Module", () => {
 
       expect(capturedBodies).toHaveLength(2);
       expect(capturedBodies[0].temperature).toBe(0.7);
-      expect(capturedBodies[0].max_tokens).toBe(1024);
+      // 2048: reasoning-capable models burn hidden thought tokens first — the
+      // concise prompt keeps the VISIBLE answer short, the budget keeps it alive.
+      expect(capturedBodies[0].max_tokens).toBe(2048);
       expect(capturedBodies[1].temperature).toBe(0.3);
-      expect(capturedBodies[1].max_tokens).toBe(4096);
+      // 8192: headroom for the strongest reasoning models (550B-class).
+      expect(capturedBodies[1].max_tokens).toBe(8192);
     });
 
     it("modes send different system prompts: instant concise vs thinking deep", async () => {
@@ -702,6 +705,98 @@ describe("Chatbot Module", () => {
       });
       expect(thinkRes.model).toBe("nvidia/nemotron-3-ultra-550b-a55b:free");
       expect(thinkRes.model).not.toBe(instantRes.model);
+    });
+  });
+
+  // ─── Two-pass vision (vision READS first → reasoning ANSWERS) ─────────
+
+  describe("two-pass vision", () => {
+    it("vision model reads first, reasoning model answers from the description", async () => {
+      const EXTRACTION = "لقطة شاشة من ETAP نافذة Short Circuit — القيمة 12.5 kA وحقل [غير مقروء].";
+      const groqBodies: any[] = [];
+      let groqCalls = 0;
+      mockFetch.mockImplementation(async (url: string, options: any) => {
+        if (url.includes("/auth/key")) return { ok: true, json: async () => ({}) };
+        if (url.includes("groq.com")) {
+          groqCalls++;
+          const body = JSON.parse(options.body);
+          groqBodies.push(body);
+          // Call 1 = PASS 1 (vision read); call 2 = PASS 2 (reasoning answer)
+          const content = groqCalls === 1 ? EXTRACTION : "### الجواب\nاستخدم **Short Circuit** study — الخطأ 12.5 kA.";
+          return { ok: true, json: async () => ({ choices: [{ message: { content } }] }) };
+        }
+        return { ok: false, status: 429, json: async () => ({}) };
+      });
+
+      const mod = await importChatbot({ groq: true, openrouter: false });
+      const res = await mod.getChatResponse({
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: "ما الخطأ هنا؟" },
+            { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } },
+          ],
+        } as any],
+        language: "ar",
+        mode: "thinking",
+        vision: true,
+      });
+
+      expect(res.success).toBe(true);
+      expect(groqCalls).toBeGreaterThanOrEqual(2); // both passes ran
+      // PASS 1: the vision reader got the EXTRACTION prompt + image parts
+      expect(groqBodies[0].messages[0].content).toContain("محرك تحليل صور");
+      const pass1User = groqBodies[0].messages.find((m: any) => m.role === "user");
+      expect(Array.isArray(pass1User.content)).toBe(true); // image parts present
+      // PASS 2: the reasoning model got the PERSONA prompt + TEXT-ONLY augmented message
+      const pass2Body = groqBodies[1];
+      expect(pass2Body.messages[0].content).toContain("DEEP-ANALYSIS PROTOCOL");
+      const pass2User = pass2Body.messages.find((m: any) => m.role === "user");
+      expect(typeof pass2User.content).toBe("string");
+      expect(pass2User.content).toContain(EXTRACTION); // description injected
+      expect(pass2User.content).toContain("ما الخطأ هنا؟");
+      expect(JSON.stringify(pass2Body.messages)).not.toContain("image_url"); // never to the reasoning lane
+      expect(res.reply).toContain("Short Circuit");
+    });
+
+    it("when the reader fails, the answer still runs with an honesty note — never a pretend answer", async () => {
+      let groqCalls = 0;
+      const prompts: string[] = [];
+      const userContents: string[] = [];
+      mockFetch.mockImplementation(async (url: string, options: any) => {
+        if (url.includes("/auth/key")) return { ok: true, json: async () => ({}) };
+        if (url.includes("groq.com")) {
+          groqCalls++;
+          const body = JSON.parse(options.body);
+          prompts.push(body.messages[0].content);
+          const user = body.messages.find((m: any) => m.role === "user");
+          userContents.push(typeof user.content === "string" ? user.content : "[parts]");
+          // PASS 1 readers return too-short garbage → the read fails
+          const content = groqCalls <= 2 ? "نعم" : "أعتذر، تعذّر قراءة الصورة المرفقة. هل يمكنك إعادة إرسالها أو وصف سؤالك نصياً؟";
+          return { ok: true, json: async () => ({ choices: [{ message: { content } }] }) };
+        }
+        return { ok: false, status: 429, json: async () => ({}) };
+      });
+
+      const mod = await importChatbot({ groq: true, openrouter: false });
+      const res = await mod.getChatResponse({
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: "اشرح" },
+            { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } },
+          ],
+        } as any],
+        language: "ar",
+        mode: "thinking",
+        vision: true,
+      });
+
+      expect(res.success).toBe(true);
+      // PASS 2 ran with the persona prompt and the honesty note + question
+      expect(prompts[2]).toContain("DEEP-ANALYSIS PROTOCOL");
+      expect(userContents[2]).toContain("تعذّر قراءة الصورة");
+      expect(userContents[2]).toContain("اشرح");
     });
   });
 });

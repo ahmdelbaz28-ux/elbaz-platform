@@ -35,6 +35,8 @@ import { env } from "../lib/env";
 import { getSystemPrompt, MODE_TUNING, type ChatbotMode, type ModeTuning } from "./chatbot-prompts.js";
 import { logger } from "./logger.js";
 import { routeChatCompletion } from "./ai-router.js";
+import { stripThinkBlocks } from "./think-filter.js";
+import { buildAugmentedTextMessages, buildVisionFailureMessages, readImageViaVisionModels } from "./chatbot-vision.js";
 
 // ════════════════════════════════════════════════════════════════════════
 // HELPERS
@@ -243,7 +245,10 @@ export async function tryGroq(
       return null;
     }
 
-    const reply = data.choices?.[0]?.message?.content ?? "";
+    // stripThinkBlocks: hard guarantee — a model that ignores the prompt
+    // guard and emits <think> blocks never leaks reasoning to the user.
+    // Empty-after-strip counts as a fail (cascade moves to the next model).
+    const reply = stripThinkBlocks(data.choices?.[0]?.message?.content ?? "");
 
     if (!reply || reply.trim().length === 0) {
       chatHealth.groqConsecFails++;
@@ -345,7 +350,8 @@ export async function tryNvidia(
       return null;
     }
 
-    const reply = data.choices?.[0]?.message?.content ?? "";
+    // stripThinkBlocks: see tryGroq — zero visible reasoning, ever.
+    const reply = stripThinkBlocks(data.choices?.[0]?.message?.content ?? "");
 
     if (!reply || reply.trim().length === 0) {
       chatHealth.nvidiaConsecFails++;
@@ -490,7 +496,8 @@ export async function tryModel(
       return null;
     }
 
-    const reply = data.choices?.[0]?.message?.content;
+    // stripThinkBlocks: see tryGroq — zero visible reasoning, ever.
+    const reply = stripThinkBlocks(data.choices?.[0]?.message?.content ?? "");
     if (!reply || reply.trim().length === 0) {
       modelFailCount[modelId] = (modelFailCount[modelId] || 0) + 1;
       return null;
@@ -715,6 +722,27 @@ export async function getChatResponse(request: {
 }): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
   if (request.vision) return getVisionResponse(request);
 
+  return runTextCascade({
+    messages: request.messages,
+    language: request.language,
+    mode: request.mode,
+    catalog: request.catalog,
+    historySummary: request.historySummary,
+  });
+}
+
+/**
+ * The reasoning-first TEXT cascade (dynamic router → legacy env chain).
+ * Shared by the plain text path (getChatResponse) and PASS 2 of the vision
+ * flow (getVisionResponse answers from the image description via THIS).
+ */
+async function runTextCascade(request: {
+  messages: ChatApiMessage[];
+  language?: string;
+  mode?: "thinking" | "instant";
+  catalog?: string;
+  historySummary?: string;
+}): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
   const mode: ChatbotMode = request.mode === "instant" ? "instant" : "thinking";
   const tuning = MODE_TUNING[mode];
   const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, false, request.historySummary);
@@ -829,36 +857,57 @@ export async function getVisionResponse(request: {
   /** Rolling summary of this user's older conversations (chat-history.ts). */
   historySummary?: string;
 }): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
-  const mode: ChatbotMode = request.mode === "instant" ? "instant" : "thinking";
-  const tuning = MODE_TUNING[mode];
-  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, true, request.historySummary);
-  const [firstTimeout, retryTimeout] = tuning.groqAttemptTimeouts;
+  // ── PASS 1 (READ): a vision-capable model extracts a factual description ──
+  // The vision lane is offered ONLY the raw multimodal messages with the
+  // extraction prompt — never the ETAP persona, never asked for the answer.
+  const read = await readImageViaVisionModels(request.messages, request.language);
 
-  // ─── DYNAMIC ROUTER (v9) — vision-only failover across all providers ──
-  // Image requests are offered ONLY to models flagged supportsVision=true
-  // (discovery metadata / admin toggle). Text-only models are never
-  // contacted with image parts — same mandatory rule as the legacy chain.
-  const routedVision = await routeChatCompletion({
-    messages: request.messages,
-    systemPrompt,
-    mode,
-    vision: true,
-    gen: { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 25_000, globalBudgetMs: 26_000 },
+  // ── PASS 2 (ANSWER): the description becomes TEXT and the normal
+  // reasoning-first cascade produces the final engineering answer. The
+  // reasoning models (strongest available) always write the answer — a weak
+  // vision model never has the last word.
+  const pass2Messages = read.ok && read.description
+    ? buildAugmentedTextMessages(request.messages, read.description, request.language)
+    : buildVisionFailureMessages(request.messages, request.language);
+
+  const result = await runTextCascade({
+    messages: pass2Messages,
+    language: request.language,
+    mode: request.mode,
+    catalog: request.catalog,
+    historySummary: request.historySummary,
   });
-  if (routedVision.ok) return buildSuccessResult({ reply: routedVision.result.reply, model: routedVision.result.model });
 
-  // 1) Groq Llama-4-Scout (multimodal, ultra-fast) — 2 attempts
-  let result = await tryGroq(request.messages, systemPrompt, GROQ_VISION_MODEL, firstTimeout, tuning);
-  if (result) return buildSuccessResult(result);
-  result = await tryGroq(request.messages, systemPrompt, GROQ_VISION_MODEL, retryTimeout, tuning);
-  if (result) return buildSuccessResult(result);
+  // Every vision reader AND the whole text cascade failed — the legacy
+  // vision-only sweep is the last resort: offer the raw multimodal request
+  // to the vision models directly (better than a bare error message).
+  if (!result.success) {
+    const mode: ChatbotMode = request.mode === "instant" ? "instant" : "thinking";
+    const tuning = MODE_TUNING[mode];
+    const visionSystemPrompt = getSystemPrompt(request.language, mode, request.catalog, true, request.historySummary);
+    const [firstTimeout, retryTimeout] = tuning.groqAttemptTimeouts;
 
-  // 2) OpenRouter vision-language models
-  const orResult = await tryOpenRouterVision(request.messages, systemPrompt, tuning.openRouterTierTimeouts[2] ?? 15000, tuning);
-  if (orResult) return buildSuccessResult(orResult);
+    const routedVision = await routeChatCompletion({
+      messages: request.messages,
+      systemPrompt: visionSystemPrompt,
+      mode,
+      vision: true,
+      gen: { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 25_000, globalBudgetMs: 26_000 },
+    });
+    if (routedVision.ok) return buildSuccessResult({ reply: routedVision.result.reply, model: routedVision.result.model });
 
-  logger.error("[Chatbot/Vision] All vision models failed.");
-  return buildVisionUnavailableResponse(request.language);
+    let lastChance = await tryGroq(request.messages, visionSystemPrompt, GROQ_VISION_MODEL, firstTimeout, tuning);
+    if (!lastChance) lastChance = await tryGroq(request.messages, visionSystemPrompt, GROQ_VISION_MODEL, retryTimeout, tuning);
+    if (lastChance) return buildSuccessResult(lastChance);
+
+    const orVision = await tryOpenRouterVision(request.messages, visionSystemPrompt, tuning.openRouterTierTimeouts[2] ?? 15000, tuning);
+    if (orVision) return buildSuccessResult(orVision);
+
+    logger.error("[Chatbot/Vision] two-pass + legacy vision sweep all failed.");
+    return buildVisionUnavailableResponse(request.language);
+  }
+
+  return result;
 }
 
 // ════════════════════════════════════════════════════════════════════════

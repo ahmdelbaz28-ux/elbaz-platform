@@ -1,197 +1,219 @@
 /**
- * CHATBOT VISION PASS — "a model that READS the image first, then a reasoning
- * model answers" (explicit product requirement).
+ * TWO-PASS VISION — "a vision model READS the image first, THEN a reasoning
+ * model answers" (explicit product policy — the answer must come from the
+ * strongest reasoning model, not from a weaker vision model).
  *
- * Flow (wired in chatbot-router.ts):
- *   1. User attaches an image (data URL, validated + size-capped).
- *   2. describeImage() sends it to a VISION-capable model with a factual,
- *      advice-free extraction instruction (text, values, dialog titles,
- *      error messages, diagram elements — everything an ETAP engineer needs).
- *   3. The description is injected into the user's message and the normal
- *      reasoning-first cascade produces the final answer.
+ * PASS 1 (READ): the attached image + a FACTUAL-EXTRACTION prompt go to a
+ *                vision-capable model (dynamic pool supportsVision → Groq
+ *                Llama-4-Scout → OpenRouter VL ids). Output: a complete,
+ *                advice-free description of what the image shows.
+ * PASS 2 (ANSWER): the description replaces the image parts inside the last
+ *                user message and the NORMAL reasoning-first cascade
+ *                (thinking/instant tuning, dynamic router + legacy chain)
+ *                produces the final engineering answer — exactly like any
+ *                text question.
  *
- * ZERO-GAP policy:
- *   - Every candidate is a vetted GENERAL vision chat model (pool policy —
- *     never a music/image-gen/classifier model).
- *   - Ordering: fastest reliable vision first (Groq llama-4-scout), then the
- *     strongest OpenRouter vision models.
- *   - Fail-open: if EVERY vision candidate fails, the router still answers —
- *     with an explicit "I could not read the image" note so the user is never
- *     misled (never guess about an image we could not see).
- *   - Think-tag stripped: some VL models reason visibly — same filter as the
- *     main cascade.
+ * ZERO-GAP guarantees:
+ *   - The extraction is think-tag-scrubbed and length-capped.
+ *   - If EVERY vision model fails the read, the reasoning pass still runs —
+ *     with an explicit honesty note so the model NEVER pretends to have seen
+ *     the image (never guess about an image we could not read).
+ *   - This module never throws: a failure degrades to the note path.
  */
 
-import { GROQ_API_KEY, GROQ_ENDPOINT, OPENROUTER_API_KEY } from "./chatbot.js";
+import { routeChatCompletion } from "./ai-router.js";
+import {
+  tryGroq,
+  tryOpenRouterVision,
+  GROQ_API_KEY,
+  GROQ_VISION_MODEL,
+  type ChatApiMessage,
+  type ContentPart,
+} from "./chatbot.js";
 import { stripThinkBlocks } from "./think-filter.js";
 import { logger } from "./logger.js";
 
-/** One vision candidate. provider+model pairs we know are image-capable. */
-interface VisionCandidate {
-  provider: "groq" | "openrouter";
-  model: string;
-  label: string;
-}
-
-const VISION_CANDIDATES: VisionCandidate[] = [
-  { provider: "groq", model: "meta-llama/llama-4-scout-17b-16e-instruct", label: "groq/llama-4-scout" },
-  { provider: "openrouter", model: "nvidia/nemotron-3.5-super-vl:free", label: "or/nemotron-3.5-super-vl" },
-  { provider: "openrouter", model: "google/gemma-4-31b-it:free", label: "or/gemma-4-31b" },
-  { provider: "openrouter", model: "thinkingmachines/inkling:free", label: "or/inkling" },
-  { provider: "openrouter", model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", label: "or/nemotron-omni" },
-];
-
-const VISION_TIMEOUT_MS = 25_000;
-/** Overall vision-pass budget — must leave room for the reasoning cascade. */
-const VISION_TOTAL_BUDGET_MS = 45_000;
+/** Overall PASS-1 budget — must leave room for the reasoning cascade. */
+const VISION_READ_BUDGET_MS = 45_000;
+const VISION_READ_TIMEOUT_MS = 25_000;
 /** Max description chars injected into the reasoning prompt. */
 const MAX_DESCRIPTION_CHARS = 6_000;
 
-function visionSystemPrompt(language?: string): string {
+export function visionExtractionPrompt(language?: string): string {
   if (language === "ar") {
-    return `أنت محرك تحليل صور دقيق لمنصة هندسة كهربائية. مهمتك وصف الصورة المرفقة وصفاً واقعياً كاملاً — فقط.
+    return `أنت محرك تحليل صور دقيق لمنصة هندسة كهربائية. سترى صورة مرفقة من المستخدم. مهمتك وصفها وصفاً واقعياً كاملاً — وصف فقط، بلا نصائح وبلا حلول.
 المطلوب استخراجه بالترتيب:
-1. كل النصوص الظاهرة حرفياً (عناوين النوافذ، أسماء القوائم، أسماء الحقول، رسائل الخطأ، أسماء الأزرار).
-2. كل القيم والأرقام والوحدات كما هي مكتوبة (الفولت، الأمبير، النسب، المعاملات).
-3. طبيعة المحتوى: هل هي لقطة شاشة من برنامج (وأي برنامج)؟ جدول؟ مخطط شبكة؟ رسم one-line؟ لوحة أجهزة؟ رسالة خطأ؟
-4. عناصر أي مخطط: أسماء البيسات/الفيدرات/المحولات/القواطع وطرق التوصيل الظاهرة.
+1. كل النصوص الظاهرة حرفياً (عناوين النوافذ، أسماء القوائم، أسماء الحقول، رسائل الخطأ، أسماء الأزرار) — بدون ترجمة أو تعديل.
+2. كل القيم والأرقام والوحدات كما هي مكتوبة (فولت، أمبير، نسب، معاملات، أبعاد كابلات).
+3. طبيعة المحتوى: لقطة شاشة من برنامج (وأي برنامج)؟ جدول؟ مخطط شبكة أو one-line؟ لوحة أجهزة؟ رسالة خطأ؟
+4. عناصر أي مخطط: أسماء البيسات/الفيدرات/المحولات/القواطع وطريقة التوصيل الظاهرة.
 5. أي علامات تحذير أو أخطاء واضحة.
 قواعد صارمة:
-- اذكر النصوص كما هي بدون ترجمة أو تعديل.
 - إذا كانت قيمة غير مقروءة اكتب [غير مقروء] — لا تخمّن أبداً.
-- لا تقدم نصائح ولا حلولاً ولا مقدمة — وصف فقط.`;
+- لا تقدم أي إجابة أو توصية على السؤال — وصف الصورة فقط. سيجيب نموذج آخر على سؤال المستخدم بناءً على وصفك.
+- ابدأ بالوصف مباشرة دون مقدمات.`;
   }
-  return `You are a precise image-analysis engine for an electrical-engineering platform. Describe the attached image factually and completely — description ONLY.
+  return `You are a precise image-analysis engine for an electrical-engineering platform. You will be shown an image attached by the user. Describe it factually and completely — description ONLY, no advice, no solutions.
 Extract, in order:
-1. Every visible text VERBATIM (window titles, menu names, field labels, error messages, button names).
-2. Every value, number and unit exactly as written (volts, amps, percentages, settings).
-3. Content type: is it a software screenshot (which one)? A table? A network/one-line diagram? A device panel? An error dialog?
+1. Every visible text VERBATIM (window titles, menu names, field labels, error messages, button names) — no translation, no paraphrase.
+2. Every value, number and unit exactly as written (volts, amps, percentages, settings, cable sizes).
+3. Content type: a software screenshot (which one)? A table? A network/one-line diagram? A device panel? An error dialog?
 4. For diagrams: bus/feeder/transformer/breaker names and visible connectivity.
 5. Any visible warnings or error flags.
 Hard rules:
-- Quote text as-is, no translation, no paraphrase.
 - If a value is unreadable write [unreadable] — NEVER guess.
-- No advice, no solutions, no preamble — description only.`;
+- Do NOT answer the user's question or give any recommendation — describe the image only. Another model will answer the user's question based on your description.
+- Start the description directly, no preamble.`;
 }
 
-function visionUserInstruction(userText: string, language?: string): string {
-  const focus = userText.trim();
-  if (!focus) {
-    return language === "ar"
-      ? "حلل هذه الصورة وصفها وصفاً كاملاً وفق التعليمات."
-      : "Analyze this image and describe it fully per the instructions.";
-  }
+/** Honest note injected when the image could NOT be read by any vision model. */
+export function visionFailureNote(language?: string): string {
   return language === "ar"
-    ? `سؤال المستخدم المرتبط بهذه الصورة: "${focus}"\nحلل الصورة وصفها كاملاً، مع التركيز على ما يخص سؤال المستخدم.`
-    : `The user's question about this image: "${focus}"\nAnalyze the image fully, focusing on what relates to the user's question.`;
+    ? "[ملاحظة داخلية: تعذّر قراءة الصورة المرفقة تقنياً. لا تدّعِ أبداً أنك رأيت الصورة ولا تخمّن محتواها. اعتذر بلطف للمستخدم عن تعذّر قراءة الصورة واطلب منه إعادة إرسالها أو وصف سؤاله نصياً، ثم أجب عن أي نص مكتوب إن وُجد.]"
+    : "[Internal note: the attached image could not be read. NEVER claim you saw the image or guess its content. Politely apologize that the image could not be read and ask the user to re-send it or describe the question in text, then answer any written text if present.]";
 }
 
-export interface VisionResult {
-  ok: boolean;
-  /** Factual description of the image (already think-stripped). */
-  description?: string;
-  /** Which vision model produced it (for logs/diagnostics). */
-  visionModel?: string;
+/** Fallback question when the user attached an image with no text at all. */
+export function imageOnlyQuestion(language?: string): string {
+  return language === "ar"
+    ? "حلل هذه الصورة واشرح ما بها بالتفصيل، واذكر أي ملاحظات هندسية مهمة."
+    : "Analyze this image and explain what it shows in detail, including any important engineering notes.";
 }
 
-interface OpenAIMessage {
-  role: string;
-  content: string | { type: string; text?: string; image_url?: { url: string } }[];
-}
-
-async function tryVisionCandidate(
-  candidate: VisionCandidate,
-  imageDataUrl: string,
-  userText: string,
-  language?: string,
-): Promise<string | null> {
-  const messages: OpenAIMessage[] = [
-    { role: "system", content: visionSystemPrompt(language) },
-    {
-      role: "user",
-      content: [
-        { type: "text", text: visionUserInstruction(userText, language) },
-        { type: "image_url", image_url: { url: imageDataUrl } },
-      ],
-    },
-  ];
-
-  const url = candidate.provider === "groq" ? GROQ_ENDPOINT : "https://openrouter.ai/api/v1/chat/completions";
-  const headers: Record<string, string> = {
-    "Authorization": `Bearer ${candidate.provider === "groq" ? GROQ_API_KEY : OPENROUTER_API_KEY}`,
-    "Content-Type": "application/json",
-  };
-  if (candidate.provider === "openrouter") {
-    headers["HTTP-Referer"] = "https://ahmedelbaz.qzz.io";
-    headers["X-Title"] = "Elbaz LMS Chatbot";
-  }
-
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model: candidate.model,
-        messages,
-        temperature: 0.1, // factual extraction — minimal creativity
-        max_tokens: 2048,
-      }),
-      signal: AbortSignal.timeout(VISION_TIMEOUT_MS),
-    });
-
-    if (!response.ok) {
-      logger.warn(`[Chatbot/Vision] ${candidate.label} failed (HTTP ${response.status})`);
-      return null;
-    }
-
-    const data = await response.json() as {
-      error?: unknown;
-      choices?: { message?: { content?: string | null } }[];
-    };
-    if (data.error) return null;
-
-    const description = stripThinkBlocks(data.choices?.[0]?.message?.content ?? "");
-    // A "description" that is essentially empty is a failed read.
-    if (!description || description.trim().length < 20) return null;
-    return description.trim();
-  } catch (e) {
-    logger.warn(`[Chatbot/Vision] ${candidate.label} threw`, { error: String(e) });
-    return null;
-  }
+/** Plain text of a message content (string or parts array). */
+function textOfContent(content: ChatApiMessage["content"]): string {
+  if (typeof content === "string") return content;
+  return content
+    .filter((p): p is Extract<ContentPart, { type: "text" }> => p.type === "text")
+    .map((p) => p.text)
+    .join(" ")
+    .trim();
 }
 
 /**
- * Read an attached image into a factual description via the vision cascade.
- * NEVER throws — a failed vision pass is reported as { ok: false } and the
- * caller answers gracefully.
+ * Build the PASS-2 message list: identical to `messages` except the LAST
+ * user message becomes plain text = [image analysis header + description]
+ * followed by the user's original question. All image parts are dropped —
+ * the reasoning cascade is TEXT-ONLY (text-only models never see image parts).
  */
-export async function describeImage(
-  imageDataUrl: string,
-  userText: string,
+export function buildAugmentedTextMessages(
+  messages: ChatApiMessage[],
+  description: string,
   language?: string,
-): Promise<VisionResult> {
-  const startedAt = Date.now();
-  for (const candidate of VISION_CANDIDATES) {
-    if (candidate.provider === "groq" && !GROQ_API_KEY) continue;
-    if (candidate.provider === "openrouter" && !OPENROUTER_API_KEY) continue;
-    // Overall deadline: stop trying candidates once the vision budget is
-    // spent — the reasoning cascade still needs its own time slice.
-    if (Date.now() - startedAt > VISION_TOTAL_BUDGET_MS) {
-      logger.warn("[Chatbot/Vision] total vision budget exhausted — continuing without image context");
-      break;
+): ChatApiMessage[] {
+  const lastUserIdx = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "user") return i;
     }
+    return -1;
+  })();
+  if (lastUserIdx === -1) return messages;
 
-    const description = await tryVisionCandidate(candidate, imageDataUrl, userText, language);
-    if (description) {
-      logger.info(`[Chatbot/Vision] image read by ${candidate.label}`);
+  const original = textOfContent(messages[lastUserIdx].content);
+  const question = original || imageOnlyQuestion(language);
+  const header = language === "ar"
+    ? "صورة مرفقة من المستخدم — تحليل الصورة الآلي (عامل على أساسه فقط):"
+    : "Image attached by the user — automated image analysis (rely on it):";
+  const augmentedText = `[${header}\n${description}\n]\n\n${question}`;
+
+  const out = messages.map((m) => ({ ...m }));
+  out[lastUserIdx] = { role: "user", content: augmentedText };
+  return out;
+}
+
+/** Replace the last user message with the failure note + original text. */
+export function buildVisionFailureMessages(messages: ChatApiMessage[], language?: string): ChatApiMessage[] {
+  const lastUserIdx = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "user") return i;
+    }
+    return -1;
+  })();
+  if (lastUserIdx === -1) return messages;
+  const original = textOfContent(messages[lastUserIdx].content);
+  const out = messages.map((m) => ({ ...m }));
+  out[lastUserIdx] = { role: "user", content: `${visionFailureNote(language)}\n\n${original}`.trim() };
+  return out;
+}
+
+export interface VisionReadResult {
+  ok: boolean;
+  description?: string;
+  /** provider/model tag of the reader (diagnostics only). */
+  visionModel?: string;
+}
+
+/** Sanity floor — shorter than this is not a usable description. */
+const MIN_DESCRIPTION_CHARS = 20;
+
+/**
+ * PASS 1 — read the image via the vision-capable lane.
+ * Order: dynamic pool (supportsVision, all providers) → Groq Llama-4-Scout
+ * (×2 attempts) → OpenRouter VL models. Never throws.
+ */
+export async function readImageViaVisionModels(
+  messages: ChatApiMessage[],
+  language?: string,
+): Promise<VisionReadResult> {
+  const systemPrompt = visionExtractionPrompt(language);
+  const startedAt = Date.now();
+
+  const accept = (reply: string | null | undefined, model: string): VisionReadResult | null => {
+    const cleaned = stripThinkBlocks(reply ?? "");
+    if (cleaned && cleaned.trim().length >= MIN_DESCRIPTION_CHARS) {
+      logger.info(`[Chatbot/Vision] image read by ${model}`);
       return {
         ok: true,
-        description: description.slice(0, MAX_DESCRIPTION_CHARS),
-        visionModel: candidate.label,
+        description: cleaned.trim().slice(0, MAX_DESCRIPTION_CHARS),
+        visionModel: model,
       };
+    }
+    return null;
+  };
+
+  // 1) Dynamic pool — vision-capable models across every configured provider.
+  try {
+    if (Date.now() - startedAt < VISION_READ_BUDGET_MS) {
+      const routed = await routeChatCompletion({
+        messages,
+        systemPrompt,
+        mode: "thinking",
+        vision: true,
+        gen: { temperature: 0.1, maxTokens: 1500, attemptTimeoutMs: VISION_READ_TIMEOUT_MS, globalBudgetMs: 26_000 },
+      });
+      if (routed.ok) {
+        const hit = accept(routed.result.reply, routed.result.model);
+        if (hit) return hit;
+      }
+    }
+  } catch (err) {
+    logger.warn("[Chatbot/Vision] dynamic vision read failed — trying legacy chain", { error: String(err) });
+  }
+
+  // 2) Legacy chain — Groq Scout ×2 then OpenRouter VL sweep.
+  if (GROQ_API_KEY && Date.now() - startedAt < VISION_READ_BUDGET_MS) {
+    try {
+      const r1 = await tryGroq(messages, systemPrompt, GROQ_VISION_MODEL, VISION_READ_TIMEOUT_MS);
+      const hit1 = r1 ? accept(r1.reply, `groq/${GROQ_VISION_MODEL}`) : null;
+      if (hit1) return hit1;
+      const r2 = await tryGroq(messages, systemPrompt, GROQ_VISION_MODEL, VISION_READ_TIMEOUT_MS);
+      const hit2 = r2 ? accept(r2.reply, `groq/${GROQ_VISION_MODEL}`) : null;
+      if (hit2) return hit2;
+    } catch (err) {
+      logger.warn("[Chatbot/Vision] Groq scout read failed", { error: String(err) });
     }
   }
 
-  logger.error("[Chatbot/Vision] ALL vision candidates failed — replying without image context");
+  if (Date.now() - startedAt < VISION_READ_BUDGET_MS) {
+    try {
+      const or = await tryOpenRouterVision(messages, systemPrompt, 15_000);
+      const hit = or ? accept(or.reply, or.model) : null;
+      if (hit) return hit;
+    } catch (err) {
+      logger.warn("[Chatbot/Vision] OpenRouter VL read failed", { error: String(err) });
+    }
+  }
+
+  logger.error("[Chatbot/Vision] ALL vision readers failed — continuing with the honesty note");
   return { ok: false };
 }
