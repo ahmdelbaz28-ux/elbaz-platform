@@ -884,6 +884,10 @@ export async function getStreamResponse(request: {
   vision?: boolean;
   /** Rolling summary of this user's older conversations (chat-history.ts). */
   historySummary?: string;
+  /** Persistence escalation (walk rounds ≥ 2): skip the dynamic router and
+   *  go straight to the resilient legacy backbone — a storming dynamic pool
+   *  must never re-burn every round's budget before Groq/NVIDIA answer. */
+  preferLegacy?: boolean;
 }): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
   // ── TWO-PASS VISION gate (BEFORE the dynamic router!) ──
   // Image requests follow the product policy: a vision model READS the image
@@ -898,24 +902,27 @@ export async function getStreamResponse(request: {
   // automatic model↔provider failover). When the dynamic pool cannot serve
   // (empty, all cooling down, budget spent) we fall through to the
   // battle-tested legacy cascade below — availability can only increase.
-  const routerMode: "thinking" | "instant" = request.mode === "instant" ? "instant" : "thinking";
-  const routerTuning = MODE_TUNING[routerMode];
-  const routed = await routeChatStream({
-    messages: request.messages,
-    systemPrompt: getSystemPrompt(request.language, routerMode, request.catalog, false, request.historySummary),
-    mode: routerMode,
-    vision: false,
-    language: request.language,
-    // Instant lane hoists the general-purpose fast model above code/mini
-    // models so Arabic/English instructions (language mirror) are followed.
-    preferredModelId: routerTuning.openRouterPreferredModel,
-    // Web grounding: thinking = documented-answer lane (OpenRouter plugin).
-    webSearch: routerMode === "thinking",
-    gen: routerMode === "instant"
-      ? { temperature: routerTuning.temperature, maxTokens: routerTuning.maxTokens, attemptTimeoutMs: 10_000, globalBudgetMs: 12_000 }
-      : { temperature: routerTuning.temperature, maxTokens: routerTuning.maxTokens, attemptTimeoutMs: 20_000, globalBudgetMs: 22_000 },
-  });
-  if (routed.ok) return { stream: routed.result.stream, model: routed.result.model };
+  // Persistence escalation: rounds ≥ 2 (preferLegacy) skip this walk.
+  if (!request.preferLegacy) {
+    const routerMode: "thinking" | "instant" = request.mode === "instant" ? "instant" : "thinking";
+    const routerTuning = MODE_TUNING[routerMode];
+    const routed = await routeChatStream({
+      messages: request.messages,
+      systemPrompt: getSystemPrompt(request.language, routerMode, request.catalog, false, request.historySummary),
+      mode: routerMode,
+      vision: false,
+      language: request.language,
+      // Instant lane hoists the general-purpose fast model above code/mini
+      // models so Arabic/English instructions (language mirror) are followed.
+      preferredModelId: routerTuning.openRouterPreferredModel,
+      // Web grounding: thinking = documented-answer lane (OpenRouter plugin).
+      webSearch: routerMode === "thinking",
+      gen: routerMode === "instant"
+        ? { temperature: routerTuning.temperature, maxTokens: routerTuning.maxTokens, attemptTimeoutMs: 10_000, globalBudgetMs: 12_000 }
+        : { temperature: routerTuning.temperature, maxTokens: routerTuning.maxTokens, attemptTimeoutMs: 20_000, globalBudgetMs: 22_000 },
+    });
+    if (routed.ok) return { stream: routed.result.stream, model: routed.result.model };
+  }
 
   const picked = await pickWorkingModel(request.messages, request.language, request.mode || "thinking", request.catalog);
 

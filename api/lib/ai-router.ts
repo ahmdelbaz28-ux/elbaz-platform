@@ -493,6 +493,7 @@ function recordSuccess(provider: AiProvider, model: AiModel, latencyMs: number, 
   modelConsecFails.set(key, 0);
   providerCooldownUntil.delete(provider.id);
   providerConsecFails.set(provider.id, 0);
+  provider429Streak.set(provider.id, 0);
   lastWorkingByMode[mode] = { key, time: Date.now() };
   pushEvent({ ts: Date.now(), provider: provider.slug, model: model.modelId, kind: "success", detail: `${Math.round(latencyMs)}ms` });
   void mirrorModelHealth(model.id, {
@@ -525,6 +526,9 @@ function recordFailure(provider: AiProvider, model: AiModel, kind: Exclude<Route
       void mirrorModelHealth(model.id, { status: "dead", failCount: fails, lastError: detail.slice(0, 500) });
       break;
     case "rate_limited": {
+      // Provider-level 429-streak breaker — a whole pool 429ing must not
+      // re-burn every round's walk budget (see PROVIDER_429_STREAK_LIMIT).
+      noteProvider429(provider.id);
       // Exponential backoff per consecutive 429s: 90s → 3m → 6m → 10m (cap)
       const ms = Math.min(MODEL_LIMITED_COOLDOWN_MS * Math.pow(2, fails - 1), MODEL_COOLDOWN_MAX_MS);
       setModelCooldown(provider.id, model.modelId, ms);
@@ -685,6 +689,28 @@ export const WEB_PLUGIN_BODY = { id: "web", max_results: 3 } as const;
  * names ("minimax", "flash") — those appear on huge MoE models too.
  */
 const SMALL_CTX_ID_RE = /(?:^|[^\d])(?:[1-9]b|1[0-2]b|a[1-9]b)(?:$|[^\da-z])/i;
+
+// ── PROVIDER 429-STREAK BREAKER ─────────────────────────────────────────
+// Per-model exponential backoff handles single hot models, but a provider
+// whose WHOLE free pool is 429ing (live-verified OpenRouter storm: ~16
+// fresh models × ~1s each) burns the walk's ENTIRE budget every round
+// before the next healthy provider (Groq) is ever reached — the user waits
+// 48s+ for nothing. Five consecutive rate_limited failures on ONE provider
+// trip a short provider-level cooldown so the next round skips the storm
+// instantly and the resilient legacy backbone (Groq/NVIDIA) serves.
+const PROVIDER_429_STREAK_BREAK_MS = 3 * 60_000;
+const PROVIDER_429_STREAK_LIMIT = 5;
+const provider429Streak = new Map<number, number>();
+
+function noteProvider429(providerId: number): void {
+  const streak = (provider429Streak.get(providerId) || 0) + 1;
+  provider429Streak.set(providerId, streak);
+  if (streak >= PROVIDER_429_STREAK_LIMIT) {
+    providerCooldownUntil.set(providerId, Date.now() + PROVIDER_429_STREAK_BREAK_MS);
+    pushEvent({ ts: Date.now(), provider: `id:${providerId}`, model: "*", kind: "skip", detail: `429-streak breaker: ${streak} consecutive rate limits — provider cooling ${PROVIDER_429_STREAK_BREAK_MS / 1000}s` });
+    logger.warn(`[AiRouter] provider ${providerId} hit ${streak} consecutive 429s — cooling the whole provider for ${PROVIDER_429_STREAK_BREAK_MS / 1000}s (next provider serves)`);
+  }
+}
 
 /** True only for providers whose API supports the web plugin field. */
 export function isOpenRouterProvider(p: { slug?: string | null; baseUrl: string }): boolean {

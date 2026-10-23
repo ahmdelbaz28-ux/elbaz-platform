@@ -790,6 +790,8 @@ export async function getChatResponse(request: {
   vision?: boolean;
   /** Rolling summary of this user's older conversations (chat-history.ts). */
   historySummary?: string;
+  /** Persistence escalation (rounds ≥ 2): skip the dynamic router. */
+  preferLegacy?: boolean;
 }): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
   if (request.vision) return getVisionResponse(request);
 
@@ -799,6 +801,7 @@ export async function getChatResponse(request: {
     mode: request.mode,
     catalog: request.catalog,
     historySummary: request.historySummary,
+    preferLegacy: request.preferLegacy,
   });
 }
 
@@ -813,6 +816,10 @@ async function runTextCascade(request: {
   mode?: "thinking" | "instant";
   catalog?: string;
   historySummary?: string;
+  /** Persistence escalation (rounds ≥ 2): skip the dynamic router and reach
+   *  the resilient legacy backbone directly — a storming dynamic pool must
+   *  never re-burn every round's walk budget before Groq/NVIDIA are tried. */
+  preferLegacy?: boolean;
 }): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
   const mode: ChatbotMode = request.mode === "instant" ? "instant" : "thinking";
   const tuning = MODE_TUNING[mode];
@@ -829,20 +836,22 @@ async function runTextCascade(request: {
   // order → tier order, with automatic model↔provider failover. Null here
   // (no pool / all cooling down / budget spent) drops to the legacy chain
   // below, so the chatbot can never become LESS available than before.
-  const routed = await routeChatCompletion({
-    messages: request.messages,
-    systemPrompt,
-    mode,
-    vision: false,
-    language: request.language,
-    // Instant lane hoists the general-purpose fast model (language compliance).
-    preferredModelId: tuning.openRouterPreferredModel,
-    webSearch,
-    gen: mode === "instant"
-      ? { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 10_000, globalBudgetMs: 12_000 }
-      : { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 20_000, globalBudgetMs: 22_000 },
-  });
-  if (routed.ok) return buildSuccessResult({ reply: routed.result.reply, model: routed.result.model });
+  if (!request.preferLegacy) {
+    const routed = await routeChatCompletion({
+      messages: request.messages,
+      systemPrompt,
+      mode,
+      vision: false,
+      language: request.language,
+      // Instant lane hoists the general-purpose fast model (language compliance).
+      preferredModelId: tuning.openRouterPreferredModel,
+      webSearch,
+      gen: mode === "instant"
+        ? { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 10_000, globalBudgetMs: 12_000 }
+        : { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 20_000, globalBudgetMs: 22_000 },
+    });
+    if (routed.ok) return buildSuccessResult({ reply: routed.result.reply, model: routed.result.model });
+  }
 
   if (mode === "instant") {
     // INSTANT — fastest provider first: Groq → OpenRouter (fast model) → NVIDIA

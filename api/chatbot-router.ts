@@ -320,9 +320,13 @@ chatbotRouter.post("/", async (c) => {
       historySummary: historySummary ?? undefined,
     };
     let result = await getChatResponse(chatRequest);
+    let persistRound = 0;
     while (!result.success && Date.now() < nonStreamPersistDeadline) {
+      persistRound += 1;
       await new Promise((r) => setTimeout(r, 4_000));
-      result = await getChatResponse(chatRequest);
+      // Persistence escalation: rounds ≥ 2 skip the dynamic router and go
+      // straight to the legacy backbone (same contract as /stream).
+      result = await getChatResponse({ ...chatRequest, preferLegacy: persistRound >= 1 });
     }
 
     if (result.success) {
@@ -442,13 +446,17 @@ chatbotRouter.post("/stream", async (c) => {
   }, SSE_ENDPOINT_HARD_CAP_MS);
 
   const encoder = new TextEncoder();
-  const runWalk = () => getStreamResponse({
+  // Persistence escalation: rounds ≥ 2 skip the dynamic router entirely and
+  // reach the legacy backbone (Groq/NVIDIA) directly — a storming dynamic
+  // pool must never re-burn every round's walk budget.
+  const runWalk = (round: number) => getStreamResponse({
     messages,
     language,
     mode,
     catalog,
     vision,
     historySummary: historySummary ?? undefined,
+    preferLegacy: round >= 2,
   });
 
   // Server-side accumulation of the assistant text — the normalized SSE
@@ -526,7 +534,7 @@ chatbotRouter.post("/stream", async (c) => {
           let result: StreamResult | null = null;
           try {
             result = await Promise.race<StreamResult | null>([
-              runWalk(),
+              runWalk(rounds),
               new Promise<null>((resolve) => {
                 timerId = setTimeout(() => resolve(null), remaining);
                 onAbort = () => resolve(null);
