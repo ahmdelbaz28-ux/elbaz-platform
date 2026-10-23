@@ -67,7 +67,7 @@ describe("Chatbot Module", () => {
 
       // Tier 2 (OpenRouter) defaults
       expect(stats.tier2.provider).toBe("openrouter");
-      expect(stats.tier2.totalModels).toBe(16);
+      expect(stats.tier2.totalModels).toBe(12);
       expect(stats.tier2.lastWorkingModel).toBe("");
       expect(stats.tier2.lastWorkingTimeAgo).toBe("never");
       expect(stats.tier2.modelSuccessCounts).toEqual({});
@@ -82,9 +82,34 @@ describe("Chatbot Module", () => {
   // ─── Model pool ────────────────────────────────────────────────────────
 
   describe("model pool", () => {
-    it("has 16 models", async () => {
+    it("has 12 models (live-catalog verified, reasoning-first)", async () => {
       const { getChatbotStats } = await importChatbot();
-      expect(getChatbotStats().tier2.totalModels).toBe(16);
+      expect(getChatbotStats().tier2.totalModels).toBe(12);
+    });
+
+    it("pool policy: no wrong-specialized models (music / classifier / code-only / tiny)", async () => {
+      const { AI_MODELS } = await importChatbot();
+      const FORBIDDEN_PATTERNS = [
+        /lyria/i,          // Google Lyria = MUSIC generation
+        /music|audio|tts|speech/i,
+        /image-gen|dall|stable-diffusion|flux/i,
+        /content-safety|moderation|classifier/i, // returns labels, not answers
+        /coder|codestral|codegeex|laguna|cobuddy/i, // code-only specialists
+        /lfm|mini-\d+b|\b1\.\d+b\b/i,     // tiny models
+      ];
+      for (const model of AI_MODELS) {
+        for (const pattern of FORBIDDEN_PATTERNS) {
+          expect(model.id, `${model.id} must not match forbidden pattern ${pattern}`).not.toMatch(pattern);
+        }
+      }
+    });
+
+    it("pool policy: every model id matches the vetted allowlist families", async () => {
+      const { AI_MODELS } = await importChatbot();
+      const VETTED = /^(nvidia\/nemotron|thinkingmachines\/inkling|google\/gemma-4|xingchen-agi\/xing4|recursive\/flint|openrouter\/free)/;
+      for (const model of AI_MODELS) {
+        expect(`${model.id} allowlisted`).toMatch(VETTED);
+      }
     });
 
     it("models are ordered by tier (all tier 1 before tier 2, etc.)", async () => {
@@ -114,14 +139,15 @@ describe("Chatbot Module", () => {
         (args: any[]) => JSON.parse((args[1] as any).body).model
       );
 
-      // First pass tries models tier by tier — first 16 calls should be all 16
-      // models in tier order. Collect the first 16 model IDs.
-      const firstPass = modelIds.slice(0, 16);
-      expect(firstPass).toHaveLength(16);
+      // First pass tries models tier by tier — first 12 calls should be all 12
+      // models in tier order. Collect the first 12 model IDs.
+      const firstPass = modelIds.slice(0, 12);
+      expect(firstPass).toHaveLength(12);
 
-      // Known tier 1 model IDs (first two of the tier-1 block)
+      // Known tier 1 model IDs (3 models — strongest free reasoning models)
       const tier1Ids = [
         "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "thinkingmachines/inkling:free",
         "nvidia/nemotron-3-super-120b-a12b:free",
       ];
 
@@ -129,10 +155,10 @@ describe("Chatbot Module", () => {
       const tier1Indices = tier1Ids
         .map((id) => firstPass.indexOf(id))
         .filter((i) => i >= 0);
-      const tier2FirstIndex = 16; // tier 2 starts after tier 1
+      const tier2FirstIndex = 12; // tier 2 starts after tier 1
 
-      // Tier 1 models should be at positions 0 and 1 (first two)
-      expect(tier1Indices).toHaveLength(2);
+      // Tier 1 models should be at positions 0, 1 and 2 (first three)
+      expect(tier1Indices).toHaveLength(3);
       expect(Math.max(...tier1Indices)).toBeLessThan(tier2FirstIndex);
 
       // Strongest model first: nemotron-ultra-550b at position 0
@@ -560,7 +586,7 @@ describe("Chatbot Module", () => {
       expect(thinkingPick?.provider).toBe("nvidia");
     });
 
-    it("modes send different generation params: instant 0.7/1024 vs thinking 0.3/4096", async () => {
+    it("modes send different generation params: instant 0.7/2048 vs thinking 0.3/8192", async () => {
       const capturedBodies: any[] = [];
       mockFetch.mockImplementation(async (url: string, options: any) => {
         if (url.includes("/auth/key")) return { ok: true, json: async () => ({}) };
@@ -578,9 +604,9 @@ describe("Chatbot Module", () => {
 
       expect(capturedBodies).toHaveLength(2);
       expect(capturedBodies[0].temperature).toBe(0.7);
-      expect(capturedBodies[0].max_tokens).toBe(1024);
+      expect(capturedBodies[0].max_tokens).toBe(2048);
       expect(capturedBodies[1].temperature).toBe(0.3);
-      expect(capturedBodies[1].max_tokens).toBe(4096);
+      expect(capturedBodies[1].max_tokens).toBe(8192);
     });
 
     it("modes send different system prompts: instant concise vs thinking deep", async () => {
@@ -661,8 +687,8 @@ describe("Chatbot Module", () => {
         if (url.includes("/auth/key")) return { ok: true, json: async () => ({}) };
         const model = JSON.parse(options.body).model;
         calledModels.push(model);
-        // gemma (preferred) is dead, xingchen (2nd fast) works,
-        // nemotron-ultra (thinking tier-1) would also work but must not be reached first
+        // gemma (preferred) is dead, nemotron-lightning (2nd fast) works,
+        // thinking's tier-1 would also work but must not be reached first
         if (model === "google/gemma-4-26b-a4b-it:free") {
           return { ok: false, status: 429, json: async () => ({ error: "rate limited" }) };
         }
@@ -675,7 +701,7 @@ describe("Chatbot Module", () => {
         mode: "instant",
       });
 
-      expect(res.model).toBe("xingchen-agi/xing4.0-29b-a4b:free");
+      expect(res.model).toBe("nvidia/nemotron-3.5-lightning:free");
       // The thinking tier-1 model was never attempted — the fast lane caught it
       expect(calledModels).not.toContain("nvidia/nemotron-3-ultra-550b-a55b:free");
     });
@@ -702,6 +728,33 @@ describe("Chatbot Module", () => {
       });
       expect(thinkRes.model).toBe("nvidia/nemotron-3-ultra-550b-a55b:free");
       expect(thinkRes.model).not.toBe(instantRes.model);
+    });
+
+    it("think-tag leak guard: a model emitting <think> blocks delivers ONLY the visible answer", async () => {
+      mockFetch.mockImplementation(async (url: string) => {
+        if (url.includes("/auth/key")) return { ok: true, json: async () => ({}) };
+        return {
+          ok: true,
+          json: async () => ({
+            choices: [{
+              message: {
+                content: "<think>سأحسب الحمل خطوة بخطوة أولاً قبل الإجابة</think>\n### الجواب\n1. افتح **Load Flow Study**",
+              },
+            }],
+          }),
+        };
+      });
+
+      const mod = await importChatbot();
+      const res = await mod.getChatResponse({
+        messages: [{ role: "user", content: "كيف أعمل load flow؟" }],
+        mode: "thinking",
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.reply).not.toContain("<think>");
+      expect(res.reply).not.toContain("سأحسب الحمل");
+      expect(res.reply).toContain("Load Flow Study");
     });
   });
 });

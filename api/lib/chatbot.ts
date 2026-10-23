@@ -1,60 +1,56 @@
 /**
- * GENIUS CHATBOT — FREE-provider cascade, mode-aware routing
+ * GENIUS CHATBOT — FREE-provider cascade, reasoning-first, mode-aware routing
  *
- * Strategy (Modal removed 2026-10: service permanently 503 — replaced by
- * a fully-free cascade over NVIDIA + OpenRouter + Groq):
+ * Strategy (pool rebuilt from the LIVE OpenRouter catalog 2026-10-23):
  *   1. NVIDIA     — minimaxai/minimax-m3 (230B MoE reasoning, strongest free)
- *   2. OpenRouter — 22 free models, tier 1 (strongest) → tier 2, with
- *                   last-working-model shortcut and 3-strike model skipping
- *   3. Groq       — llama-3.3-70b → qwen3-32b → llama-4-scout → llama-3.1-8b
- *                   (ultra-fast, absorbs OpenRouter free-tier rate limits)
+ *   2. OpenRouter — 12 free models, ALL reasoning-capable, tier 1 (strongest)
+ *                   → tier 4, with last-working-model shortcut and 3-strike
+ *                   model skipping. POOL POLICY below the AI_MODELS constant:
+ *                   only vetted general chat models — never music/image-gen/
+ *                   classifier/code-only/tiny models (zero-bad-impression).
+ *   3. Groq       — llama-3.3-70b → qwen3-32b → llama-4-scout (vision) →
+ *                   llama-3.1-8b → qwen3.6-27b (ultra-fast, absorbs OpenRouter
+ *                   free-tier rate limits)
  *   4. SAFETY NET: full OpenRouter sweep ignoring per-model fail counters —
  *                   guarantees the user ALWAYS gets a reply if ANY model works.
+ *   5. THINK-TAG FILTER — every non-streaming reply is stripped of
+ *                   <think>/<reasoning> blocks (see think-filter.ts). A model
+ *                   that leaks internal reasoning can NEVER show it to a user.
  *
- * MODES (thinking | instant) are now genuinely different:
- *   thinking → DEEP prompt + temp 0.3 + 4096 tokens + strongest-first routing
+ * MODES (thinking | instant) are genuinely different:
+ *   thinking → DEEP prompt + temp 0.3 + 8192 tokens + strongest-first routing
  *              (NVIDIA → OpenRouter tier-1 → Groq)
- *   instant  → CONCISE prompt + temp 0.7 + 1024 tokens + fastest-first routing
- *              (Groq → OpenRouter preferred-fast model → NVIDIA) + short
+ *   instant  → CONCISE prompt + temp 0.7 + 2048 tokens + fastest-first routing
+ *              (Groq → OpenRouter fast reasoning lane → NVIDIA) + short
  *              fail-fast timeouts. The modes never collapse onto the same
  *              model: instant skips thinking's last-working-model shortcut.
  *   Tuning table: MODE_TUNING in chatbot-prompts.ts.
  *
- * The user never sees which provider answered, never sees any error, and never
- * sees internal reasoning. If all tiers fail, a friendly error is shown.
+ * IMAGES: the router runs a VISION pass first (chatbot-vision.ts — Groq
+ * llama-4-scout / OpenRouter VL models) that reads any attached image into a
+ * factual description, then the normal reasoning cascade answers from it.
+ *
+ * The user never sees which provider answered, never sees any error, never
+ * sees internal reasoning, and never gets a wrong-specialized model.
  *
  * ARCHITECTURE:
- *   chatbot.ts        — Config, health tracking, non-streaming provider functions, getChatResponse
- *   chatbot-stream.ts — SSE streaming for all providers, getStreamResponse, pickWorkingModel
- *   chatbot-prompts.ts — System prompt builder (getSystemPrompt) + MODE_TUNING
- *   chatbot-skills.ts — Skill blocks (source-routing, PF/SKM/PVSyst cores, mentor, platform facts)
- *   course-catalog.ts — Real course data for prompt injection (getCourseCatalogText)
+ *   chatbot.ts          — Config, health tracking, non-streaming provider functions, getChatResponse
+ *   chatbot-stream.ts   — SSE streaming for all providers, getStreamResponse, pickWorkingModel
+ *   chatbot-prompts.ts  — System prompt builder (getSystemPrompt) + MODE_TUNING
+ *   chatbot-vision.ts   — Image reading pass (vision models → description)
+ *   think-filter.ts     — <think>/<reasoning> strip (non-stream + stream)
  */
 
 import { env } from "../lib/env";
 import { getSystemPrompt, MODE_TUNING, type ChatbotMode, type ModeTuning } from "./chatbot-prompts.js";
 import { logger } from "./logger.js";
-import { routeChatCompletion } from "./ai-router.js";
+import { stripThinkBlocks } from "./think-filter.js";
 
 // ════════════════════════════════════════════════════════════════════════
 // HELPERS
 // ════════════════════════════════════════════════════════════════════════
 
 export const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-// ── Multimodal content types (OpenAI-compatible vision format) ──
-// A message's content is a plain string OR an array of typed parts. Only the
-// LAST user message of a request may carry image parts (the router flattens
-// everything else to text), and when it does the request is routed ONLY to
-// vision-capable models.
-export type ContentPart =
-  | { type: "text"; text: string }
-  | { type: "image_url"; image_url: { url: string } };
-
-export interface ChatApiMessage {
-  role: string;
-  content: string | ContentPart[];
-}
 
 // ════════════════════════════════════════════════════════════════════════
 // PROVIDER CONFIG
@@ -71,23 +67,14 @@ export const GROQ_API_KEY =
   env.GROQ_API_KEY || process.env.GROQ_API_KEY || "";
 export const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
 export const GROQ_MODELS = [
-  "llama-3.3-70b-versatile",           // 374ms | Best quality free
-  "qwen/qwen3-32b",                    // 732ms | New reasoning model
-  "llama-3.1-8b-instant",              // 200ms | Fastest, 131K context
-  "meta-llama/llama-4-scout-17b-16e-instruct", // 435ms | New Llama 4
-  "qwen/qwen3.6-27b",                  // 565ms | Qwen 3.6 latest
+  "llama-3.3-70b-versatile",           // Best quality free general model
+  "qwen/qwen3-32b",                    // Reasoning model
+  "meta-llama/llama-4-scout-17b-16e-instruct", // Multimodal (vision) — also the vision-pass reader
+  "llama-3.1-8b-instant",              // Fastest, 131K context
+  "qwen/qwen3.6-27b",                  // Newer Qwen — last (version string unverified)
 ];
 
-// ── VISION MODELS — image understanding (forced routing for image requests) ──
-// When the last user message carries an image, ONLY these models may serve it.
-// Text-only models (NVIDIA MiniMax-M3 and most OpenRouter ids) are EXCLUDED:
-// they would either reject the image parts or hallucinate around them.
-export const GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"; // multimodal Llama 4 Scout
-export const OPENROUTER_VISION_MODELS = [
-  "nvidia/nemotron-3.5-super-vl:free", // VL = vision-language (free tier)
-];
-
-// ── TIER 1.5: OpenRouter — Secondary (22-model free cascade) ───────────
+// ── TIER 1.5: OpenRouter — Secondary (12-model reasoning-first free cascade) ──
 // Support both CHATBOT_API_KEY (from .env template) and OPENROUTER_API_KEY (legacy)
 export const OPENROUTER_API_KEY =
   env.OPENROUTER_API_KEY || process.env.CHATBOT_API_KEY || "";
@@ -137,35 +124,70 @@ export const NVIDIA_COOLDOWN_MS = 2 * 60_000;
 export const MAX_CONSEC_NVIDIA_FAILS = 5;
 
 // ════════════════════════════════════════════════════════════════════════
-// OPENROUTER MODEL POOL — 22 free models, strongest -> weakest
+// OPENROUTER MODEL POOL — reasoning-first, LIVE-catalog verified 2026-10-23
+// ════════════════════════════════════════════════════════════════════════
+//
+// POOL POLICY (zero-bad-impression guarantee — do not violate):
+//   1. ONLY general-purpose chat models with reasoning capability.
+//   2. NEVER add: music/audio generators (e.g. google/lyria-*), image
+//      generators, safety CLASSIFIERS (e.g. nemotron-3.5-content-safety —
+//      it returns labels, not answers), code-only specialists (poolside/
+//      laguna-*, cohere/north-*-code, qwen3-coder), tiny models (< 8B,
+//      e.g. liquid lfm-2.5), or document-only specialists.
+//      A single wrong-specialized model answering a user = broken trust.
+//   3. Every id MUST be re-verified against the live free catalog
+//      (https://openrouter.ai/api/v1/models) before being added — a dead
+//      id wastes cascade hops on every request until its fail counter trips.
+//   4. Order: strongest REASONING first (tier 1), then strong (tier 2),
+//      fast (tier 3), last-resort general (tier 4).
+//
+export interface AIModel {
+  id: string;
+  ctx: number;
+  tier: 1 | 2 | 3 | 4;
+  vision?: boolean;
+}
+
+export const AI_MODELS: AIModel[] = [
+  // ── tier 1: strongest free reasoning models (thinking mode leads here) ──
+  { id: "nvidia/nemotron-3-ultra-550b-a55b:free",       ctx: 1000000, tier: 1 },
+  { id: "thinkingmachines/inkling:free",                 ctx: 1000000, tier: 1, vision: true },
+  { id: "nvidia/nemotron-3-super-120b-a12b:free",        ctx: 262144,  tier: 1 },
+
+  // ── tier 2: strong reasoning + vision-capable ──
+  { id: "thinkingmachines/inkling-small:free",           ctx: 1000000, tier: 2, vision: true },
+  { id: "nvidia/nemotron-3.5-super-vl:free",             ctx: 1000000, tier: 2, vision: true },
+  { id: "google/gemma-4-31b-it:free",                    ctx: 262144,  tier: 2, vision: true },
+  { id: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", ctx: 256000, tier: 2, vision: true },
+
+  // ── tier 3: fast lane (instant mode leads here) ──
+  { id: "google/gemma-4-26b-a4b-it:free",                ctx: 262144,  tier: 3, vision: true },
+  { id: "nvidia/nemotron-3.5-lightning:free",            ctx: 1000000, tier: 3 },
+
+  // ── tier 4: last-resort sweep (vetted general chat, still reasoning-capable) ──
+  { id: "xingchen-agi/xing4.0-29b-a4b:free",             ctx: 262144,  tier: 4 },
+  { id: "recursive/flint-v1.0:free",                     ctx: 262144,  tier: 4 },
+  { id: "openrouter/free",                               ctx: 200000,  tier: 4, vision: true },
+];
+
+// ════════════════════════════════════════════════════════════════════════
+// INSTANT FAST LANE — small-active-param MoE models (a3b/a4b), tried
+// in order when instant mode lands on OpenRouter. Deliberately disjoint
+// from thinking's tier-1 so the modes stay on different models.
+// Both entries are reasoning-capable (reasoning-first policy holds in
+// instant too) — the 2048-token budget covers their hidden reasoning.
 // ════════════════════════════════════════════════════════════════════════
 
-export const AI_MODELS = [
-  // tier 1: strongest free reasoning models first (verified live 2026-10-21)
-  { id: "nvidia/nemotron-3-ultra-550b-a55b:free",           ctx: 1000000, tier: 1 },
-  { id: "nvidia/nemotron-3-super-120b-a12b:free",           ctx: 262144,  tier: 1 },
-  { id: "nvidia/nemotron-3.5-lightning:free",               ctx: 1000000, tier: 1 },
-  { id: "google/gemma-4-31b-it:free",                       ctx: 262144,  tier: 1 },
-  { id: "thinkingmachines/inkling:free",                    ctx: 1048576, tier: 1 },
-  { id: "minimax/minimax-m3.1-flash:free",                  ctx: 1000000, tier: 1 },
-
-  { id: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", ctx: 256000, tier: 2 },
-  { id: "thinkingmachines/inkling-small:free",               ctx: 1048576, tier: 2 },
-  { id: "dots-studio/dots-3-note-preview:free",              ctx: 512000,  tier: 2 },
-  { id: "xingchen-agi/xing4.0-29b-a4b:free",                 ctx: 262144,  tier: 2 },
-  { id: "nvidia/nemotron-3.5-super-vl:free",                 ctx: 1000000, tier: 2 },
-  { id: "google/gemma-4-26b-a4b-it:free",                    ctx: 262144,  tier: 2 },
-  { id: "poolside/laguna-s-2.1:free",                        ctx: 262144,  tier: 2 },
-  { id: "poolside/laguna-xs-2.1:free",                       ctx: 262144,  tier: 2 },
-  { id: "cohere/north-mini-code:free",                       ctx: 256000,  tier: 2 },
-  { id: "liquid/lfm-2.5-2.6b:free",                          ctx: 65536,   tier: 2 },
+export const INSTANT_FAST_MODELS = [
+  "google/gemma-4-26b-a4b-it:free",                    // MoE A4B — fastest capable
+  "nvidia/nemotron-3.5-lightning:free",                // speed-optimized reasoning
 ];
 
 // ════════════════════════════════════════════════════════════════════════
 // GROQ (TIER 3) — non-streaming
 // ════════════════════════════════════════════════════════════════════════
 
-export function validateGroqKey(): boolean {
+export async function validateGroqKey(): Promise<boolean> {
   if (!GROQ_API_KEY) {
     chatHealth.groqKeyValid = false;
     return false;
@@ -187,7 +209,7 @@ export function groqIsAvailable(): boolean {
 }
 
 export async function tryGroq(
-  messages: ChatApiMessage[],
+  messages: { role: string; content: string }[],
   systemPrompt: string,
   modelId: string,
   timeoutMs: number,
@@ -243,7 +265,10 @@ export async function tryGroq(
       return null;
     }
 
-    const reply = data.choices?.[0]?.message?.content ?? "";
+    // stripThinkBlocks: hard guarantee — reasoning models that ignore the
+    // prompt guard and emit <think> blocks never leak them to the user.
+    // Empty-after-strip counts as a fail (cascade moves to the next model).
+    const reply = stripThinkBlocks(data.choices?.[0]?.message?.content ?? "");
 
     if (!reply || reply.trim().length === 0) {
       chatHealth.groqConsecFails++;
@@ -268,7 +293,7 @@ export async function tryGroq(
 // NVIDIA (MINIMAX-M3) — TIER 1 non-streaming
 // ════════════════════════════════════════════════════════════════════════
 
-export function validateNvidiaKey(): boolean {
+export async function validateNvidiaKey(): Promise<boolean> {
   if (!NVIDIA_API_KEY) {
     chatHealth.nvidiaKeyValid = false;
     return false;
@@ -290,7 +315,7 @@ export function nvidiaIsAvailable(): boolean {
 }
 
 export async function tryNvidia(
-  messages: ChatApiMessage[],
+  messages: { role: string; content: string }[],
   systemPrompt: string,
   timeoutMs: number,
   tuning: ModeTuning = MODE_TUNING.thinking,
@@ -345,7 +370,8 @@ export async function tryNvidia(
       return null;
     }
 
-    const reply = data.choices?.[0]?.message?.content ?? "";
+    // stripThinkBlocks: see tryGroq — zero visible reasoning, ever.
+    const reply = stripThinkBlocks(data.choices?.[0]?.message?.content ?? "");
 
     if (!reply || reply.trim().length === 0) {
       chatHealth.nvidiaConsecFails++;
@@ -367,7 +393,7 @@ export async function tryNvidia(
 }
 
 export async function nvidiaFallback(
-  messages: ChatApiMessage[],
+  messages: { role: string; content: string }[],
   systemPrompt: string,
   tuning?: ModeTuning
 ): Promise<{ reply: string; model: string } | null> {
@@ -376,23 +402,6 @@ export async function nvidiaFallback(
   const result = await tryNvidia(messages, systemPrompt, Math.max(30000, Math.round(t.nvidiaStreamTimeoutMs / 2)), t);
   return result;
 }
-
-// ════════════════════════════════════════════════════════════════════════
-// INSTANT FAST MODEL LANE — small-active-param MoE models (a3b/a4b), tried
-// in order when instant mode lands on OpenRouter. Deliberately disjoint
-// from thinking's tier-1 so the modes stay on different models.
-// ════════════════════════════════════════════════════════════════════════
-
-export const INSTANT_FAST_MODELS = [
-  "google/gemma-4-26b-a4b-it:free",                      // MoE A4B — fastest capable (live)
-  "xingchen-agi/xing4.0-29b-a4b:free",                   // MoE A4B (live)
-  "minimax/minimax-m3.1-flash:free",                     // flash — built for speed (live)
-  "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",  // MoE A3B — proven live in prod 2026-10-21
-  "nvidia/nemotron-3.5-lightning:free",                  // lightning tier — fast (live)
-  "thinkingmachines/inkling-small:free",                 // small variant, 1M ctx (live)
-  // NOTE: models are verified against OpenRouter's live free catalog; ids
-  // that drift away now hard-skip (HTTP 404) without burning sweep budget.
-];
 
 // ════════════════════════════════════════════════════════════════════════
 // OPENROUTER (TIER 3) — non-streaming
@@ -437,7 +446,7 @@ export async function validateOpenRouterKey(): Promise<boolean> {
 
 export async function tryModel(
   modelId: string,
-  messages: ChatApiMessage[],
+  messages: { role: string; content: string }[],
   systemPrompt: string,
   timeoutMs: number,
   tuning: ModeTuning = MODE_TUNING.thinking,
@@ -490,7 +499,8 @@ export async function tryModel(
       return null;
     }
 
-    const reply = data.choices?.[0]?.message?.content;
+    // stripThinkBlocks: see tryGroq — zero visible reasoning, ever.
+    const reply = stripThinkBlocks(data.choices?.[0]?.message?.content ?? "");
     if (!reply || reply.trim().length === 0) {
       modelFailCount[modelId] = (modelFailCount[modelId] || 0) + 1;
       return null;
@@ -513,7 +523,7 @@ export async function tryModel(
 }
 
 export async function tryLastWorkingModel(
-  messages: ChatApiMessage[],
+  messages: { role: string; content: string }[],
   systemPrompt: string,
   tierTimeouts: Record<number, number>,
   tuning?: ModeTuning,
@@ -529,7 +539,7 @@ export async function tryLastWorkingModel(
 }
 
 export async function tryModelsByTier(
-  messages: ChatApiMessage[],
+  messages: { role: string; content: string }[],
   systemPrompt: string,
   tierTimeouts: Record<number, number>,
   globalStartTime: number,
@@ -561,7 +571,7 @@ export async function tryModelsByTier(
 }
 
 export async function tryAllModelsAsLastResort(
-  messages: ChatApiMessage[],
+  messages: { role: string; content: string }[],
   systemPrompt: string,
   tuning?: ModeTuning,
 ): Promise<{ reply: string; model: string } | null> {
@@ -575,7 +585,7 @@ export async function tryAllModelsAsLastResort(
 }
 
 export async function openRouterFallback(
-  messages: ChatApiMessage[],
+  messages: { role: string; content: string }[],
   systemPrompt: string,
   _language?: string,
   tuning?: ModeTuning
@@ -649,7 +659,7 @@ function buildAllTiersFailedResponse(language?: string): { success: boolean; err
 }
 
 export async function tryGroqTier(
-  messages: ChatApiMessage[],
+  messages: { role: string; content: string }[],
   systemPrompt: string,
   tuning: ModeTuning = MODE_TUNING.thinking
 ): Promise<{ success: boolean; reply?: string; model?: string } | null> {
@@ -697,47 +707,15 @@ export async function tryGroqTier(
  * Each mode gets its own system prompt + generation params (MODE_TUNING).
  * If every provider fails, a friendly error is returned. As long as ANY of the
  * three free providers has one working model, the user gets a reply.
- *
- * VISION OVERRIDE: when the request carries an image (request.vision), the
- * mode cascade is bypassed ENTIRELY — getVisionResponse routes ONLY to
- * vision-capable models (mandatory: text-only models never see image parts).
  */
 export async function getChatResponse(request: {
-  messages: ChatApiMessage[];
+  messages: { role: string; content: string }[];
   language?: string;
   mode?: "thinking" | "instant";
-  /** Real course-catalog text (api/lib/course-catalog.ts) — injected into the system prompt. */
-  catalog?: string;
-  /** Image attached to the last user message — force vision-only routing. */
-  vision?: boolean;
-  /** Rolling summary of this user's older conversations (chat-history.ts). */
-  historySummary?: string;
 }): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
-  if (request.vision) return getVisionResponse(request);
-
   const mode: ChatbotMode = request.mode === "instant" ? "instant" : "thinking";
   const tuning = MODE_TUNING[mode];
-  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, false, request.historySummary);
-
-  // ─── DYNAMIC ROUTER (v9) — admin-managed providers first ──────────────
-  // Any provider the admin configured in the dashboard (with a valid key and
-  // discovered models) is tried before the legacy env cascade: priority
-  // order → tier order, with automatic model↔provider failover. Null here
-  // (no pool / all cooling down / budget spent) drops to the legacy chain
-  // below, so the chatbot can never become LESS available than before.
-  const routed = await routeChatCompletion({
-    messages: request.messages,
-    systemPrompt,
-    mode,
-    vision: false,
-    language: request.language,
-    // Instant lane hoists the general-purpose fast model (language compliance).
-    preferredModelId: tuning.openRouterPreferredModel,
-    gen: mode === "instant"
-      ? { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 10_000, globalBudgetMs: 12_000 }
-      : { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 20_000, globalBudgetMs: 22_000 },
-  });
-  if (routed.ok) return buildSuccessResult({ reply: routed.result.reply, model: routed.result.model });
+  const systemPrompt = getSystemPrompt(request.language, mode);
 
   if (mode === "instant") {
     // INSTANT — fastest provider first: Groq → OpenRouter (fast model) → NVIDIA
@@ -779,7 +757,7 @@ export async function getChatResponse(request: {
 // ════════════════════════════════════════════════════════════════════════
 
 export async function groqFallback(
-  messages: ChatApiMessage[],
+  messages: { role: string; content: string }[],
   systemPrompt: string,
   tuning: ModeTuning = MODE_TUNING.thinking
 ): Promise<{ reply: string; model: string } | null> {
@@ -791,74 +769,6 @@ export async function groqFallback(
     if (result) return result;
   }
   return null;
-}
-
-// ════════════════════════════════════════════════════════════════════════
-// VISION CASCADE (non-streaming) — image requests are routed ONLY to
-// vision-capable models: Groq Llama-4-Scout → OpenRouter VL ids.
-// The text-only tiers (NVIDIA MiniMax-M3 etc.) are deliberately excluded.
-// ════════════════════════════════════════════════════════════════════════
-
-function buildVisionUnavailableResponse(language?: string): { success: boolean; error: string } {
-  return {
-    success: false,
-    error: language === "ar"
-      ? "تعذر تحليل الصورة حالياً — خدمة تحليل الصور مشغولة. جرب مرة أخرى بعد قليل أو اكتب سؤالك نصاً ⚡"
-      : "Image analysis is temporarily busy. Please try again shortly, or send your question as text ⚡",
-  };
-}
-
-export async function tryOpenRouterVision(
-  messages: ChatApiMessage[],
-  systemPrompt: string,
-  timeoutMs: number,
-  tuning: ModeTuning = MODE_TUNING.thinking,
-): Promise<{ reply: string; model: string } | null> {
-  for (const modelId of OPENROUTER_VISION_MODELS) {
-    const result = await tryModel(modelId, messages, systemPrompt, timeoutMs, tuning);
-    if (result) return result;
-  }
-  return null;
-}
-
-export async function getVisionResponse(request: {
-  messages: ChatApiMessage[];
-  language?: string;
-  mode?: "thinking" | "instant";
-  catalog?: string;
-  /** Rolling summary of this user's older conversations (chat-history.ts). */
-  historySummary?: string;
-}): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
-  const mode: ChatbotMode = request.mode === "instant" ? "instant" : "thinking";
-  const tuning = MODE_TUNING[mode];
-  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, true, request.historySummary);
-  const [firstTimeout, retryTimeout] = tuning.groqAttemptTimeouts;
-
-  // ─── DYNAMIC ROUTER (v9) — vision-only failover across all providers ──
-  // Image requests are offered ONLY to models flagged supportsVision=true
-  // (discovery metadata / admin toggle). Text-only models are never
-  // contacted with image parts — same mandatory rule as the legacy chain.
-  const routedVision = await routeChatCompletion({
-    messages: request.messages,
-    systemPrompt,
-    mode,
-    vision: true,
-    gen: { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 25_000, globalBudgetMs: 26_000 },
-  });
-  if (routedVision.ok) return buildSuccessResult({ reply: routedVision.result.reply, model: routedVision.result.model });
-
-  // 1) Groq Llama-4-Scout (multimodal, ultra-fast) — 2 attempts
-  let result = await tryGroq(request.messages, systemPrompt, GROQ_VISION_MODEL, firstTimeout, tuning);
-  if (result) return buildSuccessResult(result);
-  result = await tryGroq(request.messages, systemPrompt, GROQ_VISION_MODEL, retryTimeout, tuning);
-  if (result) return buildSuccessResult(result);
-
-  // 2) OpenRouter vision-language models
-  const orResult = await tryOpenRouterVision(request.messages, systemPrompt, tuning.openRouterTierTimeouts[2] ?? 15000, tuning);
-  if (orResult) return buildSuccessResult(orResult);
-
-  logger.error("[Chatbot/Vision] All vision models failed.");
-  return buildVisionUnavailableResponse(request.language);
 }
 
 // ════════════════════════════════════════════════════════════════════════

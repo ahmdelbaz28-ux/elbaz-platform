@@ -1203,7 +1203,6 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                 <Select value={courseForm.categoryId ? String(courseForm.categoryId) : undefined} onValueChange={(v) => setCourseForm((f) => ({ ...f, categoryId: Number(v) }))}>
                   <SelectTrigger className="border-border bg-background text-foreground"><SelectValue placeholder={isRTL ? "اختر" : "Select"} /></SelectTrigger>
                   <SelectContent>
-                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                     {((adminCategories as unknown as CategoryItem[] | undefined) ?? []).map((c) => (
                       <SelectItem key={c.id} value={String(c.id)}>{lang === "en" ? c.nameEn : c.nameAr}</SelectItem>
                     ))}
