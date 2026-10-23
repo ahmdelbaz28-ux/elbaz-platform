@@ -1163,6 +1163,93 @@ async function rescueRound(req: RouteRequest, deadKey: string, partial: string):
   return reply;
 }
 
+/** Parse our normalized `data: {"text": …}` protocol out of one SSE line. */
+function parseNormalizedTextLine(line: string): string | null {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("data: ") || trimmed === "data: [DONE]") return null;
+  try {
+    const parsed = JSON.parse(trimmed.slice(6)) as { text?: string };
+    return typeof parsed.text === "string" && parsed.text ? parsed.text : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * STREAMING rescue for a mid-stream death: continues the partial answer on
+ * the NEXT healthy candidate and pipes its deltas through `emit` LIVE, so a
+ * repaired answer types itself out instead of landing as one block (the
+ * owner's streaming-UX requirement). The first ~48 chars are held back until
+ * the degenerate-restart check passes — a rescue model that repeats the
+ * answer from the beginning would duplicate visible text; that stream is
+ * cancelled and false is returned so the caller falls back to the
+ * non-streaming rescueRound, which has its own full-reply guard.
+ * Returns true when at least some rescue text was emitted.
+ */
+async function rescueStreamRound(req: RouteRequest, deadKey: string, partial: string, emit: (t: string) => void): Promise<boolean> {
+  const messages: RouteMessage[] = partial
+    ? [...req.messages, { role: "assistant", content: partial }, { role: "user", content: continuationInstruction(req.language) }]
+    : req.messages;
+  const rescued = await routeChatStream({ ...req, messages, exclude: new Set([deadKey]) });
+  if (!rescued.ok) return false;
+
+  const head = partial.trim().slice(0, 40);
+  // No partial → regeneration, not continuation → no restart risk.
+  let checked = !partial;
+  let held = "";
+  let emittedAny = false;
+  let aborted = false;
+
+  const handleDelta = (t: string): boolean => {
+    if (checked) {
+      emit(t);
+      emittedAny = true;
+      return true;
+    }
+    held += t;
+    if (held.length < 48) return true; // keep holding until the check is decidable
+    if (head && held.startsWith(head)) {
+      aborted = true; // degenerate restart — cancel, caller falls back
+      return false;
+    }
+    checked = true;
+    emit(held);
+    emittedAny = held.length > 0;
+    held = "";
+    return true;
+  };
+
+  const reader = rescued.result.stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done || aborted) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        const text = parseNormalizedTextLine(line);
+        if (text && !handleDelta(text)) break;
+      }
+      if (aborted) break;
+    }
+  } catch { /* dead rescue stream — deliver what we already emitted */ }
+  try { await reader.cancel(); } catch { /* already dead */ }
+
+  // Stream ended while still holding < 48 chars: flush the held text unless
+  // it is a degenerate restart.
+  if (!checked && !aborted) {
+    if (!(head && held.startsWith(head))) {
+      checked = true;
+      emit(held);
+      emittedAny = held.length > 0;
+    }
+  }
+  return emittedAny;
+}
+
 /**
  * The winner's public stream: re-emits the peeked head, pumps the rest of
  * the upstream, and — when the upstream dies WITHOUT a finish marker —
@@ -1262,13 +1349,26 @@ function buildResilientUpstreamStream(params: {
           // Content-then-death / stall / reasoning-only death / finished with
           // ZERO visible content (reasoning burn) — repair live.
           recordFailure(provider, model, "fail", `midstream death: ${String(streamError || "no finish marker").slice(0, 120)}`);
+          // Preferred: STREAMING rescue — the continuation types itself out
+          // live on the next candidate (never one dead block).
+          let rescuedAny = false;
           try {
-            const rescued = await rescueRound(params.req, key, visible);
-            if (rescued) {
-              total += rescued;
-              emit(rescued);
-            }
-          } catch { /* rescue failed — emit what we have (never worse than before) */ }
+            rescuedAny = await rescueStreamRound(params.req, key, visible, (t) => {
+              total += t;
+              emit(t);
+            });
+          } catch { /* streaming rescue failed — non-streaming rescue below */ }
+          // Fallback: the non-streaming rescue (single emit — the client's
+          // reveal queue still renders it as progressive typing).
+          if (!rescuedAny) {
+            try {
+              const rescued = await rescueRound(params.req, key, visible);
+              if (rescued) {
+                total += rescued;
+                emit(rescued);
+              }
+            } catch { /* rescue failed — emit what we have (never worse than before) */ }
+          }
         }
 
         try { controller.enqueue(params.encoder.encode("data: [DONE]\n\n")); } catch { /* client gone */ }

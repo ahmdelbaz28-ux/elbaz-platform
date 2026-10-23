@@ -71,6 +71,13 @@ wait_up || exit 1
 seed seed-429-groq
 python3 scripts/neverbusy_e2e.py t3 "$PERSIST_MS" || EXIT=1
 
+echo "== ── PHASE T4: dud winner (zero content) → silent re-walk serves the user ──"
+kill_servers
+start_server
+wait_up || exit 1
+seed seed-dud
+python3 scripts/neverbusy_e2e.py t4 "$PERSIST_MS" || EXIT=1
+
 echo "== cleanup =="
 kill_servers
 pkill -f mock_openrouter.mjs 2>/dev/null

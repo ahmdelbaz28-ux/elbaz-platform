@@ -506,15 +506,24 @@ chatbotRouter.post("/stream", async (c) => {
 
       try {
         // ── Persistent walk — full cascade rounds until the deadline ──
+        // A "round" = one getStreamResponse call + pumping its winner stream.
+        // Rounds repeat while (a) no stream could be started at all, or
+        // (b) a winner passed the liveness peek but delivered ZERO visible
+        // content (a dud stream — live-verified on prod: a free-tier model
+        // peeked alive then died silently). The user waits behind the calm
+        // "thinking" indicator until real text flows or the mode deadline
+        // expires — a silent empty reply must NEVER reach the client.
         const deadline = startedAt + streamPersistDeadlineMs(mode);
-        let result: StreamResult | null = null;
+        let served = false;
         let rounds = 0;
-        while (!timeoutController.signal.aborted) {
-          rounds++;
+
+        while (!timeoutController.signal.aborted && !served) {
           const remaining = deadline - Date.now();
           if (remaining <= 0) break;
+          rounds++;
           let timerId: ReturnType<typeof setTimeout> | null = null;
           let onAbort: (() => void) | null = null;
+          let result: StreamResult | null = null;
           try {
             result = await Promise.race<StreamResult | null>([
               runWalk(),
@@ -530,23 +539,64 @@ chatbotRouter.post("/stream", async (c) => {
             if (timerId) clearTimeout(timerId);
             if (onAbort) timeoutController.signal.removeEventListener("abort", onAbort);
           }
-          if (result && !("error" in result)) break; // a model is streaming
-          result = null;
+
+          if (!result || "error" in result) {
+            result = null;
+            if (timeoutController.signal.aborted || Date.now() >= deadline) break;
+            logger.warn("[Chatbot] stream walk failed — persisting silently", { mode, round: rounds, elapsedMs: Date.now() - startedAt });
+            await new Promise((r) => setTimeout(r, Math.min(streamRoundGapMs(mode), Math.max(0, deadline - Date.now()))));
+            continue;
+          }
+
+          // ── Winner — model event first, then pump the content stream ──
+          safeEnqueue(encoder.encode(`data: ${JSON.stringify({ model: result.model })}\n\n`));
+
+          const reader = result.stream.getReader();
+          try {
+            while (true) {
+              if (closed || timeoutController.signal.aborted) break;
+              const { done, value } = await reader.read();
+              if (done || closed) break;
+              if (value) {
+                accumulateFromStream(value);
+                if (!safeEnqueue(value)) break;
+              }
+            }
+          } catch (readErr) {
+            logger.warn("[Chatbot] content stream read error", { error: readErr instanceof Error ? readErr.message : String(readErr) });
+          } finally {
+            try { await reader.cancel(); } catch { /* already dead */ }
+          }
+
+          flushAccumulator();
+          const reply = accumulatedReply.trim();
+          if (reply) {
+            served = true;
+            // Quota is only consumed by SUCCESSFUL image analysis — a dud
+            // stream that delivered nothing must not burn the user's quota.
+            if (vision) await incrementImageQuota(ip, imageCount);
+            if (chatUser) persistRoundSafe(chatUser.id, messages, vision, reply, result.model, mode);
+            break;
+          }
+
+          // ZERO-CONTENT winner — passed the liveness peek, delivered nothing.
+          // Treated exactly like a failed walk: loop re-enters silently and
+          // the next round serves the user (circuit breakers already armed
+          // against the dud by the resilient-stream layer).
+          logger.warn("[Chatbot] stream winner delivered zero content — re-walking silently", { mode, round: rounds, model: result.model, elapsedMs: Date.now() - startedAt });
           if (timeoutController.signal.aborted || Date.now() >= deadline) break;
-          logger.warn("[Chatbot] stream walk failed — persisting silently", { mode, round: rounds, elapsedMs: Date.now() - startedAt });
           await new Promise((r) => setTimeout(r, Math.min(streamRoundGapMs(mode), Math.max(0, deadline - Date.now()))));
         }
 
         if (timeoutController.signal.aborted) {
           // Hard cap (or client disconnect — enqueue is a no-op then).
-          if (result && !("error" in result)) { try { await result.stream.cancel(); } catch { /* already dead */ } }
           safeEnqueue(encoder.encode(`data: ${JSON.stringify({ error: softBusyText(language) })}\n\n`));
           safeEnqueue(encoder.encode("data: [DONE]\n\n"));
           finalize();
           return;
         }
 
-        if (!result) {
+        if (!served) {
           // Every round failed within the deadline — one soft busy event.
           // The client retries silently; only a total blackout ever shows it.
           logger.error("[Chatbot] stream persistence exhausted", { mode, rounds, elapsedMs: Date.now() - startedAt });
@@ -556,33 +606,6 @@ chatbotRouter.post("/stream", async (c) => {
           return;
         }
 
-        // ── Winner — model event first, then pump the content stream ──
-        // Quota is only consumed by SUCCESSFUL image analysis.
-        if (vision) await incrementImageQuota(ip, imageCount);
-        safeEnqueue(encoder.encode(`data: ${JSON.stringify({ model: result.model })}\n\n`));
-
-        const reader = result.stream.getReader();
-        try {
-          while (true) {
-            if (closed || timeoutController.signal.aborted) break;
-            const { done, value } = await reader.read();
-            if (done || closed) break;
-            if (value) {
-              accumulateFromStream(value);
-              if (!safeEnqueue(value)) break;
-            }
-          }
-        } catch (readErr) {
-          logger.warn("[Chatbot] content stream read error", { error: readErr instanceof Error ? readErr.message : String(readErr) });
-        } finally {
-          try { await reader.cancel(); } catch { /* already dead */ }
-        }
-
-        flushAccumulator();
-        const reply = accumulatedReply.trim();
-        if (chatUser && reply) {
-          persistRoundSafe(chatUser.id, messages, vision, reply, result.model, mode);
-        }
         finalize();
       } catch (err) {
         logger.warn("[Chatbot] stream handler error", { error: err instanceof Error ? err.message : String(err) });

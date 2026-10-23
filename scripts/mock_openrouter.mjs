@@ -56,6 +56,22 @@ function slowReply(res) {
   }, 6000);
 }
 
+/**
+ * DUD winner — passes the liveness peek (emits a reasoning-only delta) then
+ * closes with ZERO visible content and no [DONE]. Exactly the prod failure
+ * the zero-content re-walk was built for: a free-tier model that peeks alive
+ * and dies silently.
+ */
+function dudReply(res) {
+  res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
+  // reasoning_content delta = liveness proof for the peek gate, never content
+  res.write(`data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: "thinking silently..." } }] })}\n\n`);
+  setTimeout(() => {
+    // closes WITHOUT any content delta and WITHOUT [DONE] — premature death
+    res.end();
+  }, 300);
+}
+
 const server = http.createServer((req, res) => {
   const url = req.url || "";
   if (url === "/__log") {
@@ -97,6 +113,13 @@ const server = http.createServer((req, res) => {
         // First byte delayed 6s — proves the endpoint streams SSE headers +
         // `: ping` keepalives BEFORE any content is available (SSE-first).
         slowReply(res);
+        return;
+      }
+      if (modelId === "mock/dud-stream") {
+        // Peeks alive (reasoning delta) then dies with zero visible content —
+        // the resilient stream records the failure and the endpoint's
+        // zero-content re-walk must serve the user from the next candidate.
+        dudReply(res);
         return;
       }
       if (parsed.stream === true) return sseReply(res); // any streaming model
