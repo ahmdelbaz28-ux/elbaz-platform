@@ -23,9 +23,19 @@ def check(name, cond, detail=""):
         sys.exit(1)
 
 
-def chat(messages, mode, timeout=170):
-    r = requests.post(f"{BASE}/api/chatbot", headers=HDRS, json={"messages": messages, "mode": mode}, timeout=timeout)
-    return r
+def chat(messages, mode, timeout=170, retries=3):
+    """POST /api/chatbot with retry on 503 — the OpenRouter free tier hits
+    daily 429 storms (environmental, not a code fault); the router itself
+    keeps availability via Groq/other providers, so a retry is legitimate."""
+    last = None
+    for attempt in range(retries):
+        r = requests.post(f"{BASE}/api/chatbot", headers=HDRS, json={"messages": messages, "mode": mode}, timeout=timeout)
+        if r.status_code == 200:
+            return r
+        last = r
+        print(f"   … attempt {attempt + 1} got {r.status_code}, retrying in 20s")
+        time.sleep(20)
+    return last
 
 
 def main():
@@ -34,7 +44,7 @@ def main():
     r = chat([{"role": "user", "content": "إيه الفرق بين دراسة Load Flow ودراسة Short Circuit في ETAP وامتى أستخدم كل واحدة؟"}], "thinking")
     dt = time.time() - t0
     body = r.json()
-    check("P1 thinking → 200/success", r.status_code == 200 and body.get("success"), f"{r.status_code} {str(body)[:120]}")
+    check("P1 thinking → 200/success", r.status_code == 200 and body.get("success"), f"{r.status_code} {str(body)[:120]} ({dt:.0f}s incl. retries)")
     reply = body.get("reply", "")
     check("P1 reply is substantial+structured", len(reply) > 300 and ("1." in reply or "###" in reply or "-" in reply or "•" in reply), f"len={len(reply)} {dt:.1f}s model={body.get('model')}")
     check("P1 no provider leak", "OpenRouter" not in reply and "openrouter" not in reply)

@@ -24,6 +24,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 let migrationDone = false;
+/** Set when THIS call just created a fresh schema — re-enters the incremental
+ *  pass so v4–v10 land on FIRST boot too (previously they waited for a second
+ *  restart, leaving e.g. aiProviders absent on a brand-new database). */
+let freshSchemaInitialized = false;
 
 export async function ensureDatabase(): Promise<void> { // NOSONAR — sequential SQL migrations, order is critical and behavior must match schema exactly
   if (migrationDone) return;
@@ -719,6 +723,20 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         logger.warn("[DB] v9 ai router migration warning", { error: (err as Error).message });
       }
 
+      // ── v10 feature: persist each model's context window (tokens) ──
+      // classifyRawModel already extracts context_length from the provider's
+      // /models payload — v10 stores it so the router can clamp max_tokens for
+      // small-context models (allam-2-7b 400s on thinking's 8192).
+      try {
+        if (!(await columnExists("aiModels", "contextLength"))) {
+          logger.info("[DB] Running v10 features migration (aiModels.contextLength)...");
+          await conn.query("ALTER TABLE `aiModels` ADD COLUMN `contextLength` INT NULL AFTER `tier`");
+          logger.info("[DB] v10 aiModels.contextLength verified");
+        }
+      } catch (err) {
+        logger.warn("[DB] v10 model-context migration warning", { error: (err as Error).message });
+      }
+
       // ── Admin password sync (existing deployments) ──
       // The seed step below (which upserts the admin hash from
       // ADMIN_PASSWORD) only runs on FIRST boot. On existing databases we
@@ -858,6 +876,7 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
 
     logger.info("[DB] Seed data inserted (admin user, 4 categories, 4 courses, testimonials, contact settings)");
     migrationDone = true;
+    freshSchemaInitialized = true;
     } finally {
       // 🔒 Release the migration lock so other pods can proceed.
       // Safe to call even if the lock was never acquired (RELEASE_LOCK returns 0).
@@ -875,5 +894,15 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
     logger.error("[DB] Migration failed", { error: String(err) });
     // Don't crash — let the app start anyway and queries will fail with proper 500 errors
     migrationDone = true;
+  }
+
+  // Fresh-schema boot: run the incremental feature migrations (v4–v10) NOW —
+  // they are all idempotent (CREATE IF NOT EXISTS / columnExists-guarded) and
+  // the lock was already released by the finally above.
+  if (freshSchemaInitialized) {
+    freshSchemaInitialized = false;
+    migrationDone = false;
+    logger.info("[DB] Fresh schema — running incremental feature migrations on first boot");
+    return ensureDatabase();
   }
 }

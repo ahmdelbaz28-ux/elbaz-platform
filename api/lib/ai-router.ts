@@ -341,9 +341,19 @@ export async function discoverProviderModels(provider: Pick<AiProvider, "id" | "
         // Refresh routing metadata only — admin toggles (enabled /
         // supportsVision) untouched. supportsChat is DERIVED (non-chat ids
         // are a provider fact) so it is always re-applied to heal rows from
-        // older discovery runs.
+        // older discovery runs. contextLength refreshes too (providers
+        // upgrade their models) but never clears a stored value on a payload
+        // that omits it.
         await db.update(aiModels)
-          .set({ isFree: cls.isFree, tier: cls.tier, supportsChat: cls.supportsChat, status: "unknown", failCount: 0, lastError: null })
+          .set({
+            isFree: cls.isFree,
+            tier: cls.tier,
+            supportsChat: cls.supportsChat,
+            ...(cls.contextLength > 0 ? { contextLength: cls.contextLength } : {}),
+            status: "unknown",
+            failCount: 0,
+            lastError: null,
+          })
           .where(and(eq(aiModels.providerId, provider.id), eq(aiModels.modelId, cls.modelId)));
       } else {
         await db.insert(aiModels).values({
@@ -354,6 +364,7 @@ export async function discoverProviderModels(provider: Pick<AiProvider, "id" | "
           isFree: cls.isFree,
           enabled: true,
           tier: cls.tier,
+          ...(cls.contextLength > 0 ? { contextLength: cls.contextLength } : {}),
           status: "unknown",
         });
         inserted++;
@@ -685,11 +696,21 @@ export function disableWebPluginFor(ms = 10 * 60_000): void {
 
 export function buildUpstreamBody(p: AttemptParams, stream: boolean): string {
   const wantsWeb = p.webSearch === true && !isWebPluginDisabled() && isOpenRouterProvider(p.provider);
+  // MAX_TOKENS CLAMP — small-context models (e.g. groq allam-2-7b, ctx 4096)
+  // reject thinking's 8192 max_tokens with a 400, which used to take out the
+  // whole tier-3 safety net during free-tier 429 storms. Clamp to a third of
+  // the model's context when that is smaller than the requested budget; big
+  // models are unaffected (ctx/3 ≥ 8192 for anything ≥ 24k context).
+  const requested = p.gen.maxTokens;
+  const ctx = p.model.contextLength ?? 0;
+  const maxTokens = ctx > 0
+    ? Math.min(requested, Math.max(512, Math.floor(ctx / 3)))
+    : requested;
   return JSON.stringify({
     model: p.model.modelId,
     messages: [{ role: "system", content: p.systemPrompt }, ...p.messages],
     temperature: p.gen.temperature,
-    max_tokens: p.gen.maxTokens,
+    max_tokens: maxTokens,
     ...(stream ? { stream: true } : {}),
     ...(wantsWeb ? { plugins: [WEB_PLUGIN_BODY] } : {}),
   });
@@ -698,6 +719,13 @@ export function buildUpstreamBody(p: AttemptParams, stream: boolean): string {
 async function rawUpstreamFetch(p: AttemptParams): Promise<{ ok: true; response: Response; latencyMs: number } | { ok: false; failure: AttemptFailure }> {
   const started = Date.now();
   const url = `${p.provider.baseUrl.replace(/\/+$/, "")}/chat/completions`;
+  // WEB ATTEMPTS GET A TIGHT BUDGET: the plugin runs the search server-side
+  // BEFORE generation, so its TTFT is search + queue. A plugin'd candidate
+  // that cannot even start inside 8s is a bad candidate regardless of model —
+  // letting it hold the full 20s timeout burns the walk's global budget before
+  // the next providers are ever tried (live-verified 503 storm). 2 × 8s still
+  // fits the thinking walk's 22s budget.
+  const attemptTimeoutMs = p.webSearch ? Math.min(p.gen.attemptTimeoutMs, 8_000) : p.gen.attemptTimeoutMs;
   try {
     // For STREAM requests the timeout must bound only the HEADER wait.
     // AbortSignal.timeout() stays attached to the body and would kill any
@@ -708,7 +736,7 @@ async function rawUpstreamFetch(p: AttemptParams): Promise<{ ok: true; response:
     let response: Response;
     if (p.stream) {
       const ctrl = new AbortController();
-      const headerTimer = setTimeout(() => ctrl.abort(new Error("upstream header timeout")), p.gen.attemptTimeoutMs);
+      const headerTimer = setTimeout(() => ctrl.abort(new Error("upstream header timeout")), attemptTimeoutMs);
       try {
         response = await fetch(url, {
           method: "POST",
@@ -734,7 +762,7 @@ async function rawUpstreamFetch(p: AttemptParams): Promise<{ ok: true; response:
           "X-Title": "Elbaz Platform Chatbot",
         },
         body: buildUpstreamBody(p, p.stream),
-        signal: AbortSignal.timeout(p.gen.attemptTimeoutMs),
+        signal: AbortSignal.timeout(attemptTimeoutMs),
       });
     }
 
