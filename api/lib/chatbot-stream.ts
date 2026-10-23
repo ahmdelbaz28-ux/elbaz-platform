@@ -22,6 +22,8 @@
 
 import { getSystemPrompt, MODE_TUNING, sanitizeReplyOutput, type ModeTuning } from "./chatbot-prompts.js";
 import { logger } from "./logger.js";
+import { ThinkStreamFilter } from "./think-filter.js";
+import { buildAugmentedTextMessages, buildVisionFailureMessages, readImageViaVisionModels } from "./chatbot-vision.js";
 import {
   // ── Config constants ──
   NVIDIA_API_KEY,
@@ -210,14 +212,17 @@ function buildStreamErrorResponse(kind: "noProvider" | "openRouterError" | "open
 
 /**
  * Process one SSE line from an upstream chat-completion stream.
- * Mutates `state.sawContent` and `state.streamClosed`. Returns true to
- * break the surrounding for-of loop (when the stream is closed).
+ * Reasoning-guard: deltas pass through the ThinkStreamFilter — any model
+ * emitting <think>/<reasoning> blocks has them stripped BEFORE the text
+ * ever reaches the client. Mutates `state.sawContent` and `state.streamClosed`.
+ * Returns true to break the surrounding for-of loop (when the stream is closed).
  */
 function processSSEDeltaLine(
   line: string,
   encoder: TextEncoder,
   controller: ReadableStreamDefaultController<Uint8Array>,
   state: { sawContent: boolean; streamClosed: boolean },
+  think: ThinkStreamFilter,
 ): boolean {
   const trimmed = line.trim();
   if (!trimmed || trimmed === "data: [DONE]") return false;
@@ -227,12 +232,15 @@ function processSSEDeltaLine(
     const delta = parsed.choices?.[0]?.delta;
     if (!delta) return false;
     if (delta.content) {
-      state.sawContent = true;
-      try {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: sanitizeReplyOutput(delta.content) })}\n\n`));
-      } catch {
-        state.streamClosed = true;
-        return true;
+      const safe = think.push(delta.content);
+      if (safe) {
+        state.sawContent = true;
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: sanitizeReplyOutput(safe) })}\n\n`));
+        } catch {
+          state.streamClosed = true;
+          return true;
+        }
       }
     }
   } catch {
@@ -249,6 +257,7 @@ function flushTrailingSSEBuffer(
   encoder: TextEncoder,
   controller: ReadableStreamDefaultController<Uint8Array>,
   state: { sawContent: boolean; streamClosed: boolean },
+  think: ThinkStreamFilter,
 ): void {
   if (state.streamClosed) return;
   const rest = buffer.trim();
@@ -257,8 +266,11 @@ function flushTrailingSSEBuffer(
     const parsed = JSON.parse(rest.slice(6).trim());
     const delta = parsed.choices?.[0]?.delta;
     if (delta?.content) {
-      state.sawContent = true;
-      try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: sanitizeReplyOutput(delta.content) })}\n\n`)); } catch { /* already closed */ }
+      const safe = think.push(delta.content);
+      if (safe) {
+        state.sawContent = true;
+        try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: sanitizeReplyOutput(safe) })}\n\n`)); } catch { /* already closed */ }
+      }
     }
   } catch {
     // Skip malformed trailing chunk
@@ -278,6 +290,7 @@ async function pumpNvidiaStream(
   picked: PickedProvider,
 ): Promise<void> {
   const reader = upstream.getReader();
+  const think = new ThinkStreamFilter();
   const state = { sawContent: false, streamClosed: false };
   let buffer = "";
   try {
@@ -291,11 +304,19 @@ async function pumpNvidiaStream(
 
       for (const line of lines) {
         if (state.streamClosed) break;
-        if (processSSEDeltaLine(line, encoder, controller, state)) break;
+        if (processSSEDeltaLine(line, encoder, controller, state, think)) break;
       }
     }
 
-    flushTrailingSSEBuffer(buffer, encoder, controller, state);
+    flushTrailingSSEBuffer(buffer, encoder, controller, state, think);
+    // Emit any tail the think filter held back (partial-tag safety). An
+    // unclosed <think> at stream end flushes "" — the zero-content guard
+    // below then recovers via the fallback chain.
+    const tail = think.flush();
+    if (tail && !state.streamClosed) {
+      state.sawContent = true;
+      try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: sanitizeReplyOutput(tail) })}\n\n`)); } catch { /* closed */ }
+    }
   } catch (e) {
     try { controller.error(e); } catch { /* already closed */ }
     return;
@@ -304,7 +325,7 @@ async function pumpNvidiaStream(
   }
 
   if (!state.sawContent) {
-    logger.warn("[Chatbot/Stream] NVIDIA returned no content — trying OpenRouter then Groq...");
+    logger.warn("[Chatbot/Stream] NVIDIA returned no visible content — trying OpenRouter then Groq...");
     const fbOR = await openRouterFallback(request.messages, picked.systemPrompt, request.language, picked.tuning);
     if (fbOR) {
       try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: sanitizeReplyOutput(fbOR.reply) })}\n\n`)); } catch { /* controller already closed */ }
@@ -754,20 +775,55 @@ async function getVisionStreamResponse(request: {
 }): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
   const mode: "thinking" | "instant" = request.mode === "instant" ? "instant" : "thinking";
   const tuning = MODE_TUNING[mode];
-  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, true, request.historySummary);
   const encoder = new TextEncoder();
 
-  // 1) Groq Llama-4-Scout streaming
-  const groqVision = await streamGroqVisionProvider(request, systemPrompt, tuning, encoder);
+  // ── PASS 1 (READ): vision model extracts a factual description (bounded,
+  // non-streaming — the description is short and the reasoning pass streams).
+  const read = await readImageViaVisionModels(request.messages, request.language);
+  const pass2Messages = read.ok && read.description
+    ? buildAugmentedTextMessages(request.messages, read.description, request.language)
+    : buildVisionFailureMessages(request.messages, request.language);
+  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, false, request.historySummary);
+
+  // ── PASS 2 (ANSWER): streaming reasoning-first cascade over the TEXT
+  // description — the strongest available model writes the answer.
+  const routed = await routeChatStream({
+    messages: pass2Messages,
+    systemPrompt,
+    mode,
+    vision: false,
+    language: request.language,
+    preferredModelId: tuning.openRouterPreferredModel,
+    gen: mode === "instant"
+      ? { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 10_000, globalBudgetMs: 12_000 }
+      : { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 20_000, globalBudgetMs: 22_000 },
+  });
+  if (routed.ok) return { stream: routed.result.stream, model: routed.result.model };
+
+  // Legacy streaming text cascade over the augmented (text-only) messages.
+  const picked = await pickWorkingModel(pass2Messages, request.language, mode, request.catalog);
+  if (picked) {
+    const pass2Request = { ...request, messages: pass2Messages };
+    if (picked.provider === "nvidia") {
+      return await streamNvidiaProvider(pass2Request, picked, encoder);
+    }
+    if (picked.provider === "groq") {
+      return await streamGroqProvider(pass2Request, picked, encoder);
+    }
+    return await streamOpenRouterProvider(pass2Request, picked, encoder);
+  }
+
+  // ── Last resort: raw multimodal → vision models directly (better than a
+  // bare error) — legacy streaming vision sweep, then non-streaming two-pass.
+  logger.warn("[Chatbot/Vision/Stream] reasoning cascade unavailable — falling back to direct vision streaming.");
+  const visionSystemPrompt = getSystemPrompt(request.language, mode, request.catalog, true, request.historySummary);
+  const groqVision = await streamGroqVisionProvider(request, visionSystemPrompt, tuning, encoder);
   if (groqVision) return groqVision;
 
-  // 2) OpenRouter vision-language streaming
-  const orVision = await streamOpenRouterVisionProvider(request, systemPrompt, tuning, encoder);
+  const orVision = await streamOpenRouterVisionProvider(request, visionSystemPrompt, tuning, encoder);
   if (orVision) return orVision;
 
-  // 3) Non-streaming vision cascade (Groq non-stream → OpenRouter non-stream)
-  logger.warn("[Chatbot/Vision] Streaming vision failed — using non-streaming vision cascade.");
-  const nv = await getVisionResponse({ messages: request.messages, language: request.language, mode, catalog: request.catalog });
+  const nv = await getVisionResponse({ messages: request.messages, language: request.language, mode, catalog: request.catalog, historySummary: request.historySummary });
   if (nv.success && nv.reply) {
     return { stream: singleChunkStream(nv.reply, encoder), model: nv.model ?? "vision" };
   }
@@ -794,19 +850,26 @@ export async function getStreamResponse(request: {
   /** Rolling summary of this user's older conversations (chat-history.ts). */
   historySummary?: string;
 }): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
+  // ── TWO-PASS VISION gate (BEFORE the dynamic router!) ──
+  // Image requests follow the product policy: a vision model READS the image
+  // first (factual extraction), then the reasoning-first TEXT cascade answers
+  // from that description. The raw multimodal request is NEVER offered to the
+  // reasoning lane with the persona prompt, and a vision model is never the
+  // first choice to write the final answer.
+  if (request.vision) return await getVisionStreamResponse(request);
+
   // ─── DYNAMIC ROUTER (v9) — admin-managed providers first ─────────────
   // Streams from any provider the admin configured (priority → tier order,
-  // automatic model↔provider failover). Vision requests are offered only to
-  // supportsVision models. When the dynamic pool cannot serve (empty, all
-  // cooling down, budget spent) we fall through to the battle-tested legacy
-  // cascade below — availability can only increase, never regress.
+  // automatic model↔provider failover). When the dynamic pool cannot serve
+  // (empty, all cooling down, budget spent) we fall through to the
+  // battle-tested legacy cascade below — availability can only increase.
   const routerMode: "thinking" | "instant" = request.mode === "instant" ? "instant" : "thinking";
   const routerTuning = MODE_TUNING[routerMode];
   const routed = await routeChatStream({
     messages: request.messages,
-    systemPrompt: getSystemPrompt(request.language, routerMode, request.catalog, !!request.vision, request.historySummary),
+    systemPrompt: getSystemPrompt(request.language, routerMode, request.catalog, false, request.historySummary),
     mode: routerMode,
-    vision: !!request.vision,
+    vision: false,
     language: request.language,
     // Instant lane hoists the general-purpose fast model above code/mini
     // models so Arabic/English instructions (language mirror) are followed.
@@ -816,9 +879,6 @@ export async function getStreamResponse(request: {
       : { temperature: routerTuning.temperature, maxTokens: routerTuning.maxTokens, attemptTimeoutMs: 20_000, globalBudgetMs: 22_000 },
   });
   if (routed.ok) return { stream: routed.result.stream, model: routed.result.model };
-
-  // VISION OVERRIDE: image requests never touch the text-only provider chain.
-  if (request.vision) return await getVisionStreamResponse(request);
 
   const picked = await pickWorkingModel(request.messages, request.language, request.mode || "thinking", request.catalog);
 

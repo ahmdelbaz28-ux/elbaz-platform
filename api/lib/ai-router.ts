@@ -40,6 +40,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { aiModels, aiProviders, type AiModel, type AiProvider } from "@db/schema";
 import { logger } from "./logger.js";
 import { sanitizeReplyOutput } from "./chatbot-prompts.js";
+import { stripThinkBlocks, ThinkStreamFilter } from "./think-filter.js";
 
 // ── Lazy DB handle ─────────────────────────────────────────────────────────
 // ai-router is imported (transitively) by chatbot.ts, whose unit tests load
@@ -702,7 +703,10 @@ async function readNonStreamReply(response: Response): Promise<{ ok: true; reply
       const detail = typeof data.error === "string" ? data.error : JSON.stringify(data.error);
       return { ok: false, detail: detail.slice(0, 200) };
     }
-    const reply = data.choices?.[0]?.message?.content ?? "";
+    // stripThinkBlocks: hard zero-gap guarantee — a model that embeds
+    // <think>/<reasoning> blocks in content never leaks them. An empty
+    // after-strip reply counts as a failure (the walk continues).
+    const reply = stripThinkBlocks(data.choices?.[0]?.message?.content ?? "");
     if (!reply || !reply.trim()) return { ok: false, detail: "empty completion" };
     return { ok: true, reply: reply.trim() };
   } catch (err) {
@@ -716,6 +720,9 @@ async function readNonStreamReply(response: Response): Promise<{ ok: true; reply
  */
 export function buildUpstreamSSETransform(encoder: TextEncoder): TransformStream<Uint8Array, Uint8Array> {
   const decoder = new TextDecoder();
+  // Reasoning-guard: <think>/<reasoning> blocks embedded in delta.content are
+  // stripped even when their tags arrive split across chunks.
+  const think = new ThinkStreamFilter();
   let buffer = "";
   return new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
@@ -729,7 +736,10 @@ export function buildUpstreamSSETransform(encoder: TextEncoder): TransformStream
           const parsed = JSON.parse(trimmed.slice(6)) as { choices?: { delta?: { content?: string } }[] };
           const content = parsed.choices?.[0]?.delta?.content;
           if (content) {
-            try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: sanitizeReplyOutput(content) })}\n\n`)); } catch { /* closed */ }
+            const safe = think.push(content);
+            if (safe) {
+              try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: sanitizeReplyOutput(safe) })}\n\n`)); } catch { /* closed */ }
+            }
           }
         } catch { /* skip malformed chunk */ }
       }
@@ -741,9 +751,17 @@ export function buildUpstreamSSETransform(encoder: TextEncoder): TransformStream
           const parsed = JSON.parse(rest.slice(6)) as { choices?: { delta?: { content?: string } }[] };
           const content = parsed.choices?.[0]?.delta?.content;
           if (content) {
-            try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: sanitizeReplyOutput(content) })}\n\n`)); } catch { /* closed */ }
+            const safe = think.push(content);
+            if (safe) {
+              try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: sanitizeReplyOutput(safe) })}\n\n`)); } catch { /* closed */ }
+            }
           }
         } catch { /* skip */ }
+      }
+      // Emit any tail the filter held back; an unclosed <think> flushes "".
+      const tail = think.flush();
+      if (tail) {
+        try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: sanitizeReplyOutput(tail) })}\n\n`)); } catch { /* closed */ }
       }
       try { controller.enqueue(encoder.encode("data: [DONE]\n\n")); } catch { /* closed */ }
       try { controller.terminate(); } catch { /* terminated */ }
@@ -991,15 +1009,22 @@ function buildResilientUpstreamStream(params: {
     start(controller) {
       void (async () => {
         const { provider, model, key, latencyMs } = params.winner;
+        // Reasoning-guard: every emitted delta passes the think filter, so
+        // <think> blocks never reach the client and `total` (used for the
+        // completion heuristics + rescue prefill) is the VISIBLE text only.
+        const think = new ThinkStreamFilter();
         let buffer = params.buffer;
-        let total = params.headText;
+        let total = "";
         let finish: string | null = null;
         let sawDone = false;
         let streamError: string | null = null;
 
         const emit = (text: string) => {
           if (!text) return;
-          try { controller.enqueue(params.encoder.encode(`data: ${JSON.stringify({ text: sanitizeReplyOutput(text) })}\n\n`)); } catch { /* client gone */ }
+          const safe = think.push(text);
+          if (!safe) return;
+          total += safe;
+          try { controller.enqueue(params.encoder.encode(`data: ${JSON.stringify({ text: sanitizeReplyOutput(safe) })}\n\n`)); } catch { /* client gone */ }
         };
         emit(params.headText);
 
@@ -1041,19 +1066,28 @@ function buildResilientUpstreamStream(params: {
         }
 
         const premature = !finish && !sawDone;
-        const partial = total.trim();
 
-        if (!premature) {
+        // Flush the think filter tail before judging completeness — held-back
+        // text (partial tags) is real content the user must receive.
+        const tail = think.flush();
+        if (tail) {
+          total += tail;
+          try { controller.enqueue(params.encoder.encode(`data: ${JSON.stringify({ text: sanitizeReplyOutput(tail) })}\n\n`)); } catch { /* client gone */ }
+        }
+        const visible = total.trim();
+
+        if (!premature && visible) {
           recordSuccess(provider, model, latencyMs, params.req.mode);
-        } else if (partial && looksComplete(partial)) {
+        } else if (visible && looksComplete(visible)) {
           // Clean prose ending without a finish marker — some providers omit
           // [DONE]; accept the answer instead of risking a junk continuation.
           recordSuccess(provider, model, latencyMs, params.req.mode);
         } else {
-          // Content-then-death / stall / reasoning-only death — repair live.
+          // Content-then-death / stall / reasoning-only death / finished with
+          // ZERO visible content (reasoning burn) — repair live.
           recordFailure(provider, model, "fail", `midstream death: ${String(streamError || "no finish marker").slice(0, 120)}`);
           try {
-            const rescued = await rescueRound(params.req, key, partial);
+            const rescued = await rescueRound(params.req, key, visible);
             if (rescued) {
               total += rescued;
               emit(rescued);
