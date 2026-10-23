@@ -11,7 +11,7 @@ import { describe, it, expect } from "vitest";
 
 // classifyRawModel is exported from ai-router.ts — importing the module must
 // NOT require a database (lazy DB handle) by design.
-import { classifyRawModel, maskApiKey, parseUpstreamSseLine, looksComplete, PROVIDER_CATALOG, CODE_SPECIALIZED_RE } from "./ai-router.js";
+import { classifyRawModel, maskApiKey, parseUpstreamSseLine, looksComplete, PROVIDER_CATALOG, SPECIALIST_CHAT_RE } from "./ai-router.js";
 
 describe("AI Router — classifyRawModel", () => {
   it("classifies OpenRouter multimodal metadata as vision (authoritative signal)", () => {
@@ -210,9 +210,9 @@ describe("AI Router — looksComplete (rescue heuristic)", () => {
   });
 });
 
-describe("AI Router — CODE_SPECIALIZED_RE (wrong-specialization guard)", () => {
+describe("AI Router — SPECIALIST_CHAT_RE (wrong-specialization guard)", () => {
   it("excludes the live incident: cohere/north-mini-code never serves the chat lane", () => {
-    expect(CODE_SPECIALIZED_RE.test("cohere/north-mini-code")).toBe(true);
+    expect(SPECIALIST_CHAT_RE.test("cohere/north-mini-code")).toBe(true);
   });
 
   it("catches the known code-only families", () => {
@@ -223,9 +223,11 @@ describe("AI Router — CODE_SPECIALIZED_RE (wrong-specialization guard)", () =>
       "bigcode/starcoder2-15b",
       "baidu/cobuddy:free",
       "zai-org/codegeex-4",
+      "dots-studio/dots-3-note-preview:free",
+      "liquid/lfm-2.5-2.6b:free",
     ]) {
       expect(`${id} excluded`, id).toBeTruthy();
-      expect(CODE_SPECIALIZED_RE.test(id)).toBe(true);
+      expect(SPECIALIST_CHAT_RE.test(id)).toBe(true);
     }
   });
 
@@ -239,7 +241,7 @@ describe("AI Router — CODE_SPECIALIZED_RE (wrong-specialization guard)", () =>
       "nvidia/nemotron-3.5-lightning:free",
       "meta-llama/llama-4-scout-17b-16e-instruct",
     ]) {
-      expect(CODE_SPECIALIZED_RE.test(id), `${id} must stay in the chat lane`).toBe(false);
+      expect(SPECIALIST_CHAT_RE.test(id), `${id} must stay in the chat lane`).toBe(false);
     }
   });
 });
