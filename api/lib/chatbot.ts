@@ -471,7 +471,10 @@ export async function tryModel(
 
   try {
     controller = new AbortController();
-    timeoutId = setTimeout(() => { controller!.abort(); }, timeoutMs);
+    // Web attempts get a tight budget (search runs before generation — a
+    // plugin'd call that cannot start fast is a bad candidate; never let it
+    // hold the full tier timeout).
+    timeoutId = setTimeout(() => { controller!.abort(); }, wantsWeb ? Math.min(timeoutMs, 8_000) : timeoutMs);
 
     let response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",

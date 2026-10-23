@@ -77,6 +77,10 @@ export const aiModels = mysqlTable(
     enabled: boolean("enabled").notNull().default(true),
     /** Routing tier: 1 = strongest (thinking first), 3 = smallest/fastest (instant first). */
     tier: int("tier").notNull().default(2),
+    /** Context window reported by the provider (tokens) — used to clamp
+     *  max_tokens so small models (e.g. 4k ctx) don't 400 on thinking's 8192.
+     *  NULL = unknown (older rows before the v10 migration). */
+    contextLength: int("contextLength"),
     /** unknown | ok | limited | dead — last observed health. */
     status: varchar("status", { length: 16 }).notNull().default("unknown"),
     /** Consecutive failures (circuit breaker input). */

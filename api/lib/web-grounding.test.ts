@@ -232,3 +232,25 @@ describe("getSystemPrompt — accuracy contract + web grounding (v3)", () => {
     }
   });
 });
+
+// ── max_tokens clamp (small-context safety net) ───────────────────────────
+
+describe("buildUpstreamBody max_tokens clamp", () => {
+  const THINK_GEN: RouteGenParams = { ...GEN, maxTokens: 8192 };
+  const base = { provider: openrouterProvider, model, systemPrompt: "s", messages: MESSAGES, gen: THINK_GEN, stream: false };
+
+  it("clamps 8192 to a third of a 4096-context model (small models survive thinking)", () => {
+    const small = { ...model, contextLength: 4096 } as unknown as AiModel;
+    const body = JSON.parse(buildUpstreamBody({ ...base, model: small }, false));
+    expect(body.max_tokens).toBe(1365);
+  });
+
+  it("never clamps below 512 and leaves big models untouched", () => {
+    const tiny = { ...model, contextLength: 1000 } as unknown as AiModel;
+    expect(JSON.parse(buildUpstreamBody({ ...base, model: tiny }, false)).max_tokens).toBe(512);
+    const big = { ...model, contextLength: 131072 } as unknown as AiModel;
+    expect(JSON.parse(buildUpstreamBody({ ...base, model: big }, false)).max_tokens).toBe(8192);
+    const unknown = { ...model, contextLength: null } as unknown as AiModel;
+    expect(JSON.parse(buildUpstreamBody({ ...base, model: unknown }, false)).max_tokens).toBe(8192);
+  });
+});
