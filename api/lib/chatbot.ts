@@ -86,7 +86,10 @@ export const GROQ_MODELS = [
 // they would either reject the image parts or hallucinate around them.
 export const GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"; // multimodal Llama 4 Scout
 export const OPENROUTER_VISION_MODELS = [
-  "nvidia/nemotron-3.5-super-vl:free", // VL = vision-language (free tier)
+  "nvidia/nemotron-3.5-super-vl:free",                       // VL = vision-language (1M ctx, free)
+  "google/gemma-4-31b-it:free",                              // multimodal Gemma (vision input)
+  "thinkingmachines/inkling:free",                           // vision + reasoning (1M ctx)
+  "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",      // omni (vision input)
 ];
 
 // ── TIER 1.5: OpenRouter — Secondary (22-model free cascade) ───────────
