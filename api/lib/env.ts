@@ -54,9 +54,12 @@ const envSchema = z.object({
   PAYMOB_BASE_URL: z.string().default("https://accept.paymob.com"),
 
   // ── AI Chatbot providers ──────────────────────────────────────
-  // NVIDIA_API_KEY is the PRIMARY provider (minimaxai/minimax-m3 on NVIDIA NGC, free).
-  // OPENROUTER_API_KEY is the SECONDARY provider (22-model free cascade).
-  // GROQ_API_KEY is the TERTIARY provider (ultra-fast Llama/Qwen on Groq, free).
+  // KILOCODE_API_KEY is the PRIMARY provider (kilo gateway free flagship
+  // lane — nemotron-3-ultra/super/vl, seeded at priority 5).
+  // NVIDIA_API_KEY is the SECONDARY provider (minimaxai/minimax-m3 on NVIDIA NGC, free).
+  // OPENROUTER_API_KEY is the TERTIARY provider (22-model free cascade).
+  // GROQ_API_KEY is the QUATERNARY provider (ultra-fast Llama/Qwen on Groq, free).
+  KILOCODE_API_KEY: z.string().optional(),
   NVIDIA_API_KEY: z.string().optional(),
   GROQ_API_KEY: z.string().optional(),
   OPENROUTER_API_KEY: z.string().optional(),
