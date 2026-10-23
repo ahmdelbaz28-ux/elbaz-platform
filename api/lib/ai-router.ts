@@ -115,6 +115,11 @@ export interface CatalogEntry {
 }
 
 export const PROVIDER_CATALOG: CatalogEntry[] = [
+  // kilocode = the FIRST provider in the walk (priority 5, seeded before
+  // nvidia/groq/openrouter). Its free tier carries flagship-class models
+  // (live-verified on the gateway 2026-10-24: nemotron-3-ultra-550b answers
+  // Arabic EE questions with expert grammar and streams in ~3s TTFB).
+  { slug: "kilocode", displayName: "Kilo Code Gateway", baseUrl: "https://ai-gateway.kilo.ai/api/v1", hint: "بوابة kilo — نماذج flagship مجانية (:free) — kilo.ai" },
   { slug: "groq", displayName: "Groq", baseUrl: "https://api.groq.com/openai/v1", hint: "مجاني وسريع جداً — console.groq.com" },
   { slug: "openrouter", displayName: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1", hint: "عشرات النماذج المجانية (:free) — openrouter.ai" },
   { slug: "nvidia", displayName: "NVIDIA NIM", baseUrl: "https://integrate.api.nvidia.com/v1", hint: "build.nvidia.com — نماذج ضخمة مجاناً" },
@@ -141,6 +146,18 @@ const VISION_ID_RE =
 
 const TIER1_RE = /(70b|120b|230b|550b|405b|ultra|super|pro\b|large|scout|maverick|reasoning)/i;
 const TIER3_RE = /(nano|mini\b|flash|instant|small|lite|\b[1-8]b\b|a3b|a4b|lfm|preview)/i;
+
+/**
+ * FLAGSHIP hint inside a tier — live-verified ordering need (kilo free lane
+ * 2026-10-24): tier-1 + 1M-context contains BOTH the 550B flagship
+ * (nemotron-3-ultra) and lighter peers (lightning / super-vl). Context length
+ * cannot separate them (all 1M) and the pool's modelId-ASC tiebreaker puts
+ * the lightest first. A flagship-named model answers with measurably stronger
+ * Arabic expert grammar — it must lead its tier in BOTH chat lanes (owner
+ * bar: the reply quality itself must feel strong). Conservative famous-
+ * flagship list so ordinary tier-1 models keep their relative order.
+ */
+const FLAGSHIP_RE = /(ultra|550b|405b|deepseek-r1|glm-5|gpt-5|claude-opus|gemini-2\.5-pro|gemini-3-pro|qwen3-235b|kimi-k2)/i;
 
 /**
  * Non-chat models (speech-to-text, TTS, music/audio generation, image/video
@@ -193,6 +210,22 @@ export const SPECIALIST_CHAT_RE = new RegExp([
   // expert bar — it stays in the VISION READER lane (PASS 1) and the board,
   // but never writes chat answers.
   "\\bgemma\\b",
+  // live incident (kilo integration 2026-10-24): xingchen-agi/xing4.0-29b-a4b
+  // repeatedly returned upstream 429 ("temporarily rate-limited upstream") —
+  // an unstable free lane that would burn the instant lane's FIRST attempt
+  // every cold start (tier-3 sorts first). Excluded from the general chat
+  // lane until it proves stable; stays visible in the dashboard.
+  "xingchen",
+  // live incidents (kilo gateway probe 2026-10-24): the gateway's META/ALIAS
+  // models — internal routers that resolve to some inner model at request
+  // time. Probed live: kilo-auto/free 12.4s then EMPTY content (finish=length,
+  // all reasoning burn), stealth/glyph-cluster 13.1s EMPTY, openrouter/free
+  // 3.2s EMPTY (alias served nemotron-3.5-super-vl), reflection/beam-free OK
+  // but resolves to a different model id ("served-as reflection/beam") — no
+  // identity stability for an expert-answer contract. All excluded from the
+  // general chat lane (visible in the dashboard); the direct :free flagships
+  // they hide (ultra-550b / super-vl) serve instead.
+  "kilo-auto", "glyph-cluster", "beam-free", "openrouter/free",
 ].join("|"), "i");
 
 /**
@@ -675,7 +708,18 @@ export async function buildCandidates(opts: { vision: boolean; mode: ChatbotMode
       .filter((m) => !opts.onlyFree || m.isFree)
       .filter((m) => !modelIsCooling(provider.id, m.modelId))
       .filter((m) => !opts.exclude?.has(modelKey(provider.id, m.modelId)));
-    usable.sort((a, b) => (opts.mode === "instant" ? b.tier - a.tier : a.tier - b.tier));
+    // Tier sort first, then FLAGSHIP-named models, then CONTEXT LENGTH DESC —
+    // the strongest model must lead its tier (live-verified on the kilo free
+    // lane: nemotron-3-ultra-550b answers with expert Arabic grammar and must
+    // lead the 1M-ctx tier-1 group ahead of lightning / super-vl).
+    usable.sort((a, b) => {
+      const tierDiff = opts.mode === "instant" ? b.tier - a.tier : a.tier - b.tier;
+      if (tierDiff !== 0) return tierDiff;
+      const aFlag = FLAGSHIP_RE.test(a.modelId) ? 1 : 0;
+      const bFlag = FLAGSHIP_RE.test(b.modelId) ? 1 : 0;
+      if (aFlag !== bFlag) return bFlag - aFlag;
+      return (b.contextLength ?? 0) - (a.contextLength ?? 0);
+    });
     for (const m of usable) candidates.push({ provider, model: m });
   }
 
