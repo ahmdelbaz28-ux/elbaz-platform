@@ -707,8 +707,15 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
           const nvidiaKey = env.NVIDIA_API_KEY || process.env.NVIDIA_API_KEY || "";
           const seeds: [string, string, string, string, number][] = [
             ["nvidia", "NVIDIA NIM", "https://integrate.api.nvidia.com/v1", nvidiaKey, 10],
-            ["openrouter", "OpenRouter", "https://openrouter.ai/api/v1", orKey, 20],
-            ["groq", "Groq", "https://api.groq.com/openai/v1", groqKey, 30],
+            // groq BEFORE openrouter (live-verified 2026-10-23): OpenRouter's
+            // free pool storms (whole-pool 429s) and leaks weak/dud winners
+            // (xingchen peeked alive then died; weak A4B models broke the
+            // clarification contract), while Groq's gpt-oss-120b delivered
+            // expert-grade reasoning answers on every probe. Reasoning-first
+            // contract → the proven reasoning provider leads; OpenRouter's
+            // wider pool is the breadth fallback behind it.
+            ["groq", "Groq", "https://api.groq.com/openai/v1", groqKey, 20],
+            ["openrouter", "OpenRouter", "https://openrouter.ai/api/v1", orKey, 30],
           ];
           for (const [slug, displayName, baseUrl, apiKey, priority] of seeds) {
             if (!apiKey) continue;
@@ -747,6 +754,28 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
           } catch (syncErr) {
             logger.warn("[DB] env key sync warning", { slug, error: (syncErr as Error).message });
           }
+        }
+
+        // ── Legacy priority-pairing heal (idempotent, admin-order safe) ──
+        // Databases seeded before the groq-first fix carry the exact legacy
+        // default (openrouter=20 + groq=30) — flip ONLY that exact pairing.
+        // Any admin-customized order (anything but the exact legacy pair) is
+        // never touched.
+        try {
+          await conn.query(`
+            UPDATE \`aiProviders\` SET priority = 20
+             WHERE slug = 'groq' AND priority = 30
+               AND EXISTS (SELECT 1 FROM (SELECT 1 FROM \`aiProviders\` WHERE slug = 'openrouter' AND priority = 20) legacy)
+          `);
+          await conn.query(`
+            UPDATE \`aiProviders\` SET priority = 30
+             WHERE slug = 'openrouter' AND priority = 20
+               AND EXISTS (SELECT 1 FROM (SELECT 1 FROM \`aiProviders\` WHERE slug = 'groq' AND priority = 20) healed)
+          `);
+          const [prRows] = await conn.query("SELECT slug, priority FROM `aiProviders` WHERE slug IN ('groq','openrouter') ORDER BY priority");
+          logger.info("[DB] provider priority order:", { order: prRows });
+        } catch (healErr) {
+          logger.warn("[DB] provider priority heal warning", { error: (healErr as Error).message });
         }
       } catch (err) {
         logger.warn("[DB] v9 ai router migration warning", { error: (err as Error).message });
