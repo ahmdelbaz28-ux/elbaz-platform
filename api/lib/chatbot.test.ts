@@ -664,8 +664,10 @@ describe("Chatbot Module", () => {
         if (url.includes("/auth/key")) return { ok: true, json: async () => ({}) };
         const model = JSON.parse(options.body).model;
         calledModels.push(model);
-        // gpt-oss (preferred) is dead, xingchen (2nd fast) works,
-        // nemotron-ultra (thinking tier-1) would also work but must not be reached first
+        // gpt-oss (preferred) is dead, minimax-m3.1-flash (2nd fast) works,
+        // nemotron-ultra (thinking tier-1) would also work but must not be reached first.
+        // (xingchen was the old 2nd-fast fixture — now banned from the chat
+        // lane after the live kilo probe: it 429s upstream on every call.)
         if (model === "openai/gpt-oss-120b:free") {
           return { ok: false, status: 429, json: async () => ({ error: "rate limited" }) };
         }
@@ -678,7 +680,7 @@ describe("Chatbot Module", () => {
         mode: "instant",
       });
 
-      expect(res.model).toBe("xingchen-agi/xing4.0-29b-a4b:free");
+      expect(res.model).toBe("minimax/minimax-m3.1-flash:free");
       // The thinking tier-1 model was never attempted — the fast lane caught it
       expect(calledModels).not.toContain("nvidia/nemotron-3-ultra-550b-a55b:free");
     });

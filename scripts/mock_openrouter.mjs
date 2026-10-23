@@ -145,6 +145,25 @@ const server = http.createServer((req, res) => {
         dudReply(res);
         return;
       }
+      if (modelId === "mock/kilo-exhausted") {
+        // KILO-LANE T6: per-model upstream quota exhaustion — a 429 whose body
+        // is NOT the OpenRouter account-level daily shape, so only THIS model
+        // cools down (90s) while the walk moves to the next kilo model.
+        res.writeHead(429, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          error: { message: "Provider returned error", code: 429, metadata: { raw: "mock/kilo-exhausted:free is temporarily rate-limited upstream. Please retry shortly." } },
+        }));
+        return;
+      }
+      if (modelId === "mock/kilo-dead") {
+        // KILO-LANE T6: dead model id (live-verified shape: NVIDIA function
+        // not found) — 404 → dead_model cooldown (10 min) → next candidate.
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          error: { message: "Provider returned error", code: 404, metadata: { raw: "{\"status\":404,\"title\":\"Not Found\",\"detail\":\"Function not found for account\"}" } },
+        }));
+        return;
+      }
       if (parsed.stream === true) return sseReply(res); // any streaming model
       if (modelId === "mock/charged") {
         chargedCalls += 1;

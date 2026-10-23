@@ -85,6 +85,13 @@ wait_up || exit 1
 seed seed-vision
 python3 scripts/neverbusy_e2e.py t5 "$PERSIST_MS" || EXIT=1
 
+echo "== ── PHASE T6: kilo lane (FIRST provider) exhausts model-by-model → groq ──"
+kill_servers
+start_server
+wait_up || exit 1
+seed seed-kilo-lane
+python3 scripts/neverbusy_e2e.py t6 "$PERSIST_MS" || EXIT=1
+
 echo "== cleanup =="
 kill_servers
 pkill -f mock_openrouter.mjs 2>/dev/null

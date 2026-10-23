@@ -42,11 +42,11 @@ if (mode === "enable-charged") {
 }
 
 // seed | clean: wipe any previous mock provider (models cascade via FK)
-const [providers] = await conn.query("SELECT id FROM aiProviders WHERE slug IN ('openrouter','groq')");
+const [providers] = await conn.query("SELECT id FROM aiProviders WHERE slug IN ('kilocode','openrouter','groq')");
 for (const p of providers) {
   await conn.query("DELETE FROM aiModels WHERE providerId=?", [p.id]);
 }
-await conn.query("DELETE FROM aiProviders WHERE slug IN ('openrouter','groq')");
+await conn.query("DELETE FROM aiProviders WHERE slug IN ('kilocode','openrouter','groq')");
 
 if (mode === "seed-429") {
   // NEVER-BUSY T1: an OpenRouter whose ONLY model 429s with the account-level
@@ -90,6 +90,28 @@ if (mode === "seed-429") {
     [gq.insertId, "mock/grounded"]
   );
   console.log(`seeded openrouter=${or.insertId} (daily-429) + groq=${gq.insertId} (grounded)`);
+} else if (mode === "seed-kilo-lane") {
+  // KILO-LANE T6 — owner contract: kilocode is the FIRST provider (priority 1
+  // here / 5 in prod). BOTH of its free models are unusable (one 429-quota
+  // exhausted, one 404-dead) — the walk must exhaust EVERY kilo model, then
+  // hand off to the next provider (groq) in the SAME request, and the second
+  // request must skip the cooling kilo models instantly. The bot never stops.
+  const [kilo] = await conn.query(
+    "INSERT INTO aiProviders (slug, displayName, baseUrl, apiKey, priority, enabled, status) VALUES ('kilocode','Kilo Mock','http://127.0.0.1:47777/v1','mock-key',1,1,'healthy')"
+  );
+  await conn.query(
+    // contextLength mirrors the real lane: 1M flagship sorts before 262k.
+    "INSERT INTO aiModels (providerId, modelId, supportsChat, supportsVision, isFree, enabled, tier, contextLength) VALUES (?,?,1,0,1,1,1,1000000),(?,?,1,0,1,1,1,262144)",
+    [kilo.insertId, "mock/kilo-exhausted", kilo.insertId, "mock/kilo-dead"]
+  );
+  const [gq2] = await conn.query(
+    "INSERT INTO aiProviders (slug, displayName, baseUrl, apiKey, priority, enabled, status) VALUES ('groq','Groq Mock','http://127.0.0.1:47777/v1','mock-key',2,1,'healthy')"
+  );
+  await conn.query(
+    "INSERT INTO aiModels (providerId, modelId, supportsChat, supportsVision, isFree, enabled, tier, contextLength) VALUES (?,?,1,0,1,1,1,131072)",
+    [gq2.insertId, "mock/grounded-stream"]
+  );
+  console.log(`seeded kilocode=${kilo.insertId} (kilo-exhausted 1M + kilo-dead 262k, tier1) + groq=${gq2.insertId} (grounded-stream tier1)`);
 } else if (mode === "seed-dud") {
   // NEVER-BUSY T4: a dud tier-1 winner that peeks alive (reasoning delta)
   // then dies with zero visible content, + a healthy tier-2 streamer. The
