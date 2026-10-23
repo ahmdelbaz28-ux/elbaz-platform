@@ -582,6 +582,9 @@ export async function tryModelsByTier(
   tuning?: ModeTuning,
   webSearch = false,
 ): Promise<{ reply: string; model: string } | null> {
+  // WEB BUDGET — at most two plugin'd attempts (first + one fast-fail spare);
+  // the rest of the sweep runs plugin-free so search latency never stacks.
+  let webBudget = webSearch ? 2 : 0;
   for (let tier = 1; tier <= 4; tier++) {
     let tierTried = 0;
     let tierSkipped = 0;
@@ -593,7 +596,9 @@ export async function tryModelsByTier(
         continue;
       }
       tierTried++;
-      const result = await tryModel(model.id, messages, systemPrompt, tierTimeouts[tier], tuning, webSearch);
+      const useWeb = webBudget > 0;
+      if (useWeb) webBudget--;
+      const result = await tryModel(model.id, messages, systemPrompt, tierTimeouts[tier], tuning, useWeb);
       if (result) return result;
     }
 
@@ -659,7 +664,8 @@ export async function openRouterFallback(
   const tierResult = await tryModelsByTier(messages, systemPrompt, t.openRouterTierTimeouts, globalStartTime, t.openRouterGlobalTimeoutMs, t, webSearch);
   if (tierResult) return tierResult;
 
-  const lastResort = await tryAllModelsAsLastResort(messages, systemPrompt, t, webSearch);
+  // Last resort = pure availability: never pay plugin latency here.
+  const lastResort = await tryAllModelsAsLastResort(messages, systemPrompt, t, false);
   if (lastResort) return lastResort;
 
   return null;
