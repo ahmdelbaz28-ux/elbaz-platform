@@ -883,12 +883,19 @@ export async function routeChatCompletion(req: RouteRequest): Promise<RoutingOut
 
   const deadline = Date.now() + req.gen.globalBudgetMs;
   let attempted = 0;
+  // WEB BUDGET: at most TWO plugin'd attempts per request (the first one, plus
+  // one spare for a fast-fail like 429). The rest of the walk runs plugin-free
+  // so search latency can never stack across candidates — grounding rides the
+  // best candidate, it never slows the failover walk.
+  let webBudget = req.webSearch ? 2 : 0;
 
   for (const { provider, model } of candidates) {
     if (Date.now() > deadline) break;
     attempted++;
 
-    const attempt = await attemptUpstream({ provider, model, systemPrompt: req.systemPrompt, messages: req.messages, gen: req.gen, stream: false, webSearch: req.webSearch });
+    const useWeb = webBudget > 0 && isOpenRouterProvider(provider);
+    if (useWeb) webBudget--;
+    const attempt = await attemptUpstream({ provider, model, systemPrompt: req.systemPrompt, messages: req.messages, gen: req.gen, stream: false, webSearch: useWeb });
     if (!attempt.ok) {
       recordFailure(provider, model, attempt.failure.kind, attempt.failure.detail);
       continue;
@@ -1207,12 +1214,16 @@ export async function routeChatStream(req: RouteRequest): Promise<RoutingOutcome
   const firstEventTimeoutMs = req.mode === "instant" ? 8_000 : 20_000;
   const idleTimeoutMs = req.mode === "instant" ? 15_000 : 30_000;
   let attempted = 0;
+  // WEB BUDGET — same two-attempt policy as routeChatCompletion.
+  let webBudget = req.webSearch ? 2 : 0;
 
   for (const { provider, model } of candidates) {
     if (Date.now() > deadline) break;
     attempted++;
 
-    const attempt = await attemptUpstream({ provider, model, systemPrompt: req.systemPrompt, messages: req.messages, gen: req.gen, stream: true, webSearch: req.webSearch });
+    const useWeb = webBudget > 0 && isOpenRouterProvider(provider);
+    if (useWeb) webBudget--;
+    const attempt = await attemptUpstream({ provider, model, systemPrompt: req.systemPrompt, messages: req.messages, gen: req.gen, stream: true, webSearch: useWeb });
     if (!attempt.ok) {
       recordFailure(provider, model, attempt.failure.kind, attempt.failure.detail);
       continue;
