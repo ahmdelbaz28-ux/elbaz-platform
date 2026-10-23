@@ -641,24 +641,61 @@ interface AttemptParams {
   messages: RouteMessage[];
   gen: RouteGenParams;
   stream: boolean;
+  /** Web-grounding (OpenRouter web plugin) requested for this attempt. */
+  webSearch?: boolean;
 }
 
 interface AttemptFailure {
   kind: Exclude<RouterEvent["kind"], "success" | "skip">;
   detail: string;
+  /** HTTP status when the failure came from a response (plugin-breaker input). */
+  status?: number;
 }
 
-function buildUpstreamBody(p: AttemptParams, stream: boolean): string {
+// ── WEB GROUNDING (OpenRouter web plugin) ────────────────────────────────
+// The bot must answer with DOCUMENTED facts. OpenRouter exposes live web
+// search as a server-side plugin: it runs the search and injects the results
+// into the model's context. Only OpenRouter understands the `plugins` field —
+// attaching it to Groq/NVIDIA/strict custom providers would 400 them.
+
+export const WEB_PLUGIN_BODY = { id: "web", max_results: 3 } as const;
+
+/** True only for providers whose API supports the web plugin field. */
+export function isOpenRouterProvider(p: { slug?: string | null; baseUrl: string }): boolean {
+  return p.slug === "openrouter" || /openrouter\.ai/i.test(p.baseUrl);
+}
+
+// Circuit breaker: when OpenRouter rejects the plugin (402 — the key has no
+// credits for web results, or 400 — plugin field refused), stop attaching it
+// for a while instead of paying one wasted round-trip on every request.
+// Grounding may degrade gracefully (the prompt-level accuracy contract still
+// forbids guessing) but chat availability must NEVER drop because of it.
+let webPluginDisabledUntil = 0;
+export function isWebPluginDisabled(): boolean {
+  return Date.now() < webPluginDisabledUntil;
+}
+export function disableWebPluginFor(ms = 10 * 60_000): void {
+  if (ms <= 0) {
+    // Full reset (used by tests and future admin re-enable paths).
+    webPluginDisabledUntil = 0;
+    return;
+  }
+  webPluginDisabledUntil = Math.max(webPluginDisabledUntil, Date.now() + ms);
+}
+
+export function buildUpstreamBody(p: AttemptParams, stream: boolean): string {
+  const wantsWeb = p.webSearch === true && !isWebPluginDisabled() && isOpenRouterProvider(p.provider);
   return JSON.stringify({
     model: p.model.modelId,
     messages: [{ role: "system", content: p.systemPrompt }, ...p.messages],
     temperature: p.gen.temperature,
     max_tokens: p.gen.maxTokens,
     ...(stream ? { stream: true } : {}),
+    ...(wantsWeb ? { plugins: [WEB_PLUGIN_BODY] } : {}),
   });
 }
 
-async function attemptUpstream(p: AttemptParams): Promise<{ ok: true; response: Response; latencyMs: number } | { ok: false; failure: AttemptFailure }> {
+async function rawUpstreamFetch(p: AttemptParams): Promise<{ ok: true; response: Response; latencyMs: number } | { ok: false; failure: AttemptFailure }> {
   const started = Date.now();
   const url = `${p.provider.baseUrl.replace(/\/+$/, "")}/chat/completions`;
   try {
@@ -702,22 +739,45 @@ async function attemptUpstream(p: AttemptParams): Promise<{ ok: true; response: 
     }
 
     if (response.status === 401 || response.status === 403) {
-      return { ok: false, failure: { kind: "auth_fail", detail: `HTTP ${response.status} — key rejected by ${p.provider.slug}` } };
+      return { ok: false, failure: { kind: "auth_fail", status: response.status, detail: `HTTP ${response.status} — key rejected by ${p.provider.slug}` } };
     }
     if (response.status === 429) {
-      return { ok: false, failure: { kind: "rate_limited", detail: `HTTP 429 — ${p.provider.slug}/${p.model.modelId} quota/rate exhausted` } };
+      return { ok: false, failure: { kind: "rate_limited", status: 429, detail: `HTTP 429 — ${p.provider.slug}/${p.model.modelId} quota/rate exhausted` } };
     }
     if (response.status === 404) {
-      return { ok: false, failure: { kind: "dead_model", detail: `HTTP 404 — model id not found on ${p.provider.slug}` } };
+      return { ok: false, failure: { kind: "dead_model", status: 404, detail: `HTTP 404 — model id not found on ${p.provider.slug}` } };
     }
     if (!response.ok) {
-      return { ok: false, failure: { kind: "fail", detail: `HTTP ${response.status} from ${p.provider.slug}` } };
+      return { ok: false, failure: { kind: "fail", status: response.status, detail: `HTTP ${response.status} from ${p.provider.slug}` } };
     }
     return { ok: true, response, latencyMs: Date.now() - started };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return { ok: false, failure: { kind: "fail", detail: msg } };
   }
+}
+
+/**
+ * attemptUpstream = rawUpstreamFetch + the web-plugin breaker.
+ * A 402/400 received while the plugin was attached is a BILLING/COMPAT
+ * problem, not a model problem: the model is not blamed (no cooldown), the
+ * plugin is disabled for a while and the SAME candidate is retried once
+ * without it. Grounding can never cost availability.
+ */
+export async function attemptUpstream(p: AttemptParams): Promise<{ ok: true; response: Response; latencyMs: number } | { ok: false; failure: AttemptFailure }> {
+  const first = await rawUpstreamFetch(p);
+  if (
+    !first.ok &&
+    p.webSearch === true &&
+    !isWebPluginDisabled() &&
+    isOpenRouterProvider(p.provider) &&
+    (first.failure.status === 402 || first.failure.status === 400)
+  ) {
+    disableWebPluginFor();
+    logger.warn(`[AiRouter] web plugin rejected (HTTP ${first.failure.status}) — disabled 10 min, retrying without it`, { provider: p.provider.slug, model: p.model.modelId });
+    return rawUpstreamFetch(p);
+  }
+  return first;
 }
 
 async function readNonStreamReply(response: Response): Promise<{ ok: true; reply: string } | { ok: false; detail: string }> {
@@ -809,6 +869,8 @@ export interface RouteRequest {
   exclude?: Set<string>;
   /** Hoist this exact model id to the front (instant lane preference). */
   preferredModelId?: string;
+  /** Attach the OpenRouter web plugin (documented-answer grounding). */
+  webSearch?: boolean;
 }
 
 /**
@@ -826,7 +888,7 @@ export async function routeChatCompletion(req: RouteRequest): Promise<RoutingOut
     if (Date.now() > deadline) break;
     attempted++;
 
-    const attempt = await attemptUpstream({ provider, model, systemPrompt: req.systemPrompt, messages: req.messages, gen: req.gen, stream: false });
+    const attempt = await attemptUpstream({ provider, model, systemPrompt: req.systemPrompt, messages: req.messages, gen: req.gen, stream: false, webSearch: req.webSearch });
     if (!attempt.ok) {
       recordFailure(provider, model, attempt.failure.kind, attempt.failure.detail);
       continue;
@@ -1150,7 +1212,7 @@ export async function routeChatStream(req: RouteRequest): Promise<RoutingOutcome
     if (Date.now() > deadline) break;
     attempted++;
 
-    const attempt = await attemptUpstream({ provider, model, systemPrompt: req.systemPrompt, messages: req.messages, gen: req.gen, stream: true });
+    const attempt = await attemptUpstream({ provider, model, systemPrompt: req.systemPrompt, messages: req.messages, gen: req.gen, stream: true, webSearch: req.webSearch });
     if (!attempt.ok) {
       recordFailure(provider, model, attempt.failure.kind, attempt.failure.detail);
       continue;
