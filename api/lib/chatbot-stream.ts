@@ -49,6 +49,7 @@ import {
 
   // ── Fallback functions ──
   groqFallback,
+  liveGroqModels,
   nvidiaFallback,
   openRouterFallback,
 
@@ -57,7 +58,7 @@ import {
   validateGroqKey,
   validateOpenRouterKey,
 } from "./chatbot.js";
-import { routeChatStream, buildUpstreamSSETransform, isWebPluginDisabled, disableWebPluginFor, WEB_PLUGIN_BODY, noteOpenRouterDailyLimit, isChatLaneModel } from "./ai-router.js";
+import { routeChatStream, buildUpstreamSSETransform, isWebPluginDisabled, disableWebPluginFor, WEB_PLUGIN_BODY, noteOpenRouterDailyLimit, isChatLaneModel, isDiscoveredModelId } from "./ai-router.js";
 
 // ════════════════════════════════════════════════════════════════════════
 // STREAMING — provider selection
@@ -98,7 +99,8 @@ async function tryPickGroqProvider(systemPrompt: string, tuning: ModeTuning): Pr
     await validateGroqKey();
   }
   if (!groqIsAvailable()) return null;
-  const modelId = GROQ_MODELS[chatHealth.groqCurrentModelIndex] || GROQ_MODELS[0];
+  const liveModels = liveGroqModels();
+  const modelId = liveModels[chatHealth.groqCurrentModelIndex % Math.max(1, liveModels.length)] || GROQ_MODELS[0];
   logger.info(`[Chatbot] Using TIER: ${modelId} (Groq — fastest)`);
   return { provider: "groq", modelId, systemPrompt, tuning };
 }
@@ -507,8 +509,10 @@ async function streamGroqProvider(
 ): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
   const timeouts: number[] = picked.tuning.groqStreamTimeouts;
 
-  for (let i = 0; i < GROQ_MODELS.length; i++) {
-    const modelId = GROQ_MODELS[i];
+  const liveModels = liveGroqModels();
+  for (let i = 0; i < liveModels.length; i++) {
+    const modelId = liveModels[i];
+    if (!isDiscoveredModelId("groq", modelId)) continue;
     chatHealth.groqCurrentModelIndex = i;
 
     for (let attempt = 0; attempt < timeouts.length; attempt++) {

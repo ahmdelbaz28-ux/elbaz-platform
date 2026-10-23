@@ -21,7 +21,7 @@
  *   - This module never throws: a failure degrades to the note path.
  */
 
-import { routeChatCompletion } from "./ai-router.js";
+import { routeChatCompletion, isDiscoveredModelId } from "./ai-router.js";
 import {
   tryGroq,
   tryOpenRouterVision,
@@ -222,7 +222,10 @@ async function performVisionRead(
   //    (The second Scout attempt doubled the worst-case read to ~50s and blew
   //    the instant persistence deadline — removed: one scout + VL sweep is
   //    enough redundancy alongside the dynamic pool.)
-  if (GROQ_API_KEY && stageFits()) {
+  if (GROQ_API_KEY && isDiscoveredModelId("groq", GROQ_VISION_MODEL) && stageFits()) {
+    // Scout dialing is additionally gated by the live discovery registry —
+    // when Groq rotates the model out (2026-10-23: 404), the read skips the
+    // dead attempt and moves straight to the OpenRouter VL sweep.
     try {
       const r1 = await tryGroq(messages, systemPrompt, GROQ_VISION_MODEL, VISION_READ_TIMEOUT_MS);
       const hit1 = r1 ? accept(r1.reply, `groq/${GROQ_VISION_MODEL}`) : null;
