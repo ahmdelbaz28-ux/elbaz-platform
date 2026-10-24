@@ -57,6 +57,9 @@ conn.close()
 print(f"total={total}ms pings={pings} model={model[:1]} errors={errors[:1]}")
 print(f"reply_len={len(text)}")
 print("reply_head:", text[:220])
-ok = len(text) > 30 and not errors
-print("VISION PROBE:", "PASS ✓" if ok else "FAIL ✗")
+# The honesty-note path (image unreadable) is a FAILURE, not a pass — the
+# probe used to bless "عذراً، تعذّر قراءة الصورة…" replies as healthy.
+honesty_failure = ("تعذّر قراءة الصورة" in text) or ("could not be read" in text.lower())
+ok = len(text) > 30 and not errors and not honesty_failure
+print("VISION PROBE:", "PASS ✓" if ok else "FAIL ✗" + (" (honesty-note reply — image was NOT read)" if honesty_failure else ""))
 sys.exit(0 if ok else 1)

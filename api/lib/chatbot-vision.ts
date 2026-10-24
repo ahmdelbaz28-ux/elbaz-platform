@@ -34,11 +34,17 @@ import { stripThinkBlocks } from "./think-filter.js";
 import { logger } from "./logger.js";
 
 /** Overall PASS-1 budget — must leave room for the reasoning cascade. */
-const VISION_READ_BUDGET_MS = 35_000;
-const VISION_READ_TIMEOUT_MS = 20_000;
-/** Minimum remaining budget before starting ANOTHER reader stage — a stage
+const VISION_READ_BUDGET_MS = 45_000;
+const VISION_READ_TIMEOUT_MS = 30_000;
+/** Minimum description chars before another reader stage — a stage
  *  started with less left is guaranteed to blow the request deadline. */
 const VISION_STAGE_MIN_REMAINING_MS = 12_000;
+
+/** Hoisted PASS-1 reader on the Kilo gateway — the only free vision model
+ *  that both ACCEPTS images and answers inside budget (see block comment at
+ *  the dynamic-pool stage). `preferredModelId` no-ops safely if discovery
+ *  ever rotates it out. */
+const VISION_PRIMARY_READER = "nvidia/nemotron-3.5-super-vl:free";
 
 // ── PASS-1 memoization (per-request) ──
 // The streaming router persistence loop re-calls getStreamResponse on every
@@ -200,6 +206,12 @@ async function performVisionRead(
   };
 
   // 1) Dynamic pool — vision-capable models across every configured provider.
+  //    The primary reader is hoisted via preferredModelId (group-scoped, so
+  //    the kilo lane stays first): live-verified 2026-10-24 on the real
+  //    gateway — nvidia/nemotron-3.5-super-vl:free reads the ETAP screenshot
+  //    and writes a complete 447-char Arabic description in ~18s with
+  //    max_tokens 1500, while the text flagship 404s on image input and the
+  //    nano-omni reader needs >120s (unusable inside any budget).
   try {
     if (stageFits()) {
       const routed = await routeChatCompletion({
@@ -207,7 +219,9 @@ async function performVisionRead(
         systemPrompt,
         mode: "thinking",
         vision: true,
-        gen: { temperature: 0.1, maxTokens: 1500, attemptTimeoutMs: VISION_READ_TIMEOUT_MS, globalBudgetMs: 20_000 },
+        preferredModelId: VISION_PRIMARY_READER,
+        allowReasoningText: true,
+        gen: { temperature: 0.1, maxTokens: 1500, attemptTimeoutMs: VISION_READ_TIMEOUT_MS, globalBudgetMs: 35_000 },
       });
       if (routed.ok) {
         const hit = accept(routed.result.reply, routed.result.model);
