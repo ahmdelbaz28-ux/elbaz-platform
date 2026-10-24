@@ -1037,9 +1037,12 @@ export async function attemptUpstream(p: AttemptParams): Promise<{ ok: true; res
   return first;
 }
 
-async function readNonStreamReply(response: Response): Promise<{ ok: true; reply: string } | { ok: false; detail: string }> {
+async function readNonStreamReply(response: Response, allowReasoningFallback = false): Promise<{ ok: true; reply: string } | { ok: false; detail: string }> {
   try {
-    const data = (await response.json()) as { error?: unknown; choices?: { message?: { content?: string | null } }[] };
+    const data = (await response.json()) as {
+      error?: unknown;
+      choices?: { message?: { content?: string | null; reasoning?: string | null; reasoning_content?: string | null } }[];
+    };
     if (data.error) {
       const detail = typeof data.error === "string" ? data.error : JSON.stringify(data.error);
       return { ok: false, detail: detail.slice(0, 200) };
@@ -1047,9 +1050,21 @@ async function readNonStreamReply(response: Response): Promise<{ ok: true; reply
     // stripThinkBlocks: hard zero-gap guarantee — a model that embeds
     // <think>/<reasoning> blocks in content never leaks them. An empty
     // after-strip reply counts as a failure (the walk continues).
-    const reply = stripThinkBlocks(data.choices?.[0]?.message?.content ?? "");
-    if (!reply || !reply.trim()) return { ok: false, detail: "empty completion" };
-    return { ok: true, reply: reply.trim() };
+    const msg = data.choices?.[0]?.message;
+    const reply = stripThinkBlocks(msg?.content ?? "");
+    if (reply && reply.trim()) return { ok: true, reply: reply.trim() };
+    // Reasoning-fallback (vision READ pass only): a reasoning-token model can
+    // burn the whole token budget inside message.reasoning and still emit a
+    // valid image extraction — live-verified on the Kilo gateway
+    // (nemotron-3.5-super-vl:free returns content:null with the full ETAP
+    // screenshot reading inside `reasoning` at low token caps). The fallback
+    // is opt-in so the chat lanes never serve reasoning text as an answer.
+    if (allowReasoningFallback) {
+      const raw = msg?.reasoning ?? msg?.reasoning_content;
+      const alt = stripThinkBlocks(typeof raw === "string" ? raw : "");
+      if (alt && alt.trim().length >= 20) return { ok: true, reply: alt.trim() };
+    }
+    return { ok: false, detail: "empty completion" };
   } catch (err) {
     return { ok: false, detail: `bad JSON payload: ${String(err).slice(0, 120)}` };
   }
@@ -1128,6 +1143,11 @@ export interface RouteRequest {
   preferredModelId?: string;
   /** Attach the OpenRouter web plugin (documented-answer grounding). */
   webSearch?: boolean;
+  /** Reasoning-fallback for the non-stream reply — vision READ pass only:
+   *  reasoning-token models (nemotron super-vl) may return the image
+   *  extraction inside `message.reasoning` with `content: null` when the
+   *  token cap interrupts the answer. Chat quality never relies on this. */
+  allowReasoningText?: boolean;
 }
 
 /**
@@ -1155,11 +1175,16 @@ export async function routeChatCompletion(req: RouteRequest): Promise<RoutingOut
     const attempt = await attemptUpstream({ provider, model, systemPrompt: req.systemPrompt, messages: req.messages, gen: req.gen, stream: false, webSearch: useWeb });
     if (!attempt.ok) {
       recordFailure(provider, model, attempt.failure.kind, attempt.failure.detail);
+      // Per-candidate failure line — the walk used to fail SILENTLY (breaker
+      // state only), which is exactly why the prod vision blackout was
+      // undiagnosable from logs alone.
+      logger.info(`[AiRouter] candidate failed — ${provider.slug}/${model.modelId} (${attempt.failure.kind}) ${String(attempt.failure.detail).slice(0, 140)}`);
       continue;
     }
-    const reply = await readNonStreamReply(attempt.response);
+    const reply = await readNonStreamReply(attempt.response, req.allowReasoningText === true);
     if (!reply.ok) {
       recordFailure(provider, model, "fail", reply.detail);
+      logger.info(`[AiRouter] candidate empty reply — ${provider.slug}/${model.modelId}: ${reply.detail.slice(0, 140)}`);
       continue;
     }
 
