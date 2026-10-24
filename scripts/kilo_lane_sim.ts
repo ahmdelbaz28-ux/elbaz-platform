@@ -4,9 +4,14 @@
  * will store for the free lane (chat / vision / tier ordering).
  */
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { tsImport } from "tsx/esm/api";
 
-const payload = JSON.parse(readFileSync("/tmp/kilo_models.json", "utf-8"));
+// S5443 — the payload lives next to the script (owner-writable repo dir),
+// never in a publicly writable directory like /tmp.
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const payload = JSON.parse(readFileSync(join(scriptDir, "kilo_models.json"), "utf-8"));
 const { classifyRawModel, SPECIALIST_CHAT_RE } = await tsImport("../api/lib/ai-router.ts", import.meta.url);
 
 const rows = [];

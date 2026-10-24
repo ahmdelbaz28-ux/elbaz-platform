@@ -7,7 +7,7 @@ Verifies:
      (fake provider keys → all providers fail → 503 JSON, NOT a 500 crash —
      proves resolveOptionalUser + the new code path don't break the chat flow)
 """
-import json, subprocess, time, urllib.request, urllib.error
+import json, os, subprocess, tempfile, time, urllib.request, urllib.error
 
 BASE = "http://127.0.0.1:3999"
 
@@ -20,8 +20,9 @@ env_cmd = [
     "OPENROUTER_API_KEY=sk-or-test", "PORT=3999", "NODE_ENV=development",
     "npx", "tsx", "api/boot.ts",
 ]
+boot_log = os.path.join(tempfile.mkdtemp(prefix="chathist_smoke_"), "boot_chathist.log")  # S5443 — private dir
 server = subprocess.Popen(env_cmd, cwd="/home/z/my-project/work/elbaz-platform",
-                          stdout=open("/tmp/boot_chathist.log", "w"), stderr=subprocess.STDOUT)
+                          stdout=open(boot_log, "w"), stderr=subprocess.STDOUT)
 time.sleep(12)
 
 fails, notes = [], []

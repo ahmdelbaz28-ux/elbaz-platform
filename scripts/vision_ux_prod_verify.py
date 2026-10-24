@@ -7,7 +7,7 @@
 A real headed Chromium under Xvfb against https://ahmedelbaz.qzz.io
 (service_workers blocked so page.route-free measurements are honest).
 """
-import json, re, sys, time, urllib.request
+import json, os, re, sys, tempfile, time, urllib.request
 from playwright.sync_api import sync_playwright
 
 PROD = "https://ahmedelbaz.qzz.io"
@@ -120,7 +120,7 @@ def main():
         pg.locator("button[type='submit']").first.click()
         pg.wait_for_timeout(4000)
 
-        img_path = "/tmp/etap_vision_ux.jpg"
+        img_path = os.path.join(tempfile.mkdtemp(prefix="vision_ux_"), "etap_vision_ux.jpg")  # S5443 — private dir
         try:
             urllib.request.urlretrieve(PROD + "/etap-category.jpg", img_path)
         except Exception:

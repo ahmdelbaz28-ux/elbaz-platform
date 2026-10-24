@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Focused VISION probe — one image round via the real production stream."""
 import http.client, json, base64, sys, time
+from pathlib import Path
 
 BASE_HOST = "ahmedelbaz.qzz.io"
 HDRS = {
@@ -11,7 +12,15 @@ HDRS = {
     "Referer": "https://ahmedelbaz.qzz.io/",
 }
 
-img_path = sys.argv[1] if len(sys.argv) > 1 else "/home/z/my-project/work/elbaz-platform/public/etap-category.jpg"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+# S8707 — the CLI value is untrusted input that reaches open(): resolve it and
+# enforce an allowlist (inside the repo + image extension) before any read.
+img_path = Path(sys.argv[1] if len(sys.argv) > 1 else REPO_ROOT / "public" / "etap-category.jpg").resolve()
+if not img_path.is_relative_to(REPO_ROOT):
+    sys.exit("image path must stay inside the project directory")
+if img_path.suffix.lower() not in IMAGE_SUFFIXES:
+    sys.exit("only image files (.jpg/.jpeg/.png/.webp/.gif) are accepted")
 with open(img_path, "rb") as f:
     b64 = base64.b64encode(f.read()).decode()
 dataurl = f"data:image/jpeg;base64,{b64}"
