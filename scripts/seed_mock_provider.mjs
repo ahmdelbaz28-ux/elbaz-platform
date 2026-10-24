@@ -112,6 +112,20 @@ if (mode === "seed-429") {
     [gq2.insertId, "mock/grounded-stream"]
   );
   console.log(`seeded kilocode=${kilo.insertId} (kilo-exhausted 1M + kilo-dead 262k, tier1) + groq=${gq2.insertId} (grounded-stream tier1)`);
+} else if (mode === "seed-quota") {
+  // TOKEN-EXHAUSTION T7 — the 402 path: a KILOCODE provider whose tier-1 model
+  // 402s on EVERY call (tokens finished — the owner's literal "لو نموزج
+  // التوكنات خلصت ينتقل النموزج التالي"), plus a healthy tier-2 streamer. The
+  // walk must cool the 402 model and serve the user from the next kilo model
+  // in the SAME request — cascade WITHIN the first provider, never an error.
+  const [ins] = await conn.query(
+    "INSERT INTO aiProviders (slug, displayName, baseUrl, apiKey, priority, enabled, status) VALUES ('kilocode','Kilo Mock','http://127.0.0.1:47777/v1','mock-key',1,1,'healthy')"
+  );
+  await conn.query(
+    "INSERT INTO aiModels (providerId, modelId, supportsChat, supportsVision, isFree, enabled, tier, contextLength) VALUES (?,?,1,0,1,1,1,1000000),(?,?,1,0,1,1,2,262144)",
+    [ins.insertId, "mock/quota-exhaust", ins.insertId, "mock/grounded-stream"]
+  );
+  console.log(`seeded kilocode=${ins.insertId}: mock/quota-exhaust (tier1, 402 always) + mock/grounded-stream (tier2)`);
 } else if (mode === "seed-dud") {
   // NEVER-BUSY T4: a dud tier-1 winner that peeks alive (reasoning delta)
   // then dies with zero visible content, + a healthy tier-2 streamer. The

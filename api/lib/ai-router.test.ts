@@ -11,7 +11,7 @@ import { describe, it, expect, vi } from "vitest";
 
 // classifyRawModel is exported from ai-router.ts — importing the module must
 // NOT require a database (lazy DB handle) by design.
-import { classifyRawModel, maskApiKey, parseUpstreamSseLine, looksComplete, PROVIDER_CATALOG, SPECIALIST_CHAT_RE, isChatLaneModel, isDiscoveredModelId, resetDiscoveredModelRegistry, isOpenRouterDailyLimited, resetOpenRouterDailyLimit, sniffOpenRouterDailyLimit } from "./ai-router.js";
+import { classifyRawModel, maskApiKey, parseUpstreamSseLine, looksComplete, PROVIDER_CATALOG, SPECIALIST_CHAT_RE, isChatLaneModel, isDiscoveredModelId, resetDiscoveredModelRegistry, isOpenRouterDailyLimited, resetOpenRouterDailyLimit, sniffOpenRouterDailyLimit, isKilocodeProvider, isProviderDailyLimited, resetProviderDailyLimits } from "./ai-router.js";
 
 describe("AI Router — classifyRawModel", () => {
   it("classifies OpenRouter multimodal metadata as vision (authoritative signal)", () => {
@@ -365,5 +365,58 @@ describe("AI Router — SPECIALIST_CHAT_RE (allam + gemma incidents regression)"
     // The chat-lane gate helper agrees.
     expect(isChatLaneModel("google/gemma-4-26b-a4b-it:free")).toBe(false);
     expect(isChatLaneModel("openai/gpt-oss-120b:free")).toBe(true);
+  });
+});
+
+describe("AI Router — Kilo gateway daily breaker + 402 cascade support", () => {
+  const KILO = { id: 77, slug: "kilocode", baseUrl: "https://ai-gateway.kilo.ai/api/v1" };
+  const OR = { id: 5, slug: "openrouter", baseUrl: "https://openrouter.ai/api/v1" };
+  const GROQ = { slug: "groq", baseUrl: "https://api.groq.com/openai/v1" };
+
+  it("detects the kilo gateway by slug and both known base URLs", () => {
+    expect(isKilocodeProvider(KILO)).toBe(true);
+    expect(isKilocodeProvider({ slug: "kilocode", baseUrl: "https://api.kilocode.ai/api/openrouter/v1" })).toBe(true);
+    expect(isKilocodeProvider({ slug: "anything", baseUrl: "https://ai-gateway.kilo.ai/api/v1" })).toBe(true);
+    expect(isKilocodeProvider(GROQ)).toBe(false);
+    expect(isKilocodeProvider(OR)).toBe(false);
+  });
+
+  it("a Kilo daily-quota 429 trips the PER-PROVIDER breaker — OpenRouter stays untouched", async () => {
+    resetProviderDailyLimits();
+    resetOpenRouterDailyLimit();
+    const res = new Response(JSON.stringify({ error: { message: "free-models-per-day exhausted" } }), { status: 429 });
+    await sniffOpenRouterDailyLimit(KILO, res);
+    expect(isProviderDailyLimited(77)).toBe(true);
+    expect(isOpenRouterDailyLimited()).toBe(false);
+    // Sibling kilo row with a different id keeps serving.
+    expect(isProviderDailyLimited(78)).toBe(false);
+    resetProviderDailyLimits();
+    expect(isProviderDailyLimited(77)).toBe(false);
+  });
+
+  it("OpenRouter daily-quota 429s still arm the legacy global breaker (and never the kilo one)", async () => {
+    resetProviderDailyLimits();
+    resetOpenRouterDailyLimit();
+    const res = new Response(JSON.stringify({ error: { message: "free-models-per-day (Limit: 50, Used: 50)" } }), { status: 429 });
+    await sniffOpenRouterDailyLimit(OR, res);
+    expect(isOpenRouterDailyLimited()).toBe(true);
+    expect(isProviderDailyLimited(5)).toBe(false);
+    resetOpenRouterDailyLimit();
+  });
+
+  it("per-model 429s and other providers never trip any daily breaker", async () => {
+    resetProviderDailyLimits();
+    resetOpenRouterDailyLimit();
+    const res = new Response(JSON.stringify({ error: { message: "Rate limit exceeded: free-models-per-minute" } }), { status: 429 });
+    await sniffOpenRouterDailyLimit(KILO, res);
+    await sniffOpenRouterDailyLimit(GROQ, new Response("free-models-per-day", { status: 429 }));
+    expect(isProviderDailyLimited(77)).toBe(false);
+    expect(isOpenRouterDailyLimited()).toBe(false);
+  });
+
+  it("catalog keeps kilocode as a first-class entry", () => {
+    const kilo = PROVIDER_CATALOG.find((c) => c.slug === "kilocode");
+    expect(kilo).toBeTruthy();
+    expect(String(kilo?.baseUrl)).toContain("kilo");
   });
 });

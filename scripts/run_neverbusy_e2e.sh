@@ -92,6 +92,13 @@ wait_up || exit 1
 seed seed-kilo-lane
 python3 scripts/neverbusy_e2e.py t6 "$PERSIST_MS" || EXIT=1
 
+echo "== ── PHASE T7: kilo token-exhaustion 402 → next kilo model serves the user ──"
+kill_servers
+start_server
+wait_up || exit 1
+seed seed-quota
+python3 scripts/neverbusy_e2e.py t7 "$PERSIST_MS" || EXIT=1
+
 echo "== cleanup =="
 kill_servers
 pkill -f mock_openrouter.mjs 2>/dev/null

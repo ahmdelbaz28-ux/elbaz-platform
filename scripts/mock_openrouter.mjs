@@ -164,6 +164,17 @@ const server = http.createServer((req, res) => {
         }));
         return;
       }
+      if (modelId === "mock/quota-exhaust") {
+        // TOKEN-EXHAUSTION T7: this model's tokens are FINISHED — 402 on every
+        // call (OpenRouter-style gateways use 402 for "insufficient credits").
+        // Classified rate_limited → 90s model cooldown → the walk continues on
+        // the next model in the SAME request; the user never sees an error.
+        res.writeHead(402, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          error: { code: 402, message: "Not enough credits: this model's free tokens are exhausted. Try another model." },
+        }));
+        return;
+      }
       if (parsed.stream === true) return sseReply(res); // any streaming model
       if (modelId === "mock/charged") {
         chargedCalls += 1;
