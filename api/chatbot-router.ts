@@ -192,11 +192,12 @@ function normalizeChatInput(raw: unknown): { ok: true; data: NormalizedChatInput
   return { ok: true, data: { messages, vision: imageCount > 0, imageCount, totalTextChars } };
 }
 
-/** Bilingual daily-quota error (SonarCloud S3358 — no nested ternaries). */
+/** Bilingual daily-quota notice — a polite apology that states the 5-images-per-day
+ * allowance and invites the user to ask anything else (SonarCloud S3358 — no nested ternaries). */
 function imageQuotaExceededResponse(used: number): { en: string; ar: string } {
   return {
-    en: `You've reached today's image limit (${used}/${DAILY_IMAGE_LIMIT}) — text chat still works, images reset tomorrow 🌅`,
-    ar: `وصلت الحد اليومي لإرسال الصور (${used}/${DAILY_IMAGE_LIMIT}) — الشات النصي شغال عادي، والصور بترجع بكرة 🌅`,
+    en: `I'm really sorry 🙏 only ${DAILY_IMAGE_LIMIT} images per day are available to preserve the analysis quota (you've used ${used}/${DAILY_IMAGE_LIMIT} today) — but I'm fully ready to answer any other inquiry, just type your question!`,
+    ar: `أعتذر منك جداً 🙏 المتاح فقط ${DAILY_IMAGE_LIMIT} صور يومياً حفاظاً على كوتة تحليل الصور (استهلكت ${used}/${DAILY_IMAGE_LIMIT} اليوم) — لكنني جاهز تماماً للرد على أي استفسار آخر، اكتب سؤالك وأنا معك!`,
   };
 }
 

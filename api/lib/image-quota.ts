@@ -14,8 +14,8 @@
 import { pool } from "../queries/connection.js";
 import { logger } from "./logger.js";
 
-/** Daily image allowance per user (per IP). */
-export const DAILY_IMAGE_LIMIT = 10;
+/** Daily image allowance per user (per IP) — kept small to preserve the vision providers' quota. */
+export const DAILY_IMAGE_LIMIT = 5;
 
 const memQuota = new Map<string, { day: string; used: number }>();
 
