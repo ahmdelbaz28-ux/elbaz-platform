@@ -11,7 +11,7 @@ Method (deterministic, geometry-based):
 
 Usage: python3 scripts/text_overlap_audit.py [--only-before]
 """
-import json, subprocess, sys, time
+import json, os, subprocess, sys, tempfile, time
 
 BASE = "http://127.0.0.1:3999"
 OUT = "/home/z/my-project/work/elbaz-platform/scripts/shots_overlap"
@@ -252,8 +252,9 @@ def main():
         "NODE_ENV=development",
         "npx", "tsx", "api/boot.ts",
     ]
+    boot_log = os.path.join(tempfile.mkdtemp(prefix="overlap_audit_"), "boot_overlap.log")  # S5443 — private dir
     server = subprocess.Popen(env_cmd, cwd="/home/z/my-project/work/elbaz-platform",
-                              stdout=open("/tmp/boot_overlap.log", "w"), stderr=subprocess.STDOUT)
+                              stdout=open(boot_log, "w"), stderr=subprocess.STDOUT)
     time.sleep(12)
     try:
         from playwright.sync_api import sync_playwright

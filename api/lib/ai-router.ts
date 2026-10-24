@@ -1575,7 +1575,9 @@ function buildResilientUpstreamStream(params: {
       })();
     },
     cancel() {
-      try { params.reader.cancel(); } catch { /* already dead */ }
+      // S4822/S9383 — cancel() returns a promise; the sync try/catch cannot
+      // observe its rejection, so terminate it with .catch explicitly.
+      try { params.reader.cancel().catch(() => { /* already dead */ }); } catch { /* already dead */ }
     },
   });
 }

@@ -83,7 +83,7 @@ export async function persistChatRound(userId: number, opts: PersistRoundOptions
         userId,
         role: "assistant",
         content: assistantText,
-        metadata: { ...metadata, ...(opts.model ? {} : {}) },
+        metadata: { ...metadata },
       },
     ]);
 
