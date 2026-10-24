@@ -690,10 +690,13 @@ export async function buildCandidates(opts: { vision: boolean; mode: ChatbotMode
   for (const provider of pool.providers) {
     if (!provider.enabled || !provider.apiKey) continue;
     if (providerIsCooling(provider.id)) continue;
-    // Daily-quota breaker: when OpenRouter's account-level free allowance is
+    // Daily-quota breakers: when an account-level free allowance is
     // exhausted, EVERY model there 429s — skip the whole provider so the walk
     // reaches the next provider (Groq) instantly instead of after ~40-60s.
+    // OpenRouter uses the legacy global breaker; the Kilo gateway (and future
+    // gateways) the per-provider one — a trip on one never skips the other.
     if (isOpenRouterProvider(provider) && isOpenRouterDailyLimited()) continue;
+    if (isKilocodeProvider(provider) && isProviderDailyLimited(provider.id)) continue;
     const rows = pool.models.get(provider.id) || [];
     const usable = rows
       .filter((m) => m.enabled && (opts.vision ? m.supportsVision : m.supportsChat))
@@ -726,19 +729,30 @@ export async function buildCandidates(opts: { vision: boolean; mode: ChatbotMode
   // Mode-scoped last-working shortcut: hop straight to what worked recently.
   // (Order: tier sort → preferred model → lastWorking pin — the pin still
   // wins because it is only set by streams that actually completed.)
+  // BOTH shortcuts hoist within the model's OWN provider group: candidates
+  // are contiguous per provider (priority order), so a preferred/pinned id
+  // living on a LOWER-priority provider must never jump over a higher-
+  // priority lane. Live case: instant's openRouterPreferredModel
+  // (openai/gpt-oss-120b:free) does NOT exist on the Kilo gateway — an
+  // unscoped unshift would leapfrog the whole kilo lane on EVERY instant
+  // request, breaking the owner's "kilo first, then groq, then the rest".
   if (opts.preferredModelId) {
     const idx = candidates.findIndex((c) => c.model.modelId === opts.preferredModelId);
     if (idx > 0) {
+      const pid = candidates[idx].provider.id;
+      const groupStart = candidates.findIndex((c) => c.provider.id === pid);
       const [first] = candidates.splice(idx, 1);
-      candidates.unshift(first);
+      candidates.splice(groupStart, 0, first);
     }
   }
   const lw = lastWorkingByMode[opts.mode];
   if (lw.key && !opts.exclude?.has(lw.key) && Date.now() - lw.time < LAST_WORKING_TTL_MS) {
     const idx = candidates.findIndex((c) => modelKey(c.provider.id, c.model.modelId) === lw.key);
     if (idx > 0) {
+      const pid = candidates[idx].provider.id;
+      const groupStart = candidates.findIndex((c) => c.provider.id === pid);
       const [first] = candidates.splice(idx, 1);
-      candidates.unshift(first);
+      candidates.splice(groupStart, 0, first);
     }
   }
   return candidates;
@@ -808,6 +822,11 @@ export function isOpenRouterProvider(p: { slug?: string | null; baseUrl: string 
   return p.slug === "openrouter" || /openrouter\.ai/i.test(p.baseUrl);
 }
 
+/** True for the Kilo Code gateway (OpenRouter-compatible proxy). */
+export function isKilocodeProvider(p: { slug?: string | null; baseUrl: string }): boolean {
+  return p.slug === "kilocode" || /kilo\.(ai|ai\/api)/i.test(p.baseUrl) || /api\.kilocode\.ai/i.test(p.baseUrl);
+}
+
 // Circuit breaker: when OpenRouter rejects the plugin (402 — the key has no
 // credits for web results, or 400 — plugin field refused), stop attaching it
 // for a while instead of paying one wasted round-trip on every request.
@@ -845,17 +864,48 @@ export function resetOpenRouterDailyLimit(): void {
   orDailyLimitUntil = 0;
 }
 
+// ── PER-PROVIDER DAILY-QUOTA BREAKER (Kilo gateway + future gateways) ──
+// Same failure shape as OpenRouter's free-models-per-day: an account-level
+// allowance where EVERY model 429s until reset. Kept PER-PROVIDER (Map keyed
+// by provider id) so a Kilo trip never skips OpenRouter and vice versa —
+// each gateway is judged on its own quota. Per-model cooldowns already stop
+// repeated storms; this breaker makes the WHOLE walk skip the provider.
+const providerDailyLimitUntil = new Map<number, number>();
+export function noteProviderDailyLimit(providerId: number, ms = 30 * 60_000): void {
+  if (!Number.isFinite(providerId) || providerId <= 0) return;
+  providerDailyLimitUntil.set(providerId, Math.max(providerDailyLimitUntil.get(providerId) || 0, Date.now() + ms));
+}
+export function isProviderDailyLimited(providerId: number): boolean {
+  const until = providerDailyLimitUntil.get(providerId);
+  return !!until && Date.now() < until;
+}
+export function resetProviderDailyLimits(): void {
+  providerDailyLimitUntil.clear();
+}
+
 /** Sniff one 429 response body — trips the daily breaker when it is the
- *  account-level free allowance (as opposed to a per-model rate limit). */
+ *  account-level free allowance (as opposed to a per-model rate limit).
+ *  Covers OpenRouter (legacy global breaker) and the Kilo gateway
+ *  (per-provider breaker) — both proxy OpenRouter-style quota bodies. */
 const OR_DAILY_LIMIT_BODY_RE = /free-models-per-(day|month)/i;
 
-export async function sniffOpenRouterDailyLimit(provider: { slug?: string | null; baseUrl: string }, response: Response): Promise<void> {
-  if (response.status !== 429 || !isOpenRouterProvider(provider)) return;
+export async function sniffOpenRouterDailyLimit(provider: { id?: number; slug?: string | null; baseUrl: string }, response: Response): Promise<void> {
+  if (response.status !== 429) return;
+  const isOr = isOpenRouterProvider(provider);
+  const isKilo = isKilocodeProvider(provider);
+  if (!isOr && !isKilo) return;
   try {
     const body = (await response.text()).slice(0, 2_000);
     if (OR_DAILY_LIMIT_BODY_RE.test(body)) {
-      noteOpenRouterDailyLimit();
-      logger.warn("[AiRouter] OpenRouter daily free quota exhausted — skipping OpenRouter for 30 min (next provider answers)");
+      if (isKilo) {
+        if (typeof provider.id === "number" && provider.id > 0) {
+          noteProviderDailyLimit(provider.id);
+          logger.warn(`[AiRouter] Kilo gateway daily free quota exhausted (provider #${provider.id}) — skipping it for 30 min (next provider answers)`);
+        }
+      } else {
+        noteOpenRouterDailyLimit();
+        logger.warn("[AiRouter] OpenRouter daily free quota exhausted — skipping OpenRouter for 30 min (next provider answers)");
+      }
     }
   } catch { /* body unreadable — treat as a normal 429 */ }
 }
@@ -940,9 +990,16 @@ async function rawUpstreamFetch(p: AttemptParams): Promise<{ ok: true; response:
     }
     if (response.status === 429) {
       // Body sniff AFTER the classification — a daily-quota 429 arms the
-      // 30-minute OpenRouter breaker so the rest of the walk skips it fast.
+      // 30-minute provider breaker so the rest of the walk skips it fast.
       await sniffOpenRouterDailyLimit(p.provider, response);
       return { ok: false, failure: { kind: "rate_limited", status: 429, detail: `HTTP 429 — ${p.provider.slug}/${p.model.modelId} quota/rate exhausted` } };
+    }
+    if (response.status === 402) {
+      // Credits/quota exhausted for THIS model (OpenRouter-style gateways —
+      // the Kilo gateway included). rate_limited → 90s model cooldown and the
+      // walk CONTINUES on the next model: the token-exhaustion cascade the
+      // owner requires ("tokens finished → next model … the chat never stops").
+      return { ok: false, failure: { kind: "rate_limited", status: 402, detail: `HTTP 402 — ${p.provider.slug}/${p.model.modelId} credits/quota exhausted` } };
     }
     if (response.status === 404) {
       return { ok: false, failure: { kind: "dead_model", status: 404, detail: `HTTP 404 — model id not found on ${p.provider.slug}` } };
@@ -1571,7 +1628,7 @@ export async function routeChatStream(req: RouteRequest): Promise<RoutingOutcome
 // ════════════════════════════════════════════════════════════════════════
 
 export interface RouterHealthSnapshot {
-  providers: { slug: string; displayName: string; status: string; coolingForMs: number; models: number; enabledModels: number }[];
+  providers: { slug: string; displayName: string; status: string; coolingForMs: number; models: number; enabledModels: number; dailyLimited: boolean }[];
   lastWorking: { thinking: string; instant: string };
   events: RouterEvent[];
   poolSize: number;
@@ -1590,6 +1647,7 @@ export async function getRouterHealthSnapshot(): Promise<RouterHealthSnapshot> {
       coolingForMs: Math.max(0, (providerCooldownUntil.get(p.id) || 0) - Date.now()),
       models: rows.length,
       enabledModels: rows.filter((m) => m.enabled).length,
+      dailyLimited: (isOpenRouterProvider(p) && isOpenRouterDailyLimited()) || isProviderDailyLimited(p.id),
     };
   });
   const fmt = (e: { key: string; time: number }) => (e.key && Date.now() - e.time < LAST_WORKING_TTL_MS ? e.key : "");

@@ -189,10 +189,56 @@ def t6(_persist_ms):
 
 
 
+def reset_mock_log():
+    """POST /__reset — clears the mock upstream's SERVER-SIDE call log (the
+    GET /__log payload is a fresh serialization each time, so clearing the
+    parsed client copy would be a no-op)."""
+    conn = http.client.HTTPConnection("127.0.0.1", 47777, timeout=5)
+    conn.request("POST", "/__reset")
+    conn.getresponse().read()
+    conn.close()
+
+
+def get_mock_log():
+    conn = http.client.HTTPConnection("127.0.0.1", 47777, timeout=5)
+    conn.request("GET", "/__log")
+    out = json.loads(conn.getresponse().read().decode("utf-8", "replace"))
+    conn.close()
+    return out
+
+
+def t7(_persist_ms):
+    """TOKEN-EXHAUSTION 402 path — the owner's literal contract: "لو نموزج
+    التوكنات خلصت ينتقل النموزج التالي". The FIRST provider is kilocode; its
+    tier-1 model 402s on EVERY call (credits exhausted). The walk must classify
+    the 402 as quota-exhaustion, cool that model, and serve from the NEXT kilo
+    model in the SAME request — never an error to the user."""
+    try:
+        reset_mock_log()
+    except Exception:
+        pass
+    msg = {"messages": [{"role": "user", "content": "اشرح الحماية"}], "language": "ar", "mode": "thinking"}
+    ttfb, ctype, events, total = post_stream(msg)
+    kinds = [k for k, _ in events]
+    reply = text_of(events)
+    models = [p for k, p in events if k == "model"]
+    check("T7 SSE-first: 200 + event-stream immediately", ttfb < 3000 and "text/event-stream" in ctype, f"ttfb={ttfb}ms")
+    check("T7 exhausted model really visited (mock log)", any(c.get("model") == "mock/quota-exhaust" for c in get_mock_log()), repr([c.get("model") for c in get_mock_log()][:5]))
+    check("T7 cascade served the user from the next kilo model", "موثق" in reply and "متدفق" in reply, f"reply={reply[:60]!r} total={total}ms")
+    check("T7 winner announced inside the kilo provider", any("grounded-stream" in m for m in models), f"models={models}")
+    check("T7 no error event reached the client", not any(k == "error" for k, _ in events))
+    check("T7 terminated with [DONE]", kinds[-1] == "done" if kinds else False)
+    check("T7 fast cascade (< 15s total)", total < 15_000, f"total={total}ms")
+    # Follow-up: the 402 model is cooling → straight to the healthy one.
+    ttfb, ctype, events, total = post_stream(msg)
+    kinds = [k for k, _ in events]
+    check("T7 follow-up answers again (cooldown skips the dead model)", any(k == "text" for k, _ in events) and not any(k == "error" for k, _ in events), f"total={total}ms")
+
+
 if __name__ == "__main__":
     phase = (sys.argv[1] if len(sys.argv) > 1 else "t1").lower()
     persist_ms = int(sys.argv[2]) if len(sys.argv) > 2 else 8000
-    {"t1": t1, "t2": t2, "t3": t3, "t4": t4, "t5": t5, "t6": t6}[phase](persist_ms)
+    {"t1": t1, "t2": t2, "t3": t3, "t4": t4, "t5": t5, "t6": t6, "t7": t7}[phase](persist_ms)
     print()
     if fails:
         print(f"PHASE {phase.upper()} FAILED: {len(fails)} — {fails}")
