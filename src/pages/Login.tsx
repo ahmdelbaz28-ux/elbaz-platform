@@ -35,19 +35,21 @@ declare global {
   }
 }
 
+// ✅ FIX (payment UNAUTHORIZED): the payment flow sends expired-session
+// buyers to /login with ?redirect=<course-url> — after re-login they must land
+// back on the course they were buying, not the home page. Only same-origin
+// absolute paths are accepted (no protocol-relative //, no external URLs).
+// Module scope: pure function — stable identity keeps the Google-callback
+// effect dependency-honest without a per-render dep churn.
+function safeRedirectTarget(): string {
+  const target = new URLSearchParams(globalThis.location.search).get("redirect") || "/";
+  return target.startsWith("/") && !target.startsWith("//") ? target : "/";
+}
+
 export default function Login() {
   const queryClient = useQueryClient();
   const { t, lang } = useTranslation();
   const navigate = useNavigate();
-
-  // ✅ FIX (payment UNAUTHORIZED): the payment flow sends expired-session
-  // buyers here with ?redirect=<course-url> — after re-login they must land
-  // back on the course they were buying, not the home page. Only same-origin
-  // absolute paths are accepted (no protocol-relative //, no external URLs).
-  const safeRedirectTarget = (): string => {
-    const target = new URLSearchParams(globalThis.location.search).get("redirect") || "/";
-    return target.startsWith("/") && !target.startsWith("//") ? target : "/";
-  };
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");

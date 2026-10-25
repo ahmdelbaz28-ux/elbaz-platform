@@ -749,18 +749,17 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
   ].filter((ch) => ch.value !== "");
 
   const availableManualChannels = manualChannels.filter((ch) => ch.key === manualMethod);
+  const firstManualKey = manualChannels[0]?.key;
 
   // Auto-select the first available manual channel when details load, or when
   // the currently-selected channel has no value configured by the admin.
   useEffect(() => {
     if (!manualDetails) return;
-    const hasCurrent = manualChannels.some((ch) => ch.key === manualMethod);
-    if (!hasCurrent && manualChannels.length > 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setManualMethod(manualChannels[0].key);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [manualDetails]);
+    if (availableManualChannels.length > 0) return; // current selection still valid
+    if (firstManualKey === undefined) return; // nothing to fall back to
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setManualMethod(firstManualKey);
+  }, [manualDetails, firstManualKey, availableManualChannels.length]);
 
   // ✅ When the electronic gateway is disabled but manual transfer is available,
   // open the modal straight on the manual tab so users aren't shown dead buttons.

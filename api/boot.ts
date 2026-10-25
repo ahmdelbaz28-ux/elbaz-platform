@@ -164,8 +164,8 @@ app.get("/sitemap.xml", async (c) => {
 
   try {
     const { db } = await import("./queries/connection.js");
-    const { courses } = await import("@db/schema");
-    const { eq } = await import("drizzle-orm");
+    const { courses, articles } = await import("@db/schema");
+    const { eq, desc } = await import("drizzle-orm");
 
     const publishedCourses = await db
       .select({
@@ -182,6 +182,7 @@ app.get("/sitemap.xml", async (c) => {
     const staticUrls = [
       { loc: `${baseUrl}/`, priority: "1", changefreq: "weekly", lastmod: now },
       { loc: `${baseUrl}/courses`, priority: "0.9", changefreq: "weekly", lastmod: now },
+      { loc: `${baseUrl}/articles`, priority: "0.6", changefreq: "weekly", lastmod: now },
       { loc: `${baseUrl}/references`, priority: "0.6", changefreq: "weekly", lastmod: now },
       { loc: `${baseUrl}/faq`, priority: "0.6", changefreq: "monthly", lastmod: now },
       { loc: `${baseUrl}/verify`, priority: "0.5", changefreq: "yearly", lastmod: now },
@@ -200,7 +201,23 @@ app.get("/sitemap.xml", async (c) => {
       lastmod: course.updatedAt ? course.updatedAt.toISOString().split("T")[0] : now,
     }));
 
-    const allUrls = [...staticUrls, ...courseUrls];
+    const publishedArticles = await db
+      .select({
+        slug: articles.slug,
+        updatedAt: articles.updatedAt,
+      })
+      .from(articles)
+      .where(eq(articles.isPublished, true))
+      .orderBy(desc(articles.publishedAt));
+
+    const articleUrls = publishedArticles.map((article) => ({
+      loc: `${baseUrl}/articles/${escapeXml(article.slug)}`,
+      priority: "0.5",
+      changefreq: "monthly",
+      lastmod: article.updatedAt ? article.updatedAt.toISOString().split("T")[0] : now,
+    }));
+
+    const allUrls = [...staticUrls, ...courseUrls, ...articleUrls];
 
     const xml = [
       '<?xml version="1" encoding="UTF-8"?>',
@@ -290,7 +307,7 @@ app.post("/api/csp-report", async (c) => {
     const cr = (r["csp-report"] ?? r) as Record<string, unknown>;
     appLogger.warn("[CSP] Violation", {
       requestId,
-      directive: String(cr["effectiveDirective"] ?? "").slice(0, 120),
+      directive: String(cr.effectiveDirective ?? "").slice(0, 120),
       blockedUri: String(cr["blocked-uri"] ?? "").slice(0, 300),
       documentUri: String(cr["document-uri"] ?? "").slice(0, 300),
       sample: String(cr["script-sample"] ?? "").slice(0, 500),

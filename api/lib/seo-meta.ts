@@ -78,6 +78,7 @@ const NOINDEX_ROUTES = new Set([
 const STATIC_ROUTES = new Set([
   "/",
   "/courses",
+  "/articles",
   "/references",
   "/faq",
   "/verify",
@@ -100,6 +101,7 @@ const STATIC_ROUTES = new Set([
 
 const DYNAMIC_ROUTE_PATTERNS: RegExp[] = [
   /^\/courses\/[^/]+$/,
+  /^\/articles\/[^/]+$/,
   /^\/certificate\/[^/]+$/,
   /^\/verify\/[^/]+$/,
 ];
@@ -161,6 +163,13 @@ const ROUTE_META: Record<string, StaticMeta> = {
       "تصفح جميع كورسات الهندسة الكهربية: ETAP، SKM PowerFactory، DIgSILENT، PVSyst وتصميم اللوحات الكهربية — كورسات مجانية ومميزة بجودة عالية مع شهادات موثقة.",
     keywords:
       "كورسات كهربية مجانية, كورس ETAP بالعربي, كورس SKM PowerFactory, كورس PVSyst, كورسات هندسة القوى, electrical courses online",
+  },
+  "/articles": {
+    title: `مقالات هندسية في القوى الكهربية وأنظمة ETAP${BRAND_SUFFIX}`,
+    description:
+      "مقالات هندسية مبسطة ومنقّحة في الهندسة الكهربية: أنظمة القوى، ETAP، SKM، الحماية الكهربية، تصميم اللوحات ومحطات المحولات — بخطوات عملية من م. أحمد الباز.",
+    keywords:
+      "مقالات هندسة كهربية, مقالات ETAP, أنظمة القوى الكهربية, الحماية الكهربية, تصميم اللوحات, مقالات هندسية بالعربي, electrical engineering articles",
   },
   "/references": {
     title: `المراجع الهندسية والملفات المجانية${BRAND_SUFFIX}`,
@@ -289,6 +298,57 @@ async function loadCourses(): Promise<void> {
     // failing DB on every request.
     courseCache.expiry = Date.now() + 30 * 1000;
     appLogger.warn("[SEO] Failed to load courses for meta", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+interface ArticleRow {
+  slug: string;
+  titleEn: string;
+  titleAr: string;
+  excerptAr: string | null;
+  excerptEn: string | null;
+  contentAr: string;
+  coverImage: string | null;
+  updatedAt: Date | null;
+}
+
+let articlesCache: { bySlug: Map<string, ArticleRow>; expiry: number } = {
+  bySlug: new Map(),
+  expiry: 0,
+};
+
+async function loadArticles(): Promise<void> {
+  if (Date.now() < articlesCache.expiry) return;
+  try {
+    const { db } = await import("../queries/connection.js");
+    const { articles } = await import("@db/schema");
+    const { eq, desc } = await import("drizzle-orm");
+    const rows = await db
+      .select({
+        slug: articles.slug,
+        titleEn: articles.titleEn,
+        titleAr: articles.titleAr,
+        excerptAr: articles.excerptAr,
+        excerptEn: articles.excerptEn,
+        contentAr: articles.contentAr,
+        coverImage: articles.coverImage,
+        updatedAt: articles.updatedAt,
+      })
+      .from(articles)
+      .where(eq(articles.isPublished, true))
+      .orderBy(desc(articles.publishedAt));
+
+    articlesCache = {
+      bySlug: new Map(rows.map((r) => [r.slug, r])),
+      expiry: Date.now() + 5 * 60 * 1000,
+    };
+  } catch (err) {
+    // Keep previous cache on error; extend TTL briefly to avoid hammering a
+    // failing DB on every request.
+    articlesCache.expiry = Date.now() + 30 * 1000;
+    appLogger.warn("[SEO] Failed to load articles for meta", {
       error: err instanceof Error ? err.message : String(err),
     });
   }
@@ -520,6 +580,53 @@ export async function resolveRouteSeo(path: string): Promise<RouteSeo> {
         courseCache.all.length > 0
           ? [buildCourseItemListJsonLd(courseCache.all)]
           : [],
+    };
+  }
+
+  // Article detail pages — pull live data from DB
+  const articleMatch = path.match(/^\/articles\/([^/]+)$/);
+  if (articleMatch) {
+    const slug = decodeURIComponent(articleMatch[1]);
+    await loadArticles();
+    const article = articlesCache.bySlug.get(slug);
+    if (article) {
+      const name = article.titleAr || article.titleEn;
+      const description =
+        article.excerptAr ||
+        article.excerptEn ||
+        stripHtml(article.contentAr, 300) ||
+        ROUTE_META["/articles"].description;
+      return {
+        title: `${name}${BRAND_SUFFIX}`,
+        description,
+        keywords: `${name}, ${article.titleEn}, مقالات هندسية, م أحمد الباز`,
+        ogType: "article",
+        canonical,
+        ogImage: article.coverImage
+          ? new URL(article.coverImage, BASE_URL).toString()
+          : `${BASE_URL}/og-image.png`,
+        jsonLd: [
+          buildBreadcrumbJsonLd([
+            { name: "الرئيسية", url: `${BASE_URL}/` },
+            { name: "المقالات", url: `${BASE_URL}/articles` },
+            { name, url: canonical },
+          ]),
+        ],
+      };
+    }
+    // Unknown article slug → let the SPA render; use articles meta as fallback.
+  }
+
+  // Articles listing
+  if (path === "/articles") {
+    const meta = ROUTE_META["/articles"];
+    return {
+      title: meta.title,
+      description: meta.description,
+      keywords: meta.keywords,
+      ogType: "website",
+      canonical,
+      jsonLd: [],
     };
   }
 

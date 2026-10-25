@@ -27,6 +27,7 @@ export function useAuth() {
   // the login response sets the flag cookie — without this re-sync a query
   // disabled by a previous 401 cleanup would stay disabled forever and the
   // UI would keep showing logged-out after a successful login.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: location.pathname is an intentional re-sync trigger, not a read value
   useEffect(() => {
     if (!hasMounted) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect

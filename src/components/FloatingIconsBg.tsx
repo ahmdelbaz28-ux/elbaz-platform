@@ -150,6 +150,10 @@ export default function FloatingIconsBg() {
       `}</style>
 
       {particles.map((p) => (
+        // SAFETY: p.svg comes ONLY from the static developer-authored SVG
+        // string constants defined at module scope below — never user input.
+        // innerHTML is required because the SVGs rely on currentColor theming,
+        // which <img src=data:...> cannot inherit. (biome override in biome.json)
         <span
           key={p.id}
           className="icon"

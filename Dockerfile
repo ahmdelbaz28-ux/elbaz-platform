@@ -13,9 +13,9 @@ RUN apk add --no-cache ca-certificates tini git git-lfs
 COPY package.json package-lock.json ./
 # pipefail not supported in Alpine POSIX sh; npm ci is a single command with
 # no pipes, so pipe failures are not a concern here.
-# hadolint ignore=DL4006
 # S6505: --ignore-scripts — runtime deps are pure JS (bcryptjs/mysql2/@aws-sdk);
 # esbuild ships platform binaries via optionalDependencies, no install scripts needed.
+# hadolint ignore=DL4006
 RUN npm ci --ignore-scripts --prefer-offline --no-audit --no-fund && \
     echo "=== Dependencies installed ===" && \
     find node_modules -maxdepth 1 -type d | wc -l

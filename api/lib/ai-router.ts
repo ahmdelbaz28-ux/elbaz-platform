@@ -315,7 +315,7 @@ export function classifyRawModel(raw: RawProviderModel): ClassifiedModel | null 
 
 export function maskApiKey(key: string): string {
   if (!key) return "";
-  if (key.length <= 8) return key.slice(0, 2) + "…";
+  if (key.length <= 8) return `${key.slice(0, 2)}…`;
   return `${key.slice(0, 3)}…${key.slice(-4)}`;
 }
 
@@ -613,7 +613,7 @@ function recordFailure(provider: AiProvider, model: AiModel, kind: Exclude<Route
       // re-burn every round's walk budget (see PROVIDER_429_STREAK_LIMIT).
       noteProvider429(provider.id);
       // Exponential backoff per consecutive 429s: 90s → 3m → 6m → 10m (cap)
-      const ms = Math.min(MODEL_LIMITED_COOLDOWN_MS * Math.pow(2, fails - 1), MODEL_COOLDOWN_MAX_MS);
+      const ms = Math.min(MODEL_LIMITED_COOLDOWN_MS * 2 ** (fails - 1), MODEL_COOLDOWN_MAX_MS);
       setModelCooldown(provider.id, model.modelId, ms);
       void mirrorModelHealth(model.id, { status: "limited", failCount: fails, lastError: detail.slice(0, 500) });
       break;
@@ -623,7 +623,7 @@ function recordFailure(provider: AiProvider, model: AiModel, kind: Exclude<Route
       void mirrorModelHealth(model.id, { status: "dead", failCount: fails, lastError: detail.slice(0, 500) });
       break;
     default: {
-      const ms = Math.min(MODEL_COOLDOWN_BASE_MS * Math.pow(2, fails - 1), MODEL_COOLDOWN_MAX_MS);
+      const ms = Math.min(MODEL_COOLDOWN_BASE_MS * 2 ** (fails - 1), MODEL_COOLDOWN_MAX_MS);
       setModelCooldown(provider.id, model.modelId, ms);
       const pFails = (providerConsecFails.get(provider.id) || 0) + 1;
       providerConsecFails.set(provider.id, pFails);

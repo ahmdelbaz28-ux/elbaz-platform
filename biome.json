@@ -60,5 +60,17 @@
         "noDangerouslySetInnerHtml": "warn"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["src/components/FloatingIconsBg.tsx"],
+      "linter": {
+        "rules": {
+          "security": {
+            "noDangerouslySetInnerHtml": "off"
+          }
+        }
+      }
+    }
+  ]
 }

@@ -35,7 +35,7 @@ export function stripThinkBlocks(text: string): string {
   for (let pass = 0; pass < 4; pass++) {
     let changed = false;
     for (const open of OPEN_TAGS) {
-      const close = "</" + open.slice(1);
+      const close = `</${open.slice(1)}`;
       for (;;) {
         const start = out.toLowerCase().indexOf(open);
         if (start === -1) break;

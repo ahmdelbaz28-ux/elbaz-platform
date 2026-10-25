@@ -50,6 +50,7 @@ export default function Navbar() {
 
   // Close mobile menu on route change (deps MUST include pathname — otherwise the
   // fullscreen overlay stays open after navigating and the page seems "frozen")
+  // biome-ignore lint/correctness/useExhaustiveDependencies: location.pathname is an intentional navigation trigger, not a read value
   useEffect(() => { setMobileOpen(false); }, [location.pathname]); // eslint-disable-line react-hooks/set-state-in-effect
 
   // Focus trap for mobile menu

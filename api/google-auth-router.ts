@@ -210,8 +210,8 @@ function parseCookieHeader(cookieHeader: string): Map<string, string> {
 function safeInternalRedirect(target: string): string {
   if (!target || target.length > 2048) return "/";
   // Strip control characters (incl. CR/LF — header & redirect smuggling).
-  // eslint-disable-next-line no-control-regex
-  const cleaned = target.replace(/[\x00-\x1F\x7F]/g, "");
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: this regex IS the control-character stripper that prevents header/redirect smuggling
+  const cleaned = target.replace(/[\x00-\x1F\x7F]/g, ""); // eslint-disable-line no-control-regex
   // Must start with exactly one "/" and must NOT start with "/" or "\" twice,
   // must not contain "://", must not be scheme-relative.
   if (!cleaned.startsWith("/") || cleaned.startsWith("//") || cleaned.startsWith("/\\")) return "/";

@@ -55,6 +55,7 @@ export function clearAuthFlagCookie(): void {
   try {
     // Must match the path the flag was set with (path=/) for the browser to
     // overwrite/delete it. Best-effort — failures are non-fatal.
+    // biome-ignore lint/suspicious/noDocumentCookie: intentional best-effort deletion of the legacy auth flag cookie (must match the path=/ it was set with)
     document.cookie = "elbaz_auth_flag=; Max-Age=0; path=/";
   } catch {
     // ignore

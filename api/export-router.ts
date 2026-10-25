@@ -17,7 +17,7 @@ function escapeCsv(value: string | number | boolean | null | undefined): string 
   // name) previously reached admin-opened spreadsheets unescaped — a cell
   // beginning with = + - @ or a tab executes as a formula in Excel/Sheets.
   if (/^[=+\-@\t\r]/.test(str)) {
-    str = "'" + str;
+    str = `'${str}'`;
   }
   if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {
     return `"${str.replaceAll("\"", '""')}"`;

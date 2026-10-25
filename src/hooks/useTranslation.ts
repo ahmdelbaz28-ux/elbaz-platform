@@ -494,7 +494,9 @@ function setGlobalLang(newLang: Lang): void {
     localStorage.setItem("language", newLang);
   } catch { /* storage blocked */ }
   applyDocumentLang(newLang);
-  langListeners.forEach(fn => fn());
+  langListeners.forEach((fn) => {
+    fn();
+  });
 }
 
 function subscribeLang(callback: () => void): () => void {

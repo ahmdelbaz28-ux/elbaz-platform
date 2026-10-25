@@ -90,6 +90,8 @@ The database auto-migrates on first boot via `api/lib/db-init.ts`. Configure you
 
 ## 🌐 Deployment
 
+> **المرجع التشغيلي الكامل** (خطوات النشر، التحقق الصحي، الاسترجاع Rollback، سياسة قاعدة البيانات، الأسرار، مالك الحادثة): راجع [DEPLOYMENT.md](./DEPLOYMENT.md).
+
 ### Docker (HuggingFace Spaces)
 
 ```bash

@@ -74,8 +74,9 @@ function PageLoader() {
 function ScrollReset() {
   const location = useLocation();
   const navType = useNavigationType();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pathname/search/hash are intentional re-run triggers (scroll-reset on navigation), not read values
   useEffect(() => {
-    if (navType === "POP") return;
+    if (navType === "POP") return undefined;
     if (location.hash) {
       const targetId = decodeURIComponent(location.hash.slice(1));
       const timer = setTimeout(() => {
@@ -84,6 +85,7 @@ function ScrollReset() {
       return () => clearTimeout(timer);
     }
     window.scrollTo(0, 0);
+    return undefined;
   }, [navType, location.pathname, location.search, location.hash]);
   return null;
 }

@@ -15,8 +15,8 @@ interface LogEntry {
  * re-decode \n / \u001b sequences.
  */
 function sanitizeForLog(value: string): string {
-  // eslint-disable-next-line no-control-regex
-  return value.replace(/[\x00-\x1F\x7F]/g, " ").slice(0, 2000);
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: this regex IS the control-character sanitizer for log lines
+  return value.replace(/[\x00-\x1F\x7F]/g, " ").slice(0, 2000); // eslint-disable-line no-control-regex
 }
 
 function sanitizeMeta(meta?: Record<string, unknown>): Record<string, unknown> | undefined {
