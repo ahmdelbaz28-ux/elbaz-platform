@@ -1,0 +1,26 @@
+# ✅ SECURITY HARDENING (audit run-1, supply-chain companion): Dependabot
+# updates were enabled in repo settings without a config file, so the updater
+# errored on every run ("encountered an error performing the update"). This
+# config gives it a valid target: weekly npm updates, grouped into one PR,
+# with the security-only updates left ungrouped so they land immediately.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # Major bumps are reviewed manually to keep CI deterministic.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
