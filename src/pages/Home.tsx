@@ -19,7 +19,6 @@ import {
   Star,
   ChevronDown,
   ChevronUp,
-  User,
   Briefcase,
   GraduationCap,
   X,
@@ -749,10 +748,14 @@ export default function Home() { // NOSONAR — landing page with hero + feature
 
           <div className="flex flex-col items-center gap-12 lg:flex-row lg:items-start">
             <ScrollReveal direction="left" className="flex-1 text-center lg:text-start">
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="mx-auto mb-6 flex h-28 w-28 items-center justify-center rounded-2xl border border-border bg-secondary lg:mx-0">
-                <motion.div animate={{ filter: ["hue-rotate(0deg)", "hue-rotate(15deg)", "hue-rotate(0deg)"] }} transition={{ duration: 4, repeat: Infinity }}>
-                  <User className="h-14 w-14 text-accent-secondary" />
-                </motion.div>
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="mx-auto mb-6 h-28 w-28 lg:mx-0">
+                <img
+                  src="/instructor-ahmed-elbaz.jpg"
+                  alt="Eng. Ahmed Elbaz — Power Systems Engineer"
+                  className="h-28 w-28 rounded-full border border-border object-cover shadow-lg shadow-accent-secondary/10"
+                  loading="lazy"
+                  decoding="async"
+                />
               </motion.div>
               <p className="mb-2 text-sm font-medium uppercase tracking-wider text-accent-secondary">
                 {lang === "en" ? t("instructorRole") : t("instructorRoleAr")}
