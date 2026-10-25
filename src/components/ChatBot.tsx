@@ -11,7 +11,6 @@ import {
   Bot,
   User,
   Loader2,
-  Zap,
   ChevronDown,
   Trash2,
   Copy,
@@ -548,20 +547,21 @@ const MessageBubble = memo(function MessageBubble({ msg, lang, copied, onCopy, o
 
   return (
     <div className={`flex gap-2.5 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
-      {/* Avatar */}
-      <div
-        className={"mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg " +
-          (msg.role === "user"
-            ? "bg-blue-600/20 border border-blue-500/30"
-            : "bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30")
-        }
-      >
-        {msg.role === "user" ? (
+      {/* Avatar — user keeps the icon chip; bot wears the site logo (owner request) */}
+      {msg.role === "user" ? (
+        <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-blue-600/20 border border-blue-500/30">
           <User className="h-3.5 w-3.5 text-blue-400" />
-        ) : (
-          <Zap className="h-3.5 w-3.5 text-cyan-400" />
-        )}
-      </div>
+        </div>
+      ) : (
+        <img
+          src="/logo-circle.png"
+          alt=""
+          aria-hidden="true"
+          draggable={false}
+          decoding="async"
+          className="mt-0.5 h-7 w-7 flex-shrink-0 rounded-full object-cover border border-cyan-500/30"
+        />
+      )}
 
       {/* Message Bubble */}
       <div className="flex min-w-0 max-w-[85%] flex-col">
@@ -1507,9 +1507,15 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <div className="relative">
-                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
-                          <Zap className="w-4 h-4 text-white" />
-                        </div>
+                        {/* Site logo as the bot identity (owner request — replaces the lightning icon) */}
+                        <img
+                          src="/logo-circle.png"
+                          alt=""
+                          aria-hidden="true"
+                          draggable={false}
+                          decoding="async"
+                          className="w-8 h-8 rounded-full object-cover border border-cyan-500/30"
+                        />
                         <span className="absolute -bottom-0.5 -end-0.5 w-2.5 h-2.5 bg-green-400 rounded-full border-2 border-[#0a1019]" />
                       </div>
                       <div>
@@ -1584,9 +1590,14 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                   {/* Streaming content (incremental text display) */}
                   {isLoading && streamingContent && (
                     <div className="flex gap-2.5">
-                      <div className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30">
-                        <Zap className="w-3.5 h-3.5 text-cyan-400" />
-                      </div>
+                      <img
+                        src="/logo-circle.png"
+                        alt=""
+                        aria-hidden="true"
+                        draggable={false}
+                        decoding="async"
+                        className="flex-shrink-0 w-7 h-7 rounded-full object-cover border border-cyan-500/30"
+                      />
                       <div className="flex flex-col max-w-[85%] min-w-0">
                         <div dir={ARABIC_RE.test(streamingContent) ? "rtl" : "ltr"} className="chatbot-bubble px-3.5 py-2.5 rounded-2xl rounded-ss-md bg-[#111827] border border-[#1e2d3d] text-[#e8f0fe] text-[13.5px] leading-relaxed break-words overflow-wrap-anywhere whitespace-pre-wrap word-break-break-word">
                           {/* biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown() escapes all HTML entities first; only safe markdown tags are re-added */}
@@ -1601,9 +1612,14 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                   {/* Typing indicator (with enter/exit animations) */}
                   {typingVisible && (
                     <div className={`flex gap-2.5 ${typingExiting ? "animate-typing-exit" : "animate-typing-enter"}`}>
-                      <div className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30">
-                        <Zap className="w-3.5 h-3.5 text-cyan-400" />
-                      </div>
+                      <img
+                        src="/logo-circle.png"
+                        alt=""
+                        aria-hidden="true"
+                        draggable={false}
+                        decoding="async"
+                        className="flex-shrink-0 w-7 h-7 rounded-full object-cover border border-cyan-500/30"
+                      />
                       <div className="bg-[#111827] border border-[#1e2d3d] px-4 py-3 rounded-2xl rounded-ss-md">
                         <div className="flex items-center gap-1.5">
                           <div className="flex gap-1">
