@@ -36,7 +36,7 @@ jobs:
 # re-resolved every caret range at deploy time, so the test gate validated a
 # dependency tree that was never shipped (the Docker build installs the
 # COMMITTED package-lock.json). Fix the lockfile with a reviewed commit.
-- name: Verify lockfile is in sync (fail closed)
+      - name: Verify lockfile is in sync (fail closed)
         run: |
           npm ci --ignore-scripts --dry-run  # S6505
 
