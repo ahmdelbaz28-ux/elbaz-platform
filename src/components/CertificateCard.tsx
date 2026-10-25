@@ -199,6 +199,18 @@ export default function CertificateCard({ data }: CertificateCardProps) {
 
           {/* Signature */}
           <div className="cert-signature">
+            {/* Founder's real portrait — ties the credential to a person,
+                mirroring the site-wide identity (same asset as Home/footer). */}
+            <img
+              src="/instructor-ahmed-elbaz.jpg"
+              alt="Eng. Ahmed Elbaz — Founder & Head Instructor"
+              width={58}
+              height={58}
+              loading="eager"
+              decoding="async"
+              className="cert-sig-photo"
+              onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.onerror = null; }}
+            />
             <div className="cert-sig-art">
               <svg viewBox="0 0 200 60" fill="none" stroke="#e8f0fe" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" role="img" aria-hidden="true">
                 <path d="M20 45 C25 35, 30 25, 38 22 C42 20, 46 22, 44 28 C42 34, 35 40, 30 42" opacity="0.9" />
@@ -619,6 +631,16 @@ export default function CertificateCard({ data }: CertificateCardProps) {
           display: flex;
           flex-direction: column;
           align-items: center;
+        }
+        .cert-sig-photo {
+          width: 58px;
+          height: 58px;
+          border-radius: 50%;
+          object-fit: cover;
+          border: 2px solid rgba(6,182,212,0.35);
+          box-shadow: 0 0 14px rgba(6,182,212,0.18);
+          background: #0a1628;
+          margin-bottom: 8px;
         }
         .cert-sig-art {
           width: 200px;

@@ -119,7 +119,13 @@ export default function Footer() {
           {/* Brand column */}
           <div className="lg:col-span-1">
             <Link to="/" className="group flex items-center gap-2.5">
-              <img src="/logo-circle.png" alt="Eng. Ahmed Elbaz Logo" className="h-12 w-12 object-cover rounded-full transition-transform duration-300 group-hover:scale-105" />
+              {/* Founder's real portrait — unifies the personal brand identity
+                  across the site (same asset as the Home instructor section). */}
+              <img
+                src="/instructor-ahmed-elbaz.jpg"
+                alt="Eng. Ahmed Elbaz — Founder"
+                className="h-12 w-12 rounded-full border border-border object-cover shadow-md shadow-accent-secondary/10 transition-transform duration-300 group-hover:scale-105"
+              />
               <div>
                 <div className="text-[13px] font-extrabold text-foreground tracking-tight">
                   {lang === "ar" ? "أحمد الباز" : "Eng. Ahmed Elbaz"}

@@ -232,6 +232,28 @@ function ValidCertificateView({ cert, gradeColorClass, t, lang, onView }: ValidC
           </div>
         </div>
 
+        {/* Issuer identity — the founder's real portrait ties the credential
+            to a person, mirroring the site-wide visual identity. */}
+        <div className="mb-6 flex items-center gap-3 rounded-xl border border-[#1f2d44] bg-[rgba(6,182,212,0.04)] p-3">
+          <img
+            src="/instructor-ahmed-elbaz.jpg"
+            alt="Eng. Ahmed Elbaz — Founder"
+            className="h-11 w-11 rounded-full border border-[rgba(6,182,212,0.3)] object-cover"
+            loading="lazy"
+            decoding="async"
+          />
+          <div>
+            <p className="text-sm font-semibold text-[#f0f4f8]">
+              {lang === "ar" ? "م. أحمد الباز" : "Eng. Ahmed Elbaz"}
+            </p>
+            <p className="text-xs text-[#94a3b8]">
+              {lang === "ar"
+                ? "المؤسس والمشرف العام — معتمد من نفس المنصة"
+                : "Founder & Head Instructor — issued by the same platform"}
+            </p>
+          </div>
+        </div>
+
         {/* View Full Certificate Button */}
         <button
           onClick={onView}
