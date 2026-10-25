@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { logger } from "hono/logger";
 import { logger as appLogger } from "./lib/logger.js";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { env } from "./lib/env.js";
@@ -55,7 +54,20 @@ import { getClientIpFromHono } from "./lib/client-ip";
 
 const app = new Hono<{ Variables: AppVariables }>({ strict: false });
 
-app.use("*", logger());
+// ✅ SECURITY FIX (audit run-1, request-logger.full-url): hono's default
+// logger prints the full URL including the query string — and reset/verify
+// tokens, OAuth codes and payment HMACs travel in query strings. Log the
+// path only; credential material never enters the log stream.
+app.use("*", async (c, next) => {
+  const method = c.req.method;
+  const path = c.req.path;
+  const start = Date.now();
+  await next();
+  const status = c.res.status;
+  if (path.startsWith("/api/")) {
+    appLogger.info(`${method} ${path}`, { status, ms: Date.now() - start });
+  }
+});
 app.use("*", shieldMiddleware); // 🛡️ Elite Shield: First line of defense
 app.use("*", securityMiddleware);
 
@@ -272,7 +284,17 @@ app.post("/api/csp-report", async (c) => {
 
   if (env.NODE_ENV === "production") {
     const requestId = c.get("requestId") ?? crypto.randomUUID();
-    appLogger.warn("[CSP] Violation", { requestId, report });
+    // ✅ SECURITY FIX (audit run-1, csp-report.log-sink): log bounded,
+    // structured fields instead of the whole attacker-controlled object.
+    const r = (report ?? {}) as Record<string, unknown>;
+    const cr = (r["csp-report"] ?? r) as Record<string, unknown>;
+    appLogger.warn("[CSP] Violation", {
+      requestId,
+      directive: String(cr["effectiveDirective"] ?? "").slice(0, 120),
+      blockedUri: String(cr["blocked-uri"] ?? "").slice(0, 300),
+      documentUri: String(cr["document-uri"] ?? "").slice(0, 300),
+      sample: String(cr["script-sample"] ?? "").slice(0, 500),
+    });
   }
 
   // 204 No Content — no body allowed per RFC 7231

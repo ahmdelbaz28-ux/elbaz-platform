@@ -46,7 +46,16 @@ function checkPayloadSize(c: any, ip: string, path: string): Response | null {
   const method = c.req.method;
   if (method !== "POST" && method !== "PUT" && method !== "PATCH") return null;
 
-  const contentLength = Number.parseInt(c.req.header("Content-Length") || "0", 10);
+  // ✅ SECURITY FIX (audit run-1, shield.payload-guard): the cap previously
+  // compared ONLY the client-controlled Content-Length header — a chunked
+  // body (no header) parsed as 0 and bypassed the guard entirely, letting
+  // arbitrarily large bodies buffer into the Node heap. Body-carrying
+  // requests without a verifiable length are now rejected (411); browsers,
+  // axios/fetch and every S2S client send Content-Length on fixed-size bodies.
+  const contentLength = Number.parseInt(c.req.header("Content-Length") || "", 10);
+  if (!Number.isFinite(contentLength)) {
+    return c.json({ error: "Length Required" }, 411);
+  }
   const isFileUpload = path.includes("/upload") || path.includes("/r2");
   const maxPayload = isFileUpload ? 100 * 1024 * 1024 : 1024 * 1024;
 

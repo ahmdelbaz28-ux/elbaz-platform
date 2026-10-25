@@ -123,6 +123,37 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
     return c.json({ error: "Method Not Allowed" }, 405);
   }
 
+  // ─── Same-origin gate for state-changing requests (audit run-1, CSRF fix) ──
+  // The session cookie is SameSite=None (Capacitor/webview + Google flows),
+  // so ambient-credential cross-site POSTs are not blocked by the browser.
+  // tRPC's multipart handler executes input-less mutations from form posts,
+  // so the chain needs explicit cross-origin evidence: when the browser sent
+  // Origin/Referer (it always does on cross-site form POSTs), they must match
+  // the configured allowlist. Requests WITHOUT Origin/Referer (server-to-
+  // server webhooks, curl, native apps using Bearer headers) pass through —
+  // they cannot carry the ambient cookie cross-site by themselves.
+  // Exemptions: /api/csp-report (anonymous telemetry; its JSON parse never
+  // sees ambient credentials) and Paymob webhook paths (HMAC-authenticated
+  // S2S, no cookies involved).
+  if (method === "POST" || method === "PUT" || method === "PATCH") {
+    const isCsrfExempt =
+      path === "/api/csp-report" ||
+      path.includes("/paymob/webhook") ||
+      path.includes("/webhooks/paymob");
+    if (!isCsrfExempt) {
+      const origin = c.req.header("Origin");
+      const referer = c.req.header("Referer");
+      const evidence = origin ?? referer;
+      if (evidence) {
+        const allowed = getAllowedOrigins();
+        const matched = allowed.some((o) => evidence.startsWith(o));
+        if (!matched) {
+          return c.json({ error: "Cross-origin request rejected" }, 403);
+        }
+      }
+    }
+  }
+
   const contentType = c.req.header("Content-Type") ?? "";
   if (method === "POST" || method === "PUT" || method === "PATCH") {
     // CSP violation reports use application/csp-report or application/reports+json
@@ -144,3 +175,18 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
   await next();
   return; // NOSONAR — S3626: explicit return needed for noImplicitReturns TypeScript strict mode
 });
+
+/** Origins allowed to send state-changing browser requests (CORS allowlist + FRONTEND_URL). */
+function getAllowedOrigins(): string[] {
+  const origins = new Set<string>();
+  try {
+    const frontend = new URL(env.FRONTEND_URL);
+    origins.add(frontend.origin);
+  } catch { /* FRONTEND_URL validated by env schema; ignore */ }
+  for (const raw of (env.CORS_ORIGINS ?? "").split(",")) {
+    const v = raw.trim();
+    if (!v) continue;
+    try { origins.add(new URL(v).origin); } catch { /* skip malformed entry */ }
+  }
+  return [...origins];
+}

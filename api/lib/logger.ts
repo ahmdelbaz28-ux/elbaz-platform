@@ -23,7 +23,13 @@ function sanitizeMeta(meta?: Record<string, unknown>): Record<string, unknown> |
   if (!meta) return meta;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(meta)) {
-    out[sanitizeForLog(k)] = typeof v === "string" ? sanitizeForLog(v) : v;
+    // ✅ SECURITY FIX (audit run-1, csp-report.log-sink): non-string meta used
+    // to bypass both the control-character sanitizer and the size cap, so an
+    // attacker-supplied object (e.g. POST /api/csp-report) was serialized
+    // verbatim into the log stream. Bound every value.
+    out[sanitizeForLog(k)] = typeof v === "string"
+      ? sanitizeForLog(v)
+      : sanitizeForLog(JSON.stringify(v) ?? String(v));
   }
   return out;
 }

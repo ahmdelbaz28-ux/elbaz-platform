@@ -75,6 +75,16 @@ export const sessionsRouter = createRouter({
         .set({ isRevoked: true })
         .where(eq(userSessions.id, input.sessionId));
 
+      // ✅ SECURITY FIX (audit run-1, sessions.revoke.never-enforced): the auth
+      // boundary (context.ts) checks only users.tokenVersion — marking the row
+      // isRevoked alone left the "revoked" JWT fully valid. Bump tokenVersion
+      // so revocation terminates access (all-device semantics, matching
+      // revokeAll below).
+      await db
+        .update(users)
+        .set({ tokenVersion: sql`${"$"}{users.tokenVersion} + 1` })
+        .where(eq(users.id, ctx.user.id));
+
       return { success: true };
     }),
 

@@ -165,7 +165,7 @@ export const notesRouter = createRouter({
         tags: z.array(z.string()).optional(),
         isPinned: z.boolean().default(false),
         updatedAt: z.string().optional(),
-      })),
+      })).max(100),
     }))
     .mutation(async ({ ctx, input }) => {
       const db = getDb();

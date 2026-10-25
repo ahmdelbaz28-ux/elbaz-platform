@@ -372,6 +372,9 @@ export function resetDiscoveredModelRegistry(): void {
  * free/tier/status. New rows get heuristic defaults.
  */
 export async function discoverProviderModels(provider: Pick<AiProvider, "id" | "baseUrl" | "apiKey" | "slug">): Promise<DiscoveryResult> {
+  if (!isPublicProviderUrl(provider.baseUrl)) {
+    return { ok: false, found: 0, chat: 0, vision: 0, free: 0, error: "blocked non-public provider baseUrl" };
+  }
   let db: ReturnType<ConnectionModule["getDb"]>;
   try {
     const getDb = await lazyGetDb();
@@ -935,9 +938,51 @@ export function buildUpstreamBody(p: AttemptParams, stream: boolean): string {
   });
 }
 
+
+/**
+ * ✅ SECURITY FIX (audit run-1, ai-router.db-baseUrl-outbound): SSRF guard for
+ * provider baseUrls. The baseUrl column is admin-writable, so every outbound
+ * provider fetch must reject non-public targets (localhost names, private /
+ * loopback / link-local / metadata IP literals, cloud metadata hostnames)
+ * before any key-bearing request leaves the process. Fail-closed.
+ */
+export function isPublicProviderUrl(rawUrl: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+  const host = parsed.hostname.toLowerCase().replace(/\.$/, "");
+  const blockedNames = new Set([
+    "localhost", "metadata", "metadata.google.internal", "169.254.169.254",
+  ]);
+  if (blockedNames.has(host) || host.endsWith(".internal") || host.endsWith(".local")) return false;
+  // IPv6 literal (brackets stripped by URL) — reject loopback/link-local/ULA privately used ranges conservatively.
+  if (host.includes(":")) {
+    const h = host.replace(/^\[|\]$/g, "");
+    if (h === "::1" || h.startsWith("fe80") || h.startsWith("fc") || h.startsWith("fd") || h.startsWith("::ffff:127.")) return false;
+    return true;
+  }
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
+    const [a, b] = host.split(".").map(Number);
+    if (a === 127 || a === 10 || a === 0 || a === 169 || a === 172 || a === 192) {
+      if (a === 172 && b < 16) return true;
+      if (a === 192 && b !== 168) return true;
+      if (a === 169 && b !== 254) return true;
+      return false;
+    }
+  }
+  return true;
+}
+
 async function rawUpstreamFetch(p: AttemptParams): Promise<{ ok: true; response: Response; latencyMs: number } | { ok: false; failure: AttemptFailure }> {
   const started = Date.now();
   const url = `${p.provider.baseUrl.replace(/\/+$/, "")}/chat/completions`;
+  if (!isPublicProviderUrl(url)) {
+    return { ok: false, failure: { kind: "fail", detail: "blocked non-public provider baseUrl" } };
+  }
   // WEB ATTEMPTS GET A TIGHT BUDGET: the plugin runs the search server-side
   // BEFORE generation, so its TTFT is search + queue. A plugin'd candidate
   // that cannot even start inside 8s is a bad candidate regardless of model —

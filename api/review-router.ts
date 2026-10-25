@@ -3,7 +3,8 @@ import { TRPCError } from "@trpc/server";
 import { desc, eq, and, count } from "drizzle-orm";
 import { createRouter, authQuery, authMutation, adminQuery, adminMutation, publicMutation } from "./middleware";
 import { getDb } from "./queries/connection";
-import { reviews, courses, users } from "@db/schema";
+import { reviews, courses, users, enrollments } from "@db/schema";
+import { activeEnrollmentWhere } from "./lib/enrollment.js";
 
 export const reviewRouter = createRouter({
   listByCourse: publicMutation
@@ -59,8 +60,28 @@ export const reviewRouter = createRouter({
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
 
-      const [course] = await db.select({ id: courses.id }).from(courses).where(eq(courses.id, input.courseId)).limit(1);
-      if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Course not found" });
+      // ✅ SECURITY FIX (audit run-1, stored-content.create.missing-entitlement):
+      // reviews are published content (isPublished defaults true) — require the
+      // same entitlement the sibling consumers enforce: published course, and
+      // an active enrollment for premium courses.
+      const [course] = await db
+        .select({ id: courses.id, isPublished: courses.isPublished, isPremium: courses.isPremium })
+        .from(courses)
+        .where(eq(courses.id, input.courseId))
+        .limit(1);
+      if (!course || !course.isPublished) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Course not found" });
+      }
+      if (course.isPremium) {
+        const [enrollment] = await db
+          .select({ id: enrollments.id })
+          .from(enrollments)
+          .where(activeEnrollmentWhere(ctx.user.id, input.courseId))
+          .limit(1);
+        if (!enrollment) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "يجب التسجيل في الدورة قبل إضافة تقييم" });
+        }
+      }
 
       const [existing] = await db
         .select({ id: reviews.id })

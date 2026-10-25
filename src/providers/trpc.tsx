@@ -41,6 +41,11 @@ function handleGlobalAuthFailure(err: unknown): void {
   if (code !== "UNAUTHORIZED") return;
   removeStoredToken(); // native only
   clearAuthFlagCookie(); // web — drop the flag that outlived the session
+  // ✅ SECURITY FIX (audit run-1, auth.query-cache-persist): a revoked session
+  // must also purge the persisted tRPC cache — previously only the explicit
+  // logout path did, so the next account on the profile rehydrated the
+  // previous account's private data for up to 24h.
+  try { localStorage.removeItem("ELBAZ_QUERY_CACHE"); } catch { /* ignore */ }
   const meQuery = queryClient
     .getQueryCache()
     .getAll()

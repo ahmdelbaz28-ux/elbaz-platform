@@ -5,7 +5,6 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { useAuth } from "@/hooks/useAuth";
 import { useChatFabAnimation } from "@/hooks/useChatFabAnimation";
 import { useFabScrollVisibility } from "@/hooks/useFabScrollVisibility";
-import { convertMarkdownTables } from "@/lib/chat-format";
 import {
   X,
   Send,
@@ -41,8 +40,15 @@ interface MessageImage {
 
 // ─── localStorage persistence ───────────────────────────────────────────────
 
-const STORAGE_KEY = "elbaz_chat_history";
+// ✅ SECURITY FIX (audit run-1, chatbot.localstorage-history): the storage key
+// is per-identity — a shared browser profile can no longer leak the previous
+// account's conversation to the next one. Legacy global-key entries are purged
+// on first write; useAuth.logout() additionally removes the active key.
 const MODE_STORAGE_KEY = "elbaz_chat_mode";
+const LEGACY_CHAT_STORAGE_KEY = "elbaz_chat_history";
+function chatStorageKey(userId: number | null | undefined): string {
+  return `elbaz_chat_history:${userId != null ? String(userId) : "guest"}`;
+}
 const MAX_STORAGE_MESSAGES = 50;
 // Max time a FAB click waits for the auth check before treating the visitor
 // as logged out (dead-man switch — guarantees the FAB can never be a dead
@@ -100,7 +106,7 @@ function brainToggleTitle(thinking: boolean, lang: string): string {
     : "Instant mode — click to enable Thinking";
 }
 
-function saveMessagesToStorage(msgs: Message[]): void {
+function saveMessagesToStorage(msgs: Message[], key: string): void {
   try {
     const serializable = msgs.slice(-MAX_STORAGE_MESSAGES).map((m) => ({
         id: m.id,
@@ -113,15 +119,16 @@ function saveMessagesToStorage(msgs: Message[]): void {
         // thumb is enough for history display after a reload.
         image: m.image ? { thumb: m.image.thumb, name: m.image.name } : undefined,
       }));
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(serializable));
+    try { localStorage.removeItem(LEGACY_CHAT_STORAGE_KEY); } catch { /* pre-fix entry */ }
+    localStorage.setItem(key, JSON.stringify(serializable));
   } catch {
     // Intentionally ignored: localStorage may be full or unavailable — chat history is non-critical. — SonarCloud S2486
   }
 }
 
-function loadMessagesFromStorage(): Message[] | null {
+function loadMessagesFromStorage(key: string): Message[] | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed) || parsed.length === 0) return null;
@@ -140,129 +147,13 @@ function loadMessagesFromStorage(): Message[] | null {
   }
 }
 
-// ─── Text direction + Markdown to HTML (regex-based, no library) ─────────────
-// Bidi support: any message containing Arabic script renders RTL (the reader
-// reads from the right, as Arabic). Latin runs inside an RTL paragraph are
-// isolated automatically by the Unicode bidi algorithm; code blocks and inline
-// code are pinned LTR so terminal-style content stays readable in both
-// directions. Markdown supports: fenced code blocks, inline code, **bold**
-// (rendered as cyan-highlighted key terms), *italic*, [links](https://…)
-// (safe anchors for documented-answer citations), ### headings, numbered
-// step lists ("1. …"), bullet lists ("- " / "• "), and paragraphs.
+// ─── Text direction + Markdown to HTML ──────────────────────────────────────
+// The renderer lives in src/lib/chat-render.ts (pure + unit-tested). SECURITY
+// INVARIANT (audit run-1): every text segment is HTML-escaped before any
+// markdown transformation — only renderer-synthesized tags survive.
+import { ARABIC_RE, renderMarkdown } from "@/lib/chat-render";
 
-const ARABIC_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
 
-function escapeHtml(s: string): string {
-  return s
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll("\"", "&quot;")
-    .replaceAll("'", "&#x27;");
-}
-
-/** Inline markdown (code / links / bold / italic) — input must already be escaped. */
-function renderInline(md: string): string {
-  // Inline code first, so ** inside code is never bolded. dir="ltr" isolates
-  // the code run from the surrounding RTL/LTR paragraph.
-  let html = md.replaceAll(/`([^`]+)`/g, '<code dir="ltr" class="bg-black/30 border border-[#1e2d3d] px-1.5 py-0.5 rounded text-[12px] text-cyan-300">$1</code>');
-  // Markdown links → safe anchors (documented-answer citations from web
-  // search). URL is restricted to http/https and the input was already
-  // HTML-escaped, so no attribute injection is possible.
-  html = html.replaceAll(/\[([^\]\n]+)\]\((https?:\/\/[^\s<>()]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-cyan-300 underline decoration-cyan-300/40 hover:decoration-cyan-200 break-all" dir="ltr">$1</a>');
-  // Bold → highlighted key term (the UI colors important words cyan)
-  html = html.replaceAll(/\*\*([^*]+)\*\*/g, '<strong class="font-semibold text-cyan-300">$1</strong>');
-  // Italic
-  html = html.replaceAll(/(?<!\*)\*([^*]+)\*(?!\*)/g, "<em>$1</em>");
-  return html;
-}
-
-/**
- * Render a non-code text segment: headings, numbered step lists, bullet lists
- * and paragraphs. Line-based so the model's "1. step" instructions render as
- * real ordered steps (with a number badge) instead of a wall of text.
- */
-function renderTextBlock(text: string): string {
-  const lines = text.split("\n");
-  let out = "";
-  let mode: "none" | "ol" | "ul" = "none";
-  let para: string[] = [];
-
-  const closeList = () => {
-    if (mode === "ol") out += "</ol>";
-    else if (mode === "ul") out += "</ul>";
-    mode = "none";
-  };
-  const flushPara = () => {
-    if (para.length) {
-      out += `<p>${para.join("<br>")}</p>`;
-      para = [];
-    }
-  };
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    const heading = /^#{1,6}\s+(.+)$/.exec(line);
-    const step = /^(\d{1,2})[.)]\s+(.+)$/.exec(line);
-    const bullet = /^[-*•]\s+(.+)$/.exec(line);
-
-    if (heading) {
-      flushPara();
-      closeList();
-      out += `<h4 class="chat-h">${renderInline(heading[1])}</h4>`;
-    } else if (step) {
-      flushPara();
-      if (mode !== "ol") {
-        closeList();
-        out += '<ol class="chat-ol">';
-        mode = "ol";
-      }
-      out += `<li data-n="${step[1]}">${renderInline(step[2])}</li>`;
-    } else if (bullet) {
-      flushPara();
-      if (mode !== "ul") {
-        closeList();
-        out += '<ul class="chat-ul">';
-        mode = "ul";
-      }
-      out += `<li>${renderInline(bullet[1])}</li>`;
-    } else if (!line) {
-      flushPara();
-      closeList();
-    } else {
-      closeList();
-      para.push(renderInline(line));
-    }
-  }
-  flushPara();
-  closeList();
-  return out;
-}
-
-function renderMarkdown(text: string): string {
-  // While streaming, a fence may be momentarily unclosed — close it so the
-  // partial code renders as a block instead of leaking raw backticks.
-  let src = text;
-  const fenceCount = (src.match(/```/g) || []).length;
-  if (fenceCount % 2 === 1) src += "\n```";
-
-  // S8786: regex is intentionally bounded; `[\s\S]*?` is the canonical
-  // non-backtracking pattern for delimited multiline captures.
-  const segments = src.split(/```(\w*)[ \t]*\n?([\s\S]*?)```/); // NOSONAR — S8786: bounded lazy capture between ``` delimiters
-  // segments: [text, lang, code, text, lang, code, …, text]
-  let html = "";
-  for (let i = 0; i < segments.length; i += 3) {
-    // Deterministic table→bullets enforcement (the prompt rule leaks):
-    // tables arrive as broken pipe grids in this renderer — rewrite them as
-    // labeled bullets before the line machine sees them.
-    html += renderTextBlock(convertMarkdownTables(segments[i]));
-    if (segments[i + 2] !== undefined) {
-      const code = escapeHtml(segments[i + 2].trim());
-      html += `<pre dir="ltr" class="bg-black/40 border border-[#1e2d3d] rounded-lg p-2.5 my-1.5 overflow-x-auto text-[12px] leading-5 text-[#b4c6e0]" style="text-align:left"><code>${code}</code></pre>`;
-    }
-  }
-  return html;
-}
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -632,10 +523,10 @@ const MessageBubble = memo(function MessageBubble({ msg, lang, copied, onCopy, o
 
 export default function ChatBot() { // NOSONAR — chatbot component with SSE streaming, abort, copy, minimize, scroll-sync, localStorage; extraction would require prop-drilling many refs/state
   const { lang } = useTranslation();
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>(() => loadMessagesFromStorage() || [WELCOME_MESSAGES[lang]]);
+  const [messages, setMessages] = useState<Message[]>(() => loadMessagesFromStorage(chatStorageKey(user?.id)) || [WELCOME_MESSAGES[lang]]);
   const [isLoading, setIsLoading] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [streamingContent, setStreamingContent] = useState<string>("");
@@ -746,12 +637,12 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
         }));
         const restored = serverMsgs.slice(-MAX_STORAGE_MESSAGES);
         setMessages(restored);
-        saveMessagesToStorage(restored);
+        saveMessagesToStorage(restored, chatStorageKey(user?.id));
       } catch {
         // History sync is best-effort — the local conversation keeps working.
       }
     })();
-  }, [isOpen, isAuthenticated]);
+  }, [isOpen, isAuthenticated, user?.id]);
 
   const scrollToBottom = useCallback((smooth = false) => {
     const el = chatContainerRef.current;
@@ -1247,9 +1138,9 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   // ─── Persist messages to localStorage when they change ───
   useEffect(() => {
     if (messages.length > 0 && !isLoading) {
-      saveMessagesToStorage(messages);
+      saveMessagesToStorage(messages, chatStorageKey(user?.id));
     }
-  }, [messages, isLoading]);
+  }, [messages, isLoading, user?.id]);
 
   // ─── Clear chat ───
   // Must fully reset the conversation even while a response is streaming:
@@ -1264,7 +1155,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     setMessages([WELCOME_MESSAGES[lang]]);
     setStreamingContent("");
     setCopiedId("");
-    try { localStorage.removeItem(STORAGE_KEY); } catch { /* Intentionally ignored: clearChat must proceed even if localStorage is unavailable. — SonarCloud S2486 */ }
+    try { localStorage.removeItem(chatStorageKey(user?.id)); localStorage.removeItem(LEGACY_CHAT_STORAGE_KEY); } catch { /* Intentionally ignored: clearChat must proceed even if localStorage is unavailable. — SonarCloud S2486 */ }
     // Logged-in users: clear the persisted server history too, otherwise the
     // rounds come straight back on the next chat open (server wins).
     if (isAuthenticated === true) {

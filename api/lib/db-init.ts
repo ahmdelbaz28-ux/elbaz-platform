@@ -823,23 +823,32 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
       }
 
       // ── Admin password sync (existing deployments) ──
-      // The seed step below (which upserts the admin hash from
-      // ADMIN_PASSWORD) only runs on FIRST boot. On existing databases we
-      // return early here — leaving the owner no documented lever to set or
-      // rotate the admin password. Restore the documented behavior: when
-      // ADMIN_PASSWORD is explicitly set, keep the admin hash in sync (same
-      // ON DUPLICATE KEY UPDATE as the seed path). When it is NOT set, touch
-      // nothing — no accidental lockouts, no random churn.
+      // ✅ SECURITY FIX (audit run-1, db-init.admin-password-env-sync):
+      // ADMIN_PASSWORD is SEED-ONLY. Previously every boot re-synced the admin
+      // hash from the env value (ON DUPLICATE KEY UPDATE), silently reverting
+      // any rotation performed through auth.changePassword and making the env
+      // credential permanently valid. Now: the env variable provisions the
+      // admin row only when it does not exist; afterwards the password
+      // lifecycle belongs to changePassword/admin flows. Rotation lever when
+      // locked out: use the password-reset flow on the admin email, or update
+      // the row directly with a one-time bootstrap.
       if (env.ADMIN_PASSWORD) {
         try {
-          const adminPasswordHash = await hashPassword(env.ADMIN_PASSWORD);
-          await conn.execute(
-            `INSERT INTO users (username, passwordHash, name, email, role, preferredLanguage, createdAt, updatedAt, lastSignInAt)
-             VALUES (?, ?, 'Ahmed Elbaz', 'admin@ahmedelbaz.qzz.io', 'admin', 'ar', NOW(), NOW(), NOW())
-             ON DUPLICATE KEY UPDATE passwordHash = VALUES(passwordHash)`,
-            ['admin', adminPasswordHash]
+          const [existing] = await conn.execute(
+            `SELECT id FROM users WHERE username = 'admin' LIMIT 1`
           );
-          logger.info("[DB] Admin password synced from ADMIN_PASSWORD env variable");
+          const adminExists = Array.isArray(existing) && existing.length > 0;
+          if (!adminExists) {
+            const adminPasswordHash = await hashPassword(env.ADMIN_PASSWORD);
+            await conn.execute(
+              `INSERT INTO users (username, passwordHash, name, email, role, preferredLanguage, createdAt, updatedAt, lastSignInAt)
+               VALUES (?, ?, 'Ahmed Elbaz', 'admin@ahmedelbaz.qzz.io', 'admin', 'ar', NOW(), NOW(), NOW())`,
+              ['admin', adminPasswordHash]
+            );
+            logger.info("[DB] Admin account provisioned from ADMIN_PASSWORD env variable");
+          } else {
+            logger.info("[DB] ADMIN_PASSWORD set but admin row exists — UI rotation is authoritative (seed-only policy)");
+          }
         } catch (err) {
           logger.warn("[DB] Admin password sync warning", { error: (err as Error).message });
         }

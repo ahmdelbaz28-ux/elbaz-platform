@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { initiateGoogleOAuth } from "@/lib/google-auth";
 import { Link, useNavigate } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -35,6 +36,7 @@ declare global {
 }
 
 export default function Login() {
+  const queryClient = useQueryClient();
   const { t, lang } = useTranslation();
   const navigate = useNavigate();
 
@@ -81,6 +83,7 @@ export default function Login() {
       const googleDetail = params.get("google_detail");
       const errorMessages: Record<string, { ar: string; en: string }> = {
         access_denied: { ar: "تم رفض تسجيل الدخول بجوجل. حاول مرة أخرى أو استخدم اسم المستخدم وكلمة المرور.", en: "Google sign-in was denied. Please try again or use your username and password." },
+        totp_required: { ar: "هذا الحساب مفعّل فيه التحقق بخطوتين — استخدم تسجيل الدخول بكلمة المرور لإدخال رمز التحقق.", en: "This account has two-factor authentication enabled — sign in with your username and password to enter the verification code." },
         token_exchange_failed: { ar: "فشل تبادل الرمز مع جوجل. تأكد من إعدادات OAuth في Google Cloud Console ثم حاول مرة أخرى.", en: "Google token exchange failed. Please verify OAuth settings in Google Cloud Console and try again." },
         invalid_token: { ar: "رمز جوجل غير صالح. حاول مرة أخرى.", en: "Invalid Google token. Please try again." },
         state_mismatch: { ar: "خطأ أمني في تسجيل جوجل (state mismatch). أغلق المتصفح وحاول مرة أخرى.", en: "Security error in Google sign-in (state mismatch). Please close your browser and try again." },
@@ -171,6 +174,11 @@ export default function Login() {
   const loginMutation = trpc.auth.login.useMutation({
     onSuccess: (data) => {
       trackPlatform("login_success");
+      // ✅ SECURITY FIX (audit run-1, auth.query-cache-persist): a login that
+      // replaces a different identity must not inherit that identity's cached
+      // private queries (persisted copy + in-memory cache).
+      try { localStorage.removeItem("ELBAZ_QUERY_CACHE"); } catch { /* ignore */ }
+      queryClient.clear();
       if (data?.user?.id && data?.user?.username) identifyUser(data.user.id, data.user.username, { role: data.user.role || "user" });
       if (isNativePlatform() && data?.token) setStoredToken(data.token);
       toast.success(t("loginSuccess"));

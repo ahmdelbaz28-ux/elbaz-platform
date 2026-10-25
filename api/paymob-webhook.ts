@@ -25,6 +25,7 @@ import { payments, enrollments, courses } from "@db/schema";
 import { verifyTransactionCallback, verifyPaymobAmount, type PaymobCallbackPayload, type PaymobCallbackTransaction } from "./lib/paymob.js";
 import { env } from "./lib/env.js";
 import { invalidateCourseCache, invalidateStatsCache } from "./lib/cache.js";
+import { releasePromoUsageForPayment } from "./promo-router.js";
 import { invalidateSitemapCache } from "./boot.js";
 import { logger } from "./lib/logger.js";
 
@@ -170,6 +171,11 @@ async function processWebhookInTransaction(
         ),
       );
     logger.info(`[Paymob Webhook] Enrollment revoked after refund/void`, { merchantOrderId, newStatus });
+
+    // ✅ SECURITY FIX (audit run-1, payments.promo-quota-burn): release the
+    // promo quota this payment consumed — refunds/voids must return the
+    // discount to the shared budget.
+    await releasePromoUsageForPayment(Number(paymentRecord.id), Number(paymentRecord.userId));
   }
 
   // ── Step 6: Create enrollment if payment successful ──

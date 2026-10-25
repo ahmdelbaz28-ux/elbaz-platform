@@ -112,6 +112,18 @@ export function useAuth() {
     try {
       localStorage.removeItem("ELBAZ_QUERY_CACHE");
     } catch { /* ignore */ }
+    // ✅ SECURITY FIX (audit run-1, chatbot.localstorage-history): purge every
+    // per-identity chat-history key so the next account cannot hydrate the
+    // previous account's conversation from a shared browser profile.
+    try {
+      const doomed: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith("elbaz_chat_history:")) doomed.push(k);
+      }
+      for (const k of doomed) localStorage.removeItem(k);
+      localStorage.removeItem("elbaz_chat_history"); // pre-fix global key
+    } catch { /* ignore */ }
     queryClient.clear();
     navigate("/login", { replace: true });
   }, [logoutMutation, navigate, queryClient]);

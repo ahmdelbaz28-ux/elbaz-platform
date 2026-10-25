@@ -12,6 +12,7 @@ import { users, payments, enrollments, courses, supportTickets, lessons } from "
 import { TRPCError } from "@trpc/server";
 import { nanoid } from "nanoid";
 import { invalidateCourseCache, invalidateStatsCache } from "./lib/cache";
+import { releasePromoUsageForPayment } from "./promo-router.js";
 import { guardManualPaymentAction } from "./lib/payments-core";
 import { resolvePaymobRuntimeConfig } from "./lib/payments-config";
 import { createIntention, createLegacyWalletCheckout, summarizePaymobConfig } from "./lib/paymob";
@@ -288,6 +289,11 @@ export const adminPaymentsProcedures = {
             metadata: { ...(payment.metadata as Record<string, unknown> | null ?? {}), rejectReason: input.reason ?? null },
           })
           .where(eq(payments.id, input.paymentId));
+
+        // ✅ SECURITY FIX (audit run-1, payments.promo-quota-burn): release the
+        // promo quota this pending payment consumed — rejection must not
+        // permanently drain the shared budget.
+        await releasePromoUsageForPayment(input.paymentId, payment.userId);
 
         return { success: true };
       });

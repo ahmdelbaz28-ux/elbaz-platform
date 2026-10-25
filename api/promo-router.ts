@@ -1,31 +1,23 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "./queries/connection.js";
+import { resolveOptionalUser } from "./context.js";
 import { eq, and, sql, lte, gte, isNull, or, count } from "drizzle-orm";
 import { rateLimit } from "./lib/rate-limiter.js";
 import { env } from "./lib/env.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { promoCodes, promoCodeUsage, payments } from "@db/schema";
-import * as cookie from "cookie";
-import { AUTH_COOKIE_NAME } from "./lib/cookies.js";
-import { verifyToken } from "./lib/jwt.js";
 
 interface PromoSession { userId: number; }
 const promoRouter = new Hono<{ Variables: { session: PromoSession | null } }>();
 
 promoRouter.use("*", async (c, next) => {
-  const cookieHeader = c.req.header("cookie");
-  const cookies = cookieHeader ? cookie.parse(cookieHeader) : {};
-  const token = cookies[AUTH_COOKIE_NAME];
-  if (token) {
-    const payload = await verifyToken(token);
-    if (payload) {
-      c.set("session", { userId: payload.userId });
-      await next();
-      return;
-    }
-  }
-  c.set("session", null);
+  // ✅ SECURITY FIX (audit run-1, promo-routes-skip-tokenversion): resolve the
+  // session through the SAME pipeline as tRPC (cache -> DB load -> tokenVersion
+  // revocation check) instead of a bare verifyToken, so a revoked/hijacked JWT
+  // is rejected here exactly like on every authed tRPC procedure.
+  const user = await resolveOptionalUser(c.req.raw);
+  c.set("session", user ? { userId: user.id } : null);
   await next();
 });
 
@@ -61,7 +53,7 @@ async function applyPromoCodeInternal(params: {
   courseId: number;
   userId: number;
   paymentId?: number;
-}): Promise<{ success: boolean; discount?: number; message: string }> {
+}, recordUsage = false): Promise<{ success: boolean; discount?: number; message: string }> {
   const now = new Date();
 
   const [promo] = await db
@@ -115,16 +107,23 @@ async function applyPromoCodeInternal(params: {
       .where(eq(payments.id, params.paymentId));
   }
 
-  await db.insert(promoCodeUsage).values({
-    promoCodeId: promo.id,
-    userId: params.userId,
-    paymentId: params.paymentId ?? null,
-  });
+  // ✅ SECURITY FIX (audit run-1, payments.promo-quota-burn): usage is a shared
+  // budget that must correspond to settled value. The /apply and /apply/internal
+  // surfaces ran with recordUsage=false by default now — they compute the
+  // discount WITHOUT burning quota; the payment flow records usage at intent
+  // and RELEASES it on rejection/refund (see releasePromoUsageForPayment).
+  if (recordUsage) {
+    await db.insert(promoCodeUsage).values({
+      promoCodeId: promo.id,
+      userId: params.userId,
+      paymentId: params.paymentId ?? null,
+    });
 
-  await db
-    .update(promoCodes)
-    .set({ usedCount: sql`${promoCodes.usedCount} + 1` })
-    .where(eq(promoCodes.id, promo.id));
+    await db
+      .update(promoCodes)
+      .set({ usedCount: sql`${promoCodes.usedCount} + 1` })
+      .where(eq(promoCodes.id, promo.id));
+  }
 
   return {
     success: true,
@@ -209,6 +208,16 @@ promoRouter.get("/validate/:code", async (c) => {
     return c.json({ error: "يجب تسجيل الدخول" }, 401);
   }
 
+  // ✅ SECURITY FIX (audit run-1, promo-validate-validity-oracle): throttle
+  // code probing per account+IP — this endpoint was the unthrottled
+  // enumeration primitive for the merchant's promo inventory.
+  const probeIp = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  try {
+    await rateLimit(`promo:validate:${session.userId}:${probeIp}`, 1);
+  } catch {
+    return c.json({ error: "طلبات كثيرة جداً، حاول لاحقاً" }, 429);
+  }
+
   const now = new Date();
 
   const [promo] = await db
@@ -234,15 +243,38 @@ promoRouter.get("/validate/:code", async (c) => {
     return c.json({ valid: false }, 404);
   }
 
-  const remainingUses = promo.maxUses ? Math.max(0, promo.maxUses - promo.usedCount) : null;
-
+  // ✅ SECURITY FIX (audit run-1, promo-validate-validity-oracle): the checkout
+  // UI consumes only valid/discount — drop the operational inventory data
+  // (remainingUses/expiresAt) from the public response.
   return c.json({
     valid: true,
     promoId: promo.id,
     discount: Number.parseFloat(promo.discountValue),
-    remainingUses,
-    expiresAt: promo.validUntil,
   });
 });
 
 export { promoRouter, applyPromoCodeInternal, verifyPromoHmac };
+
+
+/**
+ * ✅ SECURITY FIX (audit run-1, payments.promo-quota-burn): release the promo
+ * quota a pending payment consumed, for use on admin rejection and webhook
+ * refund/void. Idempotent: the usage row is deleted and the counter clamped
+ * at zero, so repeated calls are safe.
+ */
+export async function releasePromoUsageForPayment(paymentId: number, userId: number): Promise<void> {
+  const rows = await db
+    .select({ id: promoCodeUsage.id, promoCodeId: promoCodeUsage.promoCodeId })
+    .from(promoCodeUsage)
+    .where(and(eq(promoCodeUsage.paymentId, paymentId), eq(promoCodeUsage.userId, userId)));
+  if (rows.length === 0) return;
+  await db.delete(promoCodeUsage).where(and(eq(promoCodeUsage.paymentId, paymentId), eq(promoCodeUsage.userId, userId)));
+  const counts = new Map<number, number>();
+  for (const r of rows) counts.set(r.promoCodeId, (counts.get(r.promoCodeId) ?? 0) + 1);
+  for (const [promoCodeId, n] of counts) {
+    await db
+      .update(promoCodes)
+      .set({ usedCount: sql`GREATEST(${promoCodes.usedCount} - ${n}, 0)` })
+      .where(eq(promoCodes.id, promoCodeId));
+  }
+}

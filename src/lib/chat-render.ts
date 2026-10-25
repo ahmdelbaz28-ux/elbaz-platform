@@ -1,0 +1,137 @@
+/**
+ * CHAT MARKDOWN RENDERER — pure, React-free (extracted from ChatBot.tsx)
+ *
+ * SECURITY INVARIANT (audit run-1, finding chatbot.rendermarkdown.*):
+ * EVERY text segment is HTML-escaped BEFORE any markdown transformation.
+ * Only renderer-synthesized tags (h4/ol/ul/li/p/code/a/strong/em) may appear
+ * in the output; the link URL regex additionally restricts hrefs to http(s).
+ * The old code escaped only fenced code blocks, letting model/user/history
+ * content like `<img src=x onerror=...>` reach dangerouslySetInnerHTML.
+ *
+ * Bidi support: any message containing Arabic script renders RTL; Latin runs
+ * inside an RTL paragraph are isolated by the Unicode bidi algorithm; code
+ * blocks and inline code are pinned LTR. Markdown supports: fenced code
+ * blocks, inline code, **bold** (cyan key terms), *italic*,
+ * [links](https://…) (safe anchors), ### headings, numbered step lists,
+ * bullet lists, and paragraphs.
+ */
+import { convertMarkdownTables } from "@/lib/chat-format";
+
+export const ARABIC_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+
+export function escapeHtml(s: string): string {
+  return s
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&#x27;");
+}
+
+/** Inline markdown (code / links / bold / italic) — input is already escaped. */
+function renderInline(md: string): string {
+  // Inline code first, so ** inside code is never bolded. dir="ltr" isolates
+  // the code run from the surrounding RTL/LTR paragraph.
+  let html = md.replaceAll(/`([^`]+)`/g, '<code dir="ltr" class="bg-black/30 border border-[#1e2d3d] px-1.5 py-0.5 rounded text-[12px] text-cyan-300">$1</code>');
+  // Markdown links → safe anchors (documented-answer citations from web
+  // search). URL is restricted to http/https; the input was already
+  // HTML-escaped, so `"` cannot break out of the href attribute.
+  html = html.replaceAll(/\[([^\]\n]+)\]\((https?:\/\/[^\s<>()]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-cyan-300 underline decoration-cyan-300/40 hover:decoration-cyan-200 break-all" dir="ltr">$1</a>');
+  // Bold → highlighted key term (the UI colors important words cyan)
+  html = html.replaceAll(/\*\*([^*]+)\*\*/g, '<strong class="font-semibold text-cyan-300">$1</strong>');
+  // Italic
+  html = html.replaceAll(/(?<!\*)\*([^*]+)\*(?!\*)/g, "<em>$1</em>");
+  return html;
+}
+
+/**
+ * Render a non-code text segment: headings, numbered step lists, bullet lists
+ * and paragraphs. Line-based so the model's "1. step" instructions render as
+ * real ordered steps (with a number badge) instead of a wall of text.
+ * Input is already HTML-escaped (enforced by renderMarkdown).
+ */
+function renderTextBlock(text: string): string {
+  const lines = text.split("\n");
+  let out = "";
+  let mode: "none" | "ol" | "ul" = "none";
+  let para: string[] = [];
+
+  const closeList = () => {
+    if (mode === "ol") out += "</ol>";
+    else if (mode === "ul") out += "</ul>";
+    mode = "none";
+  };
+  const flushPara = () => {
+    if (para.length) {
+      out += `<p>${para.join("<br>")}</p>`;
+      para = [];
+    }
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    const heading = /^#{1,6}\s+(.+)$/.exec(line);
+    const step = /^(\d{1,2})[.)]\s+(.+)$/.exec(line);
+    const bullet = /^[-*•]\s+(.+)$/.exec(line);
+
+    if (heading) {
+      flushPara();
+      closeList();
+      out += `<h4 class="chat-h">${renderInline(heading[1])}</h4>`;
+    } else if (step) {
+      flushPara();
+      if (mode !== "ol") {
+        closeList();
+        out += '<ol class="chat-ol">';
+        mode = "ol";
+      }
+      out += `<li data-n="${step[1]}">${renderInline(step[2])}</li>`;
+    } else if (bullet) {
+      flushPara();
+      if (mode !== "ul") {
+        closeList();
+        out += '<ul class="chat-ul">';
+        mode = "ul";
+      }
+      out += `<li>${renderInline(bullet[1])}</li>`;
+    } else if (!line) {
+      flushPara();
+      closeList();
+    } else {
+      closeList();
+      para.push(renderInline(line));
+    }
+  }
+  flushPara();
+  closeList();
+  return out;
+}
+
+/**
+ * Render a chat message to safe HTML. Text segments are escaped BEFORE the
+ * markdown machine runs (the security invariant above); fenced code blocks
+ * are escaped verbatim. While streaming, a momentarily unclosed fence is
+ * closed so partial code renders as a block instead of leaking backticks.
+ */
+export function renderMarkdown(text: string): string {
+  let src = text;
+  const fenceCount = (src.match(/```/g) || []).length;
+  if (fenceCount % 2 === 1) src += "\n```";
+
+  // S8786: regex is intentionally bounded; `[\s\S]*?` is the canonical
+  // non-backtracking pattern for delimited multiline captures.
+  const segments = src.split(/```(\w*)[ \t]*\n?([\s\S]*?)```/); // NOSONAR — S8786: bounded lazy capture between ``` delimiters
+  // segments: [text, lang, code, text, lang, code, …, text]
+  let html = "";
+  for (let i = 0; i < segments.length; i += 3) {
+    // Tables are converted on the raw text (pipe grammar), then the whole
+    // segment is HTML-escaped before the line machine sees it — the audit
+    // fix for the unescaped-innerHTML XSS.
+    html += renderTextBlock(escapeHtml(convertMarkdownTables(segments[i])));
+    if (segments[i + 2] !== undefined) {
+      const code = escapeHtml(segments[i + 2].trim());
+      html += `<pre dir="ltr" class="bg-black/40 border border-[#1e2d3d] rounded-lg p-2.5 my-1.5 overflow-x-auto text-[12px] leading-5 text-[#b4c6e0]" style="text-align:left"><code>${code}</code></pre>`;
+    }
+  }
+  return html;
+}

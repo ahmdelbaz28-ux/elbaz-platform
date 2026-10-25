@@ -470,6 +470,13 @@ googleAuthRouter.get("/callback", async (c) => { // NOSONAR — complex function
       }
     }
 
+    // ✅ SECURITY FIX (audit run-1, google-oauth-login-skips-totp): fail closed
+    // for 2FA-enrolled accounts — no session without the second factor.
+    if (await totpEnrolledFor(userId)) {
+      logger.warn("[GoogleAuth/OAuth] Sign-in refused: TOTP enrolled (use password login)", { userId });
+      return c.redirect("/?google_error=totp_required");
+    }
+
     // Create JWT + set cookies
     const token = await createToken({ userId, username, role: userRole, tokenVersion: tokenVersionForSession });
     setAuthCookies(c, token);
@@ -483,6 +490,26 @@ googleAuthRouter.get("/callback", async (c) => { // NOSONAR — complex function
     return c.redirect("/?google_error=callback_error");
   }
 });
+
+
+/**
+ * ✅ SECURITY FIX (audit run-1, google-oauth-login-skips-totp): the enrolled
+ * TOTP factor was enforced only on the password path — both Google flows
+ * minted full sessions without any second-factor check. Fail closed here:
+ * a 2FA-enrolled user must sign in with the password path (which verifies
+ * TOTP/backup codes) until a full OAuth+TOTP challenge flow exists.
+ */
+class TotpRequiredError extends Error {}
+
+async function totpEnrolledFor(userId: number): Promise<boolean> {
+  const db = getDb();
+  const [row] = await db
+    .select({ totpEnabled: users.totpEnabled })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return row?.totpEnabled === true;
+}
 
 // ─── Helper: build a public user response object from a user record ───
 function buildUserResponseData(user: { id: number; username: string; name: string | null; email: string | null; role: string; avatar: string | null }) {
@@ -499,6 +526,12 @@ function buildUserResponseData(user: { id: number; username: string; name: strin
 // ─── Helper: issue a JWT + set auth cookies for an existing user record ───
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function issueSessionForUser(c: any, user: { id: number; username: string; role: string; tokenVersion: number }, logLabel: string): Promise<string> {
+  // ✅ SECURITY FIX (audit run-1, google-oauth-login-skips-totp): fail closed
+  // for 2FA-enrolled accounts on the GIS flow too.
+  if (await totpEnrolledFor(user.id)) {
+    logger.warn("[GoogleAuth/GIS] Sign-in refused: TOTP enrolled (use password login)", { userId: user.id });
+    throw new TotpRequiredError();
+  }
   const token = await createToken({
     userId: user.id,
     username: user.username,
@@ -573,7 +606,14 @@ googleAuthRouter.post("/", async (c) => {
           ...(googlePicture && { avatar: googlePicture }),
         })
         .where(eq(users.id, user.id));
-      await issueSessionForUser(c, user, "Google auth — existing user sign-in");
+      try {
+        await issueSessionForUser(c, user, "Google auth — existing user sign-in");
+      } catch (err) {
+        if (err instanceof TotpRequiredError) {
+          return c.json({ success: false, error: "totp_required", message: "هذا الحساب مفعّل فيه التحقق بخطوتين — استخدم تسجيل الدخول بكلمة المرور" }, 403);
+        }
+        throw err;
+      }
       return successResponse(c, buildUserResponseData(user));
     }
 
@@ -601,7 +641,14 @@ googleAuthRouter.post("/", async (c) => {
             ...(googlePicture && !user.avatar && { avatar: googlePicture }),
           })
           .where(eq(users.id, user.id));
-        await issueSessionForUser(c, user, "Google auth — linked to existing account");
+        try {
+          await issueSessionForUser(c, user, "Google auth — linked to existing account");
+        } catch (err) {
+          if (err instanceof TotpRequiredError) {
+            return c.json({ success: false, error: "totp_required", message: "هذا الحساب مفعّل فيه التحقق بخطوتين — استخدم تسجيل الدخول بكلمة المرور" }, 403);
+          }
+          throw err;
+        }
         return successResponse(c, buildUserResponseData(user));
       }
     }

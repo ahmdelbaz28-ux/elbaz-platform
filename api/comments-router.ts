@@ -2,10 +2,12 @@
  * Comments Router — lesson discussion comments with likes
  */
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { desc, eq, sql, and } from "drizzle-orm";
 import { createRouter, publicQuery, authMutation, adminMutation } from "./middleware";
 import { getDb } from "./queries/connection";
-import { lessonComments, commentLikes, users } from "@db/schema";
+import { lessonComments, commentLikes, users, lessons, courses, enrollments } from "@db/schema";
+import { activeEnrollmentWhere } from "./lib/enrollment.js";
 
 export const commentsRouter = createRouter({
   list: publicQuery
@@ -61,6 +63,36 @@ export const commentsRouter = createRouter({
     }))
     .mutation(async ({ input, ctx }) => {
       const db = getDb();
+      // ✅ SECURITY FIX (audit run-1, stored-content.create.missing-entitlement):
+      // comments are publicly readable by lessonId — bind them to content the
+      // author can actually access: published lesson, and (free OR active
+      // enrollment), mirroring quiz/course-watching.
+      const [lesson] = await db
+        .select({ id: lessons.id, courseId: lessons.courseId, isPublished: lessons.isPublished })
+        .from(lessons)
+        .where(eq(lessons.id, input.lessonId))
+        .limit(1);
+      if (!lesson || !lesson.isPublished) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+      }
+      const [course] = await db
+        .select({ isPublished: courses.isPublished, isPremium: courses.isPremium })
+        .from(courses)
+        .where(eq(courses.id, lesson.courseId))
+        .limit(1);
+      if (!course || !course.isPublished) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+      }
+      if (course.isPremium) {
+        const [enrollment] = await db
+          .select({ id: enrollments.id })
+          .from(enrollments)
+          .where(activeEnrollmentWhere(ctx.user.id, lesson.courseId))
+          .limit(1);
+        if (!enrollment) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "يجب التسجيل في الدورة قبل التعليق" });
+        }
+      }
       const [result] = await db.insert(lessonComments).values({
         lessonId: input.lessonId,
         userId: ctx.user.id,

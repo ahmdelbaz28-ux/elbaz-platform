@@ -38,7 +38,7 @@ const globalRateLimit = t.middleware(async (opts) => {
 });
 
 export const publicQuery = t.procedure.use(globalRateLimit);
-export const publicMutation = t.procedure;
+export const publicMutation = t.procedure.use(globalRateLimit);
 
 // Auth-specific rate limit middleware — runs BEFORE input validation.
 // This prevents attackers from bypassing per-action rate limits by sending

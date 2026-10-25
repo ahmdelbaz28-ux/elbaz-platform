@@ -33,6 +33,7 @@ import {
   invalidateAiRouterCache,
 } from "./lib/ai-router.js";
 import { logger } from "./lib/logger.js";
+import { isPublicProviderUrl } from "./lib/ai-router.js";
 
 function slugify(input: string): string {
   const base = input.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
@@ -51,10 +52,11 @@ async function uniqueSlug(db: ReturnType<typeof getDb>, desired: string, exclude
   }
 }
 
-const baseUrlSchema = z.string().trim().min(1).max(255).refine(
-  (v) => /^https?:\/\//i.test(v),
-  { message: "baseUrl must start with http(s)://" },
-);
+const baseUrlSchema = z.string().trim().min(1).max(255)
+  .refine((v) => /^https?:\/\//i.test(v), { message: "baseUrl must start with http(s)://" })
+  // ✅ SECURITY FIX (audit run-1, ai-router.db-baseUrl-outbound): reject
+  // non-public targets at input time (the fetch sink re-checks fail-closed).
+  .refine((v) => isPublicProviderUrl(v), { message: "baseUrl must point to a public provider host" });
 
 export const adminAiProcedures = {
   aiProviders: adminQuery.query(async () => {

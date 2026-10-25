@@ -167,7 +167,12 @@ healthRouter.get("/health", async (c) => {
       checks.payments = { status: "degraded", latency_ms: 0, detail: "Paymob not fully configured — manual transfer only (if admin filled siteSettings payments section)" };
     }
   } catch (error) {
-    checks.payments = { status: "degraded", latency_ms: 0, detail: `Paymob config check failed: ${error instanceof Error ? error.message : String(error)}` };
+    // ✅ SECURITY FIX (audit run-1, health-router.payments-check): mirror the
+    // database-check hardening — mysql2 driver errors include host/port and
+    // must never reach the unauthenticated response. Log the real error
+    // instead (the DB check at the top of this file established the pattern).
+    logger.error("[Health] Payments config check failed", { error: error instanceof Error ? error.message : String(error) });
+    checks.payments = { status: "degraded", latency_ms: 0, detail: "Payments config check failed" };
   }
 
   await cache.set(cacheKeys.healthCheck(), { checks }, CACHE_TTL.HEALTH_CHECK);

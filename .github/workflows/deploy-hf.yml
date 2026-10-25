@@ -31,11 +31,14 @@ jobs:
         with:
           node-version: 22
 
-      - name: Update lockfile (if needed)
+      # ✅ SECURITY FIX (audit run-1, deploy-hf.lockfile-auto-refresh): a stale or
+# out-of-sync lockfile must FAIL the pipeline — the previous auto-refresh step
+# re-resolved every caret range at deploy time, so the test gate validated a
+# dependency tree that was never shipped (the Docker build installs the
+# COMMITTED package-lock.json). Fix the lockfile with a reviewed commit.
+- name: Verify lockfile is in sync (fail closed)
         run: |
-          if ! npm ci --ignore-scripts --dry-run 2>/dev/null; then  # S6505
-            npm install --package-lock-only --ignore-scripts --no-audit --no-fund  # S6505
-          fi
+          npm ci --ignore-scripts --dry-run  # S6505
 
       - name: Install dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund  # S6505: esbuild/electron need no install scripts in CI

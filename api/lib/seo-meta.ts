@@ -706,15 +706,29 @@ export function applySeoToHtml(
     );
   }
 
-  // 9. Per-route JSON-LD (non-executing scripts — CSP-safe without nonce)
+  // 9. Per-route JSON-LD. SECURITY (audit run-1, seo-meta.jsonld.*): the HTML
+  // parser terminates <script> at the first literal "</script" regardless of
+  // JS string context, and JSON.stringify does not escape '<'. Stored DB
+  // fields (course titles, FAQ questions) feed these objects, so the payload
+  // must be script-context-safe: escape '<', '>' and U+2028/2029 so no
+  // markup can terminate or leave the script data element.
   if (seo.jsonLd.length > 0) {
     const ldScripts = seo.jsonLd
-      .map((obj) => `<script type="application/ld+json" data-route-jsonld="true">${JSON.stringify(obj)}</script>`)
+      .map((obj) => `<script type="application/ld+json" data-route-jsonld="true">${jsonLdSafeStringify(obj)}</script>`)
       .join("\n    ");
     out = out.replace("</head>", `  ${ldScripts}\n  </head>`);
   }
 
   return out;
+}
+
+/** JSON.stringify with script-context-safe escaping (no '</script' breakout). */
+export function jsonLdSafeStringify(obj: unknown): string {
+  return JSON.stringify(obj)
+    .replaceAll("<", "\\u003c")
+    .replaceAll(">", "\\u003e")
+    .replaceAll("\u2028", "\\u2028")
+    .replaceAll("\u2029", "\\u2029");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
