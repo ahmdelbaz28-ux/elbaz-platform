@@ -5,6 +5,7 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { useAuth } from "@/hooks/useAuth";
 import { useChatFabAnimation } from "@/hooks/useChatFabAnimation";
 import { useFabScrollVisibility } from "@/hooks/useFabScrollVisibility";
+import { convertMarkdownTables } from "@/lib/chat-format";
 import {
   X,
   Send,
@@ -251,7 +252,10 @@ function renderMarkdown(text: string): string {
   // segments: [text, lang, code, text, lang, code, …, text]
   let html = "";
   for (let i = 0; i < segments.length; i += 3) {
-    html += renderTextBlock(segments[i]);
+    // Deterministic table→bullets enforcement (the prompt rule leaks):
+    // tables arrive as broken pipe grids in this renderer — rewrite them as
+    // labeled bullets before the line machine sees them.
+    html += renderTextBlock(convertMarkdownTables(segments[i]));
     if (segments[i + 2] !== undefined) {
       const code = escapeHtml(segments[i + 2].trim());
       html += `<pre dir="ltr" class="bg-black/40 border border-[#1e2d3d] rounded-lg p-2.5 my-1.5 overflow-x-auto text-[12px] leading-5 text-[#b4c6e0]" style="text-align:left"><code>${code}</code></pre>`;
