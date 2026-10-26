@@ -90,25 +90,28 @@ export async function markLessonWatched(
 ): Promise<void> {
   const db = getDb();
 
-  // Atomic UPSERT: insert if not exists, update isCompleted if exists
-  await db.execute(
-    sql`INSERT INTO lessonProgress (\`userId\`, \`lessonId\`, \`isCompleted\`, \`isQuizPassed\`, \`quizScore\`, \`watchedSeconds\`, \`lastPosition\`, \`completedAt\`, \`lastHeartbeatAt\`)
-     VALUES (${userId}, ${lessonId}, true, false, 0, 0, 0, NOW(), NOW())
-     ON DUPLICATE KEY UPDATE
-       \`isCompleted\` = true,
-       \`completedAt\` = IF(\`isCompleted\` = 0, NOW(), \`completedAt\`)`
-  );
-
-  // Get the course ID and recalculate enrollment progress
+  // 🐛 FIX (E2E purchase→certificate journey): the INSERT omitted `courseId`
+  // — NOT NULL with no default in db/init-schema.sql — so EVERY call failed
+  // with "Field 'courseId' doesn't have a default value" (500) and video
+  // lessons could never be marked complete on a fresh schema.
   const [lesson] = await db
     .select({ courseId: lessons.courseId })
     .from(lessons)
     .where(eq(lessons.id, lessonId))
     .limit(1);
+  if (!lesson) return; // unknown lesson — nothing to mark
 
-  if (lesson) {
-    await recalcEnrollmentProgress(userId, lesson.courseId);
-  }
+  // Atomic UPSERT: insert if not exists, update isCompleted if exists
+  await db.execute(
+    sql`INSERT INTO lessonProgress (\`userId\`, \`lessonId\`, \`courseId\`, \`isCompleted\`, \`isQuizPassed\`, \`quizScore\`, \`watchedSeconds\`, \`lastPosition\`, \`completedAt\`, \`lastHeartbeatAt\`)
+     VALUES (${userId}, ${lessonId}, ${lesson.courseId}, true, false, 0, 0, 0, NOW(), NOW())
+     ON DUPLICATE KEY UPDATE
+       \`isCompleted\` = true,
+       \`completedAt\` = IF(\`isCompleted\` = 0, NOW(), \`completedAt\`)`
+  );
+
+  // Recalculate enrollment progress
+  await recalcEnrollmentProgress(userId, lesson.courseId);
 }
 
 /**

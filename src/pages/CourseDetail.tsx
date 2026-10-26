@@ -79,6 +79,9 @@ interface ProtectedVideoPlayerProps {
   readonly courseId?: number;
   readonly isTrackingEnabled?: boolean;
   readonly lang: "en" | "ar";
+  /** Fired when a video plays to the end and the server marks the lesson
+   *  complete — lets the parent refetch enrollment/certificate state. */
+  readonly onLessonCompleted?: () => void;
 }
 
 interface ProtectedVideoPlayerHandle {
@@ -86,7 +89,7 @@ interface ProtectedVideoPlayerHandle {
 }
 
 const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVideoPlayerProps>(
-  function ProtectedVideoPlayerInner({ videoUrl, hlsUrl, username, lessonTitle, lessonId, courseId, isTrackingEnabled, lang }) {
+  function ProtectedVideoPlayerInner({ videoUrl, hlsUrl, username, lessonTitle, lessonId, courseId, isTrackingEnabled, lang, onLessonCompleted }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -256,6 +259,10 @@ const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVid
     lessonId: lessonId || null,
     videoRef,
     enabled: !!isTrackingEnabled,
+    // 🐛 FIX (video-lesson completion): when the video ends and the server
+    // marks the lesson complete, notify the parent so it refetches the
+    // enrollment status and the "Get Your Certificate" CTA appears live.
+    onLessonCompleted,
   });
 
   // ─── Video Source Loading (HLS or MP4) ───
@@ -557,10 +564,15 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
     }
   }, [course?.id, slug, course?.isPremium]);  
 
-  const { data: enrollmentStatus } = trpc.course.checkEnrollment.useQuery(
+  const { data: enrollmentStatus, refetch: refetchEnrollment } = trpc.course.checkEnrollment.useQuery(
     { courseId: course?.id || 0 },
-    { enabled: !!course && !!user }
+    { enabled: !!course && !!user, staleTime: 0 }
   );
+  // staleTime: 0 — the global 5-minute fresh window + the localStorage query
+  // persister kept the PRE-payment enrolled:false state "fresh" after the
+  // redirect back from the gateway (even through location.reload()), leaving
+  // paying customers staring at "Buy Now" for up to 5 minutes. Enrollment
+  // state must always be verified against the server on mount.
   const isEnrolled = enrollmentStatus?.enrolled ?? false;
   const isCourseCompleted = enrollmentStatus?.isCompleted ?? false;
 
@@ -1081,6 +1093,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                       courseId={course?.id}
                       isTrackingEnabled={isAuthenticated}
                       lang={lang}
+                      onLessonCompleted={() => { void refetchEnrollment(); }}
                     />
                   )}
 

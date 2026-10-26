@@ -23,6 +23,9 @@ interface UseWatchTrackerOptions {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   enabled?: boolean;
   heartbeatIntervalMs?: number;
+  /** Fired once per lesson when the video plays to the end and the server
+   *  marks the lesson complete (drives the enrollment-progress refetch). */
+  onLessonCompleted?: () => void;
 }
 
 interface UseWatchTrackerReturn {
@@ -36,6 +39,7 @@ export function useWatchTracker({
   videoRef,
   enabled = true,
   heartbeatIntervalMs = 60000, // 60 seconds default
+  onLessonCompleted,
 }: UseWatchTrackerOptions): UseWatchTrackerReturn {
   const [resumePosition, setResumePosition] = useState(0);
   const [savedWatchTime, setSavedWatchTime] = useState(0);
@@ -62,6 +66,28 @@ export function useWatchTracker({
       console.warn("[WatchTracker] Heartbeat failed:", err.message);
     },
   });
+
+  // 🐛 FIX (E2E purchase→certificate journey): the server exposes
+  // course.markWatched (marks lessonProgress.isCompleted = true + recalculates
+  // enrollment progress) but NOTHING in the frontend ever called it — video
+  // lessons could never be completed, so courses whose lessons are videos
+  // (not quizzes) never reached isCompleted and the certificate stayed
+  // locked behind "You must complete the course". Mark the lesson complete
+  // when the video fires `ended` (watched to the end = completed).
+  const markWatchedMutation = trpc.course.markWatched.useMutation({
+    onSuccess: () => {
+      onLessonCompletedRef.current?.();
+    },
+    onError: (err) => {
+      // Silent fail — completion is a convenience signal; heartbeats still track time
+      console.warn("[WatchTracker] markWatched failed:", err.message);
+    },
+  });
+  const completedLessonRef = useRef<number | null>(null);
+  const onLessonCompletedRef = useRef(onLessonCompleted);
+  useEffect(() => {
+    onLessonCompletedRef.current = onLessonCompleted;
+  }, [onLessonCompleted]);
 
   // Load saved position when lesson changes
   const { data: savedProgress } = trpc.course.getSavedPosition.useQuery(
@@ -138,7 +164,15 @@ export function useWatchTracker({
 
     const onPlay = () => startTracking();
     const onPause = () => stopTracking();
-    const onEnded = () => stopTracking();
+    const onEnded = () => {
+      stopTracking();
+      // 🐛 FIX: watched to the end — mark the lesson complete (once per lesson
+      // mount; the server upsert is idempotent, the guard avoids spam).
+      if (lessonIdRef.current && completedLessonRef.current !== lessonIdRef.current) {
+        completedLessonRef.current = lessonIdRef.current;
+        markWatchedMutation.mutate({ lessonId: lessonIdRef.current });
+      }
+    };
     const onSeeked = () => {
       lastPositionRef.current = Math.floor(video.currentTime);
     };
@@ -154,7 +188,7 @@ export function useWatchTracker({
       video.removeEventListener("ended", onEnded);
       video.removeEventListener("seeked", onSeeked);
     };
-  }, [enabled, lessonId, videoRef, startTracking, stopTracking]);
+  }, [enabled, lessonId, videoRef, startTracking, stopTracking, markWatchedMutation]);
 
   // Auto-resume: seek to saved position when video loads
   useEffect(() => {

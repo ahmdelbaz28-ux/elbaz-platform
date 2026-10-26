@@ -47,6 +47,12 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
       "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
       "img-src 'self' data: blob: https:",
+      // 🐛 FIX (E2E purchase→certificate journey): media-src was MISSING —
+      // <video> fell back to default-src 'self', so R2 presigned URLs
+      // (https://<account>.r2.cloudflarestorage.com) and MSE blob: sources
+      // were CSP-blocked: the player rendered but the browser refused to
+      // fetch ("no supported sources") in production too.
+      "media-src 'self' blob: https:",
       "connect-src 'self' https://api.openrouter.ai https://*.aivencloud.com https://www.clarity.ms https://www.googleapis.com https://accounts.google.com",
       "frame-ancestors 'none'",
       "base-uri 'self'",
@@ -78,6 +84,12 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
       "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
       "img-src 'self' data: blob: https:",
+      // 🐛 FIX (E2E purchase→certificate journey): media-src was MISSING —
+      // <video> fell back to default-src 'self', so R2 presigned URLs
+      // (https://<account>.r2.cloudflarestorage.com) and MSE blob: sources
+      // were CSP-blocked: the player rendered but the browser refused to
+      // fetch ("no supported sources") in production too.
+      "media-src 'self' blob: https:",
       "connect-src 'self' https://api.openrouter.ai https://*.aivencloud.com https://www.clarity.ms https://www.googleapis.com https://accounts.google.com",
       "frame-ancestors 'none'",
       "base-uri 'self'",
