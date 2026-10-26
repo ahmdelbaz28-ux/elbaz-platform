@@ -137,11 +137,17 @@ const COMMAND_INJECTION_PATTERNS = [
 const MAX_REQUEST_SIZE = 20 * 1024 * 1024;
 
 // ─── API Paths (v7: new) ────────────────────────────────────────────────────
+// ✅ SECURITY FIX (audit run-1, worker.v7.dead-webhook-skiplist): list only
+// REAL mounted routes. /api/paymob/webhook is the canonical Paymob endpoint
+// and /api/webhooks/paymob is the dashboard-registered legacy alias of the
+// same handler (api/boot.ts mounts both) — the previously-exempted
+// /api/webhooks/ prefix matched no mounted route and died here.
 const API_PATHS = [
   '/api/health',
   '/api/trpc/ping',
   '/api/trpc/',
   '/api/paymob',
+  '/api/webhooks/paymob',
   '/api/chatbot',
 ];
 
