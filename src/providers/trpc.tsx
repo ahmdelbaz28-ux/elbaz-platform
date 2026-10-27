@@ -6,7 +6,7 @@ import type { AppRouter } from "../../api/router";
 import type { ReactNode } from "react";
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
-import { isNativePlatform, getStoredToken, removeStoredToken, clearAuthFlagCookie } from "@/lib/auth-storage";
+import { isNativePlatform, getStoredToken, setStoredToken, removeStoredToken, clearAuthFlagCookie } from "@/lib/auth-storage";
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const trpc = createTRPCReact<AppRouter>();
@@ -128,10 +128,26 @@ const trpcClient = trpc.createClient({
             ...platformHeader,
           };
           if (token) headers.Authorization = `Bearer ${token}`;
-          return globalThis.fetch(input, {
+          const request = globalThis.fetch(input, {
             ...(init ?? {}), // NOSONAR — ?? {} provides runtime fallback for spread; type-only fix would change semantics
             credentials: isNative ? "omit" : "include",
             headers,
+          });
+          if (!isNative) return request;
+          // ✅ SESSION PERSISTENCE FIX (native sliding sessions): native clients
+          // authenticate via the localStorage JWT (credentials "omit"), so the
+          // server's cookie-based renewal never reached them — the stored token
+          // stayed expired forever and the app asked for a fresh login on every
+          // restart. The server now mirrors each renewed token in the
+          // `x-renewed-token` response header (Bearer requests only); storing
+          // it here keeps the native session sliding indefinitely: as long as
+          // the user keeps using the app, the token never dies, and after an
+          // idle period the grace window renews it on the first request.
+          // Web keeps the HttpOnly cookie as its only token channel (XSS).
+          return request.then((response) => {
+            const renewed = response.headers.get("x-renewed-token");
+            if (renewed) setStoredToken(renewed);
+            return response;
           });
         },
     }),

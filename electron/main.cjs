@@ -22,7 +22,17 @@ function createWindow() {
       win.loadFile(path.join(__dirname, '../dist/public/index.html'));
     });
   } else {
-    win.loadFile(path.join(__dirname, '../dist/public/index.html'));
+    // ✅ SESSION PERSISTENCE FIX: production loads the LIVE site instead of
+    // file://. A file:// page is an opaque origin — Chromium cannot store the
+    // API's Secure/SameSite=None session cookies for it and the CSRF/CORS
+    // gates reject Origin "null", so the desktop app lost its session on every
+    // restart ("must log in again each time"). The live origin is first-party:
+    // cookies persist in the default session (userData partition) and the
+    // user stays logged in across restarts unless they explicitly log out.
+    win.loadURL('https://ahmedelbaz.qzz.io').catch(() => {
+      console.log("Live site unreachable, loading local file as offline fallback...");
+      win.loadFile(path.join(__dirname, '../dist/public/index.html'));
+    });
   }
 
   // Remove menu in production

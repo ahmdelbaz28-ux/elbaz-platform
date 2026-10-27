@@ -198,7 +198,18 @@ function getAllowedOrigins(): string[] {
   for (const raw of (env.CORS_ORIGINS ?? "").split(",")) {
     const v = raw.trim();
     if (!v) continue;
-    try { origins.add(new URL(v).origin); } catch { /* skip malformed entry */ }
+    try { origins.add(new URL(v).origin); } catch { origins.add(v); }
   }
+  // ✅ SESSION PERSISTENCE FIX: the shipped native shells are FIRST-PARTY
+  // surfaces of this platform, not third-party sites — the Capacitor Android
+  // WebView posts from https://localhost (iOS capacitor://localhost) and the
+  // Electron production build posts from an opaque origin (the literal string
+  // "null"). Blocking their mutations at the CSRF gate made every app login a
+  // one-shot fix that died on the next request. Opaque origins cannot be
+  // parsed as URLs, so they are appended verbatim.
+  origins.add("https://localhost");
+  origins.add("http://localhost");
+  origins.add("capacitor://localhost");
+  origins.add("null");
   return [...origins];
 }

@@ -368,12 +368,29 @@ function addSecurityHeaders(response, url) {
   });
 }
 
-// Add CORS headers
-function addCORSHeaders(response) {
+// ✅ SESSION PERSISTENCE FIX: native shells (Capacitor Android/iOS WebView,
+// Electron file://) are first-party surfaces — their preflight Origin must be
+// REFLECTED or the browser kills every app request at CORS. Web requests
+// (origin == ALLOWED_DOMAIN) keep the pinned domain; unknown origins keep the
+// pinned domain too (no wildcard with credentials).
+const NATIVE_APP_ORIGINS = new Set(['https://localhost', 'http://localhost', 'capacitor://localhost', 'null']);
+function addCORSHeaders(response, request) {
   const newHeaders = new Headers(response.headers);
-  newHeaders.set('Access-Control-Allow-Origin', ALLOWED_DOMAIN);
+  let corsOrigin = ALLOWED_DOMAIN;
+  if (request) {
+    const reqOrigin = request.headers.get('Origin');
+    if (reqOrigin && reqOrigin !== ALLOWED_DOMAIN && NATIVE_APP_ORIGINS.has(reqOrigin)) {
+      corsOrigin = reqOrigin;
+    }
+  }
+  newHeaders.set('Access-Control-Allow-Origin', corsOrigin);
   newHeaders.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  newHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  // ✅ SESSION PERSISTENCE FIX: X-Capacitor-Platform rides on every native-app
+  // request (preflight must allow it or the APK dies at OPTIONS), and
+  // X-Renewed-Token must be EXPOSED so the app's fetch wrapper can read the
+  // sliding-renewed JWT and keep its localStorage session alive.
+  newHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Auth-Token, X-Request-ID, X-Forwarded-For, X-Capacitor-Platform');
+  newHeaders.set('Access-Control-Expose-Headers', 'X-Request-ID, X-Renewed-Token');
   newHeaders.set('Access-Control-Allow-Credentials', 'true');
   newHeaders.set('Access-Control-Max-Age', '86400');
   newHeaders.set('Vary', 'Accept-Encoding, Origin');
@@ -435,7 +452,7 @@ async function handleRequest(request, _env, ctx) {
 
   // Handle CORS preflight
   if (request.method === 'OPTIONS') {
-    return addSecurityHeaders(addCORSHeaders(new Response(null, { status: 204 })), requestUrl);
+    return addSecurityHeaders(addCORSHeaders(new Response(null, { status: 204 }), request), requestUrl);
   }
 
   // 🚀 PERFORMANCE: Edge caching for static assets using Cache API
@@ -460,7 +477,7 @@ async function handleRequest(request, _env, ctx) {
     const cachedResponse = await cache.match(cacheKey);
     if (cachedResponse) {
       // Serve from edge cache — instant!
-      return addSecurityHeaders(addCORSHeaders(cachedResponse), requestUrl);
+      return addSecurityHeaders(addCORSHeaders(cachedResponse, request), requestUrl);
     }
 
     // Not cached → fetch from origin, cache it, then serve
@@ -469,7 +486,7 @@ async function handleRequest(request, _env, ctx) {
       const originResponse = await fetch(originRequest);
       // ✅ SECURITY FIX (audit run-1): never pin non-success responses at the edge.
       if (!originResponse.ok) {
-        return addSecurityHeaders(addCORSHeaders(originResponse), requestUrl);
+        return addSecurityHeaders(addCORSHeaders(originResponse, request), requestUrl);
       }
       // Clone and add proper headers
       const newHeaders = new Headers(originResponse.headers);
@@ -483,7 +500,7 @@ async function handleRequest(request, _env, ctx) {
       });
 
       // Store in edge cache for 1 year (ctx.waitUntil ensures it completes)
-      const normalized = addSecurityHeaders(addCORSHeaders(responseToCache), requestUrl);
+      const normalized = addSecurityHeaders(addCORSHeaders(responseToCache, request), requestUrl);
       ctx.waitUntil(cache.put(cacheKey, normalized.clone()));
 
       return normalized;
@@ -516,7 +533,7 @@ async function handleRequest(request, _env, ctx) {
   try {
     const originResponse = await fetch(originRequest);
     let response = originResponse;
-    response = addCORSHeaders(response);
+    response = addCORSHeaders(response, request);
     response = addSecurityHeaders(response, requestUrl);
     return response;
   } catch (err) {

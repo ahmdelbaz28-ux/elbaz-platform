@@ -98,6 +98,10 @@ async function renewExpiredTokenSession(
   });
   resHeaders.append("set-cookie", serializeAuthCookie(req.headers, renewed));
   resHeaders.append("set-cookie", serializeAuthFlagCookie(req.headers));
+  // Native (Bearer) clients get the renewed token in a readable header so
+  // their localStorage copy stops being permanently expired (see
+  // isBearerAuth above).
+  exposeRenewedToken(resHeaders, renewed, req.headers);
   logger.info("[Auth] Expired token renewed via grace window", { userId: stale.userId });
   return safeUser;
 }
@@ -112,6 +116,27 @@ function extractAuthToken(req: Request): string | undefined {
   // 2. Fallback to Authorization header (for backward compatibility during migration)
   return req.headers.get("x-auth-token")
     || req.headers.get("authorization")?.replaceAll("Bearer ", "");
+}
+
+/**
+ * ✅ SESSION PERSISTENCE FIX (native sliding sessions): did the request carry
+ * its token in the Authorization/x-auth-token header (Capacitor/Electron
+ * native path) rather than the HttpOnly cookie? Native clients run with
+ * `credentials: "omit"` — renewed tokens delivered as Set-Cookie NEVER reach
+ * their localStorage, so the stored JWT stayed expired forever and every
+ * restart rode the grace window until it ran out ("must log in again every
+ * time I open the app"). For Bearer-authenticated callers we mirror the
+ * renewed token in the `x-renewed-token` RESPONSE header; the client fetch
+ * wrapper updates its localStorage. Cookie (web) requests never receive the
+ * header — the HttpOnly cookie remains the only web JWT channel.
+ */
+function isBearerAuth(reqHeaders: Headers): boolean {
+  return !!reqHeaders.get("authorization") || !!reqHeaders.get("x-auth-token");
+}
+
+function exposeRenewedToken(resHeaders: Headers, token: string, reqHeaders?: Headers): void {
+  if (reqHeaders && !isBearerAuth(reqHeaders)) return;
+  resHeaders.set("x-renewed-token", token);
 }
 
 async function maybeRefreshToken(
@@ -129,6 +154,8 @@ async function maybeRefreshToken(
   });
   resHeaders.append("set-cookie", serializeAuthCookie(reqHeaders, newToken));
   resHeaders.append("set-cookie", serializeAuthFlagCookie(reqHeaders));
+  // Native (Bearer) clients: keep their localStorage token sliding too.
+  exposeRenewedToken(resHeaders, newToken, reqHeaders);
 }
 
 function evictOldestCacheEntries(): void {

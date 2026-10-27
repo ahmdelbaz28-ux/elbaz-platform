@@ -133,3 +133,6 @@ update_hf_secrets.py
 __pycache__/
 scripts/shots_user_test/
 scripts/shots_vision_ux/
+
+# ── E2E screenshot evidence (generated at test runtime) ──
+scripts/shots_*/

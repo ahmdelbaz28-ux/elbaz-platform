@@ -76,6 +76,21 @@ const corsOrigins = env.CORS_ORIGINS
   ? env.CORS_ORIGINS.split(",").map((o) => o.trim())
   : [env.FRONTEND_URL];
 
+// ✅ SESSION PERSISTENCE FIX (Capacitor/Electron apps): the shipped Android
+// WebView runs on https://localhost and the desktop shell on file:// (Origin
+// "null") — without these in the allowlist every APK request died at CORS
+// preflight (x-capacitor-platform is a custom header → OPTIONS check) and the
+// app could neither log in nor keep a session.
+const NATIVE_APP_ORIGINS = [
+  "https://localhost", // Capacitor Android WebView
+  "http://localhost", // Capacitor Android cleartext (capacitor.config server.cleartext)
+  "capacitor://localhost", // Capacitor iOS
+  "null", // Electron production loads file:// (opaque origin)
+];
+for (const o of NATIVE_APP_ORIGINS) {
+  if (!corsOrigins.includes(o)) corsOrigins.push(o);
+}
+
 app.use(
   "*",
   cors({
@@ -87,8 +102,9 @@ app.use(
       "X-Auth-Token",
       "X-Request-ID",
       "X-Forwarded-For",
+      "X-Capacitor-Platform", // ✅ native app marker sent on every APK request
     ],
-    exposeHeaders: ["X-Request-ID"],
+    exposeHeaders: ["X-Request-ID", "X-Renewed-Token"],
     maxAge: 86400,
     credentials: true,
   })
