@@ -31,7 +31,7 @@ W6  Explicit logout         : MOBILE flow — hamburger drawer ("Toggle menu")
                               aria-label="User menu" dropdown does not render
                               below the md breakpoint) → token cleared.
 """
-import http.client, json, os, subprocess, sys, threading, http.server, socketserver, urllib.request
+import http.client, json, os, re, subprocess, sys, threading, http.server, socketserver, urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mock_auth_api import start_mock_server, MOCK_BASE, MOCK_PORT, TOKEN_V1, TOKEN_V2
 from playwright.sync_api import sync_playwright
@@ -64,7 +64,20 @@ def make_spa_server():
 
         # ── /api/* relay ──────────────────────────────────────────────
         def _relay(self):
-            parsed = self.path.split("?", 1)
+            # Hardening: forward ONLY strict /api/* request targets made of
+            # printable ASCII (no CRLF / control characters can be injected
+            # into the request line, and nothing outside /api/* is relayed).
+            # SSRF note (SonarCloud S5144): the destination host/port below are
+            # compile-time constants (the local mock); after this allowlist the
+            # path is the sole user-controlled part and cannot redirect a
+            # fixed-host origin-form request — flagged line carries NOSONAR.
+            if not re.fullmatch(r"/api/[\x21-\x7e]*", self.path):
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", "26")
+                self.end_headers()
+                self.wfile.write(b'{"error":"bad api path"}')
+                return
             conn = http.client.HTTPConnection("127.0.0.1", MOCK_PORT, timeout=15)
             body = None
             if self.headers.get("Content-Length"):
@@ -72,7 +85,10 @@ def make_spa_server():
             headers = {k: v for k, v in self.headers.items()
                        if k.lower() not in ("host", "connection", "content-length")}
             try:
-                conn.request(self.command, self.path, body=body, headers=headers)
+                # NOSONAR: SSRF false positive — fixed constant destination
+                # (127.0.0.1:MOCK_PORT); path allowlisted above, no user input
+                # reaches the request authority.
+                conn.request(self.command, self.path, body=body, headers=headers)  # NOSONAR
                 resp = conn.getresponse()
                 data = resp.read()
                 self.send_response(resp.status)
