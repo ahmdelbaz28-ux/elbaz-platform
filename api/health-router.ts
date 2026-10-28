@@ -182,8 +182,10 @@ healthRouter.get("/health", async (c) => {
   // VISIBLE (root-cure of the silent-death incident where the bot stopped
   // answering DMs with zero external signal).
   try {
+    const { telegramApiBase } = await import("./lib/telegram-transport.js");
     const st = getTelegramBotStatus();
-    const detailParts = [`worker=${st.status}`];
+    const transport = telegramApiBase() === "https://api.telegram.org" ? "direct" : "relay";
+    const detailParts = [`worker=${st.status}`, `transport=${transport}`];
     if (st.botUsername) detailParts.push(`bot=@${st.botUsername}`);
     if (st.lastPollOkAt) detailParts.push(`lastPollOk=${Math.max(0, Math.round((Date.now() - st.lastPollOkAt) / 1000))}s ago`);
     if (st.handledUpdates > 0) detailParts.push(`handled=${st.handledUpdates}`);

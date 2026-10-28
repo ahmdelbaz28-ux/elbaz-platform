@@ -566,7 +566,11 @@ async function supervisorBody(deps: TelegramBotDeps): Promise<void> {
       try {
         me = await deps.api.call("getMe");
       } catch (err) {
-        me = { ok: false, description: err instanceof Error ? err.message : String(err) };
+        // fetch failures wrap the REAL cause (DNS / TCP / TLS) inside err.cause —
+        // surface it, otherwise "fetch failed" hides the actual network fault.
+        const base = err instanceof Error ? err.message : String(err);
+        const cause = err instanceof Error && err.cause instanceof Error ? ` [${err.cause.message}]` : "";
+        me = { ok: false, description: `${base}${cause}` };
       }
       if (me.ok) break;
       const desc = (me.description ?? "unknown").slice(0, 120);
