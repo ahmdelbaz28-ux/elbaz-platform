@@ -422,53 +422,65 @@ export async function startTelegramBot(): Promise<boolean> {
     },
   };
 
+  // Fully contained: every await in this body is guarded — an escaping
+  // rejection from any Telegram call can never kill the host process.
   void (async () => {
-    const me = await deps.api.call("getMe");
-    if (!me.ok) {
-      logger.error("[TelegramBot] getMe rejected — check TELEGRAM_BOT_TOKEN");
-      workerRunning = false;
-      return;
-    }
-    logger.info("[TelegramBot] polling worker started");
-    const adminChat = process.env.TELEGRAM_ADMIN_CHAT_ID;
-    if (adminChat) {
-      await sendChatMessage(deps, Number(adminChat), "🟢 البوت التليجرام شغال دلوقتي بعقل المساعد الذكي — جرب ابعتله /start", { disablePreview: true });
-    }
+    try {
+      const me = await deps.api.call("getMe");
+      if (!me.ok) {
+        logger.error("[TelegramBot] getMe rejected — check TELEGRAM_BOT_TOKEN");
+        workerRunning = false;
+        return;
+      }
+      logger.info("[TelegramBot] polling worker started");
+      const adminChat = process.env.TELEGRAM_ADMIN_CHAT_ID;
+      if (adminChat) {
+        await sendChatMessage(deps, Number(adminChat), "🟢 البوت التليجرام شغال دلوقتي بعقل المساعد الذكي — جرب ابعتله /start", { disablePreview: true });
+      }
 
-    let offset = 0;
-    let conflicts = 0;
-    while (workerRunning) {
-      try {
-        const res = await deps.api.call("getUpdates", { offset, timeout: 25, allowed_updates: ["message", "chat_join_request"] });
-        if (!res.ok) {
-          const retryAfter = res.parameters?.retry_after;
-          const desc = res.description ?? "";
-          if (desc.includes("Conflict")) {
-            conflicts += 1;
-            if (conflicts >= MAX_CONFLICTS) {
-              logger.error("[TelegramBot] repeated getUpdates conflicts — another poller owns this token; stopping");
-              break;
+      let offset = 0;
+      let conflicts = 0;
+      while (workerRunning) {
+        try {
+          const res = await deps.api.call("getUpdates", { offset, timeout: 25, allowed_updates: ["message", "chat_join_request"] });
+          if (!res.ok) {
+            const retryAfter = res.parameters?.retry_after;
+            const desc = res.description ?? "";
+            if (desc.includes("Conflict")) {
+              conflicts += 1;
+              if (conflicts >= MAX_CONFLICTS) {
+                logger.error("[TelegramBot] repeated getUpdates conflicts — another poller owns this token; stopping");
+                break;
+              }
+              await new Promise((r) => setTimeout(r, 60_000));
+              continue;
             }
-            await new Promise((r) => setTimeout(r, 60_000));
+            await new Promise((r) => setTimeout(r, (retryAfter ?? 5) * 1_000));
             continue;
           }
-          await new Promise((r) => setTimeout(r, (retryAfter ?? 5) * 1_000));
-          continue;
+          conflicts = 0;
+          const updates = (res.result as TgUpdate[] | undefined) ?? [];
+          for (const update of updates) {
+            await handleTelegramUpdate(deps, update);
+            offset = update.update_id + 1;
+          }
+        } catch (err) {
+          logger.warn("[TelegramBot] poll cycle failed", { error: err instanceof Error ? err.message : String(err) });
+          await new Promise((r) => setTimeout(r, 10_000));
         }
-        conflicts = 0;
-        const updates = (res.result as TgUpdate[] | undefined) ?? [];
-        for (const update of updates) {
-          await handleTelegramUpdate(deps, update);
-          offset = update.update_id + 1;
-        }
-      } catch (err) {
-        logger.warn("[TelegramBot] poll cycle failed", { error: err instanceof Error ? err.message : String(err) });
-        await new Promise((r) => setTimeout(r, 10_000));
       }
+      workerRunning = false;
+      logger.info("[TelegramBot] polling worker stopped");
+    } catch (err) {
+      // Boot-phase failure (getMe network error, etc.) — log and stand down;
+      // the server itself must keep serving.
+      workerRunning = false;
+      logger.error("[TelegramBot] worker terminated", { error: err instanceof Error ? err.message : String(err) });
     }
+  })().catch((err) => {
     workerRunning = false;
-    logger.info("[TelegramBot] polling worker stopped");
-  })();
+    logger.error("[TelegramBot] worker escaped rejection (contained)", { error: err instanceof Error ? err.message : String(err) });
+  });
 
   return true;
 }

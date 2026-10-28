@@ -512,6 +512,22 @@ async function start() {
   // channel playlist and broadcast an in-app notification to all users.
   startYoutubeWatcher();
 
+  // ── Last-resort process guards (availability-first) ──
+  // The platform's never-throw contract is enforced per-feature, but ONE
+  // escaping rejection anywhere (a background worker, a fire-and-forget
+  // import) must never take the whole server down — Node's default since 15
+  // is to exit on unhandled rejections. Log loudly, keep serving.
+  process.on("unhandledRejection", (reason) => {
+    appLogger.error("[Server] Unhandled rejection contained", {
+      error: reason instanceof Error ? reason.message : String(reason),
+    });
+  });
+  process.on("uncaughtException", (err) => {
+    appLogger.error("[Server] Uncaught exception contained", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
+
   const shutdownHandler = async (signal: string) => {
     appLogger.info(`[Server] ${signal} received, shutting down...`);
     try {
