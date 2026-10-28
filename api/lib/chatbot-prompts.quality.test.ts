@@ -12,10 +12,16 @@
  *   4. House rules survive the addition: no CJK, no placeholder leak, table
  *      ban + language rule + safety rule + reasoning guard all present.
  *
+ * Option B — SMART SUPPORT PROTOCOL (distilled from the "Customer Service"
+ * and "Support Responder" personas):
+ *   5. Thinking prompts carry the empathy-first support layer; instant mode
+ *      stays lean without it (speed budget).
+ *   6. Composition order: platform core → support protocol → official links.
+ *
  * Option D — PROMPT VERSIONING + 3-CASE MATRIX (see PROMPTS_CHANGELOG.md):
- *   5. PROMPT_VERSION is exported and matches the latest entry documented in
+ *   7. PROMPT_VERSION is exported and matches the latest entry documented in
  *      PROMPTS_CHANGELOG.md (version drift fails CI).
- *   6. Happy-path / edge / failure-mode matrix over prompt composition:
+ *   8. Happy-path / edge / failure-mode matrix over prompt composition:
  *      vision block only with vision=true, rolling summary only with a
  *      summary, catalog verbatim only when provided, fallback line when not.
  */
@@ -105,6 +111,47 @@ describe("Option A: instant mode token budget guard", () => {
     // Guard against accidental instant-mode bloat (speed-first mode).
     expect(getSystemPrompt("ar", "instant").length).toBeLessThan(22_000);
     expect(getSystemPrompt("en", "instant").length).toBeLessThan(22_000);
+  });
+});
+
+// ─── Option B — Smart Support Protocol ──────────────────────────────────────
+
+describe("Option B: smart support protocol (thinking mode)", () => {
+  const arPrompt = getSystemPrompt("ar", "thinking");
+  const enPrompt = getSystemPrompt("en", "thinking");
+
+  it("Arabic thinking prompt carries the empathy-first support rules", () => {
+    for (const anchor of ["بروتوكول الدعم الذكي", "سطر تعاطف", "لا تلوم المستخدم", "نظام التذاكر", "سؤال متابعة واحد"]) {
+      expect(arPrompt).toContain(anchor);
+    }
+  });
+
+  it("English thinking prompt carries the empathy-first support rules", () => {
+    for (const anchor of ["SMART SUPPORT PROTOCOL", "ONE short empathetic line", "NEVER blame the user", "ticket system", "exactly ONE follow-up question"]) {
+      expect(enPrompt).toContain(anchor);
+    }
+  });
+
+  it("composes support protocol AFTER platform core and BEFORE official channels", () => {
+    const idxPlatform = arPrompt.indexOf("الجنيه المصري (EGP)");
+    const idxSupport = arPrompt.indexOf("بروتوكول الدعم الذكي");
+    const idxChannels = arPrompt.indexOf("القنوات الرسمية للمنصة");
+    expect(idxPlatform).toBeGreaterThan(-1);
+    expect(idxSupport).toBeGreaterThan(idxPlatform);
+    expect(idxChannels).toBeGreaterThan(idxSupport);
+  });
+
+  it("full support protocol NEVER leaks into instant mode (speed priority)", () => {
+    for (const lang of ["ar", "en"] as const) {
+      const p = getSystemPrompt(lang, "instant");
+      expect(p).not.toContain("بروتوكول الدعم الذكي");
+      expect(p).not.toContain("SMART SUPPORT PROTOCOL");
+    }
+  });
+
+  it("support protocol never invents contact channels (aligns with link policy)", () => {
+    expect(arPrompt).toContain("ولا تخترع أبداً بريداً أو هاتفاً");
+    expect(enPrompt).toContain("NEVER invent an email or phone number");
   });
 });
 

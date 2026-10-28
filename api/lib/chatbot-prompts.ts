@@ -43,6 +43,8 @@ import {
   platformCoreEn,
   officialChannelsAr,
   officialChannelsEn,
+  supportProtocolAr,
+  supportProtocolEn,
   safetyRuleAr,
   safetyRuleEn,
   instantSkillsAr,
@@ -61,8 +63,9 @@ import {
  * chatbot-prompts.quality.test.ts fails CI when the two drift apart.
  *
  * 3.1.0 → ELECTRICAL DEPTH PACK added (Option A).
+ * 3.2.0 → SMART SUPPORT PROTOCOL added (Option B).
  */
-export const PROMPT_VERSION = "3.1.0";
+export const PROMPT_VERSION = "3.2.0";
 
 export type ChatbotMode = "thinking" | "instant";
 
@@ -552,7 +555,7 @@ You are a highly professional, balanced, and interactive technical assistant. Do
 🚫 محظورات:
 - لا تخترع روابط (URLs) غير موجودة.
 - لا تذكر أبداً أنك ذكاء اصطناعي أو نموذج لغوي أو من أي مزود مثل OpenRouter.
-- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${thinkingModeAr}${expertPositioningAr}${reasoningGuard}${langAndFormatRuleAr}${versionRuleAr}${mentorProtocolAr}${researchSkillAr}${accuracyContractAr}${guidedNavigationAr}${pfCore}${skmCore}${pvsystCore}${etapExpertCore}${electricalDepthPackAr}${platformCoreAr}${officialChannelsAr}${safetyRuleAr}${webGroundingAr}${visionBlockAr}${summaryBlock}${catalogBlock}`;
+- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${thinkingModeAr}${expertPositioningAr}${reasoningGuard}${langAndFormatRuleAr}${versionRuleAr}${mentorProtocolAr}${researchSkillAr}${accuracyContractAr}${guidedNavigationAr}${pfCore}${skmCore}${pvsystCore}${etapExpertCore}${electricalDepthPackAr}${platformCoreAr}${supportProtocolAr}${officialChannelsAr}${safetyRuleAr}${webGroundingAr}${visionBlockAr}${summaryBlock}${catalogBlock}`;
   }
   return `You are the official AI Assistant of the "Elbaz Platform" (specializing in engineering courses).
 You are a highly professional, balanced, and interactive technical assistant. Do NOT use any personal name for yourself; introduce yourself only as the platform's smart assistant.
@@ -572,5 +575,5 @@ You are a highly professional, balanced, and interactive technical assistant. Do
 🚫 Rules:
 - Do NOT hallucinate fake URLs.
 - NEVER mention you are an AI, a language model, or from OpenRouter or any other provider.
-- If asked about non-engineering topics, politely decline and state your expertise.${thinkingModeEn}${expertPositioningEn}${reasoningGuard}${langAndFormatRuleEn}${versionRuleEn}${mentorProtocolEn}${researchSkillEn}${accuracyContractEn}${guidedNavigationEn}${pfCore}${skmCore}${pvsystCore}${etapExpertCore}${electricalDepthPackEn}${platformCoreEn}${officialChannelsEn}${safetyRuleEn}${webGroundingEn}${visionBlockEn}${summaryBlock}${catalogBlock}`;
+- If asked about non-engineering topics, politely decline and state your expertise.${thinkingModeEn}${expertPositioningEn}${reasoningGuard}${langAndFormatRuleEn}${versionRuleEn}${mentorProtocolEn}${researchSkillEn}${accuracyContractEn}${guidedNavigationEn}${pfCore}${skmCore}${pvsystCore}${etapExpertCore}${electricalDepthPackEn}${platformCoreEn}${supportProtocolEn}${officialChannelsEn}${safetyRuleEn}${webGroundingEn}${visionBlockEn}${summaryBlock}${catalogBlock}`;
 }
