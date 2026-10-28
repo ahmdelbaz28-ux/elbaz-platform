@@ -26,6 +26,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 concurrency:
   group: telegram-bot-worker
@@ -53,3 +54,16 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_BRAIN_API_BASE: https://ahmdelbaz28-ahmdrtap.hf.space
         run: npx tsx scripts/telegram-worker-job.ts
+
+      # Self-perpetuating chain: GH schedule registration/delivery can lag by
+      # many minutes, so each shift re-arms the next one immediately — the
+      # concurrency group keeps at most one running + one pending run, so a
+      # re-arm while a run is already queued is harmless. The cron remains as
+      # an external safety net.
+      - name: Re-arm next shift
+        if: success() || failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X POST "repos/${{ github.repository }}/actions/workflows/telegram-bot-worker.yml/dispatches" \
+            -f ref="${{ github.ref_name }}" && echo "→ next shift dispatched" || echo "⚠️ re-arm failed (cron fallback covers)"
