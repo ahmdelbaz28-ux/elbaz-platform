@@ -16,6 +16,12 @@ import webpush from "web-push";
 const send = process.argv.includes("--send");
 const BASE_URL = process.env.BASE_URL || "http://127.0.0.1:7860";
 
+/** Log-injection guard (S5145): CRLF/control chars stripped before printing. */
+function safeLog(input: string): string {
+  // eslint-disable-next-line no-control-regex -- the control chars are exactly what we strip
+  return input.replace(/[\r\n\x00-\x1f\x7f]/g, " ").slice(0, 200);
+}
+
 // ── 1. VAPID ──────────────────────────────────────────────────────────────────
 const pub = process.env.VAPID_PUBLIC_KEY;
 const priv = process.env.VAPID_PRIVATE_KEY;
@@ -51,10 +57,10 @@ if (!tgToken || !tgChat) {
         signal: AbortSignal.timeout(10_000),
       });
       const body = (await res.json()) as { ok: boolean; description?: string };
-      console.log(`   ↳ send: ${body.ok ? "✓ delivered — check the channel" : `✗ ${body.description}`}`);
+      console.log(`   ↳ send: ${body.ok ? "✓ delivered — check the channel" : `✗ ${safeLog(body.description ?? "unknown error")}`}`);
       if (!body.ok) process.exitCode = 1;
     } catch (err) {
-      console.log(`   ↳ send: ✗ ${(err as Error).message}`);
+      console.log(`   ↳ send: ✗ ${safeLog(err instanceof Error ? err.message : String(err))}`);
       process.exitCode = 1;
     }
   }
@@ -65,9 +71,9 @@ try {
   const res = await fetch(`${BASE_URL}/api/notifications/push/public-key`, { signal: AbortSignal.timeout(10_000) });
   const body = (await res.json()) as { enabled: boolean; publicKey: string | null };
   console.log(
-    `③ API ${BASE_URL}: ${res.ok && body.enabled ? "✓ push enabled, public key served" : `✗ enabled=${body.enabled} (set VAPID_* env and restart)`}`
+    `③ API ${safeLog(BASE_URL)}: ${res.ok && body.enabled ? "✓ push enabled, public key served" : `✗ enabled=${body.enabled} (set VAPID_* env and restart)`}`
   );
 } catch (err) {
-  console.log(`③ API ${BASE_URL}: ✗ unreachable — ${(err as Error).message}`);
+  console.log(`③ API ${safeLog(BASE_URL)}: ✗ unreachable — ${safeLog(err instanceof Error ? err.message : String(err))}`);
   process.exitCode = 1;
 }

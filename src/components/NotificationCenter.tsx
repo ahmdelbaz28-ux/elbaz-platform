@@ -380,7 +380,7 @@ export function usePushNotification(
   useEffect(() => {
     if (!isSupported) return;
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const registration = await navigator.serviceWorker.ready;
         const sub = await registration.pushManager.getSubscription();
@@ -867,6 +867,18 @@ function EmptyState({ lang }: { readonly lang: "en" | "ar" }) {
  * <NotificationCenter />
  * ```
  */
+/** One-line push status hint under the toggle (kept out of JSX to avoid nested ternaries). */
+function pushToggleHint(isRTL: boolean, isSubscribed: boolean): string {
+  if (isRTL) {
+    return isSubscribed
+      ? "مفعّلة — يوصلك كل جديد حتى والموقع مقفول ✓"
+      : "فعّلها ليوصلك كل جديد حتى والموقع مقفول";
+  }
+  return isSubscribed
+    ? "On — you'll hear from us even with the site closed ✓"
+    : "Enable to get new episodes even with the site closed";
+}
+
 export default function NotificationCenter() { // NOSONAR — large component with bell + dropdown + history hook + push-subscription wiring; extraction would require prop-drilling many state hooks
   const { lang } = useTranslation();
   const isRTL = lang === "ar";
@@ -1064,13 +1076,7 @@ export default function NotificationCenter() { // NOSONAR — large component wi
                   {isRTL ? "إشعارات المتصفح" : "Browser notifications"}
                 </p>
                 <p className="mt-0.5 truncate text-[10.5px] leading-tight text-[#64748b]">
-                  {isRTL
-                    ? push.isSubscribed
-                      ? "مفعّلة — يوصلك كل جديد حتى والموقع مقفول ✓"
-                      : "فعّلها ليوصلك كل جديد حتى والموقع مقفول"
-                    : push.isSubscribed
-                      ? "On — you'll hear from us even with the site closed ✓"
-                      : "Enable to get new episodes even with the site closed"}
+                  {pushToggleHint(isRTL, push.isSubscribed)}
                 </p>
               </div>
             </div>

@@ -21,12 +21,12 @@ self.addEventListener('push', (event) => {
     // Malformed payload — fall through to the generic notification below.
   }
 
-  const title = (payload && payload.title) || '🔔 إشعار جديد من منصة أحمد الباز';
-  const body = (payload && payload.message) || 'حلقة أو ملف جديد بانت لك — افتح المنصة وشوف كل جديد.';
+  const title = payload?.title || '🔔 إشعار جديد من منصة أحمد الباز';
+  const body = payload?.message || 'حلقة أو ملف جديد بانت لك — افتح المنصة وشوف كل جديد.';
   const data = {
-    url: (payload && payload.url) || '/',
-    channelUrl: (payload && payload.channelUrl) || null,
-    eventId: (payload && payload.eventId) || String(Date.now()),
+    url: payload?.url || '/',
+    channelUrl: payload?.channelUrl || null,
+    eventId: payload?.eventId || String(Date.now()),
   };
 
   event.waitUntil(
@@ -68,7 +68,7 @@ self.addEventListener('notificationclick', (event) => {
 
   if (event.action === 'close') return;
 
-  let target = (event.notification.data && event.notification.data.url) || '/';
+  let target = event.notification.data?.url || '/';
   // Absolute YouTube links open as-is; site paths resolve against the origin.
   if (target.startsWith('/')) {
     target = new URL(target, self.location.origin).href;
@@ -79,7 +79,7 @@ self.addEventListener('notificationclick', (event) => {
       const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       // Reuse an open tab of the app instead of spawning a duplicate.
       for (const client of clientList) {
-        if ('focus' in client) {
+        if (client.focus) {
           await client.focus();
           client.postMessage({ type: 'NOTIFICATION_CLICKED', url: target });
           return;
