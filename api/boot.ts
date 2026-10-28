@@ -497,11 +497,15 @@ async function start() {
   // ── Telegram bot worker (join-request auto-approval + DM expert brain) ──
   // Production only: tests/dev must never long-poll the live bot token.
   // Never-throw — a failure here must not break the server that just booted.
+  // The worker is SUPERVISED: boot retries + self-healing poll loop; its
+  // liveness is surfaced in /api/health (checks.telegram) so a silent death
+  // can never recur unnoticed.
   if (env.isProduction) {
     try {
       const { startTelegramBot } = await import("./lib/telegram-bot.js");
       const started = await startTelegramBot();
-      if (started) appLogger.info("[Server] Telegram bot worker started (join approvals + DM brain)");
+      if (started) appLogger.info("[Server] Telegram bot worker supervised start (join approvals + DM brain) — liveness at /api/health");
+      else appLogger.warn("[Server] Telegram bot worker not started — see /api/health checks.telegram for the reason");
     } catch (err) {
       appLogger.warn("[Server] Telegram bot worker failed to start", { error: err instanceof Error ? err.message : String(err) });
     }

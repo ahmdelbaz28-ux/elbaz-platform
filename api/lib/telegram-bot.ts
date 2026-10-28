@@ -20,6 +20,13 @@
  *   • Group messages are IGNORED — the brain answers DMs only, so the bot
  *     never spams the group it guards.
  *
+ * LIFECYCLE (root-cure of the silent-death incident): a supervisor owns the
+ * worker for the whole process lifetime — patient getMe boot retries (HF
+ * cold-start network), a long-poll loop that absorbs Telegram outages, and an
+ * automatic re-boot on any unexpected exit. Liveness is exported via
+ * getTelegramBotStatus() and surfaced in /api/health — a dead worker can no
+ * longer hide.
+ *
  * Env (all optional except TELEGRAM_BOT_TOKEN):
  *   TELEGRAM_BOT_POLLING=0      — disable the worker entirely
  *   TELEGRAM_DM_MODE=instant    — brain mode for DMs ('instant' | 'thinking')
@@ -240,6 +247,87 @@ export function resetTelegramBotStateForTests(): void {
   dmHistories.clear();
   dmHourCounters.clear();
   globalDailyCounter = { count: 0, resetAt: nextUtcMidnight() };
+  stopTelegramBot();
+  resetWorkerStateForTests();
+}
+
+// ─── Worker liveness state (observable from /api/health) ─────────────────────
+// ROOT-CAUSE CONTRACT (production incident: the bot silently stopped answering
+// DMs): the old worker was a single-shot boot — one failed getMe during an HF
+// Space cold start stood it down FOREVER, with zero external signal. From now
+// on the worker must be (1) self-healing and (2) observable.
+
+export type TelegramWorkerStatus =
+  | "disabled" // no token, TELEGRAM_BOT_POLLING=0, or not started yet
+  | "starting" // supervision began, boot phase in progress
+  | "running" // long-poll loop alive
+  | "backoff" // transient failure — retrying with a delay (self-heal)
+  | "stopped" // stopTelegramBot requested / supervision ended cleanly
+  | "failed"; // supervisor escaped (must never happen — contained anyway)
+
+export interface TelegramWorkerState {
+  status: TelegramWorkerStatus;
+  botUsername: string | null;
+  startedAt: number | null; // supervision start (epoch ms)
+  lastPollAt: number | null; // last getUpdates attempt
+  lastPollOkAt: number | null; // last successful getUpdates
+  lastHandledUpdateId: number | null;
+  pollCycles: number;
+  handledUpdates: number;
+  bootAttempts: number; // getMe attempts since process start
+  conflicts: number; // 409s since process start
+  lastError: string | null;
+  lastErrorAt: number | null;
+}
+
+const workerState: TelegramWorkerState = {
+  status: "disabled",
+  botUsername: null,
+  startedAt: null,
+  lastPollAt: null,
+  lastPollOkAt: null,
+  lastHandledUpdateId: null,
+  pollCycles: 0,
+  handledUpdates: 0,
+  bootAttempts: 0,
+  conflicts: 0,
+  lastError: null,
+  lastErrorAt: null,
+};
+
+function noteWorkerError(error: string): void {
+  workerState.lastError = error.slice(0, 200);
+  workerState.lastErrorAt = Date.now();
+}
+
+/** Liveness snapshot for /api/health — primitives only, never secrets. */
+export function getTelegramBotStatus(): Readonly<TelegramWorkerState> {
+  return { ...workerState };
+}
+
+// Injectable I/O — tests drive the supervisor without real timers.
+const realSleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+let workerIo: { sleep: (ms: number) => Promise<void> } = { sleep: realSleep };
+
+/** @internal test seam — replaces sleeps with immediate resolution. */
+export function setTelegramWorkerIoForTests(sleep: (ms: number) => Promise<void>): void {
+  workerIo = { sleep };
+}
+
+function resetWorkerStateForTests(): void {
+  workerState.status = "disabled";
+  workerState.botUsername = null;
+  workerState.startedAt = null;
+  workerState.lastPollAt = null;
+  workerState.lastPollOkAt = null;
+  workerState.lastHandledUpdateId = null;
+  workerState.pollCycles = 0;
+  workerState.handledUpdates = 0;
+  workerState.bootAttempts = 0;
+  workerState.conflicts = 0;
+  workerState.lastError = null;
+  workerState.lastErrorAt = null;
+  workerIo = { sleep: realSleep };
 }
 
 // ─── Update handling core ────────────────────────────────────────────────────
@@ -380,6 +468,13 @@ const MAX_CONFLICTS = 5;
  *  poller — e.g. a debugging session — must not permanently kill the
  *  production worker; Telegram hands the conflict to BOTH clients). */
 const CONFLICT_COOLDOWN_MS = 5 * 60_000;
+/** Boot retry ladder — absorbs HF Space cold starts where the network/DNS is
+ *  not ready in the first seconds. ~2.1 min of patience before the phase
+ *  re-arms; the supervisor then keeps re-arming forever while the process
+ *  lives (bounded at one attempt per minute in the worst case). */
+const BOOT_RETRY_DELAYS_MS = [2_000, 5_000, 10_000, 20_000, 30_000, 60_000];
+const BOOT_AUTH_FAILURE_MS = 60_000; // token rejected — retry slowly, it may be fixed out-of-band
+const POLL_LOOP_RESTART_MS = 15_000; // poll loop escaped — supervisor restarts it after this pause
 
 function createRealApi(token: string): TelegramApi {
   return {
@@ -397,15 +492,154 @@ function createRealApi(token: string): TelegramApi {
 
 let workerRunning = false;
 
+/** The long-poll loop. Exits ONLY via stopTelegramBot() or a rejected token
+ *  (Unauthorized → back to the boot phase). Every other failure is absorbed
+ *  in-place with a delay, so the loop outlives Telegram outages. */
+async function pollLoop(deps: TelegramBotDeps): Promise<void> {
+  let offset = 0;
+  let conflicts = 0;
+  workerState.status = "running";
+  while (workerRunning) {
+    workerState.pollCycles += 1;
+    workerState.lastPollAt = Date.now();
+    let res: TgApiResponse;
+    try {
+      res = await deps.api.call("getUpdates", { offset, timeout: 25, allowed_updates: ["message", "chat_join_request"] });
+    } catch (err) {
+      noteWorkerError(`getUpdates: ${err instanceof Error ? err.message : String(err)}`);
+      logger.warn("[TelegramBot] poll cycle failed", { error: workerState.lastError });
+      await workerIo.sleep(10_000);
+      continue;
+    }
+    if (!res.ok) {
+      const retryAfter = res.parameters?.retry_after;
+      const desc = res.description ?? "";
+      if (desc.includes("Conflict")) {
+        conflicts += 1;
+        workerState.conflicts += 1;
+        noteWorkerError("getUpdates conflict — another poller is active");
+        logger.warn("[TelegramBot] getUpdates conflict — another poller is active", { conflicts: workerState.conflicts });
+        if (conflicts >= MAX_CONFLICTS) {
+          conflicts = Math.floor(MAX_CONFLICTS / 2); // resume after the cool-down
+          await workerIo.sleep(CONFLICT_COOLDOWN_MS);
+          continue;
+        }
+        await workerIo.sleep(60_000);
+        continue;
+      }
+      if (desc.includes("Unauthorized")) {
+        noteWorkerError("getUpdates Unauthorized — restarting boot phase");
+        logger.error("[TelegramBot] token rejected by getUpdates — re-booting worker");
+        return;
+      }
+      await workerIo.sleep((retryAfter ?? 5) * 1_000);
+      continue;
+    }
+    workerState.lastPollOkAt = Date.now();
+    conflicts = 0;
+    const updates = (res.result as TgUpdate[] | undefined) ?? [];
+    for (const update of updates) {
+      await handleTelegramUpdate(deps, update);
+      offset = update.update_id + 1;
+      workerState.lastHandledUpdateId = update.update_id;
+      workerState.handledUpdates += 1;
+    }
+  }
+}
+
+/** Supervisor: boot with patience → poll → on ANY exit re-boot, forever.
+ *  This is the root-cure for the silent-death incident: no single failure
+ *  (cold-start network, one bad getMe, an escaping rejection) can leave the
+ *  bot down while the process lives. */
+async function supervisorBody(deps: TelegramBotDeps): Promise<void> {
+  let bootDelayIdx = 0;
+  while (workerRunning) {
+    workerState.status = "starting";
+    let me: TgApiResponse = { ok: false, description: "not attempted" };
+    while (workerRunning) {
+      workerState.bootAttempts += 1;
+      try {
+        me = await deps.api.call("getMe");
+      } catch (err) {
+        me = { ok: false, description: err instanceof Error ? err.message : String(err) };
+      }
+      if (me.ok) break;
+      const desc = (me.description ?? "unknown").slice(0, 120);
+      noteWorkerError(`getMe: ${desc}`);
+      logger.warn("[TelegramBot] getMe failed — will retry", { attempt: workerState.bootAttempts, error: desc });
+      const authFail = /Unauthorized|Not Found|401/i.test(desc);
+      const delay = authFail ? BOOT_AUTH_FAILURE_MS : BOOT_RETRY_DELAYS_MS[Math.min(bootDelayIdx, BOOT_RETRY_DELAYS_MS.length - 1)];
+      bootDelayIdx += 1;
+      workerState.status = "backoff";
+      await workerIo.sleep(delay);
+    }
+    if (!workerRunning) break;
+    bootDelayIdx = 0;
+    const bot = me.result as { username?: string } | undefined;
+    workerState.botUsername = bot?.username ?? null;
+    logger.info("[TelegramBot] polling worker started", { bot: workerState.botUsername });
+
+    const adminChat = process.env.TELEGRAM_ADMIN_CHAT_ID;
+    if (adminChat) {
+      await sendChatMessage(deps, Number(adminChat), "🟢 البوت التليجرام شغال دلوقتي بعقل المساعد الذكي — جرب ابعتله /start", { disablePreview: true });
+    }
+
+    await pollLoop(deps);
+
+    if (!workerRunning) break;
+    noteWorkerError("poll loop exited unexpectedly — supervisor restarting it");
+    logger.warn("[TelegramBot] poll loop exited — supervisor restarting", { after: "15s" });
+    workerState.status = "backoff";
+    await workerIo.sleep(POLL_LOOP_RESTART_MS);
+  }
+  if (!workerRunning) {
+    workerState.status = "stopped";
+    logger.info("[TelegramBot] polling worker stopped");
+  }
+}
+
+/**
+ * Start the supervised worker with pre-built deps (test seam — never touches
+ * the network). Idempotent: no-op while a supervisor is already alive.
+ */
+export function beginTelegramSupervision(deps: TelegramBotDeps): boolean {
+  if (workerRunning) return false;
+  workerRunning = true;
+  workerState.status = "starting";
+  workerState.startedAt = Date.now();
+  workerState.lastError = null;
+  workerState.lastErrorAt = null;
+
+  // Fully contained: the supervisor catches its own escapes — nothing here can
+  // kill the host process, and no failure leaves the worker dead silently.
+  void supervisorBody(deps).catch((err) => {
+    workerRunning = false;
+    workerState.status = "failed";
+    noteWorkerError(`supervisor escaped (contained): ${err instanceof Error ? err.message : String(err)}`);
+    logger.error("[TelegramBot] supervisor escaped rejection (contained)", { error: workerState.lastError });
+  });
+
+  return true;
+}
+
 /**
  * Start the polling worker. Safe to call once per process — subsequent calls
  * no-op while a worker is alive. Returns false when disabled (no token or
- * TELEGRAM_BOT_POLLING=0).
+ * TELEGRAM_BOT_POLLING=0) — the reason is recorded in the liveness state.
  */
 export async function startTelegramBot(): Promise<boolean> {
+  if (workerRunning) return false;
   const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token || process.env.TELEGRAM_BOT_POLLING === "0" || workerRunning) return false;
-  workerRunning = true;
+  if (!token) {
+    workerState.status = "disabled";
+    noteWorkerError("TELEGRAM_BOT_TOKEN not configured");
+    return false;
+  }
+  if (process.env.TELEGRAM_BOT_POLLING === "0") {
+    workerState.status = "disabled";
+    noteWorkerError("TELEGRAM_BOT_POLLING=0 — worker disabled by config");
+    return false;
+  }
 
   const deps: TelegramBotDeps = {
     api: createRealApi(token),
@@ -426,69 +660,7 @@ export async function startTelegramBot(): Promise<boolean> {
     },
   };
 
-  // Fully contained: every await in this body is guarded — an escaping
-  // rejection from any Telegram call can never kill the host process.
-  void (async () => {
-    try {
-      const me = await deps.api.call("getMe");
-      if (!me.ok) {
-        logger.error("[TelegramBot] getMe rejected — check TELEGRAM_BOT_TOKEN");
-        workerRunning = false;
-        return;
-      }
-      logger.info("[TelegramBot] polling worker started");
-      const adminChat = process.env.TELEGRAM_ADMIN_CHAT_ID;
-      if (adminChat) {
-        await sendChatMessage(deps, Number(adminChat), "🟢 البوت التليجرام شغال دلوقتي بعقل المساعد الذكي — جرب ابعتله /start", { disablePreview: true });
-      }
-
-      let offset = 0;
-      let conflicts = 0;
-      while (workerRunning) {
-        try {
-          const res = await deps.api.call("getUpdates", { offset, timeout: 25, allowed_updates: ["message", "chat_join_request"] });
-          if (!res.ok) {
-            const retryAfter = res.parameters?.retry_after;
-            const desc = res.description ?? "";
-            if (desc.includes("Conflict")) {
-              conflicts += 1;
-              logger.warn("[TelegramBot] getUpdates conflict — another poller is active", { conflicts });
-              if (conflicts >= MAX_CONFLICTS) {
-                conflicts = Math.floor(MAX_CONFLICTS / 2); // resume after the cool-down
-                await new Promise((r) => setTimeout(r, CONFLICT_COOLDOWN_MS));
-                continue;
-              }
-              await new Promise((r) => setTimeout(r, 60_000));
-              continue;
-            }
-            await new Promise((r) => setTimeout(r, (retryAfter ?? 5) * 1_000));
-            continue;
-          }
-          conflicts = 0;
-          const updates = (res.result as TgUpdate[] | undefined) ?? [];
-          for (const update of updates) {
-            await handleTelegramUpdate(deps, update);
-            offset = update.update_id + 1;
-          }
-        } catch (err) {
-          logger.warn("[TelegramBot] poll cycle failed", { error: err instanceof Error ? err.message : String(err) });
-          await new Promise((r) => setTimeout(r, 10_000));
-        }
-      }
-      workerRunning = false;
-      logger.info("[TelegramBot] polling worker stopped");
-    } catch (err) {
-      // Boot-phase failure (getMe network error, etc.) — log and stand down;
-      // the server itself must keep serving.
-      workerRunning = false;
-      logger.error("[TelegramBot] worker terminated", { error: err instanceof Error ? err.message : String(err) });
-    }
-  })().catch((err) => {
-    workerRunning = false;
-    logger.error("[TelegramBot] worker escaped rejection (contained)", { error: err instanceof Error ? err.message : String(err) });
-  });
-
-  return true;
+  return beginTelegramSupervision(deps);
 }
 
 /** Test/ops hook — flips the loop flag so a running cycle exits cleanly. */

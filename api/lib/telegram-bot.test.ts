@@ -9,6 +9,11 @@ import {
   handlePrivateMessage,
   handleTelegramUpdate,
   resetTelegramBotStateForTests,
+  startTelegramBot,
+  stopTelegramBot,
+  beginTelegramSupervision,
+  getTelegramBotStatus,
+  setTelegramWorkerIoForTests,
   type TelegramApi,
   type TelegramBotDeps,
   type TgApiResponse,
@@ -280,5 +285,159 @@ describe("handleTelegramUpdate routing", () => {
     const d = deps();
     const handled = await handleTelegramUpdate(d, { update_id: 3 } as TgUpdate);
     expect(handled).toBe(false);
+  });
+});
+
+// ─── Worker lifecycle — supervised, self-healing, observable ──────────────────
+// Root-cure regression tests for the production incident: a single-shot boot
+// let one failed getMe kill the worker silently, forever.
+
+describe("worker lifecycle — supervised, self-healing, observable", () => {
+  function until(cond: () => boolean, timeoutMs = 5_000): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const start = Date.now();
+      const tick = () => {
+        if (cond()) return resolve();
+        if (Date.now() - start > timeoutMs) return reject(new Error("timeout waiting for worker lifecycle condition"));
+        setTimeout(tick, 5);
+      };
+      tick();
+    });
+  }
+
+  it("records why it is disabled when no token is configured", async () => {
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "");
+    const started = await startTelegramBot();
+    expect(started).toBe(false);
+    const st = getTelegramBotStatus();
+    expect(st.status).toBe("disabled");
+    expect(st.lastError).toContain("TELEGRAM_BOT_TOKEN");
+    vi.unstubAllEnvs();
+  });
+
+  it("TELEGRAM_BOT_POLLING=0 disables the worker with the reason recorded", async () => {
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "test-token");
+    vi.stubEnv("TELEGRAM_BOT_POLLING", "0");
+    const started = await startTelegramBot();
+    expect(started).toBe(false);
+    const st = getTelegramBotStatus();
+    expect(st.status).toBe("disabled");
+    expect(st.lastError).toContain("POLLING");
+    vi.unstubAllEnvs();
+  });
+
+  it("is idempotent while a supervisor is alive", async () => {
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "test-token");
+    vi.stubEnv("TELEGRAM_ADMIN_CHAT_ID", "");
+    setTelegramWorkerIoForTests(async () => {});
+    let pollCalls = 0;
+    const api: TelegramApi = {
+      async call(method) {
+        if (method === "getMe") return { ok: true, result: { id: 1, username: "Ahmedetap_bot" } };
+        if (method === "getUpdates") {
+          pollCalls += 1;
+          if (pollCalls >= 2) stopTelegramBot();
+          return { ok: true, result: [] };
+        }
+        return { ok: true, result: [] };
+      },
+    };
+    const d: TelegramBotDeps = { api, brain: fakeBrain("x"), dmMode: "instant", now: () => Date.now() };
+    expect(beginTelegramSupervision(d)).toBe(true);
+    expect(beginTelegramSupervision(d)).toBe(false); // second call no-ops
+    await until(() => getTelegramBotStatus().status === "stopped");
+    expect(pollCalls).toBe(2);
+    vi.unstubAllEnvs();
+  });
+
+  it("retries a failing boot, then runs the poll loop end-to-end", async () => {
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "test-token");
+    vi.stubEnv("TELEGRAM_ADMIN_CHAT_ID", "");
+    setTelegramWorkerIoForTests(async () => {});
+    let getMeCalls = 0;
+    let pollCalls = 0;
+    const sent: Array<Record<string, unknown>> = [];
+    const brain = vi.fn(async () => ({ reply: "إجابة **المساعد**" }));
+    const api: TelegramApi = {
+      async call(method, payload) {
+        if (method === "getMe") {
+          getMeCalls += 1;
+          if (getMeCalls < 3) return { ok: false, description: "getaddrinfo ENOTFOUND api.telegram.org" };
+          return { ok: true, result: { id: 1, username: "Ahmedetap_bot" } };
+        }
+        if (method === "getUpdates") {
+          pollCalls += 1;
+          if (pollCalls === 1) return { ok: true, result: [PRIVATE_MSG_UPDATE] };
+          stopTelegramBot();
+          return { ok: true, result: [] };
+        }
+        if (method === "sendMessage") sent.push((payload ?? {}) as Record<string, unknown>);
+        return { ok: true, result: [] };
+      },
+    };
+    expect(beginTelegramSupervision({ api, brain, dmMode: "instant", now: () => Date.now() })).toBe(true);
+    await until(() => getTelegramBotStatus().status === "stopped");
+    const st = getTelegramBotStatus();
+    expect(getMeCalls).toBe(3); // two failed boots retried — third succeeded
+    expect(st.bootAttempts).toBe(3);
+    expect(st.botUsername).toBe("Ahmedetap_bot");
+    expect(st.handledUpdates).toBe(1);
+    expect(st.lastHandledUpdateId).toBe(100);
+    expect(st.lastPollOkAt).not.toBeNull();
+    expect(brain).toHaveBeenCalledTimes(1);
+    expect(sent.some((p) => String(p.text) === "إجابة المساعد")).toBe(true); // markdown stripped
+    vi.unstubAllEnvs();
+  });
+
+  it("survives getUpdates conflicts — backs off, keeps polling", async () => {
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "test-token");
+    vi.stubEnv("TELEGRAM_ADMIN_CHAT_ID", "");
+    setTelegramWorkerIoForTests(async () => {});
+    let pollCalls = 0;
+    const api: TelegramApi = {
+      async call(method) {
+        if (method === "getMe") return { ok: true, result: { id: 1, username: "Ahmedetap_bot" } };
+        if (method === "getUpdates") {
+          pollCalls += 1;
+          if (pollCalls === 1) return { ok: false, description: "Conflict: terminated by other getUpdates request" };
+          stopTelegramBot();
+          return { ok: true, result: [] };
+        }
+        return { ok: true, result: [] };
+      },
+    };
+    expect(beginTelegramSupervision({ api, brain: fakeBrain("x"), dmMode: "instant", now: () => Date.now() })).toBe(true);
+    await until(() => getTelegramBotStatus().status === "stopped");
+    expect(getTelegramBotStatus().conflicts).toBe(1);
+    expect(pollCalls).toBe(2);
+    vi.unstubAllEnvs();
+  });
+
+  it("re-boots the boot phase when the token is rejected mid-poll (Unauthorized)", async () => {
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "test-token");
+    vi.stubEnv("TELEGRAM_ADMIN_CHAT_ID", "");
+    setTelegramWorkerIoForTests(async () => {});
+    let getMeCalls = 0;
+    let pollCalls = 0;
+    const api: TelegramApi = {
+      async call(method) {
+        if (method === "getMe") {
+          getMeCalls += 1;
+          return { ok: true, result: { id: 1, username: "Ahmedetap_bot" } };
+        }
+        if (method === "getUpdates") {
+          pollCalls += 1;
+          if (pollCalls === 1) return { ok: false, description: "Unauthorized" };
+          stopTelegramBot();
+          return { ok: true, result: [] };
+        }
+        return { ok: true, result: [] };
+      },
+    };
+    expect(beginTelegramSupervision({ api, brain: fakeBrain("x"), dmMode: "instant", now: () => Date.now() })).toBe(true);
+    await until(() => getTelegramBotStatus().status === "stopped");
+    expect(getMeCalls).toBe(2); // re-booted after the Unauthorized poll
+    expect(pollCalls).toBe(2);
+    vi.unstubAllEnvs();
   });
 });

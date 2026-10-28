@@ -6,6 +6,7 @@ import { getCache, cacheKeys, CACHE_TTL } from "./lib/cache.js";
 import { logger } from "./lib/logger.js";
 import { resolvePaymobRuntimeConfig } from "./lib/payments-config.js";
 import { isPaymobConfigComplete } from "./lib/paymob.js";
+import { getTelegramBotStatus } from "./lib/telegram-bot.js";
 
 const healthRouter = new Hono({ strict: false });
 
@@ -173,6 +174,29 @@ healthRouter.get("/health", async (c) => {
     // instead (the DB check at the top of this file established the pattern).
     logger.error("[Health] Payments config check failed", { error: error instanceof Error ? error.message : String(error) });
     checks.payments = { status: "degraded", latency_ms: 0, detail: "Payments config check failed" };
+  }
+
+  // 7. Telegram worker check — liveness of the bot's supervised poller
+  // (join-request auto-approval + DM expert brain). Informational only: a
+  // dead worker must NOT mark the whole platform unhealthy — but it must be
+  // VISIBLE (root-cure of the silent-death incident where the bot stopped
+  // answering DMs with zero external signal).
+  try {
+    const st = getTelegramBotStatus();
+    const detailParts = [`worker=${st.status}`];
+    if (st.botUsername) detailParts.push(`bot=@${st.botUsername}`);
+    if (st.lastPollOkAt) detailParts.push(`lastPollOk=${Math.max(0, Math.round((Date.now() - st.lastPollOkAt) / 1000))}s ago`);
+    if (st.handledUpdates > 0) detailParts.push(`handled=${st.handledUpdates}`);
+    if (st.bootAttempts > 1) detailParts.push(`bootAttempts=${st.bootAttempts}`);
+    if (st.conflicts > 0) detailParts.push(`conflicts=${st.conflicts}`);
+    if (st.lastError) detailParts.push(`lastError=${st.lastError.slice(0, 100)}`);
+    checks.telegram = {
+      status: st.status === "running" ? "healthy" : st.status === "disabled" ? "degraded" : "unhealthy",
+      latency_ms: 0,
+      detail: detailParts.join(", "),
+    };
+  } catch {
+    checks.telegram = { status: "degraded", latency_ms: 0, detail: "Telegram worker status unavailable" };
   }
 
   await cache.set(cacheKeys.healthCheck(), { checks }, CACHE_TTL.HEALTH_CHECK);
