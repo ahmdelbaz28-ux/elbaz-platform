@@ -1,0 +1,55 @@
+# ════════════════════════════════════════════════════════════════════════════
+# Telegram bot worker — polling home on GitHub Actions
+# ════════════════════════════════════════════════════════════════════════════
+# WHY: the HF Space's shared egress lost reachability to api.telegram.org
+# (2026-10-29: connect timeouts to 149.154.x while AI providers/DB/R2 stayed
+# reachable). GH runners are proven reachable to BOTH Telegram and the Space
+# (network-probe run 2026-10-28), so the supervised worker
+# (api/lib/telegram-bot.ts — boot retries, self-healing, join approvals, DM
+# brain) runs HERE, with the brain served by the Space's public /api/chatbot.
+#
+# HANDOFF MODEL: cron */5 keeps a queued run warm; concurrency (no cancel)
+# means at most one RUNNING + one PENDING run — when a job's ~12-min lifetime
+# ends cleanly, the pending run starts within seconds. Telegram re-delivers
+# every unconfirmed update, so handoffs are at-least-once (never lossy).
+#
+# NOTE: the Space-side worker is disabled via the TELEGRAM_BOT_POLLING=0
+# Space secret — a single poller owns the token (409 conflicts are handled
+# gracefully by the worker regardless).
+# ════════════════════════════════════════════════════════════════════════════
+name: Telegram bot worker
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: telegram-bot-worker
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Run supervised telegram worker
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_BRAIN_API_BASE: https://ahmdelbaz28-ahmdrtap.hf.space
+        run: npx tsx scripts/telegram-worker-job.ts
