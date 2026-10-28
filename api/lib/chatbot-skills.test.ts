@@ -17,7 +17,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import { getSystemPrompt, sanitizeReplyOutput } from "./chatbot-prompts";
-import { buildCourseCatalogBlock, COURSE_CATALOG_PLACEHOLDER } from "./chatbot-skills";
+import {
+  buildCourseCatalogBlock,
+  COURSE_CATALOG_PLACEHOLDER,
+  OFFICIAL_LINKS,
+  officialChannelsAr,
+  officialChannelsEn,
+} from "./chatbot-skills";
 
 const MOCK_CATALOG = [
   "- ETAP من الصفر إلى الاحتراف | ETAP From Zero to Pro — المستوى/Level: مبتدئ | السعر/Price: 1,999 EGP | المدة/Duration: 25 ساعة | مدفوع/Premium — داخل المنصة (on-platform path): /courses/etap-pro",
@@ -209,5 +215,74 @@ describe("getChatResponse — catalog forwarding", () => {
     expect(systemMsg.content).toContain("ETAP من الصفر إلى الاحتراف");
     expect(systemMsg.content).toContain("1,999 EGP");
     expect(systemMsg.content).toContain("قاعدة وعي الإصدار");
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+// OFFICIAL CHANNELS & LINK POLICY — the only allowed URLs + invitation style
+// (owner mandate: ETAP-download questions → Telegram channel link with a
+// value-first "files reach members first" nudge; platform questions → the
+// exact platform link; NEVER forcing phrasing — the user must feel THEY
+// benefit from subscribing)
+// ═════════════════════════════════════════════════════════════════════════
+
+const ALL_OFFICIAL_URLS = Object.values(OFFICIAL_LINKS);
+
+describe("official channels block — link registry", () => {
+  it("registers the six official URLs verbatim in both language blocks", () => {
+    for (const url of ALL_OFFICIAL_URLS) {
+      expect(officialChannelsAr).toContain(url);
+      expect(officialChannelsEn).toContain(url);
+    }
+  });
+
+  it("keeps Instagram/TikTok canonical (no share-tracking params)", () => {
+    expect(OFFICIAL_LINKS.instagram).not.toContain("exln=");
+    expect(OFFICIAL_LINKS.tiktok).not.toContain("_t=");
+  });
+
+  it("encodes the ETAP-download → Telegram rule and the first-hand-files value", () => {
+    expect(officialChannelsAr).toContain("تحميل برنامج ETAP");
+    expect(officialChannelsAr).toContain("أول بأول");
+    expect(officialChannelsEn).toContain("ETAP software");
+    expect(officialChannelsEn).toContain("FIRST");
+  });
+
+  it("bans forcing phrasing and caps the invitation at one per reply", () => {
+    expect(officialChannelsAr).toContain("ممنوع منعاً باتاً صيغة الإجبار");
+    expect(officialChannelsAr).toContain("دعوة واحدة فقط");
+    expect(officialChannelsEn).toContain("NEVER use forcing or commanding phrasing");
+    expect(officialChannelsEn).toContain("ONE invitation per reply");
+  });
+
+  it("requires Markdown link format so anchors render clickable", () => {
+    expect(officialChannelsAr).toContain("[الاسم](الرابط)");
+    expect(officialChannelsEn).toContain("[Name](url)");
+  });
+});
+
+describe("getSystemPrompt — official channels composition", () => {
+  const MODES = ["thinking", "instant"] as const;
+
+  it("injects the Telegram link + usage rules into ALL four paths (mode × language)", () => {
+    for (const mode of MODES) {
+      const ar = getSystemPrompt("ar", mode);
+      const en = getSystemPrompt("en", mode);
+      // Every path carries the full registry + the Telegram-download rule.
+      for (const url of ALL_OFFICIAL_URLS) {
+        expect(ar).toContain(url);
+        expect(en).toContain(url);
+      }
+      expect(ar).toContain("قواعد استخدام الروابط");
+      expect(ar).toContain("دعوة واحدة فقط");
+      expect(en).toContain("LINK-USAGE RULES");
+      expect(en).toContain("ONE invitation per reply");
+    }
+  });
+
+  it("keeps the no-invented-URLs rule standing alongside the official registry", () => {
+    const p = getSystemPrompt("ar", "thinking");
+    expect(p).toContain("لا تخترع روابط");
+    expect(p.indexOf("لا تخترع روابط")).toBeLessThan(p.indexOf("القنوات الرسمية للمنصة"));
   });
 });

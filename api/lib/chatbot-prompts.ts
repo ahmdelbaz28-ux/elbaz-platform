@@ -41,6 +41,8 @@ import {
   mentorProtocolEn,
   platformCoreAr,
   platformCoreEn,
+  officialChannelsAr,
+  officialChannelsEn,
   safetyRuleAr,
   safetyRuleEn,
   instantSkillsAr,
@@ -421,7 +423,7 @@ export function getSystemPrompt(language?: string, mode: ChatbotMode = "thinking
 🚫 محظورات:
 - لا تخترع روابط (URLs) غير موجودة.
 - لا تذكر أبداً أنك ذكاء اصطناعي أو نموذج لغوي أو من أي مزود مثل OpenRouter.
-- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${instantModeAr}${expertPositioningAr}${reasoningGuard}${langAndFormatRuleAr}${etapQuickCore}${instantSkillsAr}${platformCoreAr}${safetyRuleAr}${visionBlockAr}${summaryBlock}${catalogBlock}`;
+- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${instantModeAr}${expertPositioningAr}${reasoningGuard}${langAndFormatRuleAr}${etapQuickCore}${instantSkillsAr}${platformCoreAr}${officialChannelsAr}${safetyRuleAr}${visionBlockAr}${summaryBlock}${catalogBlock}`;
     }
     return `You are the official AI Assistant of the "Elbaz Platform" (specializing in engineering courses).
 You are a highly professional, balanced, and interactive technical assistant. Do NOT use any personal name for yourself; introduce yourself only as the platform's smart assistant.
@@ -438,7 +440,7 @@ You are a highly professional, balanced, and interactive technical assistant. Do
 🚫 Rules:
 - Do NOT hallucinate fake URLs.
 - NEVER mention you are an AI, a language model, or from OpenRouter or any other provider.
-- If asked about non-engineering topics, politely decline and state your expertise.${instantModeEn}${expertPositioningEn}${reasoningGuard}${langAndFormatRuleEn}${etapQuickCore}${instantSkillsEn}${platformCoreEn}${safetyRuleEn}${visionBlockEn}${summaryBlock}${catalogBlock}`;
+- If asked about non-engineering topics, politely decline and state your expertise.${instantModeEn}${expertPositioningEn}${reasoningGuard}${langAndFormatRuleEn}${etapQuickCore}${instantSkillsEn}${platformCoreEn}${officialChannelsEn}${safetyRuleEn}${visionBlockEn}${summaryBlock}${catalogBlock}`;
   }
 
   // ── thinking (default) ──
@@ -461,7 +463,7 @@ You are a highly professional, balanced, and interactive technical assistant. Do
 🚫 محظورات:
 - لا تخترع روابط (URLs) غير موجودة.
 - لا تذكر أبداً أنك ذكاء اصطناعي أو نموذج لغوي أو من أي مزود مثل OpenRouter.
-- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${thinkingModeAr}${expertPositioningAr}${reasoningGuard}${langAndFormatRuleAr}${versionRuleAr}${mentorProtocolAr}${researchSkillAr}${accuracyContractAr}${guidedNavigationAr}${pfCore}${skmCore}${pvsystCore}${etapExpertCore}${platformCoreAr}${safetyRuleAr}${webGroundingAr}${visionBlockAr}${summaryBlock}${catalogBlock}`;
+- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${thinkingModeAr}${expertPositioningAr}${reasoningGuard}${langAndFormatRuleAr}${versionRuleAr}${mentorProtocolAr}${researchSkillAr}${accuracyContractAr}${guidedNavigationAr}${pfCore}${skmCore}${pvsystCore}${etapExpertCore}${platformCoreAr}${officialChannelsAr}${safetyRuleAr}${webGroundingAr}${visionBlockAr}${summaryBlock}${catalogBlock}`;
   }
   return `You are the official AI Assistant of the "Elbaz Platform" (specializing in engineering courses).
 You are a highly professional, balanced, and interactive technical assistant. Do NOT use any personal name for yourself; introduce yourself only as the platform's smart assistant.
@@ -481,5 +483,5 @@ You are a highly professional, balanced, and interactive technical assistant. Do
 🚫 Rules:
 - Do NOT hallucinate fake URLs.
 - NEVER mention you are an AI, a language model, or from OpenRouter or any other provider.
-- If asked about non-engineering topics, politely decline and state your expertise.${thinkingModeEn}${expertPositioningEn}${reasoningGuard}${langAndFormatRuleEn}${versionRuleEn}${mentorProtocolEn}${researchSkillEn}${accuracyContractEn}${guidedNavigationEn}${pfCore}${skmCore}${pvsystCore}${etapExpertCore}${platformCoreEn}${safetyRuleEn}${webGroundingEn}${visionBlockEn}${summaryBlock}${catalogBlock}`;
+- If asked about non-engineering topics, politely decline and state your expertise.${thinkingModeEn}${expertPositioningEn}${reasoningGuard}${langAndFormatRuleEn}${versionRuleEn}${mentorProtocolEn}${researchSkillEn}${accuracyContractEn}${guidedNavigationEn}${pfCore}${skmCore}${pvsystCore}${etapExpertCore}${platformCoreEn}${officialChannelsEn}${safetyRuleEn}${webGroundingEn}${visionBlockEn}${summaryBlock}${catalogBlock}`;
 }
