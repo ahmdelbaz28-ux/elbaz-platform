@@ -1,5 +1,6 @@
 import { env } from "./env.js";
 import { logger } from "./logger.js";
+import { telegramApiBase, telegramRelayHeaders } from "./telegram-transport.js";
 
 // ─── Telegram broadcast bot ────────────────────────────────────────────────────
 // Mirrors every site/YouTube announcement to the owner's Telegram channel
@@ -84,12 +85,14 @@ export async function sendTelegramBroadcast(input: TelegramMessageInput): Promis
   if (!isTelegramConfigured()) return false;
 
   const { text, inlineKeyboard } = formatTelegramMessage(input);
-  const api = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
+  // Transport is configurable (telegram-transport.ts) — direct Bot API by
+  // default, or the Cloudflare Worker relay when TELEGRAM_API_BASE is set.
+  const api = `${telegramApiBase()}/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
 
   try {
     const res = await fetch(api, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...telegramRelayHeaders() },
       body: JSON.stringify({
         chat_id: env.TELEGRAM_CHAT_ID,
         text,

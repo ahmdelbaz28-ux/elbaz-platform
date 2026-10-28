@@ -26,6 +26,12 @@ const ALLOWED_DOMAIN = 'ahmedelbaz.qzz.io';
 // it (result: every worker-proxied request 404s). Populated from env in
 // handleRequest before any proxying happens.
 let EDGE_ORIGIN_SECRET;
+// ─── Telegram transport relay secret ──────────────────────────────────────
+// ROOT-CURE (2026-10-29): the HF Space's shared egress lost reachability to
+// api.telegram.org (connect-level "fetch failed" while every other external
+// host answered). The worker now relays Bot API calls for the origin. Declared
+// at module scope for the same strict-mode reason as EDGE_ORIGIN_SECRET.
+let TG_RELAY_SECRET;
 
 // ─── IP Ranges ───────────────────────────────────────────────────────────────
 // Cloudflare's published IPv4/IPv6 CIDR blocks, used to allowlist
@@ -442,9 +448,66 @@ async function addRequestHeaders(request) {
 
 // ─── Main Handler ───────────────────────────────────────────────────────────
 
+// ─── Telegram transport relay (/tg/*) ────────────────────────────────────
+// Pure transport relay: the path after /tg/ is forwarded verbatim to
+// https://api.telegram.org/<path>. Gated by the X-Relay-Secret shared secret
+// (stealth 404 when missing) — the relay is NEVER an open Telegram proxy.
+// Runs BEFORE the WAF pipeline: bot message bodies can trip text heuristics,
+// and the relay has its own strict path grammar + secret gate instead.
+function safeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  if (a.length !== b.length || a.length === 0) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+async function handleTelegramRelay(request, requestUrl) {
+  const secret = (typeof TG_RELAY_SECRET !== 'undefined' && TG_RELAY_SECRET) ? TG_RELAY_SECRET : undefined;
+  if (!secret) {
+    return new Response(JSON.stringify({ ok: false, description: 'relay not configured' }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  if (request.method !== 'POST') {
+    return new Response(JSON.stringify({ ok: false, description: 'POST only' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  const provided = request.headers.get('X-Relay-Secret') || '';
+  if (!safeEqual(provided, secret)) {
+    // Stealth 404 — do not reveal that the route exists.
+    return new Response(JSON.stringify({ error: 'Not Found' }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  const methodPath = requestUrl.pathname.slice('/tg/'.length); // e.g. bot<token>/getMe
+  if (!/^bot[0-9A-Za-z_:\-]+\/[A-Za-z]+$/.test(methodPath)) {
+    return new Response(JSON.stringify({ ok: false, description: 'bad relay path' }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  const body = await request.text();
+  const upstream = await fetch(`https://api.telegram.org/${methodPath}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+    signal: AbortSignal.timeout(35_000), // getUpdates long-polls 25s + margin
+  });
+  return new Response(upstream.body, {
+    status: upstream.status,
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+  });
+}
+
 async function handleRequest(request, _env, ctx) {
   // ✅ SECURITY FIX (audit run-1): read the worker var from the module scope or env binding.
   try { EDGE_ORIGIN_SECRET = (typeof EDGE_ORIGIN_SECRET !== 'undefined' && EDGE_ORIGIN_SECRET) ? EDGE_ORIGIN_SECRET : ((_env && _env.EDGE_ORIGIN_SECRET) || undefined); } catch { /* not configured */ }
+  try { TG_RELAY_SECRET = (typeof TG_RELAY_SECRET !== 'undefined' && TG_RELAY_SECRET) ? TG_RELAY_SECRET : ((_env && _env.TG_RELAY_SECRET) || undefined); } catch { /* not configured */ }
   const requestUrl = new URL(request.url);
   const pathname = requestUrl.pathname;
   const ext = pathname.substring(pathname.lastIndexOf('.') + 1).toLowerCase();
@@ -453,6 +516,20 @@ async function handleRequest(request, _env, ctx) {
   // Handle CORS preflight
   if (request.method === 'OPTIONS') {
     return addSecurityHeaders(addCORSHeaders(new Response(null, { status: 204 }), request), requestUrl);
+  }
+
+  // Telegram transport relay — own gate, before the WAF (see handler docs).
+  if (requestUrl.pathname === '/tg' || requestUrl.pathname.startsWith('/tg/')) {
+    try {
+      const relayResponse = await handleTelegramRelay(request, requestUrl);
+      return addSecurityHeaders(relayResponse, requestUrl);
+    } catch (err) {
+      console.error('Telegram relay failed:', err);
+      return new Response(JSON.stringify({ ok: false, description: 'relay upstream error' }), {
+        status: 502,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
   }
 
   // 🚀 PERFORMANCE: Edge caching for static assets using Cache API

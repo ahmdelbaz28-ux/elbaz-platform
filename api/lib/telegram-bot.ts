@@ -34,6 +34,7 @@
  *   TELEGRAM_ADMIN_CHAT_ID      — gets a one-line "worker is up" ping at boot
  */
 import { logger } from "./logger.js";
+import { telegramApiBase, telegramRelayHeaders } from "./telegram-transport.js";
 
 // ─── Telegram types (minimal — only what we touch) ───────────────────────────
 
@@ -479,9 +480,13 @@ const POLL_LOOP_RESTART_MS = 15_000; // poll loop escaped — supervisor restart
 function createRealApi(token: string): TelegramApi {
   return {
     async call(method, payload) {
-      const res = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+      // Transport is configurable (telegram-transport.ts): direct Bot API by
+      // default, or the Cloudflare Worker relay when TELEGRAM_API_BASE is set
+      // — the root-cure for the shared-egress block that silently cut the
+      // Space off from api.telegram.org.
+      const res = await fetch(`${telegramApiBase()}/bot${token}/${method}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...telegramRelayHeaders() },
         body: JSON.stringify(payload ?? {}),
         signal: AbortSignal.timeout(35_000), // getUpdates long-polls 25s + margin
       });

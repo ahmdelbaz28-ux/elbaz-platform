@@ -53,6 +53,7 @@ jobs:
           WORKER_NAME: ahmedelbaz
           WORKER_FILE: infra/security-audit/worker-v7-hardened.js
           EDGE_ORIGIN_SECRET: ${{ secrets.EDGE_ORIGIN_SECRET }}
+          TG_RELAY_SECRET: ${{ secrets.TG_RELAY_SECRET }}
         run: |
           set -euo pipefail
           echo "=== Deploying Worker '${WORKER_NAME}' to account ${CLOUDFLARE_ACCOUNT_ID} ==="
@@ -91,6 +92,19 @@ jobs:
               {"name": "EDGE_ORIGIN_SECRET", "type": "secret_text", "text": edge_secret}
           ]
           print("  → EDGE_ORIGIN_SECRET binding present (value hidden)")
+
+          # Telegram transport relay (root-cure of the 2026-10-29 egress block):
+          # /tg/* forwards Bot API calls from the origin to api.telegram.org.
+          # Fail LOUDLY when missing — deploying without it leaves the relay
+          # unauthenticated-by-absence (503) and the Space cut off from Telegram.
+          tg_secret = os.environ.get('TG_RELAY_SECRET', '').strip()
+          if not tg_secret or len(tg_secret) < 32:
+              print("  ❌ TG_RELAY_SECRET missing or shorter than 32 chars — refusing to deploy (telegram relay unguarded)")
+              exit(1)
+          metadata['bindings'].append(
+              {"name": "TG_RELAY_SECRET", "type": "secret_text", "text": tg_secret}
+          )
+          print("  → TG_RELAY_SECRET binding present (value hidden)")
 
           files = {
               'metadata': (None, json.dumps(metadata), 'application/json'),
