@@ -54,6 +54,16 @@ import {
 // MODE TYPES + TUNING TABLE
 // ════════════════════════════════════════════════════════════════════════
 
+/**
+ * System-prompt version (Option D — prompt-as-code discipline, distilled
+ * from the "Prompt Engineer" persona of msitarzewski/agency-agents, MIT).
+ * Bump on EVERY prompt change and document it in /PROMPTS_CHANGELOG.md —
+ * chatbot-prompts.quality.test.ts fails CI when the two drift apart.
+ *
+ * 3.1.0 → ELECTRICAL DEPTH PACK added (Option A).
+ */
+export const PROMPT_VERSION = "3.1.0";
+
 export type ChatbotMode = "thinking" | "instant";
 
 export interface ModeTuning {

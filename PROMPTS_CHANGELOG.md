@@ -1,0 +1,87 @@
+# PROMPTS_CHANGELOG — نظام إصدارات برومبتات الشات بوت
+
+> **القاعدة (Option D — prompt-as-code):** أي تعديل على برومبتات الشات بوت
+> (`api/lib/chatbot-prompts.ts` / `api/lib/chatbot-skills.ts`) لازم:
+>
+> 1. يرفع `PROMPT_VERSION` في `api/lib/chatbot-prompts.ts` (semver).
+> 2. يضيف سطراً هنا تحت رأس `[Unreleased]` أو إصدار جديد.
+> 3. يمر على مصفوفة الاختبارات ثلاثية الحالات في
+>    `api/lib/chatbot-prompts.quality.test.ts` — **مسار سعيد (happy path)**
+>    و**حالة حدّية (edge)** و**حالة فشل (failure mode)**.
+> 4. يمر على مقياس التطور `scripts/measure-chatbot-evolution.ts`
+>    (`--compare` ضد آخر snapshot) حتى يكون أثر كل تعديل مقيساً لا محسوساً.
+>
+> اختبار CI يفشل تلقائياً لو `PROMPT_VERSION` وسجل التغيير اتباعدوا.
+
+الصيغة مبنية على [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)،
+والإصدارات على [SemVer](https://semver.org/):
+- **Major**: تغيير يغيّر سلوك البوت بشكل ملحوظ للمستخدم (شخصية، بروتوكول، لغة).
+- **Minor**: إضافة معرفة أو قاعدة جديدة دون تغيير القواعد القائمة.
+- **Patch**: صياغة/إملاء/توضيح دون تغيير المعنى.
+
+---
+
+## [Unreleased]
+
+## [3.1.0] — 2026-10-28
+
+### Added — Option A: ELECTRICAL DEPTH PACK (حزمة العمق الكهربائي)
+- **المصدر:** تقطير من شخصية `Electrical Engineer` المتخصصة في مستودع
+  [msitarzewski/agency-agents](https://github.com/msitarzewski/agency-agents)
+  (ترخيص MIT) — ملف 576 سطراً دُسّ في حزمة مضغوطة متوافقة مع قواعد المنصة.
+- **thinking mode (عربي + إنجليزي) — 6 أقسام جديدة:**
+  1. الوحدات والمدخلات: kW ≠ kVA (التحويل عبر PF)، بروتوكول «بيانات مفقودة
+     (MISSING)»، مطابقة المستندات (موقع vs مخطط vs BOQ).
+  2. قصر الدارة: ANSI C37 أمريكا / IEC 60909 دولياً + نسبة X/R + مساهمة
+     المحركات (motor contribution) + قدرة القطع (interrupting duty).
+  3. البطاريات وأنظمة DC: قاعدة C10/C8/C20 + جهد نهاية التفريغ، تحجيم IEEE 485
+     بعامل تقادم 1.25 + تصحيح الحرارة، محطات ‎-48 V (N+1, LVD, ETSI EN 300
+     132-2)، مقارنة VRLA مقابل LFP.
+  4. التأريض والصواعق: مقاومة التربة مقاسة لا مفترضة، جهد اللمس والخطوة وفق
+     IEEE 80، فئات LPS وSPD وفق IEC 62305، ITU-T K.27/K.56 للاتصالات.
+  5. المولدات و UPS والتحويل: ISO 8528 (derating، wet stacking)، UPS مزدوج
+     التحويل، زمن ATS مقابل ride-through.
+  6. ترجمة الهندسة لقواعد برمجية: تسمية المعيار وإصداره والمدخلات بصيغة قابلة
+     لإعادة الحساب اليدوي.
+- **instant mode (عربي + إنجليزي):** مراسٍ سريعة بسطر واحد فقط (~110 tokens)
+  — الحزمة الكاملة **لا تتسرب** لوضع السرعة (حارس اختباري).
+- **قياس الأثر** (`scripts/measure-chatbot-evolution.ts`): تغطية المعرفة
+  الهندسية في thinking عربي **40% → 91%** (بطاريات 29→100، تأريض 20→80، قصر
+  دارة 60→100، مولدات/UPS 0→100، وحدات 33→100) بتكلفة +761 token فقط،
+  والنزاهة PASS في النسخ الأربع.
+
+### Added — Option D: نظام الإصدارات نفسه
+- `PROMPT_VERSION` في `chatbot-prompts.ts` + هذا السجل + اختبار تطابق
+  (يفشل CI عند انحراف الإصدار عن السجل).
+- مصفوفة ثلاثية الحالات في `chatbot-prompts.quality.test.ts`:
+  - **مسار سعيد:** كتالوج + صورة + ملخص محادثات قديمة كلها تُحقن عند توفرها.
+  - **حدّية:** الزائر/بلا صورة/بلا ملخص لا يرى الكتل الاختيارية؛ instant
+    يبقى خفيفاً (بلا بروتوكول البحث وبلا نوى PF/SKM/PVSyst).
+  - **فشل:** لا placeholder، لا CJK، حارس الاستدلال وقاعدة الجداول وقاعدة
+    السلامة موجودة في النسخ الأربع؛ السينيتايزر ينظف CJK من الردود.
+- مقياس `measure-chatbot-evolution.ts` + snapshot خط الأساس
+  `scripts/prompt-metrics/baseline-main.json`.
+
+### Metrics snapshot @3.1.0
+| variant | chars | tokens≈ | coverage | integrity |
+|---|---|---|---|---|
+| ar:thinking | 27,418 | 8,844 | 91% | PASS |
+| ar:instant | 10,726 | 3,594 | 49% | PASS |
+| en:thinking | 29,552 | 7,609 | 94% | PASS |
+| en:instant | 11,847 | 2,990 | 51% | PASS |
+
+---
+
+## [3.0.0] — خط الأساس (قبل عمل التقطير)
+
+- الحالة الموثقة في snapshot
+  `scripts/prompt-metrics/baseline-main.json`: thinking عربي 25,235 حرفاً
+  (~8,083 tokens)، تغطية معرفية 40% (بطاريات 29%، تأريض 20%، مولدات/UPS 0%،
+  وحدات 33%، نبرة دعم 50%)، نزاهة PASS.
+- محتوى البرومبت وقتها: بروتوكول 6 خطوات + 20 قاعدة حرجة + عقد الدقة + وعي
+  الإصدار + مرافق تعليمي + نوى PF/SKM/PVSyst + الروابط الرسمية الستة + قاعدة
+  السلامة + الكتالوج المحقون — كله من أعمال سابقة داخل الريبو (بدون مصدر خارجي).
+
+[Unreleased]: https://github.com/ahmdelbaz28-ux/elbaz-platform/compare/3.1.0...HEAD
+[3.1.0]: https://github.com/ahmdelbaz28-ux/elbaz-platform/compare/3.0.0...3.1.0
+[3.0.0]: https://github.com/ahmdelbaz28-ux/elbaz-platform/releases/tag/main-baseline

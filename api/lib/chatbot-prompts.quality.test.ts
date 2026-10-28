@@ -20,9 +20,10 @@
  *      summary, catalog verbatim only when provided, fallback line when not.
  */
 
+import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 
-import { getSystemPrompt, sanitizeReplyOutput } from "./chatbot-prompts";
+import { getSystemPrompt, PROMPT_VERSION, sanitizeReplyOutput } from "./chatbot-prompts";
 import { COURSE_CATALOG_PLACEHOLDER, buildCourseCatalogBlock } from "./chatbot-skills";
 
 // ─── Option A — Electrical Depth Pack ───────────────────────────────────────
@@ -107,7 +108,26 @@ describe("Option A: instant mode token budget guard", () => {
   });
 });
 
-// ─── Option D — versioning + 3-case composition matrix (added in the D step) ─
+// ─── Option D — versioning + changelog drift guard ─────────────────────────
+
+describe("Option D: prompt versioning (prompt-as-code)", () => {
+  it("exports a semver PROMPT_VERSION", () => {
+    expect(PROMPT_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+
+  it("PROMPTS_CHANGELOG.md documents the current version (no drift)", () => {
+    const changelog = readFileSync(new URL("../../PROMPTS_CHANGELOG.md", import.meta.url), "utf8");
+    expect(changelog).toContain(`## [${PROMPT_VERSION}]`);
+  });
+
+  it("changelog references the depth-pack introduction (traceability)", () => {
+    const changelog = readFileSync(new URL("../../PROMPTS_CHANGELOG.md", import.meta.url), "utf8");
+    expect(changelog).toContain("ELECTRICAL DEPTH PACK");
+    expect(changelog).toContain("msitarzewski/agency-agents");
+  });
+});
+
+// ─── composition matrix (core invariants, applies to every variant) ─────────
 
 describe("composition matrix (core invariants, applies to every variant)", () => {
   const MOCK_CATALOG = "- ETAP من الصفر إلى الاحتراف | السعر: 1,999 EGP";
