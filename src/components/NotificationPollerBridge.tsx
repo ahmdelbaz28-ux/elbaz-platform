@@ -1,7 +1,17 @@
 import { useCallback } from "react";
 import { useNavigate } from "react-router";
-import { useAuth } from "@/hooks/useAuth";
 import { useRealtimeNotifications, useShowNotification } from "@/components/NotificationCenter";
+
+const KNOWN_TOAST_TYPES = new Set(["youtube", "lesson", "file", "software"]);
+
+type ToastType = "youtube" | "lesson" | "file" | "software" | "enrollment" | "info";
+
+/** Map a server event type onto the toast taxonomy (unknown types → "info"). */
+function toastTypeFor(type: string): ToastType {
+  if (KNOWN_TOAST_TYPES.has(type)) return type as ToastType;
+  if (type === "enrollment") return "enrollment";
+  return "info";
+}
 
 /**
  * NotificationPollerBridge — the invisible component that makes server
@@ -20,7 +30,6 @@ import { useRealtimeNotifications, useShowNotification } from "@/components/Noti
  *   promo/system → informational toast
  */
 export default function NotificationPollerBridge() {
-  const { isAuthenticated } = useAuth();
   const { showNotification } = useShowNotification();
   const navigate = useNavigate();
 
@@ -58,11 +67,7 @@ export default function NotificationPollerBridge() {
       showNotification({
         // Pass the server type through — the toast system colors/icons it
         // (youtube → red YouTube icon) and the bell stores it for display.
-        type: (["youtube", "lesson", "file", "software"].includes(event.type)
-          ? event.type
-          : event.type === "enrollment"
-            ? "enrollment"
-            : "info") as "youtube" | "lesson" | "file" | "software" | "enrollment" | "info",
+        type: toastTypeFor(event.type),
         title: event.title,
         message: event.message,
         eventId: event.id,
@@ -81,6 +86,5 @@ export default function NotificationPollerBridge() {
 
   // Polling only activates when authenticated (handled inside the hook);
   // this component renders nothing.
-  void isAuthenticated;
   return null;
 }

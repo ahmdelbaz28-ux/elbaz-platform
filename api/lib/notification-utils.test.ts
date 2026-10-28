@@ -71,7 +71,7 @@ describe("parsePlaylistVideos", () => {
   it("deduplicates repeated videoIds (same video in multiple blocks)", () => {
     const videos = parsePlaylistVideos(PLAYLIST_HTML);
     const ids = videos.map((v) => v.videoId);
-    expect(ids.filter((id) => id === "0l7WBjMF6uo").length).toBe(1);
+    expect(ids.filter((id) => id === "0l7WBjMF6uo")).toHaveLength(1);
   });
 
   it("falls back to loose videoId scan when no renderers exist", () => {

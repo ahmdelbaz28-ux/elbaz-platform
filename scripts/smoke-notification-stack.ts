@@ -16,7 +16,8 @@ process.env.GOOGLE_CLIENT_ID ||= "dummy.apps.googleusercontent.com";
 
 let failures = 0;
 function check(label: string, ok: boolean, detail = ""): void {
-  console.log(`${ok ? "✓" : "✗"} ${label}${detail ? ` — ${detail}` : ""}`);
+  const suffix = detail ? ` — ${detail}` : "";
+  console.log(`${ok ? "✓" : "✗"} ${label}${suffix}`);
   if (!ok) failures++;
 }
 

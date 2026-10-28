@@ -123,10 +123,13 @@ export async function sendWebPushToAll(payload: PushPayload): Promise<{ sent: nu
   const body = buildPushPayload(payload);
   let sent = 0;
   let stale = 0;
+  const staleEndpoints: string[] = [];
 
   for (let i = 0; i < subs.length; i += SEND_BATCH_SIZE) {
     const batch = subs.slice(i, i + SEND_BATCH_SIZE);
-    const results = await Promise.allSettled(batch.map((sub) => sendToOne(sub, body)));
+    // Bounded concurrency is intentional: a fully parallel fan-out over every
+    // subscription would spike sockets/memory in one tick. NOSONAR
+    const results = await Promise.allSettled(batch.map((sub) => sendToOne(sub, body))); // NOSONAR: deliberate sequential batches — backpressure by design, see comment above.
     for (let j = 0; j < results.length; j++) {
       const r = results[j];
       if (r.status === "fulfilled") {
@@ -136,9 +139,15 @@ export async function sendWebPushToAll(payload: PushPayload): Promise<{ sent: nu
       const statusCode = (r.reason as { statusCode?: number } | undefined)?.statusCode;
       if (isStalePushResponse(statusCode)) {
         stale++;
-        await deleteStale(batch[j].endpoint);
+        staleEndpoints.push(batch[j].endpoint);
       }
     }
+  }
+
+  // Self-clean every dead endpoint AFTER the fan-out, all in parallel —
+  // failures are harmless (row survives until the next pass).
+  if (staleEndpoints.length > 0) {
+    await Promise.allSettled(staleEndpoints.map(deleteStale));
   }
 
   logger.info("[Push] broadcast fanned out", { total: subs.length, sent, stale });

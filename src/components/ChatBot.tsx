@@ -1339,7 +1339,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
               // glued to the keyboard during its slide animation.
               if (kb.open && kb.height > 0) {
                 return {
-                  bottom: `${kb.offsetBottom > 0 ? kb.offsetBottom : 0}px`,
+                  bottom: `${Math.max(kb.offsetBottom, 0)}px`,
                   height: `${kb.height}px`,
                   right: '0px',
                   left: '0px',
@@ -1364,7 +1364,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
               // above the keyboard and use the full visual viewport height
               // (works on both iOS Safari and Android Chrome).
               return {
-                bottom: `${(kb.offsetBottom > 0 ? kb.offsetBottom : 0) + 8}px`,
+                bottom: `${Math.max(kb.offsetBottom, 0) + 8}px`,
                 height: `${kb.height - 16}px`,
                 right: '1rem',
                 maxWidth: '420px',

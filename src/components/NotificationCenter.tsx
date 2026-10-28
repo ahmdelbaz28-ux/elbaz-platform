@@ -1093,7 +1093,7 @@ export default function NotificationCenter() { // NOSONAR — large component wi
             >
               <span
                 className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all duration-200 ${
-                  push.isSubscribed ? (isRTL ? "left-0.5" : "right-0.5") : isRTL ? "right-0.5" : "left-0.5"
+                  push.isSubscribed === isRTL ? "left-0.5" : "right-0.5"
                 }`}
                 aria-hidden="true"
               />

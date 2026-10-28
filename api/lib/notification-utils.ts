@@ -29,13 +29,62 @@ export function decodeJsonStringLiteral(raw: string): string {
   try {
     return JSON.parse(`"${raw}"`) as string;
   } catch {
-    return raw.replaceAll("\\u0026", "&").replaceAll('\\"', '"').replaceAll("\\\\", "\\");
+    // Best-effort manual unescape for the escapes YouTube actually emits.
+    return raw
+      .replaceAll(String.raw`\u0026`, "&")
+      .replaceAll(String.raw`\"`, '"')
+      .replaceAll(String.raw`\\`, "\\");
   }
 }
 
 export interface ParsedVideo {
   videoId: string;
   title: string;
+}
+
+/** Shared "add once" collector — dedupes by videoId across all layouts. */
+function collect(out: ParsedVideo[], seen: Set<string>, videoId: string | undefined, title: string): void {
+  if (!videoId || seen.has(videoId)) return;
+  seen.add(videoId);
+  out.push({ videoId, title });
+}
+
+/** Layout A (legacy): each playlist item is a `playlistVideoRenderer` object
+ *  that starts with its videoId followed shortly by the localized title runs. */
+function collectRendererLayout(html: string, out: ParsedVideo[], seen: Set<string>): void {
+  const blocks = html.split('"playlistVideoRenderer"');
+  for (let i = 1; i < blocks.length; i++) {
+    const block = blocks[i].slice(0, 4000);
+    const idMatch = /"videoId":"([\w-]{11})"/.exec(block);
+    if (!idMatch) continue;
+    const titleMatch = /"title":\{"runs":\[\{"text":"((?:[^"\\]|\\.)*)"/.exec(block);
+    collect(out, seen, idMatch[1], titleMatch ? decodeJsonStringLiteral(titleMatch[1]) : "");
+  }
+}
+
+/** Layout B (2025+ "lockupViewModel"): the playlist items are lockup objects;
+ *  the videoId lives in the thumbnail URL (`/vi/{id}/`) and the title in
+ *  `lockupMetadataViewModel.title.content`. */
+function collectLockupLayout(html: string, out: ParsedVideo[], seen: Set<string>): void {
+  const lockups = html.split('{"lockupViewModel"');
+  for (let i = 1; i < lockups.length; i++) {
+    const block = lockups[i].slice(0, 10000);
+    if (!block.includes("contentImage")) continue;
+    const idMatch = /\/vi\/([\w-]{11})\//.exec(block);
+    if (!idMatch) continue;
+    const titleMatch =
+      /"lockupMetadataViewModel":\{"title":\{"content":"((?:[^"\\]|\\.)*)"/.exec(block) ??
+      /"title":\{"content":"((?:[^"\\]|\\.)*)"/.exec(block);
+    collect(out, seen, idMatch[1], titleMatch ? decodeJsonStringLiteral(titleMatch[1]) : "");
+  }
+}
+
+/** Fallback: loose scan for bare videoIds (layout variations / consent pages). */
+function collectLooseIds(html: string, out: ParsedVideo[], seen: Set<string>): void {
+  const looseIds = html.match(/"videoId":"([\w-]{11})"/g) ?? [];
+  for (const raw of looseIds) {
+    collect(out, seen, /"videoId":"([\w-]{11})"/.exec(raw)?.[1], "");
+  }
 }
 
 /**
@@ -50,47 +99,14 @@ export interface ParsedVideo {
 export function parsePlaylistVideos(html: string): ParsedVideo[] {
   const out: ParsedVideo[] = [];
   const seen = new Set<string>();
-  const push = (videoId: string, title: string) => {
-    if (seen.has(videoId)) return;
-    seen.add(videoId);
-    out.push({ videoId, title });
-  };
 
-  // Layout A (legacy): each playlist item is a `playlistVideoRenderer` object
-  // that starts with its videoId followed shortly by the localized title runs.
-  const blocks = html.split('"playlistVideoRenderer"');
-  for (let i = 1; i < blocks.length; i++) {
-    const block = blocks[i].slice(0, 4000);
-    const idMatch = /"videoId":"([\w-]{11})"/.exec(block);
-    if (!idMatch) continue;
-    const titleMatch = /"title":\{"runs":\[\{"text":"((?:[^"\\]|\\.)*)"/.exec(block);
-    push(idMatch[1], titleMatch ? decodeJsonStringLiteral(titleMatch[1]) : "");
-  }
+  collectRendererLayout(html, out, seen);
   if (out.length > 0) return out;
 
-  // Layout B (2025+ "lockupViewModel"): the playlist items are lockup objects;
-  // the videoId lives in the thumbnail URL (`/vi/{id}/`) and the title in
-  // `lockupMetadataViewModel.title.content`.
-  const lockups = html.split('{"lockupViewModel"');
-  for (let i = 1; i < lockups.length; i++) {
-    const block = lockups[i].slice(0, 10000);
-    if (!block.includes("contentImage")) continue;
-    const idMatch = /\/vi\/([\w-]{11})\//.exec(block);
-    if (!idMatch) continue;
-    const titleMatch =
-      /"lockupMetadataViewModel":\{"title":\{"content":"((?:[^"\\]|\\.)*)"/.exec(block) ??
-      /"title":\{"content":"((?:[^"\\]|\\.)*)"/.exec(block);
-    push(idMatch[1], titleMatch ? decodeJsonStringLiteral(titleMatch[1]) : "");
-  }
+  collectLockupLayout(html, out, seen);
   if (out.length > 0) return out;
 
-  // Fallback: loose scan for bare videoIds (layout variations / consent pages).
-  const looseIds = html.match(/"videoId":"([\w-]{11})"/g) ?? [];
-  for (const raw of looseIds) {
-    const id = /"videoId":"([\w-]{11})"/.exec(raw)?.[1];
-    if (!id) continue;
-    push(id, "");
-  }
+  collectLooseIds(html, out, seen);
   return out;
 }
 

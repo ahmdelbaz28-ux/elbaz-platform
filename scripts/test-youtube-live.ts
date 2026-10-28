@@ -26,7 +26,7 @@ async function main() {
     headers: { "User-Agent": UA },
     signal: AbortSignal.timeout(20000),
   });
-  const xml = await rssRes.status === 200 ? await rssRes.text() : "";
+  const xml = rssRes.status === 200 ? await rssRes.text() : "";
   const fromRss = xml ? extractFromRss(xml) : [];
   console.log("rss status:", rssRes.status, "| entries:", fromRss.length);
 
@@ -42,7 +42,9 @@ async function main() {
   console.log("PASS: watcher would see", merged.length, "video(s) — new ones (not in state) get broadcast");
 }
 
-main().catch((e) => {
+try {
+  await main();
+} catch (e) {
   console.error("FAIL:", e);
   process.exit(1);
-});
+}

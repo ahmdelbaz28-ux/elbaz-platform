@@ -35,6 +35,83 @@ const FIRST_POLL_WINDOW_DAYS = 7;
 
 // ─── Router ────────────────────────────────────────────────────────────────────
 
+// ─── Helpers (kept outside the handler so the route stays trivially readable) ─
+
+/** Per-user poll throttle — true when this poll is a duplicate within the TTL window. */
+async function isThrottled(userId: number): Promise<boolean> {
+  try {
+    const cache = getCache();
+    const rlKey = `rl:notificationPollRoute:${userId}`;
+    const already = await cache.get<string>(rlKey);
+    if (already) return true;
+    await cache.set(rlKey, "1", POLL_RATE_LIMIT_TTL);
+    return false;
+  } catch {
+    return false; // cache unavailable — allow through (graceful degradation)
+  }
+}
+
+/** Source 1: DB broadcasts (+ this user's own targeted rows). Best-effort. */
+async function collectDbEvents(userId: number, collected: PollEvent[]): Promise<void> {
+  try {
+    const [broadcasts, targeted] = await Promise.all([
+      recentBroadcasts(MAX_EVENTS),
+      userNotifications(userId, 20),
+    ]);
+    const cutoff = Date.now() - FIRST_POLL_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+    for (const row of [...broadcasts, ...targeted]) {
+      if (row.createdAt.getTime() < cutoff) continue;
+      collected.push({
+        id: row.eventId,
+        type: row.type,
+        title: row.title,
+        message: row.message,
+        url: row.url ?? undefined,
+        channelUrl: row.channelUrl ?? undefined,
+        data: (row.data as Record<string, unknown> | null) ?? undefined,
+        createdAt: row.createdAt.toISOString(),
+      });
+    }
+  } catch {
+    // DB unavailable — fall through to cache-only events
+  }
+}
+
+/** Source 2: legacy per-user cache events (enrollment/payment pushes). Best-effort. */
+async function collectCacheEvents(userId: number, collected: PollEvent[]): Promise<void> {
+  try {
+    const cache = getCache();
+    const cached = await cache.get<CacheEvent[]>(NOTIFICATIONS_KEY_PREFIX + userId);
+    if (!Array.isArray(cached)) return;
+    for (const ev of cached) {
+      collected.push({
+        id: ev.id,
+        type: ev.type,
+        title: ev.title,
+        message: ev.message,
+        data: ev.data,
+        createdAt: ev.createdAt,
+      });
+    }
+  } catch {
+    // cache unavailable — broadcasts alone are enough
+  }
+}
+
+/** Cursor filter + dedupe + newest-first + cap. */
+function finalize(collected: PollEvent[], after?: string): PollEvent[] {
+  const seen = new Set<string>();
+  const deduped: PollEvent[] = [];
+  for (const ev of collected) {
+    if (seen.has(ev.id)) continue;
+    seen.add(ev.id);
+    if (!isAfterCursor(ev.id, after)) continue;
+    deduped.push(ev);
+  }
+  const sorted = deduped.sort((a, b) => b.id.localeCompare(a.id));
+  return sorted.slice(0, MAX_EVENTS);
+}
+
 /**
  * Notification Poll Route — the live endpoint the frontend bell polls.
  *
@@ -56,72 +133,14 @@ notificationRoute.get("/poll", async (c) => {
 
   const after = c.req.query("after") || undefined;
 
-  // ── Per-user throttle: 1 poll / 10s (skip silently when cache is down) ──
-  try {
-    const cache = getCache();
-    const rlKey = `rl:notificationPollRoute:${user.id}`;
-    const already = await cache.get<string>(rlKey);
-    if (already) return c.json({ events: [] as PollEvent[] });
-    await cache.set(rlKey, "1", POLL_RATE_LIMIT_TTL);
-  } catch {
-    // cache unavailable — allow through (graceful degradation)
-  }
+  // ── Per-user throttle: 1 poll / 10s ──
+  if (await isThrottled(user.id)) return c.json({ events: [] as PollEvent[] });
 
-  // ── Source 1: DB broadcasts (+ this user's own targeted rows) ──
+  // ── Merge both sources, then cursor-filter + dedupe + cap ──
   const collected: PollEvent[] = [];
-  try {
-    const [broadcasts, targeted] = await Promise.all([
-      recentBroadcasts(MAX_EVENTS),
-      userNotifications(user.id, 20),
-    ]);
-    const cutoff = Date.now() - FIRST_POLL_WINDOW_DAYS * 24 * 60 * 60 * 1000;
-    for (const row of [...broadcasts, ...targeted]) {
-      if (row.createdAt.getTime() < cutoff) continue;
-      collected.push({
-        id: row.eventId,
-        type: row.type,
-        title: row.title,
-        message: row.message,
-        url: row.url ?? undefined,
-        channelUrl: row.channelUrl ?? undefined,
-        data: (row.data as Record<string, unknown> | null) ?? undefined,
-        createdAt: row.createdAt.toISOString(),
-      });
-    }
-  } catch {
-    // DB unavailable — fall through to cache-only events
-  }
-
-  // ── Source 2: legacy per-user cache events ──
-  try {
-    const cache = getCache();
-    const cached = await cache.get<CacheEvent[]>(NOTIFICATIONS_KEY_PREFIX + user.id);
-    if (Array.isArray(cached)) {
-      for (const ev of cached) {
-        collected.push({
-          id: ev.id,
-          type: ev.type,
-          title: ev.title,
-          message: ev.message,
-          data: ev.data,
-          createdAt: ev.createdAt,
-        });
-      }
-    }
-  } catch {
-    // cache unavailable — broadcasts alone are enough
-  }
-
-  // ── Cursor filter + dedupe + newest-first + cap ──
-  const seen = new Set<string>();
-  const deduped: PollEvent[] = [];
-  for (const ev of collected) {
-    if (seen.has(ev.id)) continue;
-    seen.add(ev.id);
-    if (!isAfterCursor(ev.id, after)) continue;
-    deduped.push(ev);
-  }
-  const events = deduped.sort((a, b) => b.id.localeCompare(a.id)).slice(0, MAX_EVENTS);
+  await collectDbEvents(user.id, collected);
+  await collectCacheEvents(user.id, collected);
+  const events = finalize(collected, after);
 
   return c.json({ events });
 });

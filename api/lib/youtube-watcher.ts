@@ -163,23 +163,24 @@ export async function checkForNewEpisodes(): Promise<{ announced: ParsedVideo[] 
 
   const announced: ParsedVideo[] = [];
   if (fresh.length > 0) {
-    for (const video of fresh) {
-      const title = video.title || "حلقة جديدة";
-      const eventId = await pushNotification({
-        type: "youtube",
-        title: "🎬 حلقة جديدة على قناة اليوتيوب",
-        message:
-          `«${title}» نزلت الآن على قناة AhmedEtap — كورس ETAP كامل بالعربي. ` +
-          `شوفها الأول وخليك دايمًا متقدم: فعّل الجرس 🔔 على القناة عشان يوصلك كل شرح جديد أول بأول وانت في الأولين.`,
-        url: watchUrl(video.videoId),
-        channelUrl: CHANNEL_URL,
-        data: { videoId: video.videoId, playlistId: PLAYLIST_ID },
-      });
-      if (eventId) {
-        announced.push(video);
-        logger.info("[YouTubeWatch] new episode announced", { videoId: video.videoId, title });
+    // pushNotification never throws (best-effort, returns null on failure), so
+    // the capped set of new-episode notifications can be persisted in parallel.
+    const results = await Promise.allSettled(fresh.map((video) => pushNotification({
+      type: "youtube",
+      title: "🎬 حلقة جديدة على قناة اليوتيوب",
+      message:
+        `«${video.title || "حلقة جديدة"}» نزلت الآن على قناة AhmedEtap — كورس ETAP كامل بالعربي. ` +
+        `شوفها الأول وخليك دايمًا متقدم: فعّل الجرس 🔔 على القناة عشان يوصلك كل شرح جديد أول بأول وانت في الأولين.`,
+      url: watchUrl(video.videoId),
+      channelUrl: CHANNEL_URL,
+      data: { videoId: video.videoId, playlistId: PLAYLIST_ID },
+    })));
+    results.forEach((r, idx) => {
+      if (r.status === "fulfilled" && r.value) {
+        announced.push(fresh[idx]);
+        logger.info("[YouTubeWatch] new episode announced", { videoId: fresh[idx].videoId, title: fresh[idx].title });
       }
-    }
+    });
   }
 
   // ── Persist the merged known set (bounded) ──

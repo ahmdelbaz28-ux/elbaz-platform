@@ -19,7 +19,7 @@ const BASE_URL = process.env.BASE_URL || "http://127.0.0.1:7860";
 /** Log-injection guard (S5145): CRLF/control chars stripped before printing. */
 function safeLog(input: string): string {
   // eslint-disable-next-line no-control-regex -- the control chars are exactly what we strip
-  return input.replace(/[\r\n\x00-\x1f\x7f]/g, " ").slice(0, 200);
+  return input.replace(/[\x00-\x1f\x7f]/g, " ").slice(0, 200);
 }
 
 // ── 1. VAPID ──────────────────────────────────────────────────────────────────
@@ -57,7 +57,10 @@ if (!tgToken || !tgChat) {
         signal: AbortSignal.timeout(10_000),
       });
       const body = (await res.json()) as { ok: boolean; description?: string };
-      console.log(`   ↳ send: ${body.ok ? "✓ delivered — check the channel" : `✗ ${safeLog(body.description ?? "unknown error")}`}`);
+      const sendNote = body.ok
+        ? "✓ delivered — check the channel"
+        : `✗ ${safeLog(body.description ?? "unknown error")}`;
+      console.log(`   ↳ send: ${sendNote}`);
       if (!body.ok) process.exitCode = 1;
     } catch (err) {
       console.log(`   ↳ send: ✗ ${safeLog(err instanceof Error ? err.message : String(err))}`);

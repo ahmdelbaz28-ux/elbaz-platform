@@ -28,6 +28,7 @@ DIST = "/home/z/my-project/work/elbaz-platform/dist/public"
 OUT = "/home/z/my-project/work/elbaz-platform/scripts/shots_wallet"
 COURSE_PATH = "/courses/etap-complete-course"
 COURSE_SLUG = "etap-complete-course"
+JSON_CT = "application/json"
 
 subprocess.run(["mkdir", "-p", OUT], check=True)
 
@@ -68,11 +69,19 @@ state = {
     "settled": False,
 }
 
+def current_progress() -> int:
+    """0 → watched-only 50 → watched+quiz 100 (matches CourseDetail semantics)."""
+    if state["watched"] and state["quiz_passed"]:
+        return 100
+    if state["watched"]:
+        return 50
+    return 0
+
 def enroll_json():
     return {"result": {"data": {"json": {
         "enrolled": state["settled"],
         "isCompleted": state["watched"] and state["quiz_passed"],
-        "progress": 100 if (state["watched"] and state["quiz_passed"]) else (50 if state["watched"] else 0),
+        "progress": current_progress(),
     }}}}
 
 def verify_json():
@@ -108,6 +117,8 @@ def make_server():
                 return os.path.join(DIST, "index.html")
             return fs
         def log_message(self, *a):
+            # Intentionally silent: the harness prints its own step results and
+            # request logging would drown them out.
             pass
 
     socketserver.TCPServer.allow_reuse_address = True
@@ -127,64 +138,94 @@ def jroute(pg, handler):
         body="<html><body><h1>Paymob Wallet Checkout (mock)</h1>"
              f"<p>wallet phone flow for {TXN}</p></body></html>"))
 
+def _ok(route, payload, status=200):
+    return route.fulfill(status=status, content_type=JSON_CT, body=json.dumps(payload))
+
+def _err(route, status, path, message, code):
+    return route.fulfill(status=status, content_type=JSON_CT,
+        body=json.dumps({"error": {"json": {"message": message, "code": -32001,
+            "data": {"code": code, "httpStatus": status, "path": path}}}}))
+
+def _login(route):
+    headers = {"content-type": JSON_CT,
+               "set-cookie": [
+                   "elbaz_auth=mock-token; Max-Age=2592000; Path=/; SameSite=None; Secure; HttpOnly",
+                   "elbaz_auth_flag=1; Max-Age=2592000; Path=/; SameSite=None; Secure"]}
+    return route.fulfill(status=200, headers=headers, content_type=JSON_CT,
+                         body=json.dumps(LOGIN_OK))
+
+def _me(route):
+    return _ok(route, ME_OK)
+
+def _is_configured(route):
+    return _ok(route, IS_CONFIGURED)
+
+def _create(route):
+    body = json.loads(route.request.post_data or "{}")
+    json_in = body.get("json") or body
+    if json_in.get("paymentMethod") not in ("vodafone_cash", "wallet"):
+        return _err(route, 400, "payment.create", "expected wallet method", "BAD_REQUEST")
+    return _ok(route, CREATE_OK)
+
+def _verify(route):
+    # the mock webhook settled the wallet transaction the moment it was
+    # created — the first verify poll therefore confirms "succeeded"
+    # and the enrollment check (course.checkEnrollment) flips after it.
+    state["verify_calls"] += 1
+    state["settled"] = True
+    return _ok(route, verify_json())
+
+def _enrollment(route):
+    return _ok(route, enroll_json())
+
+def _by_slug(route):
+    return _ok(route, {"result": {"data": {"json": COURSE}}})
+
+def _lessons(route):
+    return _ok(route, LESSONS)
+
+def _mark_watched(route):
+    state["watched"] = True
+    return _ok(route, {"result": {"data": {"json": {"success": True}}}})
+
+def _submit_quiz(route):
+    state["quiz_passed"] = True
+    return _ok(route, {"result": {"data": {"json": {"passed": True, "score": 100}}}})
+
+def _generate_certificate(route):
+    if not (state["watched"] and state["quiz_passed"]):
+        return _err(route, 403, "certificate.generate", "FORBIDDEN", "FORBIDDEN")
+    return _ok(route, {"result": {"data": {"json": {"generateCertificate": CERT_OK}}}})
+
+EXACT_ROUTES = {
+    ("POST", "auth.login"): _login,
+    ("GET", "auth.me"): _me,
+    ("GET", "payment.isConfigured"): _is_configured,
+    ("POST", "payment.create"): _create,
+    ("GET", "payment.verify"): _verify,
+    ("GET", "course.checkEnrollment"): _enrollment,
+    ("POST", "course.markWatched"): _mark_watched,
+    ("POST", "course.submitQuiz"): _submit_quiz,
+    ("POST", "certificate.generate"): _generate_certificate,
+}
+PREFIX_ROUTES = {  # tRPC paths that carry query suffixes (batch params)
+    "course.bySlug": _by_slug,
+    "course.lessons": _lessons,
+}
+
 def build_handler():
     def handler(route):
         req = route.request
-        url = req.url
-        if "/api/trpc/" not in url:
+        if "/api/trpc/" not in req.url:
             return route.continue_()
-        path = url.split("/api/trpc/")[1].split("?")[0]
-        method = req.method
-
-        if method == "POST" and path == "auth.login":
-            headers = {"content-type": "application/json",
-                       "set-cookie": [
-                           "elbaz_auth=mock-token; Max-Age=2592000; Path=/; SameSite=None; Secure; HttpOnly",
-                           "elbaz_auth_flag=1; Max-Age=2592000; Path=/; SameSite=None; Secure"]}
-            return route.fulfill(status=200, headers=headers, content_type="application/json",
-                                 body=json.dumps(LOGIN_OK))
-        if method == "GET" and path == "auth.me":
-            return route.fulfill(status=200, content_type="application/json", body=json.dumps(ME_OK))
-        if method == "GET" and path == "payment.isConfigured":
-            return route.fulfill(status=200, content_type="application/json", body=json.dumps(IS_CONFIGURED))
-        if method == "POST" and path == "payment.create":
-            body = json.loads(req.post_data or "{}")
-            json_in = body.get("json") or body
-            if (json_in.get("paymentMethod") != "vodafone_cash" and json_in.get("paymentMethod") != "wallet"):
-                return route.fulfill(status=400, content_type="application/json",
-                                     body=json.dumps({"error": {"json": {"message": "expected wallet method", "code": -32001,
-                                         "data": {"code": "BAD_REQUEST", "httpStatus": 400, "path": "payment.create"}}}}))
-            return route.fulfill(status=200, content_type="application/json", body=json.dumps(CREATE_OK))
-        if method == "GET" and path == "payment.verify":
-            state["verify_calls"] += 1
-            # the mock webhook settled the wallet transaction the moment it was
-            # created — the first verify poll therefore confirms "succeeded"
-            # and the enrollment check (course.checkEnrollment) flips after it.
-            state["settled"] = True
-            return route.fulfill(status=200, content_type="application/json", body=json.dumps(verify_json()))
-        if method == "GET" and path == "course.checkEnrollment":
-            return route.fulfill(status=200, content_type="application/json", body=json.dumps(enroll_json()))
-        if method == "GET" and path.startswith("course.bySlug"):
-            return route.fulfill(status=200, content_type="application/json",
-                                 body=json.dumps({"result": {"data": {"json": COURSE}}}))
-        if method == "GET" and path.startswith("course.lessons"):
-            return route.fulfill(status=200, content_type="application/json", body=json.dumps(LESSONS))
-        if method == "POST" and path == "course.markWatched":
-            state["watched"] = True
-            return route.fulfill(status=200, content_type="application/json",
-                                 body=json.dumps({"result": {"data": {"json": {"success": True}}}}))
-        if method == "POST" and path == "course.submitQuiz":
-            state["quiz_passed"] = True
-            return route.fulfill(status=200, content_type="application/json",
-                                 body=json.dumps({"result": {"data": {"json": {"passed": True, "score": 100}}}}))
-        if method == "POST" and path == "certificate.generate":
-            if not (state["watched"] and state["quiz_passed"]):
-                return route.fulfill(status=403, content_type="application/json",
-                                     body=json.dumps({"error": {"json": {"message": "FORBIDDEN", "code": -32001,
-                                         "data": {"code": "FORBIDDEN", "httpStatus": 403, "path": "certificate.generate"}}}}))
-            return route.fulfill(status=200, content_type="application/json",
-                                 body=json.dumps({"result": {"data": {"json": {"generateCertificate": CERT_OK}}}}))
-        return route.continue_()
+        path = req.url.split("/api/trpc/")[1].split("?")[0]
+        responder = EXACT_ROUTES.get((req.method, path))
+        if responder is None:
+            for prefix, fn in PREFIX_ROUTES.items():
+                if path.startswith(prefix):
+                    responder = fn
+                    break
+        return responder(route) if responder else route.continue_()
     return handler
 
 fails, notes = [], []

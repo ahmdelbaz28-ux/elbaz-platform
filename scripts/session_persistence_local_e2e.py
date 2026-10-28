@@ -40,6 +40,14 @@ PORT = 4173
 BASE = f"http://127.0.0.1:{PORT}"
 DIST = "/home/z/my-project/work/elbaz-platform/dist/public"
 OUT = "/home/z/my-project/work/elbaz-platform/scripts/shots_session"
+
+# Shared literals (SonarCloud S1192: no duplicated string literals).
+JSON_CT = "application/json"
+DASHBOARD = "/dashboard"
+LOGIN = "/login"
+AUTH_FLAG_COOKIE = "elbaz_auth_flag=1"
+GET_TOKEN_JS = "localStorage.getItem('elbaz_auth_token')"
+
 subprocess.run(["mkdir", "-p", OUT], check=True)
 
 def make_spa_server():
@@ -70,10 +78,11 @@ def make_spa_server():
             # SSRF note (SonarCloud S5144): the destination host/port below are
             # compile-time constants (the local mock); after this allowlist the
             # path is the sole user-controlled part and cannot redirect a
-            # fixed-host origin-form request — flagged line carries NOSONAR.
+            # fixed-host origin-form request — flagged line carries the inline
+            # suppression marker below.
             if not re.fullmatch(r"/api/[\x21-\x7e]*", self.path):
                 self.send_response(400)
-                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Type", JSON_CT)
                 self.send_header("Content-Length", "26")
                 self.end_headers()
                 self.wfile.write(b'{"error":"bad api path"}')
@@ -85,7 +94,7 @@ def make_spa_server():
             headers = {k: v for k, v in self.headers.items()
                        if k.lower() not in ("host", "connection", "content-length")}
             try:
-                # NOSONAR: SSRF false positive — fixed constant destination
+                # SSRF false positive — fixed constant destination
                 # (127.0.0.1:MOCK_PORT); path allowlisted above, no user input
                 # reaches the request authority.
                 conn.request(self.command, self.path, body=body, headers=headers)  # NOSONAR
@@ -96,14 +105,14 @@ def make_spa_server():
                 for k, v in resp.getheaders():
                     if k.lower() == "set-cookie":
                         self.send_header("Set-Cookie", v)
-                self.send_header("Content-Type", resp.getheader("Content-Type") or "application/json")
+                self.send_header("Content-Type", resp.getheader("Content-Type") or JSON_CT)
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 if data:
                     self.wfile.write(data)
             except Exception:
                 self.send_response(502)
-                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Type", JSON_CT)
                 self.send_header("Content-Length", "22")
                 self.end_headers()
                 self.wfile.write(b'{"error":"mock down"}')
@@ -122,6 +131,8 @@ def make_spa_server():
             self.end_headers()
 
         def log_message(self, *a):
+            # Intentionally silent: the harness prints its own step results and
+            # request logging would drown them out.
             pass
 
     socketserver.ThreadingTCPServer.allow_reuse_address = True
@@ -151,11 +162,11 @@ def proxy_trpc(pg):
             resp = route.fetch(url=target)
             route.fulfill(response=resp)
         except Exception:
-            route.fulfill(status=502, content_type="application/json", body='{"error":"mock down"}')
+            route.fulfill(status=502, content_type=JSON_CT, body='{"error":"mock down"}')
     pg.route("**/api/trpc/**", handler)
-    pg.route("**/api/version", lambda r: r.fulfill(status=200, content_type="application/json", body='{"version":"e2e-mock"}'))
-    pg.route("**/api/env", lambda r: r.fulfill(status=200, content_type="application/json", body='{"status":"ok"}'))
-    pg.route("**/api/health", lambda r: r.fulfill(status=200, content_type="application/json", body='{"status":"ok"}'))
+    pg.route("**/api/version", lambda r: r.fulfill(status=200, content_type=JSON_CT, body='{"version":"e2e-mock"}'))
+    pg.route("**/api/env", lambda r: r.fulfill(status=200, content_type=JSON_CT, body='{"status":"ok"}'))
+    pg.route("**/api/health", lambda r: r.fulfill(status=200, content_type=JSON_CT, body='{"status":"ok"}'))
 
 def dismiss_overlays(pg):
     for name in ["Accept all", "Accept", "موافق", "قبول الكل", "Got it", "حسناً"]:
@@ -181,13 +192,13 @@ def dismiss_overlays(pg):
 CONSENT_SHIM = ("localStorage.setItem('elbaz_cookie_consent', "
                 "JSON.stringify({necessary:true,analytics:false,marketing:false}));")
 
-def open_app(pg, native=False):
-    pg.goto(BASE + "/dashboard", wait_until="domcontentloaded", timeout=30000)
+def open_app(pg):
+    pg.goto(BASE + DASHBOARD, wait_until="domcontentloaded", timeout=30000)
     pg.wait_for_timeout(2500)
     dismiss_overlays(pg)
 
 def do_login(pg):
-    pg.goto(BASE + "/login", wait_until="domcontentloaded")
+    pg.goto(BASE + LOGIN, wait_until="domcontentloaded")
     pg.wait_for_timeout(1500)
     dismiss_overlays(pg)
     pg.locator("form input").nth(0).fill("sessiontester")
@@ -195,13 +206,13 @@ def do_login(pg):
     pg.locator("form button[type=submit]").first.click()
     pg.wait_for_timeout(2500)
     # login redirects to safeRedirectTarget() (may be "/") — land on /dashboard
-    pg.goto(BASE + "/dashboard", wait_until="domcontentloaded", timeout=30000)
+    pg.goto(BASE + DASHBOARD, wait_until="domcontentloaded", timeout=30000)
     pg.wait_for_timeout(2500)
     dismiss_overlays(pg)
 
 def logged_in(pg) -> bool:
     """ProtectedRoute semantics: /dashboard survived 2.5s without a /login bounce."""
-    return "/dashboard" in pg.url and "/login" not in pg.url and (
+    return DASHBOARD in pg.url and LOGIN not in pg.url and (
         pg.get_by_text("Session Tester").count() > 0 or pg.get_by_text("sessiontester").count() > 0
         or pg.locator("img[alt*='avatar' i], [data-slot='avatar']").count() > 0
         or True  # no-redirect IS the ProtectedRoute verdict; text is bonus
@@ -222,7 +233,7 @@ with sync_playwright() as p:
     do_login(pg)
     check("W1 login lands on dashboard", logged_in(pg), pg.url)
     check("W1 flag cookie stored from real Set-Cookie",
-          "elbaz_auth_flag=1" in (pg.evaluate("document.cookie") or ""),
+          AUTH_FLAG_COOKIE in (pg.evaluate("document.cookie") or ""),
           pg.evaluate("document.cookie"))
     # ── APP RESTART: brand-new page, same profile (cookies survive) ──
     pg2 = ctx.new_page()
@@ -230,7 +241,7 @@ with sync_playwright() as p:
     open_app(pg2)
     check("W1 still logged in after restart (no re-login)", logged_in(pg2), pg2.url)
     check("W1 flag cookie survives restart",
-          "elbaz_auth_flag=1" in (pg2.evaluate("document.cookie") or ""),
+          AUTH_FLAG_COOKIE in (pg2.evaluate("document.cookie") or ""),
           pg2.evaluate("document.cookie"))
     try:
         pg2.screenshot(path=f"{OUT}/W1_web_restart.png")
@@ -251,7 +262,7 @@ with sync_playwright() as p:
     open_app(pg)
     check("W2 expired session renewed — still logged in", logged_in(pg), pg.url)
     check("W2 renewed flag cookie alive",
-          "elbaz_auth_flag=1" in (pg.evaluate("document.cookie") or ""),
+          AUTH_FLAG_COOKIE in (pg.evaluate("document.cookie") or ""),
           pg.evaluate("document.cookie"))
     try:
         pg.screenshot(path=f"{OUT}/W2_web_grace.png")
@@ -267,7 +278,7 @@ with sync_playwright() as p:
     pg.add_init_script(NATIVE_SHIM)
     proxy_trpc(pg)
     do_login(pg)
-    stored = pg.evaluate("localStorage.getItem('elbaz_auth_token')")
+    stored = pg.evaluate(GET_TOKEN_JS)
     check("W3 native stores JWT in localStorage", stored == TOKEN_V1, str(stored))
     # ── APP RESTART (init shim WITHOUT clearing storage) ──
     pg2 = ctx.new_page()
@@ -290,7 +301,7 @@ with sync_playwright() as p:
     proxy_trpc(pg)
     open_app(pg)
     check("W4 logged in via Bearer token", logged_in(pg), pg.url)
-    stored = pg.evaluate("localStorage.getItem('elbaz_auth_token')")
+    stored = pg.evaluate(GET_TOKEN_JS)
     check("W4 localStorage token RENEWED from x-renewed-token header", stored == TOKEN_V2, str(stored))
     try:
         pg.screenshot(path=f"{OUT}/W4_native_renew.png")
@@ -305,7 +316,7 @@ with sync_playwright() as p:
     pg.add_init_script(NATIVE_TOKEN)
     proxy_trpc(pg)
     open_app(pg)
-    stored = pg.evaluate("localStorage.getItem('elbaz_auth_token')")
+    stored = pg.evaluate(GET_TOKEN_JS)
     check("W5 expired native token renewed + still logged in",
           stored == TOKEN_V2 and logged_in(pg), f"token={stored} url={pg.url}")
     try:
@@ -336,9 +347,9 @@ with sync_playwright() as p:
             pg.wait_for_timeout(2500)
         except Exception as e:
             print("W6 nav exception:", str(e)[:160])
-    gone = pg.evaluate("localStorage.getItem('elbaz_auth_token')")
+    gone = pg.evaluate(GET_TOKEN_JS)
     check("W6 logout clears the native token", gone in (None, "", "null"), str(gone))
-    check("W6 logout lands on /login", "/login" in pg.url, pg.url)
+    check("W6 logout lands on /login", LOGIN in pg.url, pg.url)
     try:
         pg.screenshot(path=f"{OUT}/W6_native_logout.png")
     except Exception:
