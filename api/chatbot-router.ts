@@ -6,10 +6,11 @@
  *   POST /api/chatbot/stream  — SSE streaming response
  */
 
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { getChatResponse, getStreamResponse, type ChatApiMessage, type ContentPart } from "./lib/chatbot.js";
 import { getCourseCatalogText } from "./lib/course-catalog.js";
 import { sanitizeReplyOutput } from "./lib/chatbot-prompts.js";
+import { chatbotError, logSafeError, scrubCredentials, type ChatbotErrorCode } from "./lib/chatbot-errors.js";
 import { getClientIpFromHono as getChatbotIp } from "./lib/client-ip";
 import { getImageQuotaUsed, incrementImageQuota, DAILY_IMAGE_LIMIT } from "./lib/image-quota.js";
 import { persistChatRound, getChatHistory, getLatestSummaryText } from "./lib/chat-history.js";
@@ -18,6 +19,16 @@ import { logger } from "./lib/logger.js";
 // Removed checkRateLimit
 
 const chatbotRouter = new Hono();
+
+/** Unified additive error response: `error` (human text) + `code` + `hint`. */
+function errorResponse(
+  c: Context,
+  code: ChatbotErrorCode,
+  opts: { lang?: "ar" | "en"; chatId?: string; message?: string } = {},
+): Response {
+  const { envelope, http } = chatbotError(code, opts);
+  return c.json(envelope, http as 400 | 401 | 413 | 429 | 500 | 503);
+}
 
 // ── Simple in-memory rate limiter for chatbot (no auth required) ──
 const chatbotRequests = new Map<string, { count: number; resetAt: number }>();
@@ -95,11 +106,11 @@ interface NormalizedChatInput {
   totalTextChars: number;
 }
 
-type NormalizeFailure = { status: 400 | 413; en: string; ar: string };
+type NormalizeFailure = { status: 400 | 413; en: string; ar: string; code: ChatbotErrorCode };
 
 function normalizeChatInput(raw: unknown): { ok: true; data: NormalizedChatInput } | { ok: false; failure: NormalizeFailure } {
   if (!Array.isArray(raw) || raw.length === 0) {
-    return { ok: false, failure: { status: 400, en: "Messages array is required", ar: "Messages array is required" } };
+    return { ok: false, failure: { status: 400, code: "BAD_REQUEST", en: "Messages array is required", ar: "Messages array is required" } };
   }
   const sliced = raw.slice(-50);
 
@@ -152,6 +163,7 @@ function normalizeChatInput(raw: unknown): { ok: true; data: NormalizedChatInput
           ok: false,
           failure: {
             status: 400,
+            code: "BAD_INPUT",
             en: `Too many images — max ${MAX_IMAGES_PER_REQUEST} per message`,
             ar: `صور كثيرة — الحد الأقصى ${MAX_IMAGES_PER_REQUEST} صورة لكل رسالة`,
           },
@@ -163,6 +175,7 @@ function normalizeChatInput(raw: unknown): { ok: true; data: NormalizedChatInput
             ok: false,
             failure: {
               status: 413,
+              code: "TOO_LARGE",
               en: "Attached image is too large or in an unsupported format — try a smaller image",
               ar: "الصورة المرفقة كبيرة جداً أو بصيغة غير مدعومة — جرب صورة أصغر",
             },
@@ -187,7 +200,7 @@ function normalizeChatInput(raw: unknown): { ok: true; data: NormalizedChatInput
   }
 
   if (messages.length === 0) {
-    return { ok: false, failure: { status: 400, en: "Messages array is required", ar: "Messages array is required" } };
+    return { ok: false, failure: { status: 400, code: "BAD_REQUEST", en: "Messages array is required", ar: "Messages array is required" } };
   }
   return { ok: true, data: { messages, vision: imageCount > 0, imageCount, totalTextChars } };
 }
@@ -237,14 +250,14 @@ function persistRoundSafe(userId: number, messages: ChatApiMessage[], vision: bo
 chatbotRouter.get("/history", async (c) => {
   const user = await resolveOptionalUser(c.req.raw);
   if (!user) {
-    return c.json({ success: false, error: "UNAUTHORIZED" }, 401);
+    return errorResponse(c, "UNAUTHORIZED");
   }
   try {
     const data = await getChatHistory(user.id);
     return c.json({ success: true, messages: data.messages, summary: data.summary });
   } catch (err) {
-    logger.error("[Chatbot] history load failed", { error: err instanceof Error ? err.message : String(err) });
-    return c.json({ success: false, error: "History temporarily unavailable" }, 500);
+    logger.error("[Chatbot] history load failed", { error: logSafeError(err) });
+    return errorResponse(c, "INTERNAL");
   }
 });
 
@@ -252,7 +265,7 @@ chatbotRouter.get("/history", async (c) => {
 chatbotRouter.delete("/history", async (c) => {
   const user = await resolveOptionalUser(c.req.raw);
   if (!user) {
-    return c.json({ success: false, error: "UNAUTHORIZED" }, 401);
+    return errorResponse(c, "UNAUTHORIZED");
   }
   try {
     const { getDb } = await import("./queries/connection.js");
@@ -261,8 +274,8 @@ chatbotRouter.delete("/history", async (c) => {
     await getDb().delete(chatMessages).where(eq(chatMessages.userId, user.id));
     return c.json({ success: true });
   } catch (err) {
-    logger.error("[Chatbot] history clear failed", { error: err instanceof Error ? err.message : String(err) });
-    return c.json({ success: false, error: "Could not clear history" }, 500);
+    logger.error("[Chatbot] history clear failed", { error: logSafeError(err) });
+    return errorResponse(c, "INTERNAL");
   }
 });
 
@@ -271,7 +284,7 @@ chatbotRouter.post("/", async (c) => {
   try {
     const ip = getChatbotIp(c);
     if (!checkChatbotRateLimit(ip)) {
-      return c.json({ success: false, error: "Rate limit exceeded. Please try again later." }, 429);
+      return errorResponse(c, "RATE_LIMITED");
     }
     const body = await c.req.json<{ messages: unknown; language?: string; chatId?: string; mode?: "thinking" | "instant" }>();
 
@@ -279,12 +292,12 @@ chatbotRouter.post("/", async (c) => {
     if (!normalized.ok) {
       const isAr = resolveChatLanguage(body.language, []) === "ar";
       const f = normalized.failure;
-      return c.json({ success: false, error: isAr ? f.ar : f.en }, f.status);
+      return errorResponse(c, f.code, { lang: isAr ? "ar" : "en", message: isAr ? f.ar : f.en });
     }
     const { messages, vision, imageCount, totalTextChars } = normalized.data;
 
     if (totalTextChars > MAX_TOTAL_CHARS) {
-      return c.json({ success: false, error: "Conversation too long. Please start a new chat." }, 413);
+      return errorResponse(c, "TOO_LARGE", { message: "Conversation too long. Please start a new chat." });
     }
 
     // Vision quota — enforced BEFORE dispatch so no provider call is wasted.
@@ -293,7 +306,7 @@ chatbotRouter.post("/", async (c) => {
       if (used + imageCount > DAILY_IMAGE_LIMIT) {
         const msg = imageQuotaExceededResponse(used);
         const lang = resolveChatLanguage(body.language, messages);
-        return c.json({ success: false, error: lang === "ar" ? msg.ar : msg.en }, 429);
+        return errorResponse(c, "QUOTA_EXCEEDED", { lang: lang === "en" ? "en" : "ar", chatId: body.chatId, message: lang === "ar" ? msg.ar : msg.en });
       }
     }
 
@@ -343,14 +356,16 @@ chatbotRouter.post("/", async (c) => {
       });
     }
 
-    return c.json({
-      success: false,
-      error: result.error || "Unknown error",
+    // UPSTREAM_EXHAUSTED — the provider walk failed. Agent-Reach rule: the
+    // upstream detail must never leak credentials, and the message must never
+    // read like a login/permission problem.
+    return errorResponse(c, "UPSTREAM_EXHAUSTED", {
       chatId: body.chatId,
-    }, 503);
+      message: scrubCredentials(result.error || "Unknown error"),
+    });
   } catch (err) {
-    logger.error("[Chatbot] Error in /api/chatbot", { error: err instanceof Error ? err.message : String(err) });
-    return c.json({ success: false, error: "Internal server error" }, 500);
+    logger.error("[Chatbot] Error in /api/chatbot", { error: logSafeError(err) });
+    return errorResponse(c, "INTERNAL");
   }
 });
 
@@ -404,7 +419,7 @@ function softBusyText(language?: string): string {
 chatbotRouter.post("/stream", async (c) => {
   const ip = getChatbotIp(c);
   if (!checkChatbotRateLimit(ip)) {
-    return c.json({ success: false, error: "Rate limit exceeded. Please try again later." }, 429);
+    return errorResponse(c, "RATE_LIMITED");
   }
   const body = await c.req.json<{ messages: unknown; language?: string; chatId?: string; mode?: "thinking" | "instant" }>();
 
@@ -412,12 +427,12 @@ chatbotRouter.post("/stream", async (c) => {
   if (!normalized.ok) {
     const isAr = resolveChatLanguage(body.language, []) === "ar";
     const f = normalized.failure;
-    return c.json({ success: false, error: isAr ? f.ar : f.en, chatId: body.chatId }, f.status);
+    return errorResponse(c, f.code, { lang: isAr ? "ar" : "en", chatId: body.chatId, message: isAr ? f.ar : f.en });
   }
   const { messages, vision, imageCount, totalTextChars } = normalized.data;
 
   if (totalTextChars > MAX_TOTAL_CHARS) {
-    return c.json({ success: false, error: "Conversation too long. Please start a new chat.", chatId: body.chatId }, 413);
+    return errorResponse(c, "TOO_LARGE", { chatId: body.chatId, message: "Conversation too long. Please start a new chat." });
   }
 
   // Vision quota — enforced BEFORE dispatch so no provider call is wasted.
@@ -426,7 +441,7 @@ chatbotRouter.post("/stream", async (c) => {
     if (used + imageCount > DAILY_IMAGE_LIMIT) {
       const msg = imageQuotaExceededResponse(used);
       const lang = resolveChatLanguage(body.language, messages);
-      return c.json({ success: false, error: lang === "ar" ? msg.ar : msg.en, chatId: body.chatId }, 429);
+      return errorResponse(c, "QUOTA_EXCEEDED", { lang: lang === "en" ? "en" : "ar", chatId: body.chatId, message: lang === "ar" ? msg.ar : msg.en });
     }
   }
 

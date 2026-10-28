@@ -33,7 +33,7 @@ interface Category {
   /** Anchor applies to the AR prompt, EN prompt, or both via either-language list. */
   anchors: Array<{ re: RegExp; why: string }>;
   /** Which option introduced/strengthened this category (for reporting). */
-  introducedBy: "baseline" | "A" | "B" | "D";
+  introducedBy: "baseline" | "A" | "B" | "D" | "R";
 }
 
 const CATEGORIES: Category[] = [
@@ -126,6 +126,21 @@ const CATEGORIES: Category[] = [
       { re: /اعترف|أتعامل|acknowledge/i, why: "empathy-first rule" },
       { re: /ticket|التذكرة|الدعم/i, why: "human escalation channel" },
       { re: /لوم|blame/i, why: "never-blame rule" },
+    ],
+  },
+  {
+    key: "evidence_honesty",
+    label: "Evidence honesty (three-layer answer-source model — Reach-gems)",
+    introducedBy: "R",
+    anchors: [
+      // Each anchor accepts BOTH phrasings: the full thinking-mode model
+      // (evidenceModelAr/En) and the condensed instant-mode quick anchor.
+      { re: /معرفة مؤكدة|مؤكدة \(|Certain knowledge/, why: "layer 1: certain knowledge (catalog / named standard)" },
+      { re: /استنتاج هندسي|engineering derivation/i, why: "layer 2: engineering derivation with recomputable inputs" },
+      { re: /بيانات ناقصة|ناقصة \(|Missing data/, why: "layer 3: missing data routes into the MISSING protocol" },
+      { re: /العنوان ليس محتوى|عنوان الكورس ليس محتوى|title is not the content|a course title is not/i, why: "metadata-is-not-content (course title ≠ lesson contents)" },
+      { re: /سلّم المتاح|سلّم المؤكد|deliver what you have|deliver the grounded part/i, why: "deliver-what-you-have (partial answers never go silent)" },
+      { re: /طبقات|three (explicit )?layers|classify (every essential claim|your essential claims)/i, why: "explicit three-layer disclosure framing" },
     ],
   },
 ];

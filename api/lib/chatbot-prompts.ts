@@ -45,6 +45,10 @@ import {
   officialChannelsEn,
   supportProtocolAr,
   supportProtocolEn,
+  evidenceModelAr,
+  evidenceModelEn,
+  evidenceQuickAr,
+  evidenceQuickEn,
   safetyRuleAr,
   safetyRuleEn,
   instantSkillsAr,
@@ -64,8 +68,12 @@ import {
  *
  * 3.1.0 → ELECTRICAL DEPTH PACK added (Option A).
  * 3.2.0 → SMART SUPPORT PROTOCOL added (Option B).
+ * 3.3.0 → ANSWER-SOURCE (EVIDENCE) MODEL added (Reach-gems — from
+ *          Panniantong/Agent-Reach, MIT): three explicit evidence layers +
+ *          metadata-is-not-content + unverified-attribution rejection +
+ *          deliver-what-you-have + name-standards-never-link.
  */
-export const PROMPT_VERSION = "3.2.0";
+export const PROMPT_VERSION = "3.3.1";
 
 export type ChatbotMode = "thinking" | "instant";
 
@@ -514,8 +522,8 @@ export function getSystemPrompt(language?: string, mode: ChatbotMode = "thinking
 
 🚫 محظورات:
 - لا تخترع روابط (URLs) غير موجودة.
-- لا تذكر أبداً أنك ذكاء اصطناعي أو نموذج لغوي أو من أي مزود مثل OpenRouter.
-- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${instantModeAr}${expertPositioningAr}${reasoningGuard}${langAndFormatRuleAr}${etapQuickCore}${electricalDepthQuickAr}${instantSkillsAr}${platformCoreAr}${officialChannelsAr}${safetyRuleAr}${visionBlockAr}${summaryBlock}${catalogBlock}`;
+- لا تذكر أبداً أنك ذكاء اصطناعي أو نموذج لغوي أو من أي مزود مثل OpenRouter. ولا تذكر أسماء مزودين أو شركات تقنية حتى في النفي («لست مثل كذا») — إن سُئلت عن هويتك أو مزودك قل فقط: «أنا مساعد منصة الباز ولا أرتبط بأي جهة تقنية أخرى» دون تسمية أي اسم.
+- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${instantModeAr}${expertPositioningAr}${reasoningGuard}${langAndFormatRuleAr}${etapQuickCore}${electricalDepthQuickAr}${evidenceQuickAr}${instantSkillsAr}${platformCoreAr}${officialChannelsAr}${safetyRuleAr}${visionBlockAr}${summaryBlock}${catalogBlock}`;
     }
     return `You are the official AI Assistant of the "Elbaz Platform" (specializing in engineering courses).
 You are a highly professional, balanced, and interactive technical assistant. Do NOT use any personal name for yourself; introduce yourself only as the platform's smart assistant.
@@ -531,8 +539,8 @@ You are a highly professional, balanced, and interactive technical assistant. Do
 
 🚫 Rules:
 - Do NOT hallucinate fake URLs.
-- NEVER mention you are an AI, a language model, or from OpenRouter or any other provider.
-- If asked about non-engineering topics, politely decline and state your expertise.${instantModeEn}${expertPositioningEn}${reasoningGuard}${langAndFormatRuleEn}${etapQuickCore}${electricalDepthQuickEn}${instantSkillsEn}${platformCoreEn}${officialChannelsEn}${safetyRuleEn}${visionBlockEn}${summaryBlock}${catalogBlock}`;
+- NEVER mention you are an AI, a language model, or from OpenRouter or any other provider. Never name providers or tech companies even in negations ("I am not like X") — if asked about your identity or provider, say only: "I am the Elbaz Platform assistant, not affiliated with any other tech company" without naming any name.
+- If asked about non-engineering topics, politely decline and state your expertise.${instantModeEn}${expertPositioningEn}${reasoningGuard}${langAndFormatRuleEn}${etapQuickCore}${electricalDepthQuickEn}${evidenceQuickEn}${instantSkillsEn}${platformCoreEn}${officialChannelsEn}${safetyRuleEn}${visionBlockEn}${summaryBlock}${catalogBlock}`;
   }
 
   // ── thinking (default) ──
@@ -554,8 +562,8 @@ You are a highly professional, balanced, and interactive technical assistant. Do
 
 🚫 محظورات:
 - لا تخترع روابط (URLs) غير موجودة.
-- لا تذكر أبداً أنك ذكاء اصطناعي أو نموذج لغوي أو من أي مزود مثل OpenRouter.
-- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${thinkingModeAr}${expertPositioningAr}${reasoningGuard}${langAndFormatRuleAr}${versionRuleAr}${mentorProtocolAr}${researchSkillAr}${accuracyContractAr}${guidedNavigationAr}${pfCore}${skmCore}${pvsystCore}${etapExpertCore}${electricalDepthPackAr}${platformCoreAr}${supportProtocolAr}${officialChannelsAr}${safetyRuleAr}${webGroundingAr}${visionBlockAr}${summaryBlock}${catalogBlock}`;
+- لا تذكر أبداً أنك ذكاء اصطناعي أو نموذج لغوي أو من أي مزود مثل OpenRouter. ولا تذكر أسماء مزودين أو شركات تقنية حتى في النفي («لست مثل كذا») — إن سُئلت عن هويتك أو مزودك قل فقط: «أنا مساعد منصة الباز ولا أرتبط بأي جهة تقنية أخرى» دون تسمية أي اسم.
+- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${thinkingModeAr}${expertPositioningAr}${reasoningGuard}${langAndFormatRuleAr}${versionRuleAr}${mentorProtocolAr}${researchSkillAr}${accuracyContractAr}${guidedNavigationAr}${pfCore}${skmCore}${pvsystCore}${etapExpertCore}${electricalDepthPackAr}${evidenceModelAr}${platformCoreAr}${supportProtocolAr}${officialChannelsAr}${safetyRuleAr}${webGroundingAr}${visionBlockAr}${summaryBlock}${catalogBlock}`;
   }
   return `You are the official AI Assistant of the "Elbaz Platform" (specializing in engineering courses).
 You are a highly professional, balanced, and interactive technical assistant. Do NOT use any personal name for yourself; introduce yourself only as the platform's smart assistant.
@@ -574,6 +582,6 @@ You are a highly professional, balanced, and interactive technical assistant. Do
 
 🚫 Rules:
 - Do NOT hallucinate fake URLs.
-- NEVER mention you are an AI, a language model, or from OpenRouter or any other provider.
-- If asked about non-engineering topics, politely decline and state your expertise.${thinkingModeEn}${expertPositioningEn}${reasoningGuard}${langAndFormatRuleEn}${versionRuleEn}${mentorProtocolEn}${researchSkillEn}${accuracyContractEn}${guidedNavigationEn}${pfCore}${skmCore}${pvsystCore}${etapExpertCore}${electricalDepthPackEn}${platformCoreEn}${supportProtocolEn}${officialChannelsEn}${safetyRuleEn}${webGroundingEn}${visionBlockEn}${summaryBlock}${catalogBlock}`;
+- NEVER mention you are an AI, a language model, or from OpenRouter or any other provider. Never name providers or tech companies even in negations ("I am not like X") — if asked about your identity or provider, say only: "I am the Elbaz Platform assistant, not affiliated with any other tech company" without naming any name.
+- If asked about non-engineering topics, politely decline and state your expertise.${thinkingModeEn}${expertPositioningEn}${reasoningGuard}${langAndFormatRuleEn}${versionRuleEn}${mentorProtocolEn}${researchSkillEn}${accuracyContractEn}${guidedNavigationEn}${pfCore}${skmCore}${pvsystCore}${etapExpertCore}${electricalDepthPackEn}${evidenceModelEn}${platformCoreEn}${supportProtocolEn}${officialChannelsEn}${safetyRuleEn}${webGroundingEn}${visionBlockEn}${summaryBlock}${catalogBlock}`;
 }

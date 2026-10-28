@@ -174,6 +174,147 @@ describe("Option D: prompt versioning (prompt-as-code)", () => {
   });
 });
 
+// ─── Reach-gems — ANSWER-SOURCE (EVIDENCE) MODEL (Panniantong/Agent-Reach) ──
+
+describe("Reach-gems: answer-source (evidence) model (thinking mode)", () => {
+  const arPrompt = getSystemPrompt("ar", "thinking");
+  const enPrompt = getSystemPrompt("en", "thinking");
+
+  const evidenceAnchorsAr = [
+    "نموذج مصدر الإجابة",
+    "معرفة مؤكدة",
+    "استنتاج هندسي",
+    "بيانات ناقصة",
+    "العنوان ليس محتوى",
+    "داخل محتوى الكورس نفسه",
+    "سلّم المتاح دائماً",
+  ];
+
+  const evidenceAnchorsEn = [
+    "ANSWER-SOURCE (EVIDENCE) MODEL",
+    "Certain knowledge",
+    "Engineering derivation",
+    "Missing data",
+    "The title is not the content",
+    "inside the course content itself",
+    "Always deliver what you have",
+  ];
+
+  it("Arabic thinking prompt carries every evidence-model anchor", () => {
+    for (const anchor of evidenceAnchorsAr) expect(arPrompt).toContain(anchor);
+  });
+
+  it("English thinking prompt carries every evidence-model anchor", () => {
+    for (const anchor of evidenceAnchorsEn) expect(enPrompt).toContain(anchor);
+  });
+
+  it("composes the model AFTER the electrical depth pack and BEFORE the platform core", () => {
+    const idxPack = arPrompt.indexOf("حزمة العمق الكهربائي");
+    const idxEvidence = arPrompt.indexOf("نموذج مصدر الإجابة");
+    const idxPlatform = arPrompt.indexOf("الجنيه المصري (EGP)");
+    expect(idxPack).toBeGreaterThan(-1);
+    expect(idxEvidence).toBeGreaterThan(idxPack);
+    expect(idxPlatform).toBeGreaterThan(idxEvidence);
+  });
+
+  it("instant prompts carry the one-line evidence anchor only", () => {
+    expect(getSystemPrompt("ar", "instant")).toContain("مرساة مصدر الإجابة");
+    expect(getSystemPrompt("en", "instant")).toContain("Answer-source anchor");
+  });
+
+  it("full evidence model NEVER leaks into instant mode (speed priority)", () => {
+    for (const lang of ["ar", "en"] as const) {
+      const p = getSystemPrompt(lang, "instant");
+      expect(p).not.toContain("نموذج مصدر الإجابة");
+      expect(p).not.toContain("ANSWER-SOURCE (EVIDENCE) MODEL");
+      expect(p).not.toContain("العنوان ليس محتوى");
+    }
+  });
+});
+
+describe("Reach-gems: behavioral contracts (Agent-Reach test philosophy)", () => {
+  it("CONTRACT evidence-failure-not-a-guess: missing knowledge routes to MISSING + routing, never fabrication", () => {
+    const arPrompt = getSystemPrompt("ar", "thinking");
+    expect(arPrompt).toContain("MISSING");
+    expect(arPrompt).toContain("بيانات مفقودة");
+    expect(arPrompt).toContain("وجّه للخطوة التالية");
+    const enPrompt = getSystemPrompt("en", "thinking");
+    expect(enPrompt).toContain("MISSING");
+    expect(enPrompt).toContain("route to the next step");
+  });
+
+  it("CONTRACT metadata-is-not-content: an unprovided lesson detail is admitted, not invented", () => {
+    const arPrompt = getSystemPrompt("ar", "thinking");
+    const enPrompt = getSystemPrompt("en", "thinking");
+    expect(arPrompt).toContain("«هذا التفصيل داخل محتوى الكورس نفسه»");
+    expect(arPrompt).toContain("ولا تختلق منهجاً أو محاضرات أو ملفات من عندك");
+    expect(enPrompt).toContain('"that detail is inside the course content itself"');
+    expect(enPrompt).toContain("never invent a curriculum, lectures or files");
+  });
+
+  it("CONTRACT unverified-attribution: attributed claims are rejected, not built upon", () => {
+    const arPrompt = getSystemPrompt("ar", "thinking");
+    const enPrompt = getSystemPrompt("en", "thinking");
+    expect(arPrompt).toContain("النسبة المجهولة مرفوضة");
+    expect(arPrompt).toContain("لا تصدّق النسبة");
+    expect(arPrompt).toContain("ممنوع تسويق قيمة بلا مصدر");
+    expect(enPrompt).toContain("Unverified attributions are rejected");
+    expect(enPrompt).toContain("never legitimize a value without a source");
+  });
+
+  it("CONTRACT never-weaken-a-correction: soft framings closed (v3.3.1, live-eval evidence)", () => {
+    const arPrompt = getSystemPrompt("ar", "thinking");
+    const enPrompt = getSystemPrompt("en", "thinking");
+    expect(arPrompt).toContain("التصحيح لا يُضعَف بعده");
+    expect(arPrompt).toContain("بعض المصنعين يوصون بـ");
+    expect(arPrompt).toContain("لا يُذكر من عندك أبداً");
+    expect(enPrompt).toContain("never weaken a correction");
+    expect(enPrompt).toContain("some manufacturers recommend");
+    // instant anchors carry the compact form too (both languages)
+    expect(getSystemPrompt("ar", "instant")).toContain("التصحيح لا يُضعَف بعده");
+    expect(getSystemPrompt("en", "instant")).toContain("never weaken a correction");
+  });
+
+  it("CONTRACT empathy-gating: empathy only for explicit frustration, not technical openers", () => {
+    const arPrompt = getSystemPrompt("ar", "thinking");
+    const enPrompt = getSystemPrompt("en", "thinking");
+    expect(arPrompt).toContain("التعاطف لإحباط صريح واصل من المستخدم فقط");
+    expect(enPrompt).toContain("Empathy is for explicit user frustration only");
+  });
+
+  it("CONTRACT deliver-what-you-have: partial answers deliver the grounded part + name the gap", () => {
+    const arPrompt = getSystemPrompt("ar", "thinking");
+    expect(arPrompt).toContain("سلّم المتاح دائماً");
+    expect(arPrompt).toContain("لا تصمت ولا تخترع بديلاً عن المفقود");
+    const enPrompt = getSystemPrompt("en", "thinking");
+    expect(enPrompt).toContain("Always deliver what you have");
+    expect(enPrompt).toContain("never go silent, never fabricate a substitute");
+  });
+
+  it("CONTRACT name-standards-never-link: standards cited as text, official links only", () => {
+    const arPrompt = getSystemPrompt("ar", "thinking");
+    const enPrompt = getSystemPrompt("en", "thinking");
+    expect(arPrompt).toContain("المعيار يُذكر باسمه وإصداره دون روابط");
+    expect(enPrompt).toContain("Standards are named, never linked");
+  });
+
+  it("CONTRACT provider-secrecy: providers unnamed even in negations", () => {
+    const arPrompt = getSystemPrompt("ar", "thinking");
+    const enPrompt = getSystemPrompt("en", "thinking");
+    expect(arPrompt).toContain("ولا تذكر أسماء مزودين أو شركات تقنية حتى في النفي");
+    expect(enPrompt).toContain("Never name providers or tech companies even in negations");
+  });
+
+  it("CONTRACT layered-disclosure applies in BOTH modes (full model or quick anchor)", () => {
+    for (const lang of ["ar", "en"] as const) {
+      const thinking = getSystemPrompt(lang, "thinking");
+      const instant = getSystemPrompt(lang, "instant");
+      expect(thinking).toMatch(/استنتاج هندسي|Engineering derivation/);
+      expect(instant).toMatch(/استنتاج هندسي|engineering derivation/i);
+    }
+  });
+});
+
 // ─── composition matrix (core invariants, applies to every variant) ─────────
 
 describe("composition matrix (core invariants, applies to every variant)", () => {
