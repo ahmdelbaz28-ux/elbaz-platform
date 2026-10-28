@@ -345,4 +345,39 @@ export type ReferenceFile = typeof referenceFiles.$inferSelect;
 export type InsertReferenceFile = typeof referenceFiles.$inferInsert;
 export type Article = typeof articles.$inferSelect;
 export type InsertArticle = typeof articles.$inferInsert;
+// ─────────────────────────────────────────────────────────────────────────────
+// Push Subscriptions (Web Push — browser notifications with the site closed)
+// ─────────────────────────────────────────────────────────────────────────────
+// One row per browser push subscription (endpoint = the push-service URL the
+// browser generated). When a notification is broadcast, the server sends a
+// Web Push message to every stored endpoint; the service worker wakes up and
+// shows the system notification even if no tab is open.
+// Stale endpoints (404/410 from the push service) are deleted on first send
+// failure, so the table self-cleans.
+export const pushSubscriptions = mysqlTable(
+  "pushSubscriptions",
+  {
+    id: bigint("id", { mode: "number", unsigned: true }).primaryKey().autoincrement(),
+    /** Push-service endpoint URL (https://fcm.googleapis.com/fcm/send/...). */
+    // 500 chars: real endpoints are ~180; short enough that a full-column
+    // unique index fits InnoDB's 3072-byte key limit with utf8mb4 (500×4).
+    endpoint: varchar("endpoint", { length: 500 }).notNull(),
+    /** Client public key (base64url, P-256) — encrypts the payload to this browser. */
+    p256dh: varchar("p256dh", { length: 300 }).notNull(),
+    /** Client auth secret (base64url). */
+    auth: varchar("auth", { length: 300 }).notNull(),
+    /** Owning user (NULL = guest subscription). */
+    userId: bigint("userId", { mode: "number", unsigned: true }),
+    /** Short UA string for debugging which browser a dead endpoint belonged to. */
+    userAgent: varchar("userAgent", { length: 300 }),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+    lastSeenAt: timestamp("lastSeenAt", { mode: "date" }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("push_sub_endpoint_unique").on(table.endpoint),
+    index("push_sub_user_idx").on(table.userId),
+  ]
+);
+
 export type NotificationRow = typeof notifications.$inferSelect;
+export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;

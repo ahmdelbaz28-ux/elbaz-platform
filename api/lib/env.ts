@@ -110,6 +110,24 @@ const envSchema = z.object({
   // Legitimate Space hostname (e.g. ahmdelbaz28-ahmdrtap.hf.space) allowed for
   // request-derived frontend URLs alongside FRONTEND_URL/CORS_ORIGINS.
   HF_SPACE_HOST: z.string().optional(),
+
+  // ── Web Push (VAPID) — browser notifications that reach users even when ──
+  // the site tab is closed. Keys are SELF-ISSUED (not a third-party service):
+  // generate once with `npx tsx scripts/generate-vapid-keys.mjs` and set as
+  // deployment secrets. The public key is served via /api/notifications/push
+  // /public-key; the private key never leaves the server.
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  // Contact URI sent in the VAPID JWT (push services may use it to reach you).
+  VAPID_SUBJECT: z.string().default("mailto:contact@ahmedelbaz.qzz.io"),
+
+  // ── Telegram broadcast bot — mirrors every site/YouTube announcement ──
+  // to the owner's channel. Create the bot with @BotFather, add it as an
+  // ADMIN of the target channel, then set both values. Without these the
+  // Telegram delivery is silently skipped (everything else keeps working).
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
+  // Channel id: "@engahmedetap" or the numeric -100... chat id.
+  TELEGRAM_CHAT_ID: z.string().optional(),
 });
 
 type EnvWithMeta = z.infer<typeof envSchema> & { isProduction: boolean };

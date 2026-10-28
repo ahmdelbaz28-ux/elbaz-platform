@@ -126,6 +126,11 @@ app.route("/api/google-auth", googleAuthRouter);
 // ── Notification polling (bell + YouTube episode watcher) at /api/notifications/* ──
 app.route("/api/notifications", notificationRoute);
 
+// ── Web Push subscriptions (closed-tab browser notifications) at
+// /api/notifications/push/* — public-key / subscribe / unsubscribe ──
+import { pushSubscriptionRoute } from "./push-subscription-route.js";
+app.route("/api/notifications/push", pushSubscriptionRoute);
+
 // ── tRPC handler at /api/trpc ──
 // Authentication is handled per-procedure (publicQuery vs authedQuery)
 app.all("/api/trpc/*", async (c) => {

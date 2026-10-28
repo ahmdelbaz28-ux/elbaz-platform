@@ -848,6 +848,32 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         logger.warn("[DB] v11 notifications migration warning", { error: (err as Error).message });
       }
 
+      // ── v12 feature: Web Push subscriptions (browser notifications with the
+      // site closed) ──. One row per browser endpoint; broadcasts fan out to
+      // all of them via the VAPID web-push sender. Idempotent.
+      try {
+        await conn.query(`
+          CREATE TABLE IF NOT EXISTS \`pushSubscriptions\` (
+            \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            \`endpoint\` VARCHAR(500) NOT NULL,
+            \`p256dh\` VARCHAR(300) NOT NULL,
+            \`auth\` VARCHAR(300) NOT NULL,
+            \`userId\` BIGINT UNSIGNED NULL,
+            \`userAgent\` VARCHAR(300) NULL,
+            \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            \`lastSeenAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (\`id\`),
+            UNIQUE INDEX \`push_sub_endpoint_unique\` (\`endpoint\`),
+            INDEX \`push_sub_user_idx\` (\`userId\`),
+            CONSTRAINT \`fk_push_sub_user\` FOREIGN KEY (\`userId\`) REFERENCES \`users\` (\`id\`)
+              ON DELETE CASCADE ON UPDATE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        logger.info("[DB] v12 pushSubscriptions table verified");
+      } catch (err) {
+        logger.warn("[DB] v12 pushSubscriptions migration warning", { error: (err as Error).message });
+      }
+
       // ── Admin password sync (existing deployments) ──
       // ✅ SECURITY FIX (audit run-1, db-init.admin-password-env-sync):
       // ADMIN_PASSWORD is SEED-ONLY. Previously every boot re-synced the admin

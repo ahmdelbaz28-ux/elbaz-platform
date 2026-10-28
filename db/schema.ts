@@ -68,6 +68,7 @@ export {
   faqEntries,
   articles,
   notifications,
+  pushSubscriptions,
   // Shared types
   type FaqEntry,
   type ReferenceFile,
@@ -75,6 +76,7 @@ export {
   type Article,
   type InsertArticle,
   type NotificationRow,
+  type PushSubscriptionRow,
 } from "./schema/shared.js";
 
 export {

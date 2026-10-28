@@ -54,10 +54,16 @@ export interface NotificationRecord {
 
 /** Config for the push notification hook. */
 interface PushNotificationConfig {
-  /** VAPID public key (applicationServerKey as base64-url string). */
+  /** VAPID public key override — normally fetched from the server. */
   vapidPublicKey?: string;
   /** Called after the service worker receives a push message. */
   onPushMessage?: (payload: MessageEvent) => void;
+}
+
+/** Server response shape of GET /api/notifications/push/public-key. */
+interface PushPublicKeyResponse {
+  enabled: boolean;
+  publicKey: string | null;
 }
 
 /** Config for the realtime polling hook. */
@@ -100,7 +106,11 @@ interface NotificationHistoryState {
 interface PushNotificationState {
   permission: NotificationPermission;
   isSupported: boolean;
+  /** False when the server has no VAPID keys — the toggle stays hidden. */
+  isPushEnabled: boolean;
   isSubscribed: boolean;
+  /** True while a subscribe/unsubscribe round-trip is in flight. */
+  isBusy: boolean;
   requestPermission: () => Promise<NotificationPermission>;
   subscribe: () => Promise<void>;
   unsubscribe: () => Promise<void>;
@@ -320,15 +330,26 @@ export function useNotificationHistory(): NotificationHistoryState {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Web Push API integration.
- * - Request permission on first call.
- * - Subscribe / unsubscribe push notifications.
- * - Handle incoming push messages via a service-worker message listener.
+ * Web Push API integration — full closed-tab delivery pipeline:
+ * - Fetches the server's VAPID public key (`/api/notifications/push/public-key`).
+ * - Requests permission from a user gesture, subscribes via the PWA service
+ *   worker, then stores the endpoint server-side (`/push/subscribe`) so every
+ *   broadcast fans out to this browser even when all tabs are closed.
+ * - Unsubscribe mirrors the same path (`/push/unsubscribe`).
+ * - Forwards SW→page push messages (`PUSH_RECEIVED`) to `onPushMessage`.
  */
+/** Same-origin base for API calls (Capacitor builds talk to the remote API). */
+function apiBaseUrl(): string {
+   
+  return (globalThis as any).Capacitor?.isNativePlatform?.() // eslint-disable-line @typescript-eslint/no-explicit-any
+    ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io")
+    : "";
+}
+
 export function usePushNotification(
   config: PushNotificationConfig = {},
 ): PushNotificationState {
-  const { vapidPublicKey, onPushMessage } = config;
+  const { vapidPublicKey } = config;
 
   const [permission, setPermission] = useState<NotificationPermission>(
     () =>
@@ -337,11 +358,16 @@ export function usePushNotification(
         : Notification.permission,
   );
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const [isPushEnabled, setIsPushEnabled] = useState(Boolean(vapidPublicKey));
+  const [isBusy, setIsBusy] = useState(false);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const isNativeApp = Boolean((globalThis as any).Capacitor?.isNativePlatform?.());
   const isSupported =
     globalThis !== undefined &&
     "serviceWorker" in navigator &&
-    "PushManager" in globalThis;
+    "PushManager" in globalThis &&
+    !isNativeApp;
 
   const requestPermission = useCallback(async (): Promise<NotificationPermission> => {
     if (!("Notification" in globalThis)) return "denied";
@@ -350,48 +376,116 @@ export function usePushNotification(
     return result;
   }, []);
 
+  // ── Mirror the server's view: is this browser's endpoint stored? ──
+  useEffect(() => {
+    if (!isSupported) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        const sub = await registration.pushManager.getSubscription();
+        if (!cancelled) setIsSubscribed(Boolean(sub));
+      } catch {
+        // SW not ready / push blocked — toggle will just show "off"
+      }
+      // Feature flag: does the server have VAPID keys configured?
+      try {
+        const res = await fetch(`${apiBaseUrl()}/api/notifications/push/public-key`);
+        if (res.ok) {
+          const data = (await res.json()) as PushPublicKeyResponse;
+          if (!cancelled) setIsPushEnabled(Boolean(data.enabled && data.publicKey));
+        }
+      } catch {
+        if (!cancelled) setIsPushEnabled(Boolean(vapidPublicKey));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isSupported, vapidPublicKey]);
+
   const subscribe = useCallback(async () => {
-    if (!isSupported || !vapidPublicKey) return;
-
-    let permission = Notification.permission;
-    if (permission === "default") {
-      permission = await Notification.requestPermission();
-      setPermission(permission);
-    }
-    if (permission !== "granted") return;
-
+    if (!isSupported || isBusy) return;
+    setIsBusy(true);
     try {
+      // 1. Resolve the VAPID public key (server is the source of truth).
+      let appServerKey = vapidPublicKey ?? null;
+      if (!appServerKey) {
+        const res = await fetch(`${apiBaseUrl()}/api/notifications/push/public-key`);
+        if (!res.ok) throw new Error("Push public key unavailable");
+        const data = (await res.json()) as PushPublicKeyResponse;
+        if (!data.enabled || !data.publicKey) throw new Error("Push disabled on server");
+        appServerKey = data.publicKey;
+      }
+
+      // 2. Permission (must come from a user gesture — the toggle click).
+      let current = Notification.permission;
+      if (current === "default") {
+        current = await Notification.requestPermission();
+        setPermission(current);
+      }
+      if (current !== "granted") return;
+
+      // 3. Subscribe through the (already registered) PWA service worker.
       const registration = await navigator.serviceWorker.ready;
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource,
+        applicationServerKey: urlBase64ToUint8Array(appServerKey) as BufferSource,
       });
+
+      // 4. Store the endpoint server-side so broadcasts fan out to it.
+      const subJson = subscription.toJSON() as {
+        endpoint?: string;
+        keys?: { p256dh?: string; auth?: string };
+      };
+      if (!subJson.endpoint || !subJson.keys?.p256dh || !subJson.keys?.auth) {
+        throw new Error("Incomplete push subscription");
+      }
+      const saveRes = await fetch(`${apiBaseUrl()}/api/notifications/push/subscribe`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(subJson),
+      });
+      if (!saveRes.ok) throw new Error(`Subscribe save failed: ${saveRes.status}`);
+
       setIsSubscribed(true);
-      // Send subscription to server (implement as needed)
-      console.info("[Push] Subscribed successfully", subscription.endpoint);
+      console.info("[Push] Subscribed successfully", subJson.endpoint);
     } catch (err) {
       console.error("[Push] Subscribe failed", err);
       setIsSubscribed(false);
+    } finally {
+      setIsBusy(false);
     }
-  }, [isSupported, vapidPublicKey]);
+  }, [isSupported, isBusy, vapidPublicKey]);
 
   const unsubscribe = useCallback(async () => {
-    if (!isSupported) return;
-
+    if (!isSupported || isBusy) return;
+    setIsBusy(true);
     try {
       const registration = await navigator.serviceWorker.ready;
       const sub = await registration.pushManager.getSubscription();
       if (sub) {
+        const endpoint = sub.endpoint;
         await sub.unsubscribe();
-        setIsSubscribed(false);
+        // Best-effort server cleanup — a failed call still leaves the browser
+        // unsubscribed, and the dead endpoint is pruned on the next broadcast.
+        await fetch(`${apiBaseUrl()}/api/notifications/push/unsubscribe`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint }),
+        }).catch(() => {});
         console.info("[Push] Unsubscribed successfully");
       }
+      setIsSubscribed(false);
     } catch (err) {
       console.error("[Push] Unsubscribe failed", err);
+    } finally {
+      setIsBusy(false);
     }
-  }, [isSupported]);
+  }, [isSupported, isBusy]);
 
-  // Listen for push messages from the service worker
+  // Listen for push messages forwarded by the service worker
+  const onPushMessage = config.onPushMessage;
   useEffect(() => {
     if (!isSupported || !onPushMessage) return;
 
@@ -408,7 +502,9 @@ export function usePushNotification(
   return {
     permission,
     isSupported,
+    isPushEnabled,
     isSubscribed,
+    isBusy,
     requestPermission,
     subscribe,
     unsubscribe,
@@ -774,6 +870,7 @@ function EmptyState({ lang }: { readonly lang: "en" | "ar" }) {
 export default function NotificationCenter() { // NOSONAR — large component with bell + dropdown + history hook + push-subscription wiring; extraction would require prop-drilling many state hooks
   const { lang } = useTranslation();
   const isRTL = lang === "ar";
+  const navigate = useNavigate();
 
   // ── Local state ──
   const [isOpen, setIsOpen] = useState(false);
@@ -785,6 +882,27 @@ export default function NotificationCenter() { // NOSONAR — large component wi
     markAsRead,
     markAllAsRead,
   } = useNotificationHistory();
+
+  // ── Web Push (closed-tab system notifications) ──
+  const push = usePushNotification();
+  const showPushToggle =
+    push.isSupported &&
+    push.isPushEnabled &&
+    typeof Notification !== "undefined" &&
+    Notification.permission !== "denied";
+
+  // ── Notification click opened/focused this tab → navigate to the target ──
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === "NOTIFICATION_CLICKED" && typeof event.data.url === "string") {
+        const url = event.data.url as string;
+        if (url.startsWith("/")) navigate(url);
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", handler);
+    return () => navigator.serviceWorker.removeEventListener("message", handler);
+  }, [navigate]);
 
   // ── Refs for click-outside and ESC handling ──
   const panelRef = useRef<HTMLDivElement>(null);
@@ -935,6 +1053,47 @@ export default function NotificationCenter() { // NOSONAR — large component wi
             </button>
           </div>
         </div>
+
+        {/* ── Web Push toggle: system notifications with the site closed ── */}
+        {showPushToggle && (
+          <div className="flex items-center justify-between gap-2 border-b border-[#1e2d3d] px-4 py-2.5">
+            <div className="flex min-w-0 items-start gap-2">
+              <BellRing className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${push.isSubscribed ? "text-[#06b6d4]" : "text-[#475569]"}`} />
+              <div className="min-w-0">
+                <p className="text-[12px] font-semibold leading-tight text-[#e8f0fe]">
+                  {isRTL ? "إشعارات المتصفح" : "Browser notifications"}
+                </p>
+                <p className="mt-0.5 truncate text-[10.5px] leading-tight text-[#64748b]">
+                  {isRTL
+                    ? push.isSubscribed
+                      ? "مفعّلة — يوصلك كل جديد حتى والموقع مقفول ✓"
+                      : "فعّلها ليوصلك كل جديد حتى والموقع مقفول"
+                    : push.isSubscribed
+                      ? "On — you'll hear from us even with the site closed ✓"
+                      : "Enable to get new episodes even with the site closed"}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={push.isSubscribed}
+              aria-label={isRTL ? "تفعيل إشعارات المتصفح" : "Enable browser notifications"}
+              disabled={push.isBusy}
+              onClick={() => (push.isSubscribed ? void push.unsubscribe() : void push.subscribe())}
+              className={`relative h-5 w-9 shrink-0 rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#06b6d4] disabled:opacity-50 ${
+                push.isSubscribed ? "bg-[#06b6d4]" : "bg-[#1e2d3d]"
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all duration-200 ${
+                  push.isSubscribed ? (isRTL ? "left-0.5" : "right-0.5") : isRTL ? "right-0.5" : "left-0.5"
+                }`}
+                aria-hidden="true"
+              />
+            </button>
+          </div>
+        )}
 
         {/* ── Notification List ── */}
         {/* biome-ignore lint/a11y/useSemanticElements: <ul> adds unwanted list styling; role=list on div is WAI-ARIA compliant for custom scrollable list */}

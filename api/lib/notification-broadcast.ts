@@ -46,11 +46,19 @@ const RETENTION_DAYS = 30;
  * Persist one notification row. NEVER throws — notification delivery is
  * best-effort and must never break the content-creation flow that triggered
  * it. Returns the eventId on success, null on any failure.
+ *
+ * BROADCAST rows (targetUserId undefined) additionally fan out to:
+ *   1. Web Push (VAPID) — system notifications that reach users even when
+ *      the site tab is closed (service worker shows them).
+ *   2. The Telegram channel bot — mirrors the announcement to t.me/engahmedetap.
+ * Both are fire-and-forget: a slow/dead push service or Telegram outage can
+ * never delay or fail the content publish that triggered this.
  */
 export async function pushNotification(input: NotificationInput): Promise<string | null> {
+  let eventId: string;
   try {
     const db = getDb();
-    const eventId = makeEventId();
+    eventId = makeEventId();
     await db.insert(notifications).values({
       eventId,
       type: input.type,
@@ -61,11 +69,42 @@ export async function pushNotification(input: NotificationInput): Promise<string
       targetUserId: input.targetUserId ?? null,
       data: input.data ?? null,
     });
-    return eventId;
   } catch (err) {
     logger.warn("[Notify] pushNotification failed", { error: err instanceof Error ? err.message : String(err) });
     return null;
   }
+
+  if (!input.targetUserId) {
+    // Broadcast → closed-tab delivery. Both senders swallow their own errors.
+    void (async () => {
+      try {
+        const { sendWebPushToAll } = await import("./push-delivery.js");
+        const { sendTelegramBroadcast } = await import("./telegram-broadcast.js");
+        await Promise.allSettled([
+          sendWebPushToAll({
+            eventId,
+            type: input.type,
+            title: input.title,
+            message: input.message,
+            url: input.url,
+            channelUrl: input.channelUrl,
+          }),
+          sendTelegramBroadcast({
+            type: input.type,
+            title: input.title,
+            message: input.message,
+            url: input.url,
+            channelUrl: input.channelUrl,
+          }),
+        ]);
+      } catch {
+        // Dynamic import itself failed (e.g. missing dep) — push/telegram are
+        // optional channels; the in-app notification is already stored above.
+      }
+    })();
+  }
+
+  return eventId;
 }
 
 /**

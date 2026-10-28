@@ -99,6 +99,10 @@ export default defineConfig({
       registerType: 'prompt',
       injectManifest: {},
       workbox: {
+        // 📢 Web Push: the generated SW also loads our push/notificationclick
+        // handlers from /push-sw.js (public/push-sw.js) so notifications reach
+        // users even when every tab is closed.
+        importScripts: ['/push-sw.js'],
         // 🚀 PERFORMANCE: Only precache critical assets (JS, CSS, HTML).
         // Images and fonts are cached on-demand via runtimeCaching (CacheFirst).
         // This reduces initial SW install size from ~3MB to ~600KB.
