@@ -70,8 +70,19 @@ if (!tgToken || !tgChat) {
 }
 
 // ── 3. Endpoint ───────────────────────────────────────────────────────────────
+// Direct-origin runs (BASE_URL = the hf.space host) must present the worker's
+// forwarded-host identity or the EDGE_HOST_ENFORCE shield answers a stealth
+// 404 — send the same headers the CF worker adds in production.
+const originHeaders: Record<string, string> = {};
+if (new URL(BASE_URL).hostname.endsWith(".hf.space")) {
+  originHeaders["X-Forwarded-Host"] = "ahmedelbaz.qzz.io";
+  originHeaders["X-Forwarded-Proto"] = "https";
+}
 try {
-  const res = await fetch(`${BASE_URL}/api/notifications/push/public-key`, { signal: AbortSignal.timeout(10_000) });
+  const res = await fetch(`${BASE_URL}/api/notifications/push/public-key`, {
+    headers: originHeaders,
+    signal: AbortSignal.timeout(10_000),
+  });
   const body = (await res.json()) as { enabled: boolean; publicKey: string | null };
   // No remote-derived data in the message — response booleans stay out of the log (S5145).
   console.log(
