@@ -1,0 +1,46 @@
+# ════════════════════════════════════════════════════════════════════════════
+# Network probe — GitHub runners → Telegram Bot API / HF Space / public domain
+# One-shot diagnostic (workflow_dispatch). Answers:
+#   1. Can GH runners reach api.telegram.org? (candidate bot-poller home)
+#   2. Can GH runners reach the HF Space origin (brain relay candidate)?
+#   3. Public domain status for reference.
+# ════════════════════════════════════════════════════════════════════════════
+name: Network probe (GH → Telegram / HF)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe Telegram Bot API
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          echo "① GH → api.telegram.org/getMe:"
+          curl -s --max-time 15 "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getMe" | head -c 260; echo
+          echo "② GH → getUpdates (timeout=0, limit=1):"
+          curl -s --max-time 15 "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?timeout=0&limit=1" | head -c 260; echo
+
+      - name: Probe HF Space origin (shield headers)
+        run: |
+          echo "③ GH → Space /api/health:"
+          CODE=$(curl -s --max-time 20 -H "X-Forwarded-Host: ahmedelbaz.qzz.io" -H "X-Forwarded-Proto: https" \
+            "https://ahmdelbaz28-ahmdrtap.hf.space/api/health" -o /tmp/h.json -w "%{http_code}")
+          echo "HTTP $CODE"
+          python3 - <<'PY' 2>/dev/null || head -c 200 /tmp/h.json
+          import json
+          d = json.load(open('/tmp/h.json'))
+          print('overall:', d.get('status'))
+          print('telegram:', json.dumps(d.get('checks', {}).get('telegram'), ensure_ascii=False))
+          PY
+
+      - name: Probe public domain (reference)
+        run: |
+          echo "④ GH → https://ahmedelbaz.qzz.io/api/health:"
+          curl -s -o /dev/null --max-time 20 -w "HTTP %{http_code}\n" "https://ahmedelbaz.qzz.io/api/health" || true
