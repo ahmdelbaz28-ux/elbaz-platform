@@ -108,8 +108,8 @@ function finalize(collected: PollEvent[], after?: string): PollEvent[] {
     if (!isAfterCursor(ev.id, after)) continue;
     deduped.push(ev);
   }
-  const sorted = deduped.sort((a, b) => b.id.localeCompare(a.id));
-  return sorted.slice(0, MAX_EVENTS);
+  deduped.sort((a, b) => b.id.localeCompare(a.id));
+  return deduped.slice(0, MAX_EVENTS);
 }
 
 /**

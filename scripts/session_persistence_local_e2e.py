@@ -47,6 +47,7 @@ DASHBOARD = "/dashboard"
 LOGIN = "/login"
 AUTH_FLAG_COOKIE = "elbaz_auth_flag=1"
 GET_TOKEN_JS = "localStorage.getItem('elbaz_auth_token')"
+GET_COOKIES_JS = "document.cookie"
 
 subprocess.run(["mkdir", "-p", OUT], check=True)
 
@@ -233,16 +234,16 @@ with sync_playwright() as p:
     do_login(pg)
     check("W1 login lands on dashboard", logged_in(pg), pg.url)
     check("W1 flag cookie stored from real Set-Cookie",
-          AUTH_FLAG_COOKIE in (pg.evaluate("document.cookie") or ""),
-          pg.evaluate("document.cookie"))
+          AUTH_FLAG_COOKIE in (pg.evaluate(GET_COOKIES_JS) or ""),
+          pg.evaluate(GET_COOKIES_JS))
     # ── APP RESTART: brand-new page, same profile (cookies survive) ──
     pg2 = ctx.new_page()
     proxy_trpc(pg2)
     open_app(pg2)
     check("W1 still logged in after restart (no re-login)", logged_in(pg2), pg2.url)
     check("W1 flag cookie survives restart",
-          AUTH_FLAG_COOKIE in (pg2.evaluate("document.cookie") or ""),
-          pg2.evaluate("document.cookie"))
+          AUTH_FLAG_COOKIE in (pg2.evaluate(GET_COOKIES_JS) or ""),
+          pg2.evaluate(GET_COOKIES_JS))
     try:
         pg2.screenshot(path=f"{OUT}/W1_web_restart.png")
     except Exception:
@@ -262,8 +263,8 @@ with sync_playwright() as p:
     open_app(pg)
     check("W2 expired session renewed — still logged in", logged_in(pg), pg.url)
     check("W2 renewed flag cookie alive",
-          AUTH_FLAG_COOKIE in (pg.evaluate("document.cookie") or ""),
-          pg.evaluate("document.cookie"))
+          AUTH_FLAG_COOKIE in (pg.evaluate(GET_COOKIES_JS) or ""),
+          pg.evaluate(GET_COOKIES_JS))
     try:
         pg.screenshot(path=f"{OUT}/W2_web_grace.png")
     except Exception:
