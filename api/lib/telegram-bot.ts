@@ -376,6 +376,10 @@ export async function handleTelegramUpdate(deps: TelegramBotDeps, update: TgUpda
 // ─── Long-polling worker (production wiring) ─────────────────────────────────
 
 const MAX_CONFLICTS = 5;
+/** After repeated conflicts: long cool-down, then resume (a stray second
+ *  poller — e.g. a debugging session — must not permanently kill the
+ *  production worker; Telegram hands the conflict to BOTH clients). */
+const CONFLICT_COOLDOWN_MS = 5 * 60_000;
 
 function createRealApi(token: string): TelegramApi {
   return {
@@ -448,9 +452,11 @@ export async function startTelegramBot(): Promise<boolean> {
             const desc = res.description ?? "";
             if (desc.includes("Conflict")) {
               conflicts += 1;
+              logger.warn("[TelegramBot] getUpdates conflict — another poller is active", { conflicts });
               if (conflicts >= MAX_CONFLICTS) {
-                logger.error("[TelegramBot] repeated getUpdates conflicts — another poller owns this token; stopping");
-                break;
+                conflicts = Math.floor(MAX_CONFLICTS / 2); // resume after the cool-down
+                await new Promise((r) => setTimeout(r, CONFLICT_COOLDOWN_MS));
+                continue;
               }
               await new Promise((r) => setTimeout(r, 60_000));
               continue;
