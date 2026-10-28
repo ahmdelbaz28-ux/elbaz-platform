@@ -822,6 +822,32 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         logger.warn("[DB] v10 model-context migration warning", { error: (err as Error).message });
       }
 
+      // ── v11 feature: persistent notifications table (broadcast + targeted) ──
+      // Backs the notification center + the YouTube episode watcher. Idempotent.
+      try {
+        await conn.query(`
+          CREATE TABLE IF NOT EXISTS \`notifications\` (
+            \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            \`eventId\` VARCHAR(64) NOT NULL,
+            \`type\` VARCHAR(40) NOT NULL DEFAULT 'system',
+            \`title\` VARCHAR(300) NOT NULL,
+            \`message\` VARCHAR(1200) NOT NULL,
+            \`url\` VARCHAR(700) NULL,
+            \`channelUrl\` VARCHAR(700) NULL,
+            \`targetUserId\` BIGINT UNSIGNED NULL,
+            \`data\` JSON NULL,
+            \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (\`id\`),
+            UNIQUE INDEX \`notifications_event_id_unique\` (\`eventId\`),
+            INDEX \`notifications_created_idx\` (\`createdAt\`),
+            INDEX \`notifications_target_idx\` (\`targetUserId\`, \`createdAt\`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        logger.info("[DB] v11 notifications table verified");
+      } catch (err) {
+        logger.warn("[DB] v11 notifications migration warning", { error: (err as Error).message });
+      }
+
       // ── Admin password sync (existing deployments) ──
       // ✅ SECURITY FIX (audit run-1, db-init.admin-password-env-sync):
       // ADMIN_PASSWORD is SEED-ONLY. Previously every boot re-synced the admin

@@ -13,6 +13,7 @@ import {
   boolean,
   timestamp,
   int,
+  json,
   mediumtext,
   index,
   uniqueIndex,
@@ -301,6 +302,42 @@ export const articles = mysqlTable(
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Notifications (broadcast + targeted — persistent, DB-backed)
+// ─────────────────────────────────────────────────────────────────────────────
+// One row per notification event. `targetUserId = NULL` means the event is a
+// BROADCAST visible to every registered user (new lessons, new reference
+// files, new YouTube episodes...). A non-null targetUserId means the event
+// is visible only to that user (enrollments, payments, ...).
+// Broadcast rows are stored ONCE (not fanned out per user) so:
+//   - users who register AFTER a broadcast still see it (7-day window),
+//   - server restarts never lose notifications (unlike cache-only storage).
+export const notifications = mysqlTable(
+  "notifications",
+  {
+    id: bigint("id", { mode: "number", unsigned: true }).primaryKey().autoincrement(),
+    /** Sortable unique id: `{timestamp-millis}-{rand}` — the cursor clients poll with. */
+    eventId: varchar("eventId", { length: 64 }).notNull(),
+    /** "lesson" | "file" | "software" | "youtube" | "promo" | "system" */
+    type: varchar("type", { length: 40 }).notNull().default("system"),
+    title: varchar("title", { length: 300 }).notNull(),
+    message: varchar("message", { length: 1200 }).notNull(),
+    /** Click-through target: site path ("/courses/etap") or absolute URL (YouTube video). */
+    url: varchar("url", { length: 700 }),
+    /** Channel link for the subscribe CTA (YouTube notifications). */
+    channelUrl: varchar("channelUrl", { length: 700 }),
+    /** NULL = broadcast to everyone. */
+    targetUserId: bigint("targetUserId", { mode: "number", unsigned: true }),
+    data: json("data"),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("notifications_event_id_unique").on(table.eventId),
+    index("notifications_created_idx").on(table.createdAt),
+    index("notifications_target_idx").on(table.targetUserId, table.createdAt),
+  ]
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 export type FaqEntry = typeof faqEntries.$inferSelect;
@@ -308,3 +345,4 @@ export type ReferenceFile = typeof referenceFiles.$inferSelect;
 export type InsertReferenceFile = typeof referenceFiles.$inferInsert;
 export type Article = typeof articles.$inferSelect;
 export type InsertArticle = typeof articles.$inferInsert;
+export type NotificationRow = typeof notifications.$inferSelect;

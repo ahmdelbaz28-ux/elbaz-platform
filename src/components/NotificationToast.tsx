@@ -1,11 +1,11 @@
 import { visualRandom } from "@/lib/random";
 import { useEffect, useState, useCallback, useMemo, createContext, useContext, type ReactNode } from "react";
-import { X, Bell, Sparkles, Gift, BookOpen } from "lucide-react";
+import { X, Bell, Sparkles, Gift, BookOpen, Youtube } from "lucide-react";
 import { useTranslation } from "@/hooks/useTranslation";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type ToastType = "enrollment" | "promo" | "update" | "info" | "success";
+type ToastType = "enrollment" | "promo" | "update" | "info" | "success" | "lesson" | "file" | "software" | "youtube";
 
 interface Toast {
   id: string;
@@ -39,6 +39,10 @@ function ToastIcon({ type }: { readonly type: ToastType }) {
     update: <Sparkles className="h-4 w-4 text-[#10b981]" />,
     info: <Bell className="h-4 w-4 text-[#94a3b8]" />,
     success: <Sparkles className="h-4 w-4 text-[#06b6d4]" />,
+    lesson: <BookOpen className="h-4 w-4 text-[#10b981]" />,
+    file: <Gift className="h-4 w-4 text-[#06b6d4]" />,
+    software: <Sparkles className="h-4 w-4 text-[#8b5cf6]" />,
+    youtube: <Youtube className="h-4 w-4 text-[#ff3b30]" />,
   };
   return <>{icons[type] || icons.info}</>;
 }

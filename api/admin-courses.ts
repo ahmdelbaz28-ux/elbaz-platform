@@ -11,6 +11,7 @@ import { TRPCError } from "@trpc/server";
 import { adminQuery, adminMutation } from "./middleware";
 import { getDb } from "./queries/connection";
 import { courses, lessons, enrollments, payments, wishlists, reviews } from "@db/schema";
+import { pushNotification } from "./lib/notification-broadcast.js";
 
 export const adminCoursesProcedures = {
   listCourses: adminQuery
@@ -189,7 +190,7 @@ export const adminCoursesProcedures = {
     .mutation(async ({ input }) => {
       const db = getDb();
 
-      const [course] = await db.select({ id: courses.id }).from(courses).where(eq(courses.id, input.courseId)).limit(1);
+      const [course] = await db.select({ id: courses.id, slug: courses.slug, titleAr: courses.titleAr, titleEn: courses.titleEn }).from(courses).where(eq(courses.id, input.courseId)).limit(1);
       if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Course not found" });
 
       // Append at the end of the course
@@ -207,6 +208,21 @@ export const adminCoursesProcedures = {
         isFree: input.isFree,
         isPublished: input.isPublished,
       }).$returningId();
+
+      // 🔔 Broadcast: a new (published) episode was added — notify every
+      // registered user. Fire-and-forget: notification failures never break
+      // lesson creation (pushNotification already swallows its own errors).
+      if (input.isPublished) {
+        const courseTitle = course.titleAr || course.titleEn || "الكورس";
+        void pushNotification({
+          type: "lesson",
+          title: "📚 حلقة جديدة على المنصة",
+          message:
+            `تمت إضافة حلقة جديدة «${input.titleAr || input.titleEn}» إلى كورس «${courseTitle}». ` +
+            `افتح الكورس دلوقتي وكمل مشوارك — ولو الشرح عاجبك، اشترك في قناة اليوتيوب وفعّل الجرس 🔔 عليها عشان ميفوتك أي حلقة جديدة.`,
+          url: course.slug ? `/courses/${course.slug}` : "/courses",
+        });
+      }
 
       return { success: true, id: created?.id };
     }),

@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "@/hooks/useTranslation";
 import GlobalSearch from "@/components/GlobalSearch";
+import NotificationCenter from "@/components/NotificationCenter";
 import { motion, AnimatePresence } from "framer-motion";
 import { Magnetic } from "@/components/ui/motion";
 import {
@@ -165,6 +166,8 @@ export default function Navbar() {
           <div className="hidden items-center gap-2 md:flex">
             <GlobalSearch />
 
+            {isAuthenticated && <NotificationCenter />}
+
             <button onClick={toggleEyeProtection} aria-label={lang === "ar" ? "حماية العين" : "Eye protection"} title={lang === "ar" ? "فلتر حماية العين" : "Blue light filter"} className={`rounded-lg p-2 text-[13px] transition-all duration-200 ${isEyeProtectionActive ? "text-amber-400 bg-amber-400/10" : "text-text-secondary hover:text-foreground hover:bg-white/5"}`}>
               <SunDim className="h-4 w-4" />
             </button>
@@ -284,13 +287,16 @@ export default function Navbar() {
                   {lang === "ar" ? "أحمد الباز" : "Eng. Ahmed Elbaz"}
                 </span>
               </div>
-              <button
-                onClick={() => setMobileOpen(false)}
-                aria-label={lang === "ar" ? "إغلاق القائمة" : "Close menu"}
-                className="rounded-lg p-2 text-text-secondary transition-colors hover:bg-white/5 hover:text-foreground"
-              >
-                <X className="h-5 w-5" />
-              </button>
+              <div className="flex items-center gap-1">
+                {isAuthenticated && <NotificationCenter />}
+                <button
+                  onClick={() => setMobileOpen(false)}
+                  aria-label={lang === "ar" ? "إغلاق القائمة" : "Close menu"}
+                  className="rounded-lg p-2 text-text-secondary transition-colors hover:bg-white/5 hover:text-foreground"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
             <div className="h-px w-full bg-gradient-to-r from-transparent via-accent/60 to-transparent" />
 

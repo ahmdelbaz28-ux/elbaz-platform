@@ -61,6 +61,11 @@ export interface AdminNotificationPanelProps {
     message: string;
     recipientFilter: string;
     scheduledAt?: Date;
+    /** Bilingual extras (sent to the server so both languages persist). */
+    titleAr?: string;
+    titleEn?: string;
+    messageAr?: string;
+    messageEn?: string;
   }) => void;
 }
 
@@ -737,6 +742,10 @@ export default function AdminNotificationPanel({ // NOSONAR — complex function
       message: isRTL ? record.messageAr : record.messageEn,
       recipientFilter,
       scheduledAt: record.scheduledAt ? new Date(record.scheduledAt) : undefined,
+      titleAr: record.titleAr,
+      titleEn: record.titleEn,
+      messageAr: record.messageAr,
+      messageEn: record.messageEn,
     });
 
     // Show a toast confirmation to the admin

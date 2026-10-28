@@ -6,7 +6,7 @@ import { trpc } from "@/providers/trpc";
 import { motion, AnimatePresence } from "framer-motion";
 import "@/elite-animations.css";
 import {
-  LayoutDashboard, Users, BookOpen, Headphones, DollarSign, Phone, FileText, Palette, Tag, Megaphone, Bot,
+  LayoutDashboard, Users, BookOpen, Headphones, DollarSign, Phone, FileText, Palette, Tag, Megaphone, Bot, Bell,
   Plus, Pencil, Trash2, Save, Eye, Zap, TrendingUp, CheckCircle, ChevronLeft, ChevronRight,
   LogOut, ArrowUpRight, Shield, PlayCircle, Newspaper, X, Menu,
 } from "lucide-react";
@@ -21,6 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { AiProvidersPanel } from "@/components/admin/AiProvidersPanel";
+import AdminNotificationPanel from "@/components/AdminNotificationPanel";
 import { bilingual } from "@/lib/i18n";
 
 interface SettingItem { id?: string; key: string; value: string; section: string; type?: string; }
@@ -62,6 +63,7 @@ const SIDEBAR_ITEMS = [
   { id: "themes", icon: Palette, labelEn: "Themes", labelAr: "الثيمات" },
   { id: "promos", icon: Tag, labelEn: "Promo Codes", labelAr: "أكواد الخصم" },
   { id: "promotions", icon: Megaphone, labelEn: "Promotions", labelAr: "العروض" },
+  { id: "notifications", icon: Bell, labelEn: "Notifications", labelAr: "الإشعارات" },
 ];
 
 export default function Admin() { // NOSONAR — admin dashboard with many CMS/CMS-settings panels, user management, and conditional rendering; extraction would require prop-drilling 15+ hooks
@@ -278,6 +280,12 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
 
   /* Promos */
   const { data: promoCodes } = trpc.promo.list.useQuery(undefined, { enabled: !!isAdmin && activeTab === "promos" });
+
+  // 🔔 Manual broadcast — fires a real notification to every registered user.
+  const sendBroadcast = trpc.admin.sendBroadcast.useMutation({
+    onSuccess: () => toast.success(isRTL ? "تم بث الإشعار لكل المستخدمين ✅" : "Notification broadcast to all users ✅"),
+    onError: (err) => toast.error(isRTL ? `فشل إرسال الإشعار: ${err.message}` : `Broadcast failed: ${err.message}`),
+  });
   const createPromo = trpc.promo.create.useMutation({ onSuccess: () => { utils.promo.list.invalidate(); setShowPromoForm(false); toast.success(lang === "en" ? "Promo created" : "تم إنشاء الكود"); }, onError: (err) => toast.error(err.message) });
   const updatePromo = trpc.promo.update.useMutation({ onSuccess: () => { utils.promo.list.invalidate(); setShowPromoForm(false); toast.success(lang === "en" ? "Promo updated" : "تم تحديث الكود"); }, onError: (err) => toast.error(err.message) });
   const deletePromo = trpc.promo.delete.useMutation({ onSuccess: () => { utils.promo.list.invalidate(); toast.success(lang === "en" ? "Promo deleted" : "تم حذف الكود"); }, onError: (err) => toast.error(err.message) });
@@ -1094,6 +1102,31 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                       </motion.div>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* ═══════════════════ NOTIFICATIONS (manual broadcast) ═══════════════════ */}
+              {activeTab === "notifications" && (
+                <div className="space-y-6">
+                  <div>
+                    <h1 className="text-2xl font-bold text-foreground">{isRTL ? "الإشعارات" : "Notifications"}</h1>
+                    <p className="text-sm text-text-muted mt-1">
+                      {isRTL
+                        ? "ابعت إشعار يدوي لكل المستخدمين المسجلين — بيظهر فورًا في جرس المنصة عند الكل"
+                        : "Broadcast a notification to every registered user's bell in real time"}
+                    </p>
+                  </div>
+                  <AdminNotificationPanel
+                    onSend={(n) => {
+                      sendBroadcast.mutate({
+                        type: "promo",
+                        title: n.titleAr || n.title,
+                        message: n.messageAr || n.message,
+                        titleEn: n.titleEn || undefined,
+                        messageEn: n.messageEn || undefined,
+                      });
+                    }}
+                  />
                 </div>
               )}
 

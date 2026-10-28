@@ -10,6 +10,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import StarfieldBackground from "@/components/StarfieldBackground";
 import { NotificationProvider } from "@/components/NotificationToast";
+import NotificationPollerBridge from "@/components/NotificationPollerBridge";
 import ThemeProvider from "@/components/ThemeProvider";
 import { EngineeringModeProvider } from "@/components/ui/EngineeringMode";
 import AmbientOrbs from "@/components/ui/AmbientOrbs";
@@ -128,6 +129,9 @@ export default function App() {
   return (
     <ErrorBoundary>
       <NotificationProvider>
+        {/* 🔔 Live server notifications → toasts + bell (polls /api/notifications/poll,
+            only active while logged in; no-ops silently for guests) */}
+        <NotificationPollerBridge />
         <EngineeringModeProvider>
           <ThemeProvider>
             <Toaster theme="dark" richColors position="top-center" />

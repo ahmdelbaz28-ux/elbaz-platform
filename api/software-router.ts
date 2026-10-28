@@ -3,6 +3,7 @@ import { desc, eq } from "drizzle-orm";
 import { createRouter, publicQuery, adminMutation } from "./middleware";
 import { getDb } from "./queries/connection";
 import { softwareDownloads } from "@db/schema";
+import { pushNotification } from "./lib/notification-broadcast.js";
 
 export const softwareRouter = createRouter({
   list: publicQuery.query(async () => {
@@ -29,6 +30,19 @@ export const softwareRouter = createRouter({
     .mutation(async ({ input }) => {
       const db = getDb();
       const [item] = await db.insert(softwareDownloads).values(input);
+
+      // 🔔 Broadcast: a new software/ETAP download entry is available.
+      if (input.isActive) {
+        void pushNotification({
+          type: "software",
+          title: "💾 برنامج جديد متاح للتحميل",
+          message:
+            `«${input.titleAr}» بقى متاح دلوقتي على المنصة. حمّله من الصفحة الرئيسية — ` +
+            `وملفات المشروع الكاملة بتصلك أول بأول على قناة التليجرام وشرحها خطوة بخطوة على اليوتيوب.`,
+          url: "/",
+        });
+      }
+
       return { success: true, id: Number(item.insertId) };
     }),
 

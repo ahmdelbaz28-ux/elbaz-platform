@@ -51,6 +51,8 @@ type AppVariables = {
 
 import { shieldMiddleware } from "./middleware/shield.js";
 import { getClientIpFromHono } from "./lib/client-ip";
+import { notificationRoute } from "./notification-route.js";
+import { startYoutubeWatcher } from "./lib/youtube-watcher.js";
 
 const app = new Hono<{ Variables: AppVariables }>({ strict: false });
 
@@ -120,6 +122,9 @@ app.route("/api/paymob", paymobWebhook);
 app.route("/api/webhooks/paymob", paymobWebhookAlias);
 app.route("/api/chatbot", chatbotRouter);
 app.route("/api/google-auth", googleAuthRouter);
+
+// ── Notification polling (bell + YouTube episode watcher) at /api/notifications/* ──
+app.route("/api/notifications", notificationRoute);
 
 // ── tRPC handler at /api/trpc ──
 // Authentication is handled per-procedure (publicQuery vs authedQuery)
@@ -484,6 +489,10 @@ async function start() {
   appLogger.info(`[Server] Running on http://${env.HOST}:${env.PORT}`);
   appLogger.info(`[Server] Environment: ${env.NODE_ENV}`);
   appLogger.info(`[Server] Frontend: ${env.FRONTEND_URL}`);
+
+  // ── YouTube episode watcher: every 15 min, detect new uploads on the
+  // channel playlist and broadcast an in-app notification to all users.
+  startYoutubeWatcher();
 
   const shutdownHandler = async (signal: string) => {
     appLogger.info(`[Server] ${signal} received, shutting down...`);

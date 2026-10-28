@@ -67,12 +67,14 @@ export {
   referenceFiles,
   faqEntries,
   articles,
+  notifications,
   // Shared types
   type FaqEntry,
   type ReferenceFile,
   type InsertReferenceFile,
   type Article,
   type InsertArticle,
+  type NotificationRow,
 } from "./schema/shared.js";
 
 export {

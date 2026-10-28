@@ -24,6 +24,7 @@ import {
   REFERENCE_ALLOWED_CONTENT_TYPES,
   REFERENCE_MAX_FILE_SIZE,
 } from "./lib/r2";
+import { pushNotification } from "./lib/notification-broadcast.js";
 
 export const referencesRouter = createRouter({
   // ─── List all published reference files ───
@@ -130,6 +131,18 @@ export const referencesRouter = createRouter({
         uploadedById: ctx.user?.id,
         isPublished: true,
       });
+
+      // 🔔 Broadcast: a new library/reference file is available to everyone.
+      if (input.isPublic) {
+        void pushNotification({
+          type: "file",
+          title: "📁 ملف جديد في المكتبة",
+          message:
+            `ملف جديد «${input.title}» بقى متاح في قسم المراجع — حمّله دلوقتي من صفحة المراجع. ` +
+            `كل ملفات المشروع بتنزل أول بأول، وتابع قناتنا على اليوتيوب للشرح خطوة بخطوة.`,
+          url: "/references",
+        });
+      }
 
       return { success: true, id: Number(result.insertId) };
     }),

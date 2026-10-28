@@ -7,6 +7,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
+import { useNavigate } from "react-router";
 import {
   Bell,
   BookOpen,
@@ -17,6 +18,7 @@ import {
   Inbox,
   X,
   BellRing,
+  Youtube,
 } from "lucide-react";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useAuth } from "@/hooks/useAuth";
@@ -27,9 +29,10 @@ import { useNotification } from "@/components/NotificationToast";
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /** Display categories used in the notification center panel. */
-export type NotificationDisplayType = "enrollment" | "promo" | "update" | "system";
+export type NotificationDisplayType = "enrollment" | "promo" | "update" | "youtube" | "system";
 
-/** Canonical toast types from the existing NotificationToast system. */
+/** Canonical toast types from the existing NotificationToast system, plus the
+ *  server broadcast types (lesson/file/software/youtube) mapped on arrival. */
 type SourceToastType = "enrollment" | "promo" | "update" | "info" | "success";
 
 /** A single persisted notification record stored in localStorage. */
@@ -41,6 +44,12 @@ export interface NotificationRecord {
   message: string;
   timestamp: number; // unix ms
   read: boolean;
+  /** Server event id — dedupes polled events against already-shown toasts. */
+  eventId?: string;
+  /** Click-through target: site path ("/courses/x") or absolute URL (YouTube). */
+  url?: string;
+  /** YouTube channel link for the subscribe CTA. */
+  channelUrl?: string;
 }
 
 /** Config for the push notification hook. */
@@ -57,15 +66,31 @@ interface RealtimeConfig {
   interval?: number;
   /** Called when a new enrollment is detected. */
   onNewEnrollment?: (courseName: string) => void;
-  /** Called when a generic new event arrives. */
-  onNewEvent?: (event: { type: string; data?: unknown }) => void;
+  /** Called when a generic new event arrives (includes url/channelUrl). */
+  onNewEvent?: (event: {
+    id: string;
+    type: string;
+    title: string;
+    message: string;
+    url?: string;
+    channelUrl?: string;
+    data?: unknown;
+  }) => void;
 }
 
 /** Shape returned by useNotificationHistory. */
 interface NotificationHistoryState {
   notifications: NotificationRecord[];
   unreadCount: number;
-  addNotification: (record: Omit<NotificationRecord, "id" | "read" | "timestamp">) => void;
+  addNotification: (record: {
+    displayType: NotificationDisplayType;
+    sourceType: SourceToastType;
+    title: string;
+    message: string;
+    eventId?: string;
+    url?: string;
+    channelUrl?: string;
+  }) => void;
   markAsRead: (id: string) => void;
   markAllAsRead: () => void;
   clearAll: () => void;
@@ -104,14 +129,19 @@ const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /** Map a source toast type to a display type for the center panel. */
-function toDisplayType(source: SourceToastType): NotificationDisplayType {
+function toDisplayType(source: string): NotificationDisplayType {
   switch (source) {
     case "enrollment":
       return "enrollment";
     case "promo":
       return "promo";
     case "update":
+    case "lesson":
+    case "file":
+    case "software":
       return "update";
+    case "youtube":
+      return "youtube";
     case "success":
       return "update";
     default:
@@ -216,7 +246,15 @@ export function useNotificationHistory(): NotificationHistoryState {
   }, []);
 
   const addNotification = useCallback(
-    (record: Omit<NotificationRecord, "id" | "read" | "timestamp">) => {
+    (record: {
+      displayType: NotificationDisplayType;
+      sourceType: SourceToastType;
+      title: string;
+      message: string;
+      eventId?: string;
+      url?: string;
+      channelUrl?: string;
+    }) => {
       const now = Date.now();
       const entry: NotificationRecord = {
         ...record,
@@ -225,6 +263,11 @@ export function useNotificationHistory(): NotificationHistoryState {
         timestamp: now,
       };
       setNotifications((prev) => {
+        // Dedupe: a polled server event that was already shown as a live
+        // toast (same eventId) must not appear twice in the bell history.
+        if (record.eventId && prev.some((n) => n.eventId === record.eventId)) {
+          return prev;
+        }
         const updated = [entry, ...prev];
         const trimmed = updated.slice(0, MAX_STORED);
         persist(trimmed);
@@ -394,6 +437,7 @@ export function useRealtimeNotifications(
   const [error, setError] = useState<string | null>(null);
 
   const lastEventIdRef = useRef<string | null>(null);
+  const seenEventIdsRef = useRef<Set<string>>(new Set());
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
   const onNewEnrollmentRef = useRef(onNewEnrollment);
   const onNewEventRef = useRef(onNewEvent);
@@ -416,8 +460,9 @@ export function useRealtimeNotifications(
       const baseUrl = (globalThis as any).Capacitor?.isNativePlatform?.() ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io") : ""; // eslint-disable-line @typescript-eslint/no-explicit-any
       const res = await fetch(`${baseUrl}/api/notifications/poll?${params.toString()}`);
       if (!res.ok) {
-        // Not found / not implemented — this is acceptable for now
-        if (res.status === 404) return;
+        // 404 = endpoint not deployed yet; 401/403 = session ended mid-poll —
+        // all three are quiet no-ops (no error toast, no console noise).
+        if (res.status === 404 || res.status === 401 || res.status === 403) return;
         throw new Error(`Poll failed: ${res.status}`);
       }
       const data = await res.json();
@@ -434,14 +479,26 @@ export function useRealtimeNotifications(
           // Update cursor
           if (event.id) lastEventIdRef.current = event.id;
 
+          // Skip events already surfaced (dedupe by server event id)
+          if (event.id && seenEventIdsRef.current.has(event.id)) continue;
+          if (event.id) seenEventIdsRef.current.add(event.id);
+
           // Enrollment event
           if (event.type === "enrollment" && onNewEnrollmentRef.current) {
             onNewEnrollmentRef.current(event.courseName ?? event.data?.courseName ?? "Unknown Course");
           }
 
-          // Generic event
+          // Generic event (title/message/url forwarded to the toast + bell)
           if (onNewEventRef.current) {
-            onNewEventRef.current({ type: event.type, data: event.data });
+            onNewEventRef.current({
+              id: event.id,
+              type: event.type,
+              title: event.title ?? "",
+              message: event.message ?? "",
+              url: event.url,
+              channelUrl: event.channelUrl,
+              data: event.data,
+            });
           }
         }
       }, 500);
@@ -505,18 +562,24 @@ export function useShowNotification() {
 
   const showAndSave = useCallback(
     (toast: {
-      type: SourceToastType;
+      type: SourceToastType | "lesson" | "file" | "software" | "youtube";
       title: string;
       message: string;
       duration?: number;
       action?: { label: string; onClick: () => void };
+      eventId?: string;
+      url?: string;
+      channelUrl?: string;
     }) => {
       showNotification(toast);
       addNotification({
         displayType: toDisplayType(toast.type),
-        sourceType: toast.type,
+        sourceType: toast.type as SourceToastType,
         title: toast.title,
         message: toast.message,
+        eventId: toast.eventId,
+        url: toast.url,
+        channelUrl: toast.channelUrl,
       });
     },
     [showNotification, addNotification],
@@ -556,6 +619,12 @@ const DISPLAY_CONFIG: Record<
     ring: "ring-[rgba(16,185,129,0.15)]",
     accent: "text-[#10b981]",
   },
+  youtube: {
+    icon: <Youtube className="h-4 w-4" />,
+    iconBg: "bg-[rgba(255,59,48,0.1)]",
+    ring: "ring-[rgba(255,59,48,0.18)]",
+    accent: "text-[#ff5f57]",
+  },
   system: {
     icon: <Bell className="h-4 w-4" />,
     iconBg: "bg-[rgba(148,163,184,0.08)]",
@@ -579,18 +648,32 @@ function NotificationRow({
   readonly onMarkRead: (id: string) => void;
 }) {
   const cfg = DISPLAY_CONFIG[record.displayType] ?? DISPLAY_CONFIG.system;
+  const navigate = useNavigate();
+
+  /** Site paths navigate inside the SPA; absolute URLs open in a new tab. */
+  const openTarget = useCallback(() => {
+    if (!record.url) return;
+    if (record.url.startsWith("/")) {
+      navigate(record.url);
+    } else {
+      window.open(record.url, "_blank", "noopener,noreferrer");
+    }
+  }, [record.url, navigate]);
+
+  const handleRowClick = useCallback(() => {
+    if (!record.read) onMarkRead(record.id);
+    openTarget();
+  }, [record.read, record.id, onMarkRead, openTarget]);
 
   return (
     <button
       type="button"
       dir={lang === "ar" ? "rtl" : "ltr"}
-      onClick={() => {
-        if (!record.read) onMarkRead(record.id);
-      }}
+      onClick={handleRowClick}
       onKeyDown={(e) => {
-        if ((e.key === "Enter" || e.key === " ") && !record.read) {
+        if ((e.key === "Enter" || e.key === " ")) {
           e.preventDefault();
-          onMarkRead(record.id);
+          handleRowClick();
         }
       }}
       aria-label={`${record.title} – ${record.message}`}
@@ -627,9 +710,23 @@ function NotificationRow({
         <p className="mt-0.5 line-clamp-2 text-[12px] leading-relaxed text-[#64748b]">
           {record.message}
         </p>
-        <p className="mt-1.5 text-[11px] text-[#475569]">
-          {relativeTime(record.timestamp, lang)}
-        </p>
+        <div className="mt-1.5 flex items-center justify-between gap-2">
+          <p className="text-[11px] text-[#475569]">
+            {relativeTime(record.timestamp, lang)}
+          </p>
+          {record.channelUrl && (
+            <a
+              href={record.channelUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center gap-1 text-[11px] font-semibold text-[#ff5f57] transition-colors hover:text-[#ff8179]"
+            >
+              <Youtube className="h-3 w-3" />
+              {lang === "ar" ? "القناة + الجرس 🔔" : "Channel + bell 🔔"}
+            </a>
+          )}
+        </div>
       </div>
     </button>
   );
@@ -788,7 +885,7 @@ export default function NotificationCenter() { // NOSONAR — large component wi
         aria-modal="false"
         aria-label={isRTL ? "مركز الإشعارات" : "Notification Center"}
         dir={isRTL ? "rtl" : "ltr"}
-        className={`absolute z-50 mt-2 w-[360px] overflow-hidden rounded-xl border border-[#1e2d3d] bg-[#0d1420] shadow-[0_16px_48px_rgba(0,0,0,0.5)] transition-all duration-200 ${
+        className={`absolute z-50 mt-2 w-[360px] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-[#1e2d3d] bg-[#0d1420] shadow-[0_16px_48px_rgba(0,0,0,0.5)] transition-all duration-200 ${
           // In LTR the dropdown opens to the right edge of the trigger; in
           // RTL it mirrors to the left edge. Previously both branches were
           // "right-0" (SonarCloud S3923).
