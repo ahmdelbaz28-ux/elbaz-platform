@@ -70,8 +70,9 @@ if (!tgToken || !tgChat) {
 try {
   const res = await fetch(`${BASE_URL}/api/notifications/push/public-key`, { signal: AbortSignal.timeout(10_000) });
   const body = (await res.json()) as { enabled: boolean; publicKey: string | null };
+  // No remote-derived data in the message — response booleans stay out of the log (S5145).
   console.log(
-    `③ API ${safeLog(BASE_URL)}: ${res.ok && body.enabled ? "✓ push enabled, public key served" : `✗ enabled=${body.enabled} (set VAPID_* env and restart)`}`
+    `③ API ${safeLog(BASE_URL)}: ${res.ok && body.enabled ? "✓ push enabled, public key served" : "✗ push not enabled (set VAPID_* env and restart)"}`
   );
 } catch (err) {
   console.log(`③ API ${safeLog(BASE_URL)}: ✗ unreachable — ${safeLog(err instanceof Error ? err.message : String(err))}`);
