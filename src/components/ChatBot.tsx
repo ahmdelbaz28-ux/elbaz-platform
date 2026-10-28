@@ -289,50 +289,51 @@ interface ChatInputAreaProps {
 }
 
 /** Attachment preview / compressing indicator row (extracted for clarity). */
-function AttachmentArea({ attachment, compressing, lang, onRemove }: {
+function AttachmentArea({ attachment, compressing, lang, onRemove }: Readonly<{
   attachment: AttachedImage | null;
   compressing: boolean;
   lang: string;
   onRemove: () => void;
-}) {
-  if (!compressing && !attachment) return null;
-  return (
-    <div className="mb-2 flex items-center gap-2 rounded-xl border border-[#1e2d3d] bg-[#111827] p-2">
-      {compressing ? (
+}>) {
+  if (compressing) {
+    return (
+      <div className="mb-2 flex items-center gap-2 rounded-xl border border-[#1e2d3d] bg-[#111827] p-2">
         <div className="flex items-center gap-2 text-[12px] text-slate-400">
           <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />
           <span>{lang === "ar" ? "جارٍ تجهيز الصورة..." : "Preparing image..."}</span>
         </div>
-      ) : attachment ? (
-        <>
-          <img
-            src={attachment.thumb}
-            alt={attachment.name || "attachment"}
-            className="h-12 w-12 flex-shrink-0 rounded-lg border border-white/10 object-cover"
-            draggable={false}
-          />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[12px] text-slate-300">{attachment.name || (lang === "ar" ? "صورة" : "Image")}</p>
-            <p className="text-[10px] text-cyan-400/70">
-              {lang === "ar" ? "سيتم تحليل الصورة بالذكاء الاصطناعي" : "The image will be analyzed by AI"}
-            </p>
-          </div>
-          <button
-            onClick={onRemove}
-            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-red-400/10 hover:text-red-400"
-            title={lang === "ar" ? "إزالة الصورة" : "Remove image"}
-            aria-label={lang === "ar" ? "إزالة الصورة" : "Remove image"}
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </>
-      ) : null}
+      </div>
+    );
+  }
+  if (!attachment) return null; // narrows the type for the preview below
+  return (
+    <div className="mb-2 flex items-center gap-2 rounded-xl border border-[#1e2d3d] bg-[#111827] p-2">
+      <img
+        src={attachment.thumb}
+        alt={attachment.name || "attachment"}
+        className="h-12 w-12 flex-shrink-0 rounded-lg border border-white/10 object-cover"
+        draggable={false}
+      />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[12px] text-slate-300">{attachment.name || (lang === "ar" ? "صورة" : "Image")}</p>
+        <p className="text-[10px] text-cyan-400/70">
+          {lang === "ar" ? "سيتم تحليل الصورة بالذكاء الاصطناعي" : "The image will be analyzed by AI"}
+        </p>
+      </div>
+      <button
+        onClick={onRemove}
+        className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-red-400/10 hover:text-red-400"
+        title={lang === "ar" ? "إزالة الصورة" : "Remove image"}
+        aria-label={lang === "ar" ? "إزالة الصورة" : "Remove image"}
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
     </div>
   );
 }
 
 /** Attach-button + textarea + send-button row (extracted for clarity). */
-function ComposerRow({ value, onValueChange, onKeyDown, taRef, fileInputRef, onPickFile, onFilePicked, canSend, isLoading, compressing, doSend, lang }: {
+function ComposerRow({ value, onValueChange, onKeyDown, taRef, fileInputRef, onPickFile, onFilePicked, canSend, isLoading, compressing, doSend, lang }: Readonly<{
   value: string;
   onValueChange: (v: string) => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
@@ -345,7 +346,7 @@ function ComposerRow({ value, onValueChange, onKeyDown, taRef, fileInputRef, onP
   compressing: boolean;
   doSend: () => void;
   lang: string;
-}) {
+}>) {
   return (
     <div className="flex items-end gap-2">
       {/* Attach image (vision) button */}
