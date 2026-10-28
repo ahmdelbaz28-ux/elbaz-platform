@@ -73,7 +73,7 @@ import {
  *          metadata-is-not-content + unverified-attribution rejection +
  *          deliver-what-you-have + name-standards-never-link.
  */
-export const PROMPT_VERSION = "3.3.0";
+export const PROMPT_VERSION = "3.3.1";
 
 export type ChatbotMode = "thinking" | "instant";
 

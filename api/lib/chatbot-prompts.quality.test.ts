@@ -262,6 +262,26 @@ describe("Reach-gems: behavioral contracts (Agent-Reach test philosophy)", () =>
     expect(enPrompt).toContain("never legitimize a value without a source");
   });
 
+  it("CONTRACT never-weaken-a-correction: soft framings closed (v3.3.1, live-eval evidence)", () => {
+    const arPrompt = getSystemPrompt("ar", "thinking");
+    const enPrompt = getSystemPrompt("en", "thinking");
+    expect(arPrompt).toContain("التصحيح لا يُضعَف بعده");
+    expect(arPrompt).toContain("بعض المصنعين يوصون بـ");
+    expect(arPrompt).toContain("لا يُذكر من عندك أبداً");
+    expect(enPrompt).toContain("never weaken a correction");
+    expect(enPrompt).toContain("some manufacturers recommend");
+    // instant anchors carry the compact form too (both languages)
+    expect(getSystemPrompt("ar", "instant")).toContain("التصحيح لا يُضعَف بعده");
+    expect(getSystemPrompt("en", "instant")).toContain("never weaken a correction");
+  });
+
+  it("CONTRACT empathy-gating: empathy only for explicit frustration, not technical openers", () => {
+    const arPrompt = getSystemPrompt("ar", "thinking");
+    const enPrompt = getSystemPrompt("en", "thinking");
+    expect(arPrompt).toContain("التعاطف لإحباط صريح واصل من المستخدم فقط");
+    expect(enPrompt).toContain("Empathy is for explicit user frustration only");
+  });
+
   it("CONTRACT deliver-what-you-have: partial answers deliver the grounded part + name the gap", () => {
     const arPrompt = getSystemPrompt("ar", "thinking");
     expect(arPrompt).toContain("سلّم المتاح دائماً");
