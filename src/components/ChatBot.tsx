@@ -233,7 +233,40 @@ async function compressImageFile(file: File): Promise<AttachedImage> {
   return { dataUrl, thumb, name: file.name };
 }
 
-// ─── Chat input area (ISOLATED component) ────────────────────────────────────
+/**
+ * Drain one SSE response into onPayload until the stream ends or the chat is
+ * cleared. Lines without the `data: ` prefix (keepalive pings, comments) are
+ * silently skipped — the typing indicator stays untouched. onBytes fires on
+ * every successful read (liveness watchdog evidence, pings included).
+ * Returns the leftover incomplete trailing line (caller processes it).
+ */
+async function readSseUntilDone(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  opts: { isStale: () => boolean; onBytes: () => void; onPayload: (payload: string) => void },
+): Promise<string> {
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    if (opts.isStale()) return buffer; // chat was cleared mid-stream — stop consuming
+    const result = await reader.read();
+    opts.onBytes(); // any bytes (pings included) prove liveness
+    if (result.done) return buffer;
+
+    buffer += decoder.decode(result.value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || ""; // keep incomplete line in buffer
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      // `: ping` keepalives and comments never start with "data: " —
+      // silently ignored, the typing indicator stays untouched.
+      if (!line.startsWith("data: ")) continue;
+      opts.onPayload(line.slice(6).trim());
+    }
+  }
+}
+
+// ─── Chat input area (ISOLATED component) ─────────────────────────────────────
 // Typing lag fix: the text value lives in THIS component's state, so every
 // keystroke re-renders only this small subtree — not the whole chat window
 // (bubbles + markdown re-parsing). This was the root cause of the delayed
@@ -245,11 +278,124 @@ interface ChatInputHandle {
 }
 
 interface ChatInputAreaProps {
+  // Sonar S6767 FP: all five props are consumed inside the memo(forwardRef())
+  // component below — the analyzer loses prop tracking through the
+  // forwardRef wrapper, hence the inline suppressions on each property.
+  lang: string; // NOSONAR: destructured + used in the component body (toast, labels)
+  isLoading: boolean; // NOSONAR: destructured + used in canSend/doSend/disabled
+  kbOpen: boolean; // NOSONAR: destructured + used in the footer hint visibility
+  isMobileViewport: boolean; // NOSONAR: destructured + used in the safe-area style
+  onSend: (text: string, image: AttachedImage | null) => void; // NOSONAR: destructured + called in doSend
+}
+
+/** Attachment preview / compressing indicator row (extracted for clarity). */
+function AttachmentArea({ attachment, compressing, lang, onRemove }: {
+  attachment: AttachedImage | null;
+  compressing: boolean;
   lang: string;
+  onRemove: () => void;
+}) {
+  if (!compressing && !attachment) return null;
+  return (
+    <div className="mb-2 flex items-center gap-2 rounded-xl border border-[#1e2d3d] bg-[#111827] p-2">
+      {compressing ? (
+        <div className="flex items-center gap-2 text-[12px] text-slate-400">
+          <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />
+          <span>{lang === "ar" ? "جارٍ تجهيز الصورة..." : "Preparing image..."}</span>
+        </div>
+      ) : attachment ? (
+        <>
+          <img
+            src={attachment.thumb}
+            alt={attachment.name || "attachment"}
+            className="h-12 w-12 flex-shrink-0 rounded-lg border border-white/10 object-cover"
+            draggable={false}
+          />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[12px] text-slate-300">{attachment.name || (lang === "ar" ? "صورة" : "Image")}</p>
+            <p className="text-[10px] text-cyan-400/70">
+              {lang === "ar" ? "سيتم تحليل الصورة بالذكاء الاصطناعي" : "The image will be analyzed by AI"}
+            </p>
+          </div>
+          <button
+            onClick={onRemove}
+            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-red-400/10 hover:text-red-400"
+            title={lang === "ar" ? "إزالة الصورة" : "Remove image"}
+            aria-label={lang === "ar" ? "إزالة الصورة" : "Remove image"}
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+/** Attach-button + textarea + send-button row (extracted for clarity). */
+function ComposerRow({ value, onValueChange, onKeyDown, taRef, fileInputRef, onPickFile, onFilePicked, canSend, isLoading, compressing, doSend, lang }: {
+  value: string;
+  onValueChange: (v: string) => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  taRef: React.RefObject<HTMLTextAreaElement | null>;
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
+  onPickFile: () => void;
+  onFilePicked: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  canSend: boolean;
   isLoading: boolean;
-  kbOpen: boolean;
-  isMobileViewport: boolean;
-  onSend: (text: string, image: AttachedImage | null) => void;
+  compressing: boolean;
+  doSend: () => void;
+  lang: string;
+}) {
+  return (
+    <div className="flex items-end gap-2">
+      {/* Attach image (vision) button */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        className="hidden"
+        onChange={onFilePicked}
+        aria-hidden="true"
+        tabIndex={-1}
+      />
+      <button
+        onClick={onPickFile}
+        disabled={isLoading || compressing}
+        className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-[#1e2d3d] bg-[#111827] text-slate-400 transition-all hover:border-cyan-500/40 hover:text-cyan-300 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+        title={lang === "ar" ? "إرفاق صورة للتحليل" : "Attach an image for analysis"}
+        aria-label={lang === "ar" ? "إرفاق صورة للتحليل" : "Attach an image for analysis"}
+      >
+        {compressing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+      </button>
+      <div className="relative flex-1">
+        <textarea
+          ref={taRef}
+          value={value}
+          onChange={(e) => { onValueChange(e.target.value); }}
+          onKeyDown={onKeyDown}
+          placeholder={lang === "ar" ? "اسأل سؤالك الهندسي..." : "Ask your engineering question..."}
+          rows={1}
+          disabled={isLoading}
+          dir={ARABIC_RE.test(value) ? "rtl" : "ltr"}
+          aria-label={lang === "ar" ? "اكتب رسالتك" : "Type your message"}
+          className="w-full resize-none rounded-xl border border-[#1e2d3d] bg-[#111827] px-3.5 py-2.5 text-[13.5px] text-[#e8f0fe] transition-all placeholder:text-slate-500 focus:border-cyan-500/50 focus:outline-none focus:ring-1 focus:ring-cyan-500/20 disabled:opacity-50"
+          style={{ minHeight: "40px", maxHeight: "120px" }}
+        />
+      </div>
+      <button
+        onClick={doSend}
+        disabled={!canSend}
+        className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white transition-all hover:shadow-lg hover:shadow-cyan-500/25 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:shadow-none"
+        aria-label={lang === "ar" ? "إرسال" : "Send"}
+      >
+        {isLoading ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Send className="h-4 w-4" />
+        )}
+      </button>
+    </div>
+  );
 }
 
 const ChatInputArea = memo(forwardRef<ChatInputHandle, ChatInputAreaProps>(function ChatInputArea(
@@ -320,96 +466,33 @@ const ChatInputArea = memo(forwardRef<ChatInputHandle, ChatInputAreaProps>(funct
     }
   };
 
-  const placeholder = lang === "ar" ? "اسأل سؤالك الهندسي..." : "Ask your engineering question...";
-
   return (
     <div
       className="flex-shrink-0 px-3 py-3 border-t border-[#1e2d3d] bg-[#0a1019]"
       style={isMobileViewport ? { paddingBottom: "max(env(safe-area-inset-bottom, 0px) + 0.5rem, 0.75rem)" } : undefined}
     >
-      {/* Attachment preview / compressing indicator */}
-      {(attachment || compressing) && (
-        <div className="mb-2 flex items-center gap-2 rounded-xl border border-[#1e2d3d] bg-[#111827] p-2">
-          {compressing ? (
-            <div className="flex items-center gap-2 text-[12px] text-slate-400">
-              <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />
-              <span>{lang === "ar" ? "جارٍ تجهيز الصورة..." : "Preparing image..."}</span>
-            </div>
-          ) : attachment ? (
-            <>
-              <img
-                src={attachment.thumb}
-                alt={attachment.name || "attachment"}
-                className="h-12 w-12 flex-shrink-0 rounded-lg border border-white/10 object-cover"
-                draggable={false}
-              />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[12px] text-slate-300">{attachment.name || (lang === "ar" ? "صورة" : "Image")}</p>
-                <p className="text-[10px] text-cyan-400/70">
-                  {lang === "ar" ? "سيتم تحليل الصورة بالذكاء الاصطناعي" : "The image will be analyzed by AI"}
-                </p>
-              </div>
-              <button
-                onClick={() => setAttachment(null)}
-                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-red-400/10 hover:text-red-400"
-                title={lang === "ar" ? "إزالة الصورة" : "Remove image"}
-                aria-label={lang === "ar" ? "إزالة الصورة" : "Remove image"}
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </>
-          ) : null}
-        </div>
-      )}
+      {/* Attachment preview / compressing indicator (extracted component) */}
+      <AttachmentArea
+        attachment={attachment}
+        compressing={compressing}
+        lang={lang}
+        onRemove={() => setAttachment(null)}
+      />
 
-      <div className="flex items-end gap-2">
-        {/* Attach image (vision) button */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp,image/gif"
-          className="hidden"
-          onChange={handleFilePicked}
-          aria-hidden="true"
-          tabIndex={-1}
-        />
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={isLoading || compressing}
-          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-[#1e2d3d] bg-[#111827] text-slate-400 transition-all hover:border-cyan-500/40 hover:text-cyan-300 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-          title={lang === "ar" ? "إرفاق صورة للتحليل" : "Attach an image for analysis"}
-          aria-label={lang === "ar" ? "إرفاق صورة للتحليل" : "Attach an image for analysis"}
-        >
-          {compressing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-        </button>
-        <div className="relative flex-1">
-          <textarea
-            ref={taRef}
-            value={value}
-            onChange={(e) => { setValue(e.target.value); autoresize(); }}
-            onKeyDown={handleKeyDown}
-            placeholder={placeholder}
-            rows={1}
-            disabled={isLoading}
-            dir={ARABIC_RE.test(value) ? "rtl" : "ltr"}
-            aria-label={lang === "ar" ? "اكتب رسالتك" : "Type your message"}
-            className="w-full resize-none rounded-xl border border-[#1e2d3d] bg-[#111827] px-3.5 py-2.5 text-[13.5px] text-[#e8f0fe] transition-all placeholder:text-slate-500 focus:border-cyan-500/50 focus:outline-none focus:ring-1 focus:ring-cyan-500/20 disabled:opacity-50"
-            style={{ minHeight: "40px", maxHeight: "120px" }}
-          />
-        </div>
-        <button
-          onClick={doSend}
-          disabled={!canSend}
-          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white transition-all hover:shadow-lg hover:shadow-cyan-500/25 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:shadow-none"
-          aria-label={lang === "ar" ? "إرسال" : "Send"}
-        >
-          {isLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Send className="h-4 w-4" />
-          )}
-        </button>
-      </div>
+      <ComposerRow
+        value={value}
+        onValueChange={(v) => { setValue(v); autoresize(); }}
+        onKeyDown={handleKeyDown}
+        taRef={taRef}
+        fileInputRef={fileInputRef}
+        onPickFile={() => fileInputRef.current?.click()}
+        onFilePicked={handleFilePicked}
+        canSend={canSend}
+        isLoading={isLoading}
+        compressing={compressing}
+        doSend={doSend}
+        lang={lang}
+      />
       <p className={`mt-2 text-center text-[10px] text-slate-600 ${kbOpen ? "hidden" : ""}`}>
         {lang === "ar"
           ? "بوت الباز الذكي — متخصص في الهندسة الكهربائية فقط"
@@ -604,8 +687,11 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   /** Resolve once the reveal caught up with everything received (bounded). */
   const drainReveal = useCallback(async (maxMs = 10_000) => {
     const deadline = Date.now() + maxMs;
+    // Timed poll by design: the reveal ticker runs on its own 30ms interval,
+    // so draining means “wake up every 30ms and check” — not a batch of
+    // parallel awaits. NOSONAR
     while (pendingTextRef.current && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 30));
+      await new Promise((r) => setTimeout(r, 30)); // NOSONAR: deliberate 30ms poll — see comment above.
     }
   }, []);
   // Component teardown safety (the widget effectively never unmounts, but
@@ -872,13 +958,14 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
       apiMessages.push({ role: "user", content: trimmed });
     }
 
+    // Language mirror: reply in the language of the user's actual message,
+    // not the site UI language (Arabic message → Arabic reply, etc.)
+    let replyLang: string = lang;
+    if (trimmed) replyLang = ARABIC_RE.test(trimmed) ? "ar" : "en";
+
     const requestBody = {
       messages: apiMessages,
-      // Language mirror: reply in the language of the user's actual message,
-      // not the site UI language (Arabic message → Arabic reply, etc.)
-      language: trimmed
-        ? (ARABIC_RE.test(trimmed) ? "ar" : "en")
-        : (lang === "ar" ? "ar" : "en"),
+      language: replyLang,
       chatId: chatIdRef.current,
       mode: chatMode,
     };
@@ -937,8 +1024,6 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
         const reader = streamResponse.body?.getReader();
         if (!reader) return "unreachable";
 
-        const decoder = new TextDecoder();
-        let buffer = "";
         let receivedAny = false;
         let receivedModel = "";
 
@@ -967,28 +1052,15 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
           }
         };
 
-        while (true) {
-          if (isStale()) break; // chat was cleared mid-stream — stop consuming
-          const result = await reader.read();
-          lastByteAt = Date.now(); // any bytes (pings included) prove liveness
-          if (result.done) break;
+        const leftover = await readSseUntilDone(reader, {
+          isStale,
+          onBytes: () => { lastByteAt = Date.now(); },
+          onPayload: consumePayload,
+        });
 
-          buffer += decoder.decode(result.value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || ""; // keep incomplete line in buffer
-
-          for (const rawLine of lines) {
-            const line = rawLine.trim();
-            // `: ping` keepalives and comments never start with "data: " —
-            // silently ignored, the typing indicator stays untouched.
-            if (!line.startsWith("data: ")) continue;
-            consumePayload(line.slice(6).trim());
-          }
-        }
-
-        // Process remaining buffer
-        if (buffer.trim()) {
-          const remainingLine = buffer.trim();
+        // Process remaining buffer (the helper returns the incomplete line)
+        if (leftover.trim()) {
+          const remainingLine = leftover.trim();
           if (remainingLine.startsWith("data: ")) consumePayload(remainingLine.slice(6).trim());
         }
 
@@ -1096,12 +1168,15 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
           // Transport-level failure — try the non-stream endpoint once.
           handled = await tryNonStreamOnce();
           if (handled || isStale()) break;
-          await sleep(2500);
+          // Serial backoff between silent retries BY DESIGN — parallel
+          // retries would hammer a struggling server. NOSONAR
+          await sleep(2500); // NOSONAR: intentional retry backoff, see comment above.
           continue;
         }
         // "failed" — the server exhausted its own persistence deadline.
         // Brief pause (cooldown rotation benefits) then retry silently.
-        if (attempt < MAX_STREAM_ATTEMPTS) await sleep(attempt === 1 ? 1500 : 4000);
+        // Serial backoff by design (same contract as above). NOSONAR
+        if (attempt < MAX_STREAM_ATTEMPTS) await sleep(attempt === 1 ? 1500 : 4000); // NOSONAR: intentional retry backoff.
       }
 
       if (!handled && !isStale()) {
@@ -1292,6 +1367,19 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   // engine identity must never appear in the UI).
   const thinkingLabel = lang === "ar" ? "\u062c\u0627\u0631\u064d \u0627\u0644\u062a\u0641\u0643\u064a\u0631..." : "Thinking...";
 
+  // ─── Chat window sizing/shape classes (computed once, no nested ternaries) ───
+  let windowShellClass = "fixed z-[100] transition-all duration-300 ease-out chatbot-window ";
+  if (isMinimized) windowShellClass += "chatbot-min w-10 h-10 md:w-14 md:h-14 rounded-full";
+  else if (isMobileViewport) windowShellClass += "chatbot-fullscreen w-screen h-[100dvh] rounded-none";
+  else windowShellClass += "w-[420px] h-[600px] rounded-2xl";
+
+  let windowInnerClass = "relative h-full flex flex-col overflow-hidden ";
+  if (isMinimized) windowInnerClass += "bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full cursor-pointer";
+  else {
+    windowInnerClass += "bg-[#0a1019] border border-[#1e2d3d] shadow-2xl shadow-black/50 ";
+    windowInnerClass += isMobileViewport ? "rounded-none" : "rounded-2xl";
+  }
+
   return (
     <>
       {/* ─── Floating Button ─── */}
@@ -1322,13 +1410,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
       {/* ─── Chat Window ─── */}
       {isOpen && (
         <div
-          className={"fixed z-[100] transition-all duration-300 ease-out chatbot-window " +
-            (isMinimized
-              ? "chatbot-min w-10 h-10 md:w-14 md:h-14 rounded-full"
-              : isMobileViewport
-                ? "chatbot-fullscreen w-screen h-[100dvh] rounded-none"
-                : "w-[420px] h-[600px] rounded-2xl"
-            )}
+          className={windowShellClass}
           style={(() => {
             if (isMinimized) return undefined;
             if (isMobileViewport) {
@@ -1375,12 +1457,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
           })()}
         >
           <div
-            className={"relative h-full flex flex-col overflow-hidden " +
-              (isMinimized
-                ? "bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full cursor-pointer"
-                : "bg-[#0a1019] border border-[#1e2d3d] shadow-2xl shadow-black/50 " +
-                  (isMobileViewport ? "rounded-none" : "rounded-2xl")
-              )}
+            className={windowInnerClass}
           >
             {/* ─── Minimized: Just the button ─── */}
             {isMinimized && (
