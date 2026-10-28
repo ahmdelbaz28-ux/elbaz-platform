@@ -17,6 +17,8 @@ import {
   RotateCcw,
   Brain,
   ImagePlus,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -28,6 +30,8 @@ interface Message {
   timestamp: Date;
   model?: string;
   isError?: boolean;
+  /** 👍/👎 vote on this assistant reply — one-shot, sent to /api/chatbot/feedback. */
+  feedback?: "up" | "down";
   /** Attached image — dataUrl lives in memory only; localStorage keeps the thumb. */
   image?: MessageImage;
 }
@@ -115,6 +119,7 @@ function saveMessagesToStorage(msgs: Message[], key: string): void {
         timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp,
         model: m.model || undefined,
         isError: m.isError || undefined,
+        feedback: m.feedback || undefined,
         // NEVER persist the full dataUrl (localStorage budget) — the 160px
         // thumb is enough for history display after a reload.
         image: m.image ? { thumb: m.image.thumb, name: m.image.name } : undefined,
@@ -139,6 +144,7 @@ function loadMessagesFromStorage(key: string): Message[] | null {
         timestamp: new Date(m.timestamp || Date.now()),
         model: m.model || undefined,
         isError: m.isError || undefined,
+        feedback: m.feedback || undefined,
         image: m.image ? { thumb: m.image.thumb, name: m.image.name } : undefined,
       }));
   } catch {
@@ -513,9 +519,10 @@ interface MessageBubbleProps {
   copied: boolean;
   onCopy: (msgId: string, content: string) => void;
   onRetry: (msgId: string) => void;
+  onFeedback: (msgId: string, rating: "up" | "down") => void;
 }
 
-const MessageBubble = memo(function MessageBubble({ msg, lang, copied, onCopy, onRetry }: MessageBubbleProps) {
+const MessageBubble = memo(function MessageBubble({ msg, lang, copied, onCopy, onRetry, onFeedback }: MessageBubbleProps) {
   const errorBubbleClass = msg.isError
     ? "bg-red-500/10 border border-red-500/30 text-red-300 rounded-ss-md"
     : "bg-[#111827] border border-[#1e2d3d] text-[#e8f0fe] rounded-ss-md";
@@ -588,6 +595,37 @@ const MessageBubble = memo(function MessageBubble({ msg, lang, copied, onCopy, o
 
         {/* (No model label by design — engine identity is private.) */}
 
+        {/* 👍/👎 feedback (assistant replies) — fuels the prompt evolution loop */}
+        {msg.role === "assistant" && !msg.isError && msg.id !== "welcome" && (
+          <div className="mt-1.5 ms-1 flex items-center gap-1.5" role="group" aria-label={lang === "ar" ? "تقييم الرد" : "Rate reply"}>
+            <button
+              onClick={() => onFeedback(msg.id, "up")}
+              disabled={msg.feedback !== undefined}
+              aria-pressed={msg.feedback === "up"}
+              className={msg.feedback === "up"
+                ? "rounded-md p-1 text-emerald-400 bg-emerald-400/10"
+                : "rounded-md p-1 text-slate-500 transition-colors hover:text-emerald-400 hover:bg-white/5 disabled:hover:bg-transparent"}
+              title={lang === "ar" ? "رد مفيد" : "Helpful reply"}
+            >
+              <ThumbsUp className="h-3 w-3" />
+            </button>
+            <button
+              onClick={() => onFeedback(msg.id, "down")}
+              disabled={msg.feedback !== undefined}
+              aria-pressed={msg.feedback === "down"}
+              className={msg.feedback === "down"
+                ? "rounded-md p-1 text-red-400 bg-red-400/10"
+                : "rounded-md p-1 text-slate-500 transition-colors hover:text-red-400 hover:bg-white/5 disabled:hover:bg-transparent"}
+              title={lang === "ar" ? "الرد مش دقيق" : "Not an accurate reply"}
+            >
+              <ThumbsDown className="h-3 w-3" />
+            </button>
+            {msg.feedback && (
+              <span className="text-[10px] text-slate-500">{lang === "ar" ? "شكراً لتقييمك" : "Thanks for the feedback"}</span>
+            )}
+          </div>
+        )}
+
         {/* Retry button (error messages) */}
         {msg.isError && (
           <button
@@ -624,6 +662,11 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   // the conversation. The ref exposes setTextAndFocus for the quick chips.
   const chatInputRef = useRef<ChatInputHandle>(null);
   const chatIdRef = useRef<string>(crypto.randomUUID());
+  // Snapshot of `messages` for callbacks that must read the CURRENT list
+  // without re-creating on every keystroke (feedback votes need the question
+  // snapshot above the rated reply). Synced after every render.
+  const messagesRef = useRef<Message[]>(messages);
+  useLayoutEffect(() => { messagesRef.current = messages; }, [messages]);
   const abortControllerRef = useRef<AbortController | null>(null);
   // Bumped on clearChat — any in-flight sendMessage with an older generation
   // becomes stale and must NOT touch state afterwards (prevents the cleared
@@ -918,6 +961,39 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
       setCopiedId(msgId);
     });
   }, []);
+
+  // ─── 👍/👎 feedback on an assistant reply ───
+  // One-shot vote per message: flips the local state immediately (fail-open —
+  // the vote UI never blocks on the network) and fires the POST with a
+  // question/answer snapshot so the admin panel can review WHY it was rated.
+  const handleFeedback = useCallback((msgId: string, rating: "up" | "down") => {
+    const msgs = messagesRef.current;
+    const idx = msgs.findIndex((m) => m.id === msgId);
+    const target = idx >= 0 ? msgs[idx] : undefined;
+    if (!target || target.role !== "assistant" || target.feedback === rating) return;
+
+    let question = "";
+    for (let i = idx - 1; i >= 0; i--) {
+      const m = msgs[i];
+      if (m && m.role === "user") { question = m.content; break; }
+    }
+
+    setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, feedback: rating } : m)));
+
+    void fetch("/api/chatbot/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chatId: chatIdRef.current,
+        rating,
+        question: question || target.content.slice(0, 500),
+        answer: target.content,
+        language: lang === "en" ? "en" : "ar",
+        mode: chatMode,
+        model: target.model || undefined,
+      }),
+    }).catch(() => { /* fail-open — the vote already flipped locally */ });
+  }, [lang, chatMode]);
 
   // ─── Send message (with streaming + optional image → vision routing) ───
   const sendMessage = useCallback(async (overrideText?: string, image?: AttachedImage | null) => { // NOSONAR — orchestrates silent retries + streaming reveal + fallback + abort + UI state; extraction would split inter-dependent closures across helpers, risking regressions
@@ -1557,6 +1633,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                       copied={copiedId === msg.id}
                       onCopy={copyMessage}
                       onRetry={handleRetry}
+                      onFeedback={handleFeedback}
                     />
                   ))}
 

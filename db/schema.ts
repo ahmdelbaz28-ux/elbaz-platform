@@ -86,3 +86,10 @@ export {
   type AiProvider,
   type AiModel,
 } from "./schema/ai.js";
+
+export {
+  // Chatbot (feedback loop — 👍/👎 votes on assistant replies)
+  chatbotFeedback,
+  type ChatbotFeedback,
+  type InsertChatbotFeedback,
+} from "./schema/chatbot.js";

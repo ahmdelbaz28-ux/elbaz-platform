@@ -128,6 +128,16 @@ const envSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   // Channel id: "@engahmedetap" or the numeric -100... chat id.
   TELEGRAM_CHAT_ID: z.string().optional(),
+  // ── Telegram bot worker (api/lib/telegram-bot.ts) — join-request
+  // auto-approval + private DM expert brain. Set TELEGRAM_BOT_POLLING=0 to
+  // disable the worker without touching the broadcast mirror.
+  TELEGRAM_BOT_POLLING: z.string().optional(),
+  // Brain mode for DMs: "instant" (default, fast) or "thinking" (deep, slow).
+  TELEGRAM_DM_MODE: z.string().optional(),
+  // Custom group welcome text after a join approval (default built-in).
+  TELEGRAM_GROUP_WELCOME: z.string().optional(),
+  // Personal chat id that receives the one-line "worker is up" boot ping.
+  TELEGRAM_ADMIN_CHAT_ID: z.string().optional(),
 });
 
 type EnvWithMeta = z.infer<typeof envSchema> & { isProduction: boolean };

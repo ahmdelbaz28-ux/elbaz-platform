@@ -493,6 +493,19 @@ async function start() {
 
   appLogger.info(`[Server] Running on http://${env.HOST}:${env.PORT}`);
   appLogger.info(`[Server] Environment: ${env.NODE_ENV}`);
+
+  // ── Telegram bot worker (join-request auto-approval + DM expert brain) ──
+  // Production only: tests/dev must never long-poll the live bot token.
+  // Never-throw — a failure here must not break the server that just booted.
+  if (env.isProduction) {
+    try {
+      const { startTelegramBot } = await import("./lib/telegram-bot.js");
+      const started = await startTelegramBot();
+      if (started) appLogger.info("[Server] Telegram bot worker started (join approvals + DM brain)");
+    } catch (err) {
+      appLogger.warn("[Server] Telegram bot worker failed to start", { error: err instanceof Error ? err.message : String(err) });
+    }
+  }
   appLogger.info(`[Server] Frontend: ${env.FRONTEND_URL}`);
 
   // ── YouTube episode watcher: every 15 min, detect new uploads on the

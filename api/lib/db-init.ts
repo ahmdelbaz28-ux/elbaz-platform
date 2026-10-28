@@ -874,6 +874,38 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         logger.warn("[DB] v12 pushSubscriptions migration warning", { error: (err as Error).message });
       }
 
+      // ── v13 feature: chatbotFeedback table (👍/👎 feedback loop) ──
+      // Stores votes on assistant replies (web widget + Telegram DM) so the
+      // admin panel can review failing conversations and turn them into test
+      // fixtures for the next prompt iteration. Idempotent.
+      try {
+        await conn.query(`
+          CREATE TABLE IF NOT EXISTS \`chatbotFeedback\` (
+            \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            \`chatId\` VARCHAR(64) NOT NULL,
+            \`userId\` BIGINT UNSIGNED NULL,
+            \`rating\` VARCHAR(8) NOT NULL,
+            \`comment\` VARCHAR(600) NULL,
+            \`question\` TEXT NOT NULL,
+            \`answer\` TEXT NOT NULL,
+            \`language\` VARCHAR(8) NOT NULL DEFAULT 'ar',
+            \`mode\` VARCHAR(12) NULL,
+            \`model\` VARCHAR(120) NULL,
+            \`source\` VARCHAR(16) NOT NULL DEFAULT 'web',
+            \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (\`id\`),
+            INDEX \`chatbot_feedback_created_idx\` (\`createdAt\`),
+            INDEX \`chatbot_feedback_rating_idx\` (\`rating\`),
+            INDEX \`chatbot_feedback_chat_idx\` (\`chatId\`),
+            CONSTRAINT \`fk_chatbot_feedback_user\` FOREIGN KEY (\`userId\`) REFERENCES \`users\` (\`id\`)
+              ON DELETE SET NULL ON UPDATE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        logger.info("[DB] v13 chatbotFeedback table verified");
+      } catch (err) {
+        logger.warn("[DB] v13 chatbotFeedback migration warning", { error: (err as Error).message });
+      }
+
       // ── Admin password sync (existing deployments) ──
       // ✅ SECURITY FIX (audit run-1, db-init.admin-password-env-sync):
       // ADMIN_PASSWORD is SEED-ONLY. Previously every boot re-synced the admin

@@ -16,6 +16,7 @@ import { getImageQuotaUsed, incrementImageQuota, DAILY_IMAGE_LIMIT } from "./lib
 import { persistChatRound, getChatHistory, getLatestSummaryText } from "./lib/chat-history.js";
 import { resolveOptionalUser } from "./context.js";
 import { logger } from "./lib/logger.js";
+import { chatbotFeedbackRoute } from "./chatbot-feedback-route.js";
 // Removed checkRateLimit
 
 const chatbotRouter = new Hono();
@@ -681,5 +682,8 @@ chatbotRouter.post("/stream", async (c) => {
 
   return new Response(sse, { status: 200, headers: SSE_HEADERS });
 });
+
+// ── 👍/👎 feedback votes (public, truncated server-side, rate-limited) ──
+chatbotRouter.route("/feedback", chatbotFeedbackRoute);
 
 export { chatbotRouter };

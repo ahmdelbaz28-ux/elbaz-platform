@@ -8,7 +8,7 @@ import "@/elite-animations.css";
 import {
   LayoutDashboard, Users, BookOpen, Headphones, DollarSign, Phone, FileText, Palette, Tag, Megaphone, Bot, Bell,
   Plus, Pencil, Trash2, Save, Eye, Zap, TrendingUp, CheckCircle, ChevronLeft, ChevronRight,
-  LogOut, ArrowUpRight, Shield, PlayCircle, Newspaper, X, Menu,
+  LogOut, ArrowUpRight, Shield, PlayCircle, Newspaper, X, Menu, MessageSquareText, ThumbsUp, ThumbsDown, Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,6 +58,7 @@ const SIDEBAR_ITEMS = [
   { id: "tickets", icon: Headphones, labelEn: "Tickets", labelAr: "التذاكر" },
   { id: "payments", icon: DollarSign, labelEn: "Payments", labelAr: "المدفوعات" },
   { id: "ai", icon: Bot, labelEn: "AI Models", labelAr: "النماذج الذكية" },
+  { id: "chatbot", icon: MessageSquareText, labelEn: "Chatbot", labelAr: "تقييمات الشات بوت" },
   { id: "contact", icon: Phone, labelEn: "Contact", labelAr: "التواصل" },
   { id: "cms", icon: FileText, labelEn: "CMS", labelAr: "المحتوى" },
   { id: "themes", icon: Palette, labelEn: "Themes", labelAr: "الثيمات" },
@@ -111,6 +112,11 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
   const { data: usersData } = trpc.admin.users.useQuery(undefined, { enabled: !!isAdmin && activeTab === "users" });
   const { data: coursesData } = trpc.admin.listCourses.useQuery(undefined, { enabled: !!isAdmin && activeTab === "courses" });
   const { data: allTickets } = trpc.admin.tickets.useQuery(undefined, { enabled: !!isAdmin && activeTab === "tickets" });
+  const [feedbackRatingFilter, setFeedbackRatingFilter] = useState<"all" | "up" | "down">("all");
+  const { data: chatbotFeedbackData, refetch: refetchChatbotFeedback } = trpc.admin.chatbotFeedback.useQuery(
+    { limit: 100, rating: feedbackRatingFilter },
+    { enabled: !!isAdmin && activeTab === "chatbot" }
+  );
   const { data: paymentsData } = trpc.admin.payments.useQuery(undefined, { enabled: !!isAdmin && activeTab === "payments" });
   const { data: manualPayDetails, refetch: refetchManualPayDetails } = trpc.payment.manualDetails.useQuery(undefined, { enabled: !!isAdmin && activeTab === "payments" });
   const { data: paymobStatusAdmin } = trpc.payment.isConfigured.useQuery(undefined, { enabled: !!isAdmin && activeTab === "payments" });
@@ -1129,6 +1135,111 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                   />
                 </div>
               )}
+
+              {/* ═══════════════════ CHATBOT (👍/👎 feedback review) ═══════════════════ */}
+              {activeTab === "chatbot" && (() => {
+                const fbStats = chatbotFeedbackData?.stats ?? { up: 0, down: 0, total: 0 };
+                const fbItems = chatbotFeedbackData?.items ?? [];
+                const satisfaction = fbStats.total > 0 ? Math.round((fbStats.up / fbStats.total) * 100) : null;
+                const exportFeedback = () => {
+                  // Export as eval fixtures — failing conversations feed the
+                  // next prompt-iteration test suite (live-chatbot-eval).
+                  const blob = new Blob([JSON.stringify(fbItems, null, 2)], { type: "application/json" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `chatbot-feedback-${new Date().toISOString().slice(0, 10)}.json`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                };
+                return (
+                  <div className="space-y-6">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h1 className="text-2xl font-bold text-foreground">{isRTL ? "تقييمات الشات بوت" : "Chatbot Feedback"}</h1>
+                        <p className="text-sm text-text-muted mt-1">
+                          {isRTL
+                            ? "كل 👍/👎 من المستخدمين الحقيقيين — التقييمات السلبية هي وقود الجولة القادمة من تطوير البرومبت"
+                            : "Every 👍/👎 from real users — downvotes fuel the next prompt iteration"}
+                        </p>
+                      </div>
+                      <Button variant="outline" size="sm" onClick={exportFeedback} disabled={fbItems.length === 0}>
+                        <Download className="h-4 w-4 me-1.5" />
+                        {isRTL ? "تحميل كقصص اختبار" : "Export as eval fixtures"}
+                      </Button>
+                    </div>
+
+                    {/* Stats cards */}
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      <div className="rounded-xl border border-border bg-primary p-4">
+                        <div className="flex items-center gap-2 text-emerald-400"><ThumbsUp className="h-4 w-4" /><span className="text-xs text-text-muted">{isRTL ? "مفيد" : "Helpful"}</span></div>
+                        <p className="mt-1 text-2xl font-bold text-foreground">{fbStats.up}</p>
+                      </div>
+                      <div className="rounded-xl border border-border bg-primary p-4">
+                        <div className="flex items-center gap-2 text-red-400"><ThumbsDown className="h-4 w-4" /><span className="text-xs text-text-muted">{isRTL ? "مش دقيق" : "Not accurate"}</span></div>
+                        <p className="mt-1 text-2xl font-bold text-foreground">{fbStats.down}</p>
+                      </div>
+                      <div className="rounded-xl border border-border bg-primary p-4">
+                        <p className="text-xs text-text-muted">{isRTL ? "إجمالي التقييمات" : "Total votes"}</p>
+                        <p className="mt-1 text-2xl font-bold text-foreground">{fbStats.total}</p>
+                      </div>
+                      <div className="rounded-xl border border-border bg-primary p-4">
+                        <p className="text-xs text-text-muted">{isRTL ? "نسبة الرضا" : "Satisfaction"}</p>
+                        <p className="mt-1 text-2xl font-bold text-foreground">{satisfaction === null ? "—" : `${satisfaction}%`}</p>
+                      </div>
+                    </div>
+
+                    {/* Filter row */}
+                    <div className="flex items-center gap-2">
+                      {(["all", "up", "down"] as const).map((r) => (
+                        <button
+                          key={r}
+                          onClick={() => setFeedbackRatingFilter(r)}
+                          className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                            feedbackRatingFilter === r
+                              ? "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30"
+                              : "text-text-muted border border-border hover:text-foreground"
+                          }`}
+                        >
+                          {r === "all" ? (isRTL ? "الكل" : "All") : r === "up" ? `👍 ${isRTL ? "مفيد" : "Up"}` : `👎 ${isRTL ? "مش دقيق" : "Down"}`}
+                        </button>
+                      ))}
+                      <Button variant="ghost" size="sm" className="ms-auto" onClick={() => refetchChatbotFeedback()}>
+                        {isRTL ? "تحديث" : "Refresh"}
+                      </Button>
+                    </div>
+
+                    {/* Feedback list */}
+                    {fbItems.length === 0 ? (
+                      <div className="rounded-xl border border-border bg-primary p-10 text-center text-sm text-text-muted">
+                        {isRTL ? "لسه مفيش تقييمات — أول ما المستخدمين يقيّموا ردود البوت هتظهر هنا" : "No votes yet — user ratings will appear here"}
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {fbItems.map((fb) => (
+                          <div key={fb.id} className="rounded-xl border border-border bg-primary p-4">
+                            <div className="flex flex-wrap items-center gap-2 text-xs">
+                              <span className={fb.rating === "up" ? "text-emerald-400" : "text-red-400"}>
+                                {fb.rating === "up" ? "👍" : "👎"}
+                              </span>
+                              <Badge variant="outline">{fb.source === "telegram" ? "Telegram" : "Web"}</Badge>
+                              {fb.mode && <Badge variant="outline">{fb.mode}</Badge>}
+                              <Badge variant="outline">{fb.language === "en" ? "EN" : "AR"}</Badge>
+                              {fb.model && <span className="text-text-muted">{fb.model}</span>}
+                              <span className="ms-auto text-text-muted">{new Date(fb.createdAt).toLocaleString(isRTL ? "ar-EG" : "en-GB")}</span>
+                            </div>
+                            <p className="mt-2 text-sm text-foreground"><span className="text-text-muted">{isRTL ? "السؤال: " : "Q: "}</span>{fb.question}</p>
+                            <p className="mt-1 line-clamp-3 text-xs text-text-muted"><span>{isRTL ? "الرد: " : "A: "}</span>{fb.answer}</p>
+                            {fb.comment && (
+                              <p className="mt-2 rounded-lg bg-amber-400/10 border border-amber-400/20 px-3 py-1.5 text-xs text-amber-300">💬 {fb.comment}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
             </motion.div>
           </AnimatePresence>
