@@ -1,0 +1,393 @@
+{
+  "generatedAt": "2026-10-28T12:13:20.067Z",
+  "prompts": {
+    "ar:thinking": {
+      "chars": 25235,
+      "tokensApprox": 8083,
+      "coverage": {
+        "batteries_dc": {
+          "found": [
+            "battery sizing standard",
+            "ageing factor concept"
+          ],
+          "missing": [
+            "discharge-rate discipline (capacity meaningless without rate)",
+            "end-of-discharge voltage input",
+            "IEEE 485 ageing factor",
+            "low-voltage disconnect settings",
+            "telecom DC plant voltage"
+          ],
+          "pct": 29
+        },
+        "earthing_lightning": {
+          "found": [
+            "substation grounding (touch/step)"
+          ],
+          "missing": [
+            "lightning protection standard series",
+            "required input — never assumed",
+            "surge protective devices",
+            "touch/step voltage safety"
+          ],
+          "pct": 20
+        },
+        "short_circuit": {
+          "found": [
+            "IEC short-circuit standard",
+            "ANSI short-circuit standard",
+            "breaker interrupting duty"
+          ],
+          "missing": [
+            "X/R ratio discipline",
+            "motor contribution to fault current"
+          ],
+          "pct": 60
+        },
+        "arc_flash": {
+          "found": [
+            "arc-flash calculation standard",
+            "electrical safety in the workplace",
+            "arc-flash study concept"
+          ],
+          "missing": [],
+          "pct": 100
+        },
+        "coordination": {
+          "found": [
+            "coordination time interval",
+            "selectivity principle"
+          ],
+          "missing": [
+            "series device logic"
+          ],
+          "pct": 67
+        },
+        "generators_ups": {
+          "found": [],
+          "missing": [
+            "generator ratings & derating",
+            "derating discipline",
+            "minimum-loading failure mode",
+            "UPS topologies",
+            "transfer behaviour"
+          ],
+          "pct": 0
+        },
+        "units_discipline": {
+          "found": [
+            "missing-input protocol (never assumed)"
+          ],
+          "missing": [
+            "kW/kVA are different quantities",
+            "PF conversion path"
+          ],
+          "pct": 33
+        },
+        "support_tone": {
+          "found": [
+            "human escalation channel",
+            "never-blame rule"
+          ],
+          "missing": [
+            "frustration acknowledgement",
+            "empathy-first rule"
+          ],
+          "pct": 50
+        }
+      },
+      "coveragePct": 40,
+      "integrityFailures": [],
+      "integrityPass": true
+    },
+    "ar:instant": {
+      "chars": 10411,
+      "tokensApprox": 3484,
+      "coverage": {
+        "batteries_dc": {
+          "found": [],
+          "missing": [
+            "battery sizing standard",
+            "discharge-rate discipline (capacity meaningless without rate)",
+            "end-of-discharge voltage input",
+            "IEEE 485 ageing factor",
+            "ageing factor concept",
+            "low-voltage disconnect settings",
+            "telecom DC plant voltage"
+          ],
+          "pct": 0
+        },
+        "earthing_lightning": {
+          "found": [],
+          "missing": [
+            "lightning protection standard series",
+            "substation grounding (touch/step)",
+            "required input — never assumed",
+            "surge protective devices",
+            "touch/step voltage safety"
+          ],
+          "pct": 0
+        },
+        "short_circuit": {
+          "found": [],
+          "missing": [
+            "IEC short-circuit standard",
+            "ANSI short-circuit standard",
+            "X/R ratio discipline",
+            "motor contribution to fault current",
+            "breaker interrupting duty"
+          ],
+          "pct": 0
+        },
+        "arc_flash": {
+          "found": [
+            "electrical safety in the workplace",
+            "arc-flash study concept"
+          ],
+          "missing": [
+            "arc-flash calculation standard"
+          ],
+          "pct": 67
+        },
+        "coordination": {
+          "found": [
+            "coordination time interval"
+          ],
+          "missing": [
+            "selectivity principle",
+            "series device logic"
+          ],
+          "pct": 33
+        },
+        "generators_ups": {
+          "found": [],
+          "missing": [
+            "generator ratings & derating",
+            "derating discipline",
+            "minimum-loading failure mode",
+            "UPS topologies",
+            "transfer behaviour"
+          ],
+          "pct": 0
+        },
+        "units_discipline": {
+          "found": [
+            "missing-input protocol (never assumed)"
+          ],
+          "missing": [
+            "kW/kVA are different quantities",
+            "PF conversion path"
+          ],
+          "pct": 33
+        },
+        "support_tone": {
+          "found": [
+            "human escalation channel",
+            "never-blame rule"
+          ],
+          "missing": [
+            "frustration acknowledgement",
+            "empathy-first rule"
+          ],
+          "pct": 50
+        }
+      },
+      "coveragePct": 17,
+      "integrityFailures": [],
+      "integrityPass": true
+    },
+    "en:thinking": {
+      "chars": 26979,
+      "tokensApprox": 6965,
+      "coverage": {
+        "batteries_dc": {
+          "found": [
+            "battery sizing standard",
+            "ageing factor concept"
+          ],
+          "missing": [
+            "discharge-rate discipline (capacity meaningless without rate)",
+            "end-of-discharge voltage input",
+            "IEEE 485 ageing factor",
+            "low-voltage disconnect settings",
+            "telecom DC plant voltage"
+          ],
+          "pct": 29
+        },
+        "earthing_lightning": {
+          "found": [
+            "substation grounding (touch/step)",
+            "touch/step voltage safety"
+          ],
+          "missing": [
+            "lightning protection standard series",
+            "required input — never assumed",
+            "surge protective devices"
+          ],
+          "pct": 40
+        },
+        "short_circuit": {
+          "found": [
+            "IEC short-circuit standard",
+            "ANSI short-circuit standard",
+            "breaker interrupting duty"
+          ],
+          "missing": [
+            "X/R ratio discipline",
+            "motor contribution to fault current"
+          ],
+          "pct": 60
+        },
+        "arc_flash": {
+          "found": [
+            "arc-flash calculation standard",
+            "electrical safety in the workplace",
+            "arc-flash study concept"
+          ],
+          "missing": [],
+          "pct": 100
+        },
+        "coordination": {
+          "found": [
+            "coordination time interval",
+            "selectivity principle"
+          ],
+          "missing": [
+            "series device logic"
+          ],
+          "pct": 67
+        },
+        "generators_ups": {
+          "found": [],
+          "missing": [
+            "generator ratings & derating",
+            "derating discipline",
+            "minimum-loading failure mode",
+            "UPS topologies",
+            "transfer behaviour"
+          ],
+          "pct": 0
+        },
+        "units_discipline": {
+          "found": [
+            "missing-input protocol (never assumed)"
+          ],
+          "missing": [
+            "kW/kVA are different quantities",
+            "PF conversion path"
+          ],
+          "pct": 33
+        },
+        "support_tone": {
+          "found": [
+            "human escalation channel",
+            "never-blame rule"
+          ],
+          "missing": [
+            "frustration acknowledgement",
+            "empathy-first rule"
+          ],
+          "pct": 50
+        }
+      },
+      "coveragePct": 43,
+      "integrityFailures": [],
+      "integrityPass": true
+    },
+    "en:instant": {
+      "chars": 11439,
+      "tokensApprox": 2887,
+      "coverage": {
+        "batteries_dc": {
+          "found": [],
+          "missing": [
+            "battery sizing standard",
+            "discharge-rate discipline (capacity meaningless without rate)",
+            "end-of-discharge voltage input",
+            "IEEE 485 ageing factor",
+            "ageing factor concept",
+            "low-voltage disconnect settings",
+            "telecom DC plant voltage"
+          ],
+          "pct": 0
+        },
+        "earthing_lightning": {
+          "found": [
+            "touch/step voltage safety"
+          ],
+          "missing": [
+            "lightning protection standard series",
+            "substation grounding (touch/step)",
+            "required input — never assumed",
+            "surge protective devices"
+          ],
+          "pct": 20
+        },
+        "short_circuit": {
+          "found": [],
+          "missing": [
+            "IEC short-circuit standard",
+            "ANSI short-circuit standard",
+            "X/R ratio discipline",
+            "motor contribution to fault current",
+            "breaker interrupting duty"
+          ],
+          "pct": 0
+        },
+        "arc_flash": {
+          "found": [
+            "electrical safety in the workplace",
+            "arc-flash study concept"
+          ],
+          "missing": [
+            "arc-flash calculation standard"
+          ],
+          "pct": 67
+        },
+        "coordination": {
+          "found": [
+            "coordination time interval"
+          ],
+          "missing": [
+            "selectivity principle",
+            "series device logic"
+          ],
+          "pct": 33
+        },
+        "generators_ups": {
+          "found": [],
+          "missing": [
+            "generator ratings & derating",
+            "derating discipline",
+            "minimum-loading failure mode",
+            "UPS topologies",
+            "transfer behaviour"
+          ],
+          "pct": 0
+        },
+        "units_discipline": {
+          "found": [],
+          "missing": [
+            "kW/kVA are different quantities",
+            "PF conversion path",
+            "missing-input protocol (never assumed)"
+          ],
+          "pct": 0
+        },
+        "support_tone": {
+          "found": [
+            "human escalation channel",
+            "never-blame rule"
+          ],
+          "missing": [
+            "frustration acknowledgement",
+            "empathy-first rule"
+          ],
+          "pct": 50
+        }
+      },
+      "coveragePct": 17,
+      "integrityFailures": [],
+      "integrityPass": true
+    }
+  }
+}
