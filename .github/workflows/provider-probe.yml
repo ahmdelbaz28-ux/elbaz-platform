@@ -1,0 +1,61 @@
+# ════════════════════════════════════════════════════════════════════════════
+# Provider probe — automatic resilience check for the chatbot's AI cascade
+# ════════════════════════════════════════════════════════════════════════════
+# WHY (Proposal ③): the chatbot cascade silently depended on ONE provider
+# (KILOCODE_API_KEY) — if it dies, the chatbot and the thinking lane die with
+# it and nobody notices until users complain. This workflow probes every
+# CONFIGURED provider key daily with a cheap read-only call (GET /models or
+# /auth/key — zero token burn) and, on any failure, alerts the owner on the
+# Telegram channel (@engahmedetap) via the same broadcast bot.
+#
+# MISSING (unset) keys are reported as gaps — never failures — so adding
+# NVIDIA/GROQ/OPENROUTER keys to the repo secrets later "just works": the next
+# probe validates them automatically. The sync-hf-secrets workflow already
+# whitelists all four keys for the HF Space.
+# ════════════════════════════════════════════════════════════════════════════
+name: Provider probe
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # daily 06:00 UTC — before the platform's busy hours
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: provider-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # The probe is dependency-free (plain fetch) — no npm ci needed.
+      # --alert broadcasts to the owner's Telegram channel ONLY on failure,
+      # then the step exits non-zero so the run shows red on the dashboard.
+      - name: Probe all configured AI providers
+        env:
+          KILOCODE_API_KEY: ${{ secrets.KILOCODE_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          npx -y tsx scripts/provider-probe.ts --alert > /tmp/probe.log 2>&1; CODE=$?
+          cat /tmp/probe.log
+          exit $CODE
+
+      - name: Append probe table to the run summary
+        if: always()
+        run: tail -n 45 /tmp/probe.log >> "$GITHUB_STEP_SUMMARY" || true

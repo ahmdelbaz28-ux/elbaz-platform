@@ -126,21 +126,64 @@ healthRouter.get("/health", async (c) => {
     checks.storage = { status: "unhealthy", latency_ms: 0, error: "R2 endpoint unreachable" };
   }
 
-  // 4. Resend (Email) Check — verify API key and domain
+  // 4. Resend (Email) Check — REAL readiness, not a black-box ping.
+  // ROOT-CURE (2026-10-29): the old probe (GET /audiences) answered an opaque
+  // "400" with zero actionable detail. /domains is the endpoint that actually
+  // governs sending (a verified domain = production email allowed; sandbox
+  // mode can only reach the account owner), and EVERY failure now surfaces
+  // Resend's own message so the next diagnosis is instant.
   try {
     const emailStart = Date.now();
     if (env.RESEND_API_KEY) {
-      const emailResponse = await fetch("https://api.resend.com/audiences", {
+      const emailResponse = await fetch("https://api.resend.com/domains", {
         method: "GET",
         signal: AbortSignal.timeout(5000),
         headers: { "Authorization": `Bearer ${env.RESEND_API_KEY}` },
       });
-      checks.email = {
-        status: emailResponse.ok ? "healthy" : "degraded",
-        latency_ms: Date.now() - emailStart,
-        detail: emailResponse.ok ? "Resend API reachable" : `Resend API responded with ${emailResponse.status}`,
-        error: emailResponse.ok ? undefined : `Resend API responded with ${emailResponse.status}`,
-      };
+      const emailLatency = Date.now() - emailStart;
+      const emailBody = await emailResponse.text().catch(() => "");
+      const resendMsg = (() => {
+        try {
+          const parsed = JSON.parse(emailBody) as { message?: string };
+          return typeof parsed?.message === "string" ? parsed.message.slice(0, 140) : "";
+        } catch {
+          return "";
+        }
+      })();
+      if (emailResponse.ok) {
+        // Verified-domain count = the actual sending-readiness signal.
+        let verified = -1;
+        try {
+          const data = (JSON.parse(emailBody) as { data?: Array<{ status?: string }> }).data;
+          if (Array.isArray(data)) verified = data.filter((d) => d.status === "verified").length;
+        } catch {
+          // body shape changed — verified stays -1, plain healthy below
+        }
+        checks.email =
+          verified > 0
+            ? { status: "healthy", latency_ms: emailLatency, detail: `Resend reachable — ${verified} verified domain(s)` }
+            : verified === 0
+              ? {
+                  status: "degraded",
+                  latency_ms: emailLatency,
+                  detail: "Resend reachable — NO verified domain (sandbox: only the account owner receives)",
+                }
+              : { status: "healthy", latency_ms: emailLatency, detail: "Resend API reachable" };
+      } else if (emailResponse.status === 401) {
+        checks.email = {
+          status: "unhealthy",
+          latency_ms: emailLatency,
+          detail: "Resend key invalid or revoked",
+          error: resendMsg || "HTTP 401 — rotate the key at resend.com/api-keys",
+        };
+      } else {
+        checks.email = {
+          status: "degraded",
+          latency_ms: emailLatency,
+          detail: `Resend HTTP ${emailResponse.status}${resendMsg ? `: ${resendMsg}` : ""}`,
+          error: resendMsg || undefined,
+        };
+      }
     } else {
       checks.email = { status: "degraded", latency_ms: 0, detail: "RESEND_API_KEY not configured" };
     }
@@ -148,15 +191,28 @@ healthRouter.get("/health", async (c) => {
     checks.email = { status: "unhealthy", latency_ms: 0, error: "Resend endpoint unreachable" };
   }
 
-  // 5. AI Check — verify at least one chatbot provider key is set
-  if (env.OPENROUTER_API_KEY) {
-    checks.ai = { status: "healthy", latency_ms: 0, detail: "OPENROUTER_API_KEY configured" };
-  } else if (env.NVIDIA_API_KEY) {
-    checks.ai = { status: "healthy", latency_ms: 0, detail: "NVIDIA_API_KEY configured" };
-  } else if (env.GROQ_API_KEY) {
-    checks.ai = { status: "healthy", latency_ms: 0, detail: "GROQ_API_KEY configured" };
-  } else {
-    checks.ai = { status: "degraded", latency_ms: 0, detail: "No AI provider configured" };
+  // 5. AI Check — provider cascade readiness (configured keys only, no network).
+  // ROOT-CURE (Proposal ③): the old check looked at OPENROUTER only and the
+  // cascade could silently be standing on kilo alone. All four tiers are now
+  // visible — missing tiers tell the owner exactly which free key to add.
+  {
+    const providerMap: Array<[string, string | undefined]> = [
+      ["kilo", env.KILOCODE_API_KEY],
+      ["openrouter", env.OPENROUTER_API_KEY],
+      ["nvidia", env.NVIDIA_API_KEY],
+      ["groq", env.GROQ_API_KEY],
+    ];
+    const configured = providerMap.filter(([, v]) => Boolean(v)).map(([name]) => name);
+    const missing = providerMap.filter(([, v]) => !v).map(([name]) => name);
+    if (configured.length > 0) {
+      checks.ai = {
+        status: "healthy",
+        latency_ms: 0,
+        detail: `providers: ${configured.join(" + ")}${missing.length ? ` — missing: ${missing.join(", ")}` : " — full cascade"}`,
+      };
+    } else {
+      checks.ai = { status: "degraded", latency_ms: 0, detail: "No AI provider configured" };
+    }
   }
 
   // 6. Payments Check — Paymob gateway (env + dashboard settings) or manual transfer fallback
