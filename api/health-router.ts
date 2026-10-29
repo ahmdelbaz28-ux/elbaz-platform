@@ -333,7 +333,11 @@ async function probeAuthChat(name: string, key: string | undefined, baseUrl: str
     const text = await res.text().catch(() => "");
     if (res.ok) return { name, configured: true, status: "HEALTHY", latency_ms: latency, detail: `1-token chat OK via ${fallbackModel}` };
     const msg = probeJsonMessage(text);
-    if (res.status !== 401 && res.status !== 403 && /model/i.test(msg)) {
+    // Auth-OK heuristic: NVIDIA validates the key BEFORE the model — a fake key
+    // answers 403 "Authorization failed" (live-verified 2026-10-29) while a
+    // valid key on a missing/EOL model answers 404 "Function ... Not found for
+    // account" or 410 "model ... end of life". Both prove the key is alive.
+    if (res.status !== 401 && res.status !== 403 && /model|function|end.of.life/i.test(msg)) {
       return { name, configured: true, status: "HEALTHY", latency_ms: latency, detail: `auth OK — model "${fallbackModel}" not served (HTTP ${res.status})` };
     }
     return { name, configured: true, status: "UNHEALTHY", latency_ms: latency, detail: `HTTP ${res.status}${msg ? ` — ${msg}` : ""}` };
@@ -380,7 +384,7 @@ healthRouter.get("/health/providers", async (c) => {
   const rows: ProviderProbeRow[] = await Promise.all([
     probeAuthChat("kilo", env.KILOCODE_API_KEY, "https://ai-gateway.kilo.ai/api/v1", "Qwen/Qwen3-235B-A22B-Instruct"),
     probeAuthGet("openrouter", env.OPENROUTER_API_KEY, "https://openrouter.ai/api/v1/auth/key"),
-    probeAuthChat("nvidia", env.NVIDIA_API_KEY, "https://integrate.api.nvidia.com/v1", "minimaxai/minimax-m3"),
+    probeAuthChat("nvidia", env.NVIDIA_API_KEY, "https://integrate.api.nvidia.com/v1", "ibm/granite-3.0-8b-instruct"),
     probeAuthGet("groq", env.GROQ_API_KEY, "https://api.groq.com/openai/v1/models", (body) => {
       const n = Array.isArray((body as { data?: unknown[] } | null)?.data) ? (body as { data: unknown[] }).data.length : 0;
       return n ? `${n} models visible` : "key accepted";

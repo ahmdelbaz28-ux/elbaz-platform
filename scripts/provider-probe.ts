@@ -144,7 +144,11 @@ async function probeChatCompletions(
       return { name, envKey, configured: true, status: "HEALTHY", latencyMs, detail: `1-token chat OK via ${model}` };
     }
     const msg = extractMessage(bodyText);
-    if (res.status !== 401 && res.status !== 403 && /model/i.test(msg)) {
+    // Auth-OK heuristic (same as the Space's /health/providers endpoint):
+    // a valid key on a missing/EOL model answers 404 "Function ... Not found
+    // for account" or 410 "model ... end of life" — both prove auth. Fake
+    // keys get 401/403 before the model is ever considered.
+    if (res.status !== 401 && res.status !== 403 && /model|function|end.of.life/i.test(msg)) {
       // The gateway validated the key, then rejected the model id — auth lane is alive.
       return {
         name,
@@ -200,7 +204,7 @@ rows.push(
   }),
 );
 rows.push(
-  await probeChatCompletions("nvidia", "NVIDIA_API_KEY", "https://integrate.api.nvidia.com/v1", "minimaxai/minimax-m3", {
+  await probeChatCompletions("nvidia", "NVIDIA_API_KEY", "https://integrate.api.nvidia.com/v1", "ibm/granite-3.0-8b-instruct", {
     hint: "free key — build.nvidia.com (Get API Key)",
   }),
 );
