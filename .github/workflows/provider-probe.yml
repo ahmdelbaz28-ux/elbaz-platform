@@ -12,6 +12,11 @@
 # NVIDIA/GROQ/OPENROUTER keys to the repo secrets later "just works": the next
 # probe validates them automatically. The sync-hf-secrets workflow already
 # whitelists all four keys for the HF Space.
+#
+# LAYER 2 (authoritative): the Space's OWN env is probed live via the gated
+# GET /api/health/providers endpoint (EDGE_ORIGIN_SECRET bearer + forwarded
+# host headers) — the keys live on the Space, GitHub only holds mirrors, so
+# this layer catches a dead HF-side key even when its GH mirror is fine.
 # ════════════════════════════════════════════════════════════════════════════
 name: Provider probe
 
@@ -51,6 +56,8 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SPACE_PROBE_URL: https://ahmdelbaz28-ahmdrtap.hf.space
+          EDGE_ORIGIN_SECRET: ${{ secrets.EDGE_ORIGIN_SECRET }}
         run: |
           npx -y tsx scripts/provider-probe.ts --alert > /tmp/probe.log 2>&1; CODE=$?
           cat /tmp/probe.log

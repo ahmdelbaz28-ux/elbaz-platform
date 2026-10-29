@@ -212,6 +212,47 @@ rows.push(
   }),
 );
 
+// ── Layer 2 — the Space's OWN keys (where the cascade actually runs) ───────
+// GitHub secrets are at best a MIRROR of the HF Space env. The keys live on
+// the Space, so the authoritative probe is the Space's gated deep endpoint
+// (GET /api/health/providers — statuses only, timing-safe EDGE_ORIGIN_SECRET
+// gate). Set SPACE_PROBE_URL + EDGE_ORIGIN_SECRET to enable.
+const spaceUrl = process.env.SPACE_PROBE_URL?.trim();
+const spaceSecret = process.env.EDGE_ORIGIN_SECRET?.trim();
+if (spaceUrl && spaceSecret) {
+  const spaceStart = Date.now();
+  try {
+    const res = await fetch(`${spaceUrl.replace(/\/$/, "")}/api/health/providers`, {
+      headers: {
+        Authorization: `Bearer ${spaceSecret}`,
+        "X-Forwarded-Host": "ahmedelbaz.qzz.io",
+        "X-Forwarded-Proto": "https",
+      },
+      signal: AbortSignal.timeout(25_000),
+    });
+    const latencyMs = Date.now() - spaceStart;
+    const body = safeJson(await res.text().catch(() => "")) as { providers?: Array<{ name: string; configured: boolean; status: ProviderRow["status"]; latency_ms?: number; detail: string }> } | null;
+    if (res.ok && Array.isArray(body?.providers)) {
+      for (const r of body!.providers!) {
+        rows.push({ name: `${r.name}@space`, envKey: "(space env)", configured: r.configured, status: r.status, latencyMs: r.latency_ms ?? 0, detail: r.detail } as ProviderRow);
+      }
+    } else {
+      rows.push({ name: "space-probe", envKey: "SPACE_PROBE_URL", configured: true, status: "UNHEALTHY", latencyMs, detail: `HTTP ${res.status}` });
+    }
+  } catch (err) {
+    rows.push({
+      name: "space-probe",
+      envKey: "SPACE_PROBE_URL",
+      configured: true,
+      status: "UNHEALTHY",
+      latencyMs: Date.now() - spaceStart,
+      detail: (err instanceof Error ? err.message : String(err)).slice(0, 140),
+    });
+  }
+} else {
+  console.log("[space] SPACE_PROBE_URL/EDGE_ORIGIN_SECRET not set — Space-layer probe skipped (GH-side keys only)");
+}
+
 // ── Report ──────────────────────────────────────────────────────────────────
 const pad = (s: string, n: number) => (s.length >= n ? s : s + " ".repeat(n - s.length));
 console.log("╔══════════════════════════════════════════════════════════════════════╗");

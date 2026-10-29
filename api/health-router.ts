@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
 import { getPublicEnvKeys, env } from "./lib/env.js";
 import { db, pool } from "./queries/connection.js";
@@ -274,6 +275,136 @@ healthRouter.get("/health", async (c) => {
       cached: false,
     },
     allHealthy ? 200 : 503
+  );
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// Deep provider probe — GET /health/providers
+// ROOT-CURE (Proposal ③, layer 2): the daily GH probe only sees the keys
+// mirrored into GitHub secrets — but the cascade actually runs on THIS
+// process with the Space's own env. This endpoint probes every configured
+// provider key with a real, cheap call (same semantics as
+// scripts/provider-probe.ts) and reports STATUSES ONLY — never key material.
+//
+// Gate: Authorization: Bearer <EDGE_ORIGIN_SECRET>, compared timing-safe.
+// Unset secret or wrong token → disguised 404, same as the shield's rejection.
+// ═══════════════════════════════════════════════════════════════════════
+const PROVIDER_PROBE_TIMEOUT_MS = 8_000;
+
+interface ProviderProbeRow {
+  name: string;
+  configured: boolean;
+  status: "HEALTHY" | "UNHEALTHY" | "MISSING";
+  latency_ms: number;
+  detail: string;
+}
+
+function probeJsonMessage(bodyText: string): string {
+  try {
+    const parsed = JSON.parse(bodyText) as { message?: string; error?: { message?: string } };
+    const msg =
+      (typeof parsed?.message === "string" && parsed.message) ||
+      (typeof parsed?.error === "object" && parsed?.error !== null && typeof (parsed.error as { message?: string }).message === "string"
+        ? (parsed.error as { message: string }).message
+        : "");
+    return msg.slice(0, 120);
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * REAL key validation for gateways whose GET /models is PUBLIC (kilo, NVIDIA):
+ * a 1-token chat completion is the honest check — the exact lane the chatbot
+ * uses, costing one token per probe. A model-not-served error still proves
+ * AUTH (the gateway validates the key before the model).
+ */
+async function probeAuthChat(name: string, key: string | undefined, baseUrl: string, fallbackModel: string): Promise<ProviderProbeRow> {
+  if (!key?.trim()) return { name, configured: false, status: "MISSING", latency_ms: 0, detail: "key not configured" };
+  const started = Date.now();
+  try {
+    const res = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key.trim()}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: fallbackModel, messages: [{ role: "user", content: "ping" }], max_tokens: 1 }),
+      signal: AbortSignal.timeout(PROVIDER_PROBE_TIMEOUT_MS),
+    });
+    const latency = Date.now() - started;
+    const text = await res.text().catch(() => "");
+    if (res.ok) return { name, configured: true, status: "HEALTHY", latency_ms: latency, detail: `1-token chat OK via ${fallbackModel}` };
+    const msg = probeJsonMessage(text);
+    if (res.status !== 401 && res.status !== 403 && /model/i.test(msg)) {
+      return { name, configured: true, status: "HEALTHY", latency_ms: latency, detail: `auth OK — model "${fallbackModel}" not served (HTTP ${res.status})` };
+    }
+    return { name, configured: true, status: "UNHEALTHY", latency_ms: latency, detail: `HTTP ${res.status}${msg ? ` — ${msg}` : ""}` };
+  } catch (err) {
+    return { name, configured: true, status: "UNHEALTHY", latency_ms: Date.now() - started, detail: (err instanceof Error ? err.message : String(err)).slice(0, 140) };
+  }
+}
+
+async function probeAuthGet(name: string, key: string | undefined, url: string, describe?: (body: unknown) => string): Promise<ProviderProbeRow> {
+  if (!key?.trim()) return { name, configured: false, status: "MISSING", latency_ms: 0, detail: "key not configured" };
+  const started = Date.now();
+  try {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${key.trim()}` },
+      signal: AbortSignal.timeout(PROVIDER_PROBE_TIMEOUT_MS),
+    });
+    const latency = Date.now() - started;
+    const text = await res.text().catch(() => "");
+    if (res.ok) {
+      let parsed: unknown = null;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        // body shape drift — describe falls back to plain accepted
+      }
+      return { name, configured: true, status: "HEALTHY", latency_ms: latency, detail: describe?.(parsed) ?? `HTTP ${res.status}` };
+    }
+    const msg = probeJsonMessage(text);
+    return { name, configured: true, status: "UNHEALTHY", latency_ms: latency, detail: `HTTP ${res.status}${msg ? ` — ${msg}` : ""}` };
+  } catch (err) {
+    return { name, configured: true, status: "UNHEALTHY", latency_ms: Date.now() - started, detail: (err instanceof Error ? err.message : String(err)).slice(0, 140) };
+  }
+}
+
+healthRouter.get("/health/providers", async (c) => {
+  const secret = env.EDGE_ORIGIN_SECRET;
+  if (!secret) return c.json({ error: "Not Found" }, 404);
+  const auth = c.req.header("Authorization") ?? "";
+  const presented = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  const a = Buffer.from(presented, "utf8");
+  const b = Buffer.from(secret, "utf8");
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return c.json({ error: "Not Found" }, 404);
+
+  const rows: ProviderProbeRow[] = await Promise.all([
+    probeAuthChat("kilo", env.KILOCODE_API_KEY, "https://ai-gateway.kilo.ai/api/v1", "Qwen/Qwen3-235B-A22B-Instruct"),
+    probeAuthGet("openrouter", env.OPENROUTER_API_KEY, "https://openrouter.ai/api/v1/auth/key"),
+    probeAuthChat("nvidia", env.NVIDIA_API_KEY, "https://integrate.api.nvidia.com/v1", "minimaxai/minimax-m3"),
+    probeAuthGet("groq", env.GROQ_API_KEY, "https://api.groq.com/openai/v1/models", (body) => {
+      const n = Array.isArray((body as { data?: unknown[] } | null)?.data) ? (body as { data: unknown[] }).data.length : 0;
+      return n ? `${n} models visible` : "key accepted";
+    }),
+    probeAuthGet("resend", env.RESEND_API_KEY, "https://api.resend.com/domains", (body) => {
+      const list = (body as { data?: Array<{ status?: string }> } | null)?.data;
+      const verified = Array.isArray(list) ? list.filter((d) => d?.status === "verified").length : -1;
+      return verified >= 0 ? `${verified} verified domain(s)` : "key accepted";
+    }),
+  ]);
+
+  const kilo = rows[0];
+  const failing = rows.filter((r) => r.status === "UNHEALTHY");
+  const configuredCount = rows.filter((r) => r.configured).length;
+  const ok = configuredCount > 0 && !(kilo.configured && kilo.status === "UNHEALTHY") && failing.length === 0;
+
+  return c.json(
+    {
+      ok,
+      checked_at: new Date().toISOString(),
+      summary: `configured=${configuredCount}/${rows.length} failing=${failing.length}`,
+      providers: rows,
+    },
+    ok ? 200 : 503,
   );
 });
 
