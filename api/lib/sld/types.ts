@@ -64,6 +64,15 @@ export interface SldSpec {
 export const CELL = 40; // one grid unit
 export const MARGIN = 30; // sheet margin
 export const LABEL_GAP = 14; // label offset from symbol body
+export const LABEL_FONT = 12; // label font size (px)
+export const LABEL_SIDE_GAP = 8; // px between a symbol body and its side label
+
+/** Conservative deterministic text width (no DOM metrics available in Node).
+ *  Lives here (not render.ts) so the linter's sheet sizing can measure labels
+ *  without a circular import. */
+export function textWidth(text: string, fontSize: number): number {
+  return Math.max(10, Math.round(fontSize * 0.62 * text.length));
+}
 
 export interface BBox {
   x1: number;

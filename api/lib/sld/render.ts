@@ -13,8 +13,19 @@
  * fallback keeps output deterministic when the sheet is dense.
  */
 import { paintSymbol, THEMES, type Theme } from "./symbols";
-import { lintSpec, sheetSize } from "./lint";
-import { LABEL_GAP, type BBox, type PlacedElement, type SldSpec } from "./types";
+import { labelSideBand, lintSpec, sheetSize } from "./lint";
+import {
+  LABEL_FONT,
+  LABEL_GAP,
+  LABEL_SIDE_GAP,
+  textWidth,
+  type BBox,
+  type PlacedElement,
+  type SldSpec,
+} from "./types";
+
+// Re-exports keep the historical import surface (tests import these from here).
+export { textWidth, LABEL_FONT } from "./types";
 
 export interface RenderResult {
   svg: string;
@@ -33,13 +44,7 @@ export function escapeXml(s: string): string {
 
 // ── Label geometry helpers (exported for the no-overlap regression tests) ───
 
-export const LABEL_FONT = 12;
-const LABEL_SIDE_GAP = 8; // px between a symbol body and its side label
-
-/** Conservative deterministic text width (no DOM metrics available in Node). */
-export function textWidth(text: string, fontSize: number): number {
-  return Math.max(10, Math.round(fontSize * 0.62 * text.length));
-}
+const LABEL_SIDE_GAP_PX = LABEL_SIDE_GAP; // px between a symbol body and its side label
 
 /** Pixel box a label occupies given its anchor and baseline. */
 export function labelBox(
@@ -148,16 +153,66 @@ interface LabelCandidate {
 }
 
 /**
+ * RTL base direction for every painted string (live visual-audit fix):
+ * diagrams are consumed as <img>, which inherits NO page direction — without
+ * an explicit base, mixed Arabic+Latin labels split their number from its
+ * unit ("محرك 500kW" rendered as "500 محركkW"). With rtl base the
+ * "500kW" run stays one LTR island: "500kW محرك". unicode-bidi:isolate is
+ * the SVG2-sanctioned belt-and-suspenders on top of the attribute.
+ *
+ * ANCHOR GEOMETRY under rtl base: "start" is the RIGHT edge (text extends
+ * left), "end" is the LEFT edge (text extends right). Emission therefore
+ * FLIPS start↔end so the visual box stays exactly the box the collision
+ * engine scored (see emitText below — tests mirror this in parseSvg).
+ */
+const RTL_TEXT_ATTRS = `direction="rtl" unicode-bidi="isolate"`;
+
+/** Flip a collision-engine anchor into its rtl-base equivalent (same box). */
+function flipAnchor(a: "start" | "middle" | "end"): "start" | "middle" | "end" {
+  return a === "start" ? "end" : a === "end" ? "start" : "middle";
+}
+
+/** Emit an RTL <text> occupying exactly the box scored for (anchor, x). */
+function emitText(anchor: "start" | "middle" | "end", x: number, y: number, fontSize: number, fill: string, content: string, extra = ""): string {
+  return `\n  <text x="${x}" y="${y}" text-anchor="${flipAnchor(anchor)}" ${RTL_TEXT_ATTRS}${extra} font-size="${fontSize}" fill="${fill}" font-family="'Segoe UI', Tahoma, sans-serif">${escapeXml(content)}</text>`;
+}
+
+/**
  * Candidate spots, side-first — the label sits NEXT TO what it describes.
  * Busbars prefer the LEFT side: their top edge receives the feed wire and
  * their bottom edge launches fan-out wires, so the right flank is busy.
+ *
+ * Dense-row escapes (live-audit regression: "فيوز 100A" on a packed bottom
+ * row had NO zero-collision spot — its neighbors' bodies reach DEEPER than
+ * its own short symbol, so every same-band below/side spot is boxed in and
+ * the least-collision fallback dropped the label onto the fan-out wires):
+ *  - 4 diagonal side spots (right/left × up/down);
+ *  - a DEPTH LADDER under/over the element: 3 tiers × 3 x-shifts. Deeper
+ *    tiers clear the neighbors' bodies/labels entirely (the loop's
+ *    first-zero-wins rule means sparse sheets keep today's t0 placements).
+ * Every candidate is scored; the first zero-collision spot wins.
  */
 function labelCandidates(p: PlacedElement): LabelCandidate[] {
-  const right: LabelCandidate = { anchor: "start", x: p.bbox.x2 + LABEL_SIDE_GAP, y: p.cy + 4 };
-  const left: LabelCandidate = { anchor: "end", x: p.bbox.x1 - LABEL_SIDE_GAP, y: p.cy + 4 };
-  const below: LabelCandidate = { anchor: "middle", x: p.cx, y: p.bbox.y2 + LABEL_GAP + 4 };
-  const above: LabelCandidate = { anchor: "middle", x: p.cx, y: p.bbox.y1 - LABEL_GAP };
-  return p.el.type === "busbar" ? [left, right, above, below] : [right, left, below, above];
+  const right: LabelCandidate = { anchor: "start", x: p.bbox.x2 + LABEL_SIDE_GAP_PX, y: p.cy + 4 };
+  const left: LabelCandidate = { anchor: "end", x: p.bbox.x1 - LABEL_SIDE_GAP_PX, y: p.cy + 4 };
+  const rightDown: LabelCandidate = { anchor: "start", x: right.x, y: p.cy + 34 };
+  const rightUp: LabelCandidate = { anchor: "start", x: right.x, y: p.cy - 26 };
+  const leftDown: LabelCandidate = { anchor: "end", x: left.x, y: p.cy + 34 };
+  const leftUp: LabelCandidate = { anchor: "end", x: left.x, y: p.cy - 26 };
+  const belowY = p.bbox.y2 + LABEL_GAP + 4;
+  const aboveY = p.bbox.y1 - LABEL_GAP;
+  // One tier = 3 x-variants at the same depth: centered + shifted both ways
+  // (a shift threads the gap between neighbor bodies that block the center).
+  const tier = (y: number): LabelCandidate[] => [
+    { anchor: "middle", x: p.cx, y },
+    { anchor: "end", x: p.cx + 15, y },
+    { anchor: "start", x: p.cx + 15, y },
+  ];
+  const belowTiers = [...tier(belowY), ...tier(belowY + 22), ...tier(belowY + 44)];
+  const aboveTiers = [...tier(aboveY), ...tier(aboveY - 22), ...tier(aboveY - 44)];
+  return p.el.type === "busbar"
+    ? [left, right, aboveTiers[0], belowTiers[0], leftDown, leftUp, rightDown, rightUp, ...aboveTiers.slice(1), ...belowTiers.slice(1)]
+    : [right, left, rightDown, rightUp, leftDown, leftUp, belowTiers[0], aboveTiers[0], ...belowTiers.slice(1), ...aboveTiers.slice(1)];
 }
 
 /** Keep the candidate inside the sheet (labels must never clip at an edge). */
@@ -195,7 +250,9 @@ function placeLabels(
       if (box.x1 < 4 || box.x2 > width - 4 || box.y1 < 4 || box.y2 > height - 4) score += 100;
       if (titleBox && boxesOverlap(box, titleBox, 6)) score += 50;
       for (const q of placed) {
-        if (q.el.id === p.el.id) continue;
+        // NOTE: the label's OWN body is included — the edge clamp can push a
+        // candidate onto the element it describes, and that must score as a
+        // collision ("nothing on top of anything" has no self-exemption).
         if (boxesOverlap(box, q.bbox, 5)) score += 40;
       }
       for (const t of taken) {
@@ -219,9 +276,7 @@ function placeLabels(
     }
     if (!best) continue;
     taken.push(best.box);
-    out.push(
-      `\n  <text x="${best.c.x}" y="${best.c.y}" text-anchor="${best.c.anchor}" font-size="${LABEL_FONT}" fill="${theme.text}" font-family="'Segoe UI', Tahoma, sans-serif">${escapeXml(label)}</text>`,
-    );
+    out.push(emitText(best.c.anchor, best.c.x, best.c.y, LABEL_FONT, theme.text, label));
   }
   return out.join("");
 }
@@ -244,10 +299,10 @@ export function renderSld(spec: SldSpec): RenderResult {
   const { width, height } = sheetSize(spec);
   const connections = Array.isArray(spec.connections) ? spec.connections : [];
 
-  // Any labeled element reserves a side band (see sheetSize in lint.ts) —
-  // split it half-left/half-right so beside-labels fit on both sheet edges.
-  const anyLabel = audit.placed.some((p) => (p.el.label ?? "").trim().length > 0);
-  const DX = anyLabel ? 48 : 0;
+  // Labeled elements reserve a side band scaled to the LONGEST label (see
+  // labelSideBand in lint.ts) — split it half-left/half-right so beside-labels
+  // fit on both sheet edges without clamping onto symbol bodies.
+  const DX = labelSideBand(spec) / 2;
   const placed = audit.placed.map((p) => shiftX(p, DX));
 
   const wires = routeWires(placed, connections);
@@ -265,7 +320,9 @@ export function renderSld(spec: SldSpec): RenderResult {
     // Over-long titles are squeezed INSIDE the sheet instead of spilling over
     // the top row of symbols.
     const tl = tw > maxW ? ` textLength="${maxW}" lengthAdjust="spacingAndGlyphs"` : "";
-    titleSvg = `\n  <text x="${Math.round(width / 2)}" y="22" text-anchor="middle" font-size="${fs}" font-weight="bold" fill="${theme.text}" font-family="'Segoe UI', Tahoma, sans-serif"${tl}>${escapeXml(title)}</text>`;
+    // Middle anchor is direction-invariant; rtl base keeps mixed titles
+    // ("منشأة صناعية - بار طوارئ بمصدرين") in Arabic reading order.
+    titleSvg = emitText("middle", Math.round(width / 2), 22, fs, theme.text, title, ` font-weight="bold"${tl}`);
     titleBox = labelBox(title, "middle", Math.round(width / 2), 22, fs);
   }
 

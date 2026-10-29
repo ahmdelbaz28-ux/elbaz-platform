@@ -4,7 +4,17 @@
  * best-effort anyway, and callers (chat/lessons) drop the diagram when
  * ERROR-level findings exist so a bad model spec can never break a reply.
  */
-import { CELL, MARGIN, placeElements, rectsOverlap, type PlacedElement, type SldSpec } from "./types";
+import {
+  CELL,
+  LABEL_FONT,
+  LABEL_SIDE_GAP,
+  MARGIN,
+  placeElements,
+  rectsOverlap,
+  textWidth,
+  type PlacedElement,
+  type SldSpec,
+} from "./types";
 
 export type FindingLevel = "error" | "warn";
 export interface Finding {
@@ -21,6 +31,26 @@ export interface LintResult {
   height: number;
 }
 
+/**
+ * Side band reserved for beside-labels (the renderer contract: a label sits
+ * NEXT TO its element). NOT a fixed strip — it scales with the LONGEST label
+ * so a full-width label always finds a clean flank on BOTH sheet edges.
+ * The renderer shifts geometry right by half the band; the left flank gets
+ * MARGIN + half-band of free width, so half-band must cover maxLabelW + gap
+ * + inset for the "end"-anchored left candidates to never clamp onto bodies
+ * (the visual-audit failure this replaces: labels clamped ONTO their own
+ * symbol on the sheet edge).
+ */
+export function labelSideBand(spec: SldSpec): number {
+  const labels = (Array.isArray(spec.elements) ? spec.elements : [])
+    .map((e) => (e.label ?? "").trim())
+    .filter(Boolean);
+  if (labels.length === 0) return 0;
+  const maxW = Math.max(...labels.map((l) => textWidth(l, LABEL_FONT)));
+  const half = Math.max(48, maxW + LABEL_SIDE_GAP - MARGIN + 12);
+  return Math.min(420, 2 * half);
+}
+
 /** Compute the sheet size from the spec (deterministic). */
 export function sheetSize(spec: SldSpec): { width: number; height: number } {
   const placed = placeElements(spec);
@@ -31,8 +61,9 @@ export function sheetSize(spec: SldSpec): { width: number; height: number } {
     0,
   );
   // Labels sit BESIDE their element (renderer contract) — reserve a side band
-  // so they never clip at the sheet edges (render splits it half-left/right).
-  const sideBand = maxLabelRows > 0 ? 96 : 0;
+  // that scales with the longest label so they never clip at the sheet edges
+  // (render splits it half-left/half-right via labelSideBand/2).
+  const sideBand = labelSideBand(spec);
   return {
     width: Math.ceil(maxX + MARGIN + 40 + sideBand),
     height: Math.ceil(maxY + MARGIN + 30 + maxLabelRows * 16),

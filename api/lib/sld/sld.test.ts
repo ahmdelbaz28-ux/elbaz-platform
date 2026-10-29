@@ -140,11 +140,18 @@ describe("sld label placement — no-overlap contract", () => {
     return overlap({ x1: Math.min(sx1, sx2), y1: Math.min(sy1, sy2), x2: Math.max(sx1, sx2), y2: Math.max(sy1, sy2) }, b, pad);
   };
 
-  interface ParsedText { anchor: string; x: number; y: number; fs: number; content: string }
+  interface ParsedText { anchor: string; x: number; y: number; fs: number; rtl: boolean; content: string }
   function parseSvg(svg: string) {
     const texts: ParsedText[] = [...svg.matchAll(/<text ([^>]*)>([^<]*)<\/text>/g)].map((m) => {
       const get = (k: string) => m[1].match(new RegExp(`${k}="([^"]+)"`))?.[1] ?? "";
-      return { anchor: get("text-anchor"), x: Number(get("x")), y: Number(get("y")), fs: Number(get("font-size")), content: m[2] };
+      return {
+        anchor: get("text-anchor"),
+        x: Number(get("x")),
+        y: Number(get("y")),
+        fs: Number(get("font-size")),
+        rtl: m[1].includes('direction="rtl"'),
+        content: m[2],
+      };
     });
     const rects: Box[] = [...svg.matchAll(/<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"/g)].map(
       (m) => ({ x1: +m[1], y1: +m[2], x2: +m[1] + +m[3], y2: +m[2] + +m[4] }),
@@ -159,6 +166,15 @@ describe("sld label placement — no-overlap contract", () => {
     return { texts, rects, circles, polys, w: Number(sheet?.[1] ?? 0), h: Number(sheet?.[2] ?? 0) };
   }
 
+  /**
+   * Visual box of a painted string. Rendered texts carry an rtl base
+   * direction with a FLIPPED anchor (see render.ts emitText): under rtl
+   * base, "start" extends LEFT and "end" extends RIGHT. Re-flip here so
+   * boxes are scored with the same LTR semantics the collision engine used.
+   */
+  const visualAnchor = (t: ParsedText): "start" | "middle" | "end" =>
+    !t.rtl ? (t.anchor as "middle") : t.anchor === "start" ? "end" : t.anchor === "end" ? "start" : "middle";
+
   /** Shared audit: every label beside its element, touching NOTHING. */
   function assertNoOverlap(svg: string, expectedLabels: number) {
     const { texts, rects, circles, polys, w, h } = parseSvg(svg);
@@ -167,8 +183,8 @@ describe("sld label placement — no-overlap contract", () => {
     expect(labels).toHaveLength(expectedLabels);
     expect(title).toBeTruthy();
 
-    const titleBox = labelBox(title!.content, title!.anchor as "middle", title!.x, title!.y, title!.fs);
-    const labelBoxes = labels.map((t) => ({ box: labelBox(t.content, t.anchor as "start", t.x, t.y, t.fs), t }));
+    const titleBox = labelBox(title!.content, visualAnchor(title!), title!.x, title!.y, title!.fs);
+    const labelBoxes = labels.map((t) => ({ box: labelBox(t.content, visualAnchor(t), t.x, t.y, t.fs), t }));
 
     for (const { box, t } of labelBoxes) {
       // inside the sheet
@@ -197,6 +213,20 @@ describe("sld label placement — no-overlap contract", () => {
     expect(titleBox.x1).toBeGreaterThanOrEqual(2);
     expect(titleBox.x2).toBeLessThanOrEqual(w - 2);
   }
+
+  it("paints every label and title with an rtl base direction (mixed Arabic+unit labels never split)", () => {
+    // The <img> embedding inherits no page direction: without an explicit
+    // base, "محرك 500kW" renders as "500 محركkW" (number split from unit).
+    // Symbol body glyphs (G/M, fs 15-16, middle-anchored) are excluded —
+    // single Latin letters are direction-invariant.
+    const svg = renderSld(GOOD_SPEC).svg;
+    const texts = [...svg.matchAll(/<text ([^>]*)>/g)].map((m) => m[1]).filter((a) => /font-size="1[24]"/.test(a));
+    expect(texts.length).toBeGreaterThan(0);
+    for (const attrs of texts) {
+      expect(attrs, `text lacks rtl base: ${attrs}`).toContain('direction="rtl"');
+      expect(attrs, `text lacks bidi isolation: ${attrs}`).toContain('unicode-bidi="isolate"');
+    }
+  });
 
   it("keeps every label clear of wires, symbols, other labels and the title (dark)", () => {
     assertNoOverlap(renderSld(GOOD_SPEC).svg, 5); // G1, T1, B1, L1, M1
@@ -228,6 +258,50 @@ describe("sld label placement — no-overlap contract", () => {
       theme: "dark",
     }).svg;
     assertNoOverlap(svg, 8); // G1, G2, T1, B1, L1, M1, F1, L2
+  });
+
+  it("keeps LONG mixed labels clear — edge-load spec (regression: label clamped onto its own symbol)", () => {
+    // Live-audit regression: with the old fixed 96px side band and the
+    // self-body collision exemption, "حمل إنارة 150kVA" on the leftmost load
+    // was clamped ONTO its own symbol. The band now scales with the longest
+    // label and self-bodies count as collisions.
+    const svg = renderSld({
+      title: "محطة 66/11kV - تغذية مزدوجة",
+      elements: [
+        { id: "G1", type: "grid", x: 1, y: 0, label: "الشبكة 66kV" },
+        { id: "G2", type: "generator", x: 5, y: 0, label: "مولد 1500kW" },
+        { id: "CB1", type: "breaker", x: 1, y: 1 },
+        { id: "CB2", type: "breaker", x: 5, y: 1 },
+        { id: "T1", type: "transformer2", x: 1, y: 2, label: "66/11 kV" },
+        { id: "B1", type: "busbar", x: 0, y: 4, len: 6, label: "بار 11kV" },
+        { id: "L1", type: "load", x: 0, y: 5, label: "حمل إنارة 150kVA" },
+        { id: "M1", type: "motor", x: 2, y: 5, label: "محرك 500kW" },
+        { id: "F1", type: "fuse", x: 4, y: 5, label: "فيوز 100A" },
+        { id: "L2", type: "load", x: 5, y: 5, label: "Feeder 2" },
+      ],
+      connections: [
+        ["G1", "CB1"], ["CB1", "T1"], ["T1", "B1"], ["G2", "CB2"], ["CB2", "B1"],
+        ["B1", "L1"], ["B1", "M1"], ["B1", "F1"], ["B1", "L2"],
+      ],
+      theme: "dark",
+    }).svg;
+    assertNoOverlap(svg, 8); // G1, G2, T1, B1, L1, M1, F1, L2
+  });
+
+  it("grows the side band with the longest label (deterministic sheet sizing)", () => {
+    const short = renderSld({
+      elements: [{ id: "A1", type: "motor", x: 1, y: 1, label: "M" }],
+      connections: [],
+    }).svg;
+    const long = renderSld({
+      elements: [{ id: "A1", type: "motor", x: 1, y: 1, label: "حمل إنارة 150kVA" }],
+      connections: [],
+    }).svg;
+    const w = (s: string) => Number(s.match(/<svg [^>]*width="(\d+)"/)![1]);
+    expect(w(long)).toBeGreaterThan(w(short));
+    // Band half grows from the 48px floor to ≈ maxLabelW - 10, so the sheet
+    // grows by at least 2 × (maxLabelW - 60) once the label exceeds the floor.
+    expect(w(long) - w(short)).toBeGreaterThanOrEqual(2 * (textWidth("حمل إنارة 150kVA", 12) - 60));
   });
 
   it("keeps textWidth estimates conservative (Arabic and Latin)", () => {
