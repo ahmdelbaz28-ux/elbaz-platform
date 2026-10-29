@@ -157,6 +157,13 @@ describe("detectUnfulfilledDiagramPromise — 📐 draw-now chip trigger", () =>
     expect(detectUnfulfilledDiagramPromise("Here's the diagram:\n```sld\n{oops\n```")).toBe(true);
   });
 
+  it("happy: past-tense delivery claims with no board → chip shows (observed live)", () => {
+    expect(detectUnfulfilledDiagramPromise("جهزت لك المخطط.")).toBe(true);
+    expect(detectUnfulfilledDiagramPromise("حضرت المخطط التالي:")).toBe(true);
+    expect(detectUnfulfilledDiagramPromise("رسمت المخطط بناءً على طلبك.")).toBe(true);
+    expect(detectUnfulfilledDiagramPromise("The following diagram shows the topology:")).toBe(true);
+  });
+
   it("edge: promise wording AROUND a valid board → no chip (diagram delivered)", () => {
     const withBoard = `سأرسم لك المخطط:\n\`\`\`sld\n${GOOD}\n\`\`\`\nافترضت: جهد شبكة 66kV.`;
     expect(detectUnfulfilledDiagramPromise(withBoard)).toBe(false);

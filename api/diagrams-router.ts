@@ -6,11 +6,14 @@
  *
  * Public, read-only, zero storage: the SVG is derived deterministically from
  * the spec, so it is computed on request and cached at the edge. The spec is
- * validated + LINTED before rendering; a failing spec answers 422 with the
- * findings (the caller decides whether to drop the diagram — chat never
- * breaks). Size-capped to keep this endpoint uninteresting for abuse.
+ * validated + REPAIRED + linted before rendering: salvageable error classes
+ * (bad/duplicate ids, dead wires, overlaps) are fixed deterministically and
+ * the repaired spec is rendered, so the chat <img> never breaks (the old 422
+ * path left a broken image in the reply). Only a still-failing repair answers
+ * 422. Size-capped to keep this endpoint uninteresting for abuse.
  */
 import { Hono } from "hono";
+import { repairSpec } from "./lib/sld/repair.js";
 import { renderSld } from "./lib/sld/render.js";
 import type { SldSpec } from "./lib/sld/types.js";
 
@@ -56,18 +59,25 @@ diagramsRouter.get("/diagrams/sld", (c) => {
   } catch {
     return c.json({ error: "spec is not valid JSON" }, 400);
   }
-  const spec = coerceSpec(parsed);
-  if (!spec) return c.json({ error: "spec shape invalid (need elements[], connections[])" }, 400);
+  const base = coerceSpec(parsed);
+  if (!base) return c.json({ error: "spec shape invalid (need elements[], connections[])" }, 400);
 
+  // ROOT FIX (2026-10-29): a 422 here used to leave a BROKEN <img> in the
+  // chat — the one place the "chat never breaks" contract still leaked.
+  // Repair the salvageable error classes (ids, dead wires, overlaps) and
+  // render the repaired spec; only a still-failing repair answers 422.
+  const { spec, actions } = repairSpec(base);
   const result = renderSld(spec);
   if (!result.ok) {
-    return c.json({ error: "spec failed the diagram linter", findings: result.findings }, 422);
+    return c.json({ error: "spec failed the diagram linter after repair", findings: result.findings, repair: actions }, 422);
   }
-  return c.body(result.svg, 200, {
+  const headers: Record<string, string> = {
     "Content-Type": "image/svg+xml; charset=utf-8",
     "Cache-Control": "public, max-age=86400, immutable",
     "X-Content-Type-Options": "nosniff",
-  });
+  };
+  if (actions.length > 0) headers["X-Sld-Repair"] = actions.slice(0, 8).join("; ");
+  return c.body(result.svg, 200, headers);
 });
 
 diagramsRouter.post("/diagrams/sld", async (c) => {
@@ -77,13 +87,15 @@ diagramsRouter.post("/diagrams/sld", async (c) => {
   } catch {
     return c.json({ error: "body is not valid JSON" }, 400);
   }
-  const spec = coerceSpec(body);
-  if (!spec) return c.json({ error: "spec shape invalid (need elements[], connections[])" }, 400);
+  const base = coerceSpec(body);
+  if (!base) return c.json({ error: "spec shape invalid (need elements[], connections[])" }, 400);
+  const { spec, actions } = repairSpec(base);
   const result = renderSld(spec);
   return c.json(
     {
       ok: result.ok,
       findings: result.findings,
+      repair: actions,
       svgUrl: result.ok ? `/api/diagrams/sld?spec=${encodeURIComponent(JSON.stringify(spec))}` : undefined,
       svg: result.ok ? result.svg : undefined,
     },

@@ -526,6 +526,7 @@ interface MessageBubbleProps {
 }
 
 const MessageBubble = memo(function MessageBubble({ msg, lang, copied, onCopy, onRetry, onFeedback, showDrawNow, onDrawNow }: MessageBubbleProps) {
+  const sldBodyRef = useRef<HTMLSpanElement | null>(null);
   const errorBubbleClass = msg.isError
     ? "bg-red-500/10 border border-red-500/30 text-red-300 rounded-ss-md"
     : "bg-[#111827] border border-[#1e2d3d] text-[#e8f0fe] rounded-ss-md";
@@ -533,6 +534,37 @@ const MessageBubble = memo(function MessageBubble({ msg, lang, copied, onCopy, o
     ? "bg-gradient-to-br from-cyan-600 to-blue-600 text-white rounded-ee-md"
     : errorBubbleClass;
   const imageSrc = msg.image?.dataUrl || msg.image?.thumb;
+
+  // ── SLD img load-failure fallback (defence-in-depth) ──
+  // The server repairs specs before rendering, so a diagram almost always
+  // loads; this catches the residual cases (network hiccup, edge cache) and
+  // swaps the broken-image icon for an explicit, localized note. The node is
+  // built with createElement + textContent ONLY — no model content passes
+  // through (same invariant as the renderer above).
+  useEffect(() => {
+    const span = sldBodyRef.current;
+    if (!span || msg.role !== "assistant" || msg.isError) return undefined;
+    const imgs = Array.from(span.querySelectorAll("img[src*='/api/diagrams/sld']"));
+    if (imgs.length === 0) return undefined;
+    const offs: Array<() => void> = [];
+    const fail = (img: HTMLImageElement) => {
+      const note = document.createElement("div");
+      note.className = "my-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[12px] leading-5 text-amber-300";
+      note.textContent = lang === "ar"
+        ? "تعذر تحميل الرسمة — أعد إرسال رسالتك وستُرسم من جديد."
+        : "The diagram failed to load — resend your message and it will be redrawn.";
+      img.replaceWith(note);
+    };
+    for (const img of imgs) {
+      if (!(img instanceof HTMLImageElement)) continue;
+      if (img.complete && img.naturalWidth > 0) continue; // healthy diagram
+      if (img.complete && img.naturalWidth === 0) { fail(img); continue; } // already failed
+      const onError = () => fail(img);
+      img.addEventListener("error", onError, { once: true });
+      offs.push(() => img.removeEventListener("error", onError));
+    }
+    return () => offs.forEach((off) => off());
+  }, [msg.content, msg.role, msg.isError, lang]);
 
   return (
     <div className={`flex gap-2.5 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
@@ -574,7 +606,7 @@ const MessageBubble = memo(function MessageBubble({ msg, lang, copied, onCopy, o
             <span className="whitespace-pre-wrap">{msg.content}</span>
           ) : (
             // biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown() escapes all HTML entities first, only re-adds safe markdown formatting tags
-            <span dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
+            <span ref={sldBodyRef} dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
           )}
 
           {/* Copy button (assistant messages, only on hover) */}

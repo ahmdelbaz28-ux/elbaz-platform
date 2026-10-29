@@ -168,15 +168,19 @@ function hasValidSldFence(text: string): boolean {
 // teaching phrases like "لرسم المخطط في ETAP" — only first-person commitments.
 const DIAGRAM_PROMISE_AR_RE =
   /(س[أا]رسم|ه[أا]رسم|سوف\s+أرسم|دعني\s+أرسم|دعيني\s+أرسم|أن\s+أرسم|أرسم\s+(?:لك|لكم|ه|ها|هو|هم)|أرسم(?:ه|ها|هم)\s+لك|سأقوم\s+برسم|سوف\s+أقوم\s+برسم|أقوم\s+برسم\s+(?:المخطط|مخطط|الرسمة|رسمة)|جاري\s+رسم|سأجهز\s+(?:لك\s+)?(?:المخطط|مخطط|الرسمة|رسمة)|هجهز\s+(?:لك\s+)?(?:المخطط|مخطط|الرسمة|رسمة)|هعمل\s+(?:لك\s+)?(?:المخطط|مخطط|الرسمة|رسمة)|سأرسل\s+(?:لك\s+)?(?:المخطط|مخطط|الرسمة|رسمة)|سأرفق\s+(?:المخطط|مخطط|الرسمة|رسمة))/;
-// Arabic: "delivery" wording with no board behind it ("إليك المخطط:" + broken fence).
-const DIAGRAM_DELIVERY_AR_RE = /(إليك\s+(?:المخطط|مخطط|الرسمة|رسمة)|هذا\s+هو\s+(?:المخطط|الرسمة)|دي\s+(?:الرسمة|المخطط)|المخطط\s+(?:تحت|اللي\s+فوق))/;
+// Arabic: "delivery" wording with no board behind it ("إليك المخطط:" over a
+// broken fence, or a past-tense delivery claim "جهزت لك المخطط" that never
+// shipped one — both observed live).
+const DIAGRAM_DELIVERY_AR_RE =
+  /(إليك\s+(?:المخطط|مخطط|الرسمة|رسمة)|هذا\s+هو\s+(?:المخطط|الرسمة)|دي\s+(?:الرسمة|المخطط)|المخطط\s+(?:تحت|اللي\s+فوق|التالي|الآتي)|(?:حضرت|جهزت|عملت|رسمت|أرفقت)\s+(?:لكم\s+|لك\s+)?(?:المخطط|مخطط|الرسمة|رسمة))/;
 // English: first-person draw commitments ("I'll draw the diagram", "let me
 // sketch the SLD"). The ≤3-word gap skips teaching phrasing like
 // "I'll show you how to draw…" while still catching "I'll happily draw…".
 const DIAGRAM_PROMISE_EN_RE =
   /\b(?:i'?ll|i will|i can|i'?m|i am|let me|allow me to|i'?m going to|i am going to)\s+(?:\w+\s+){0,3}?(?:draw|sketch|create|generate|make|build|prepare|drawing)\b[^\n]{0,60}?\b(?:diagram|sld|single[- ]line|one[- ]line|schematic|drawing)\b/i;
-// English: "here's the diagram" with no board behind it.
-const DIAGRAM_DELIVERY_EN_RE = /\bhere(?:'s| is)(?:\s+the|\s+your)?\s+(?:diagram|sld|schematic)|\bdiagram\s+(?:below|here)\b/i;
+// English: "here's the diagram" / "the following diagram" with no board behind it.
+const DIAGRAM_DELIVERY_EN_RE =
+  /\bhere(?:'s| is)(?:\s+the|\s+your)?\s+(?:diagram|sld|schematic)|\bdiagram\s+(?:below|here)\b|\bthe\s+following\s+(?:diagram|sld|schematic)\b/i;
 
 /**
  * True when this assistant message promised/announced a diagram but the
