@@ -368,12 +368,9 @@ export async function handleJoinRequest(deps: TelegramBotDeps, chat: TgChat, fro
       return false;
     }
     logger.info("[TelegramBot] join request approved", { chatType: chat.type });
-    // Greet groups only — a channel post would broadcast to every follower.
-    if (chat.type === "group" || chat.type === "supergroup") {
-      const lang = resolveTurnLanguage("", from);
-      const welcome = deps.groupWelcomeOverride ?? buildGroupWelcome(from.first_name, lang);
-      await sendChatMessage(deps, chat.id, welcome, { disablePreview: true });
-    }
+    // OWNER POLICY (2026-10-29): the bot sends NO messages to groups/channels —
+    // the owner is the only publisher. Approval itself is silent (the action
+    // is the welcome). buildGroupWelcome stays for reference only.
     return true;
   } catch (err) {
     logger.warn("[TelegramBot] join approval failed", { error: err instanceof Error ? err.message : String(err) });

@@ -1,6 +1,5 @@
 import { env } from "./env.js";
 import { logger } from "./logger.js";
-import { telegramApiBase, telegramRelayHeaders } from "./telegram-transport.js";
 
 // ─── Telegram broadcast bot ────────────────────────────────────────────────────
 // Mirrors every site/YouTube announcement to the owner's Telegram channel
@@ -78,39 +77,17 @@ export function isTelegramConfigured(): boolean {
 }
 
 /**
- * POST one message to the channel. Never throws — a Telegram outage must not
- * break content publishing or the YouTube watcher tick.
+ * POST one message to the channel.
+ *
+ * OWNER POLICY (2026-10-29): automatic publishing to the channel/group is
+ * PERMANENTLY DISABLED — the owner is the only publisher there, and the
+ * provider-probe alerts proved how fast robot noise fills the feed. This is
+ * a deliberate no-op: the in-app bell and the browser-push legs of
+ * pushNotification are untouched. To ever re-enable, restore the send body
+ * from git history (commit before 2026-10-29) — not a config flag, on
+ * purpose: a flag can be flipped by accident, a policy comment cannot.
  */
 export async function sendTelegramBroadcast(input: TelegramMessageInput): Promise<boolean> {
-  if (!isTelegramConfigured()) return false;
-
-  const { text, inlineKeyboard } = formatTelegramMessage(input);
-  // Transport is configurable (telegram-transport.ts) — direct Bot API by
-  // default, or the Cloudflare Worker relay when TELEGRAM_API_BASE is set.
-  const api = `${telegramApiBase()}/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
-
-  try {
-    const res = await fetch(api, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...telegramRelayHeaders() },
-      body: JSON.stringify({
-        chat_id: env.TELEGRAM_CHAT_ID,
-        text,
-        parse_mode: "HTML",
-        link_preview_options: { is_disabled: false },
-        reply_markup: { inline_keyboard: inlineKeyboard },
-      }),
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!res.ok) {
-      const bodyText = await res.text().catch(() => "");
-      logger.warn("[Telegram] sendMessage rejected", { status: res.status, body: bodyText.slice(0, 200) });
-      return false;
-    }
-    logger.info("[Telegram] broadcast delivered", { type: input.type });
-    return true;
-  } catch (err) {
-    logger.warn("[Telegram] sendMessage failed", { error: err instanceof Error ? err.message : String(err) });
-    return false;
-  }
+  logger.info("[Telegram] auto-broadcast suppressed — owner publishes only", { type: input.type });
+  return false;
 }

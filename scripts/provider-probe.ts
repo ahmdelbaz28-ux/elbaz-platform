@@ -16,10 +16,9 @@
  *        (unset providers are reported as gaps, not failures)
  *    1 — primary down, any configured provider failing, or none configured
  *
- *  --alert: on failure, broadcast an Arabic Telegram alert to the owner's
- *  channel (TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID) — the same bot that mirrors
- *  course updates, so an AI-outage can never again be silent. Alert-send
- *  failures never mask the probe's own exit code.
+ *  --alert: accepted for CLI compatibility, does NOTHING — owner policy
+ *  (2026-10-29): nothing is ever posted to the channel/group. A failing
+ *  probe shows up as a red run on GitHub, that's the whole alert channel.
  *
  *  Run locally:  npx tsx scripts/provider-probe.ts
  *  Run in CI:    npx tsx scripts/provider-probe.ts --alert   (provider-probe.yml)
@@ -303,30 +302,10 @@ if (missing.length) {
 }
 console.log(JSON.stringify({ ok, healthy: healthy.map((r) => r.name), failing: failing.map((r) => ({ name: r.name, detail: r.detail })), missing: missing.map((r) => r.name) }));
 
-// ── Telegram alert on failure (--alert) ─────────────────────────────────────
-if (!ok && process.argv.includes("--alert")) {
-  const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
-  const chatId = process.env.TELEGRAM_CHAT_ID?.trim();
-  if (token && chatId) {
-    const text =
-      "🚨 فحص صمود المزودين — منصة الباز\n\n" +
-      "واحد أو أكتر من مزودات الذكاء الاصطناعي وقع:\n" +
-      failureLines.map((l) => `• ${l}`).join("\n") +
-      "\n\nالشات بوت على الموقع ممكن يتأثر. الفحص ده تلقائي يومي — لو الملف رجع أخضر في الفحص الجاي مش محتاج تعمل حاجة.";
-    try {
-      const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: chatId, text, link_preview_options: { is_disabled: true } }),
-        signal: AbortSignal.timeout(15_000),
-      });
-      console.log(`[alert] telegram broadcast: HTTP ${res.status}`);
-    } catch (err) {
-      console.warn(`[alert] telegram broadcast failed (probe verdict unchanged): ${err instanceof Error ? err.message : String(err)}`);
-    }
-  } else {
-    console.warn("[alert] TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set — alert skipped");
-  }
-}
+// ── Notification path — OWNER POLICY (2026-10-29) ───────────────────────
+// NO Telegram broadcast, ever. The owner is the only publisher in the
+// channel/group, and the one live alert drill filled it with robot noise.
+// Failures surface as a RED run here on GitHub (the exit code below) — the
+// daily schedule + run history are the alert channel now.
 
 process.exit(ok ? 0 : 1);

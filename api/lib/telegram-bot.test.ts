@@ -129,7 +129,7 @@ describe("welcome builders", () => {
 });
 
 describe("handleJoinRequest", () => {
-  it("approves the request and greets the group in Arabic (platform default)", async () => {
+  it("approves the request silently — OWNER POLICY: no message to the group", async () => {
     const d = deps();
     const ok = await handleJoinRequest(
       d,
@@ -139,18 +139,17 @@ describe("handleJoinRequest", () => {
     expect(ok).toBe(true);
     const methods = d.calls.map((c) => c.method);
     expect(methods).toContain("approveChatJoinRequest");
-    expect(methods).toContain("sendMessage");
+    expect(methods).not.toContain("sendMessage");
     const approval = d.calls.find((c) => c.method === "approveChatJoinRequest");
     expect(approval?.payload).toMatchObject({ chat_id: -100123, user_id: 555 });
-    const welcome = d.calls.find((c) => c.method === "sendMessage");
-    expect(String(welcome?.payload.text)).toContain("أهلاً بيك محمود");
   });
 
-  it("honors an English user's language_code", async () => {
+  it("OWNER POLICY: no welcome even for English users — approval only", async () => {
     const d = deps();
     await handleJoinRequest(d, { id: -100123, type: "supergroup" }, { id: 555, first_name: "Sam", language_code: "en" });
-    const welcome = d.calls.find((c) => c.method === "sendMessage");
-    expect(String(welcome?.payload.text)).toContain("Welcome Sam");
+    const methods = d.calls.map((c) => c.method);
+    expect(methods).toContain("approveChatJoinRequest");
+    expect(methods).not.toContain("sendMessage");
   });
 
   it("does NOT greet in a channel (no broadcast spam)", async () => {

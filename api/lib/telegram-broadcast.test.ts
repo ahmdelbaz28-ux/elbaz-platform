@@ -107,10 +107,9 @@ describe("sendTelegramBroadcast", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("posts the formatted message to the Bot API and returns true on ok", async () => {
+  it("OWNER POLICY: never posts — suppressed even when fully configured", async () => {
     mockEnv.TELEGRAM_BOT_TOKEN = "123:abc";
     mockEnv.TELEGRAM_CHAT_ID = "@engahmedetap";
-    fetchMock.mockResolvedValue({ ok: true, status: 200 });
 
     const result = await sendTelegramBroadcast({
       type: "youtube",
@@ -120,22 +119,11 @@ describe("sendTelegramBroadcast", () => {
       channelUrl: "https://youtube.com/channel/x",
     });
 
-    expect(result).toBe(true);
-    const [calledUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(calledUrl).toBe("https://api.telegram.org/bot123:abc/sendMessage");
-    const body = JSON.parse(String(init.body)) as {
-      chat_id: string;
-      text: string;
-      parse_mode: string;
-      reply_markup: { inline_keyboard: Array<Array<{ text: string; url: string }>> };
-    };
-    expect(body.chat_id).toBe("@engahmedetap");
-    expect(body.parse_mode).toBe("HTML");
-    expect(body.text).toContain("<b>🎬 حلقة</b>");
-    expect(body.reply_markup.inline_keyboard[0].some((b) => b.url === "https://youtube.com/watch?v=1")).toBe(true);
+    expect(result).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("returns false when the API rejects (bad token / not admin)", async () => {
+  it("returns false when the API rejects (kept for the day the policy lifts)", async () => {
     mockEnv.TELEGRAM_BOT_TOKEN = "123:bad";
     mockEnv.TELEGRAM_CHAT_ID = "@engahmedetap";
     fetchMock.mockResolvedValue({ ok: false, status: 403, text: async () => "Forbidden" });

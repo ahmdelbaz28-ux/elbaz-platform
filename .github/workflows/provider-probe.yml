@@ -46,21 +46,19 @@ jobs:
           node-version: 22
 
       # The probe is dependency-free (plain fetch) — no npm ci needed.
-      # --alert broadcasts to the owner's Telegram channel ONLY on failure,
-      # then the step exits non-zero so the run shows red on the dashboard.
+      # OWNER POLICY: nothing is posted to Telegram — a failing probe turns
+      # the run red on GitHub, that's the entire alert path.
       - name: Probe all configured AI providers
         env:
           KILOCODE_API_KEY: ${{ secrets.KILOCODE_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           SPACE_PROBE_URL: https://ahmdelbaz28-ahmdrtap.hf.space
           EDGE_ORIGIN_SECRET: ${{ secrets.EDGE_ORIGIN_SECRET }}
         run: |
           set -x
-          npx -y tsx scripts/provider-probe.ts --alert 2>&1 | tee /tmp/probe.log
+          npx -y tsx scripts/provider-probe.ts 2>&1 | tee /tmp/probe.log
           CODE=${PIPESTATUS[0]}
           echo "probe exit code: $CODE"
           exit "$CODE"
