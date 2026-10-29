@@ -91,7 +91,7 @@ describe("renderMarkdown — SLD diagram fences", () => {
 
   it("renders a valid sld fence as a same-origin diagram image", () => {
     const out = renderMarkdown(`قبل\n\`\`\`sld\n${GOOD}\n\`\`\`\nبعدها`);
-    expect(out).toContain(`<img src="/api/diagrams/sld?spec=${encodeURIComponent(GOOD)}`);
+    expect(out).toContain(`<img src="/api/diagrams/sld?spec=${encodeURIComponent(GOOD)}&amp;v=`);
     expect(out).toContain('alt="شبكة 11kV"');
     expect(out).not.toContain("<pre");
   });

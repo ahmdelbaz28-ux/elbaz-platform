@@ -30,8 +30,11 @@ export function sheetSize(spec: SldSpec): { width: number; height: number } {
     ...placed.map((p) => (p.el.label ? 1 : 0)),
     0,
   );
+  // Labels sit BESIDE their element (renderer contract) — reserve a side band
+  // so they never clip at the sheet edges (render splits it half-left/right).
+  const sideBand = maxLabelRows > 0 ? 96 : 0;
   return {
-    width: Math.ceil(maxX + MARGIN + 40),
+    width: Math.ceil(maxX + MARGIN + 40 + sideBand),
     height: Math.ceil(maxY + MARGIN + 30 + maxLabelRows * 16),
   };
 }

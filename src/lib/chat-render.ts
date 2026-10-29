@@ -128,7 +128,9 @@ function renderSldFence(rawCode: string): string | null {
     if (elements.some((e) => !ids.has(String(e?.id ?? "")) || !String(e?.type ?? ""))) return null;
     const conns = Array.isArray(spec.connections) ? spec.connections : [];
     if (conns.some(([a, b]) => !ids.has(String(a)) || !ids.has(String(b)))) return null;
-    const url = `/api/diagrams/sld?spec=${encodeURIComponent(rawCode)}`;
+    // v = renderer revision — busts stale browser/edge caches when the SLD
+    // rendering engine itself changes (labels, geometry, themes).
+    const url = `/api/diagrams/sld?spec=${encodeURIComponent(rawCode)}&v=3`;
     const title = typeof spec.title === "string" && spec.title.trim() ? spec.title.trim() : "Single-line diagram";
     return `<img src="${escapeHtml(url)}" alt="${escapeHtml(title)}" loading="lazy" decoding="async" class="max-w-full h-auto rounded-lg border border-[#1e2d3d] my-1.5" dir="ltr"/>`;
   } catch {
