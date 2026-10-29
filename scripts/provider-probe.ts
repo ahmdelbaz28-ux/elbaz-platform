@@ -231,11 +231,13 @@ if (spaceUrl && spaceSecret) {
       signal: AbortSignal.timeout(25_000),
     });
     const latencyMs = Date.now() - spaceStart;
-    const body = safeJson(await res.text().catch(() => "")) as { providers?: Array<{ name: string; configured: boolean; status: ProviderRow["status"]; latency_ms?: number; detail: string }> } | null;
-    if (res.ok && Array.isArray(body?.providers)) {
+    const text = await res.text().catch(() => "");
+    const body = safeJson(text) as { providers?: Array<{ name: string; configured: boolean; status: ProviderRow["status"]; latency_ms?: number; detail: string }> } | null;
+    if (Array.isArray(body?.providers) && body!.providers!.length) {
       for (const r of body!.providers!) {
         rows.push({ name: `${r.name}@space`, envKey: "(space env)", configured: r.configured, status: r.status, latencyMs: r.latency_ms ?? 0, detail: r.detail } as ProviderRow);
       }
+      if (!res.ok) console.log(`[space] endpoint verdict not ok (HTTP ${res.status}) — the @space rows above show exactly which providers failed`);
     } else {
       rows.push({ name: "space-probe", envKey: "SPACE_PROBE_URL", configured: true, status: "UNHEALTHY", latencyMs, detail: `HTTP ${res.status}` });
     }
