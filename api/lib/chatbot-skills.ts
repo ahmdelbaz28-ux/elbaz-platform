@@ -501,7 +501,13 @@ export const sldSkillAr = `
 - busbar أفقية وتمتد يميناً حسب len (1-6). الصالات (loads/motors) تتغذى من أسفل البار: ضعها على صف أفقي أسفل البار بارتفاعة 1-2 خلية.
 - connections كلها على الشكل [مصدر، هدف] بمعرفات موجودة.
 - اجعل الإجابة النصية موجزة قبل/بعد اللوحة (شرح في 3-5 نقاط) — اللوحة هي النجم.
-- لا تستخدم اللوحة أبداً في الأسئلة النظرية القصيرة؛ استخدمها للربط بين المصادر والبارات والأحمال أو مقارنة توصيلات.`;
+- لا تستخدم اللوحة أبداً في الأسئلة النظرية القصيرة؛ استخدمها للربط بين المصادر والبارات والأحمال أو مقارنة توصيلات.
+
+قاعدة التنفيذ الفوري (أعلى أولوية — إجبارية بلا استثناء):
+- لو بيانات الطلب كافية للرسم → ارسم فوراً في نفس الرد: لوحة المواصفات تظهر في أول رد على الإطلاق، بلا استئذان وبلا مقدمات طويلة.
+- ممنوع منعاً باتاً: التوعّد («سأرسم لك»، «سأجهز المخطط»، «قريباً»)، أو تأجيل الرسم لرد قادم، أو طلب الإذن («تحب أرسمه؟») — لو المطلوب رسم وبيانات كافية، الرسمة نفسها هي أول ما يظهر في الرد.
+- لو ناقصة بيانة جوهرية يجعل غيابها الرسم مضللاً (زي جهد الشبكة أو عدد الفيدرات) → اسأل سؤال واحد محدد فقط، صيغته تجعل الإجابة عليه تكفي للرسم فوراً — ممنوع قائمة أسئلة.
+- لو الناقص قابل للاستبدال بافتراض هندسي منطقي → لا تسأل إطلاقاً: ارسم بالافتراض واكتب سطراً واحداً بعد اللوحة: «افترضت: X».`;
 
 export const sldSkillEn = `
 
@@ -518,4 +524,10 @@ Board rules (mandatory):
 - busbar is horizontal and extends right by len (1-6). Loads/motors are fed from the bar's bottom edge: place them on a row 1-2 cells below the bar.
 - connections are [source, target] pairs using existing ids.
 - Keep the prose around the board brief (3-5 bullet points) — the diagram is the star.
-- Never use the board for short theory questions; use it for source→bus→load topologies and wiring comparisons.`;
+- Never use the board for short theory questions; use it for source→bus→load topologies and wiring comparisons.
+
+IMMEDIATE EXECUTION RULE (top priority — mandatory, no exceptions):
+- If the request's data is sufficient to draw → draw IMMEDIATELY in the same reply: the spec board appears in the very FIRST reply, no permission-seeking, no long preamble.
+- Strictly forbidden: promising ("I'll draw it for you", "I'll prepare the diagram", "soon"), deferring the drawing to a later reply, or asking permission ("want me to draw it?") — when drawing is requested and the data is sufficient, the board itself is the first thing in the reply.
+- If ONE essential fact is missing and drawing without it would mislead (e.g. grid voltage or feeder count) → ask exactly ONE specific question, phrased so its answer enables the drawing immediately — never a list of questions.
+- If the missing piece can be replaced by a sound engineering assumption → do NOT ask at all: draw with the assumption and add one line after the board: "Assumed: X".`;

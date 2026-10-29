@@ -139,6 +139,61 @@ function renderSldFence(rawCode: string): string | null {
 }
 
 /**
+ * ─── Unfulfilled diagram-promise detector (pure, React-free) ────────────────
+ * Powers the "📐 ارسمها دلوقتي" chip: when an assistant reply PROMISES a
+ * diagram (or offers/announces one) but the message carries NO valid SLD
+ * board, the chip offers a one-tap follow-up instead of making the user
+ * retype their request. Real failure modes this covers (observed live):
+ *  - the stream was cut by the output-token cap right after "سأرسم لك مخططاً…"
+ *  - the model emitted a broken ```sld fence (fails the shape check → code block)
+ *  - the model merely offered ("تحب أرسمه لك؟") instead of drawing.
+ * A message that DID render a diagram never shows the chip, no matter how
+ * many promise-shaped words surround the board.
+ */
+
+/** Same fence grammar as renderMarkdown; true when any ```sld fence passes the
+ * same cheap shape check the renderer uses (i.e. it WILL show as a diagram). */
+function hasValidSldFence(text: string): boolean {
+  // split yields [text, lang, code, text, lang, code, …] — starting the loop
+  // at the FIRST lang index (1), the matching code block sits at i+1.
+  const segments = text.split(/```(\w*)[ \t]*\n?([\s\S]*?)```/); // NOSONAR — S8786: same bounded grammar as renderMarkdown
+  for (let i = 1; i < segments.length; i += 3) {
+    if (segments[i] === "sld" && renderSldFence((segments[i + 1] ?? "").trim())) return true;
+  }
+  return false;
+}
+
+// Arabic: affirmative promises/offers around drawing. Deliberately does NOT
+// match the bare imperative "ارسم" (that is the USER's ask, quoted back) nor
+// teaching phrases like "لرسم المخطط في ETAP" — only first-person commitments.
+const DIAGRAM_PROMISE_AR_RE =
+  /(س[أا]رسم|ه[أا]رسم|سوف\s+أرسم|دعني\s+أرسم|دعيني\s+أرسم|أن\s+أرسم|أرسم\s+(?:لك|لكم|ه|ها|هو|هم)|أرسم(?:ه|ها|هم)\s+لك|سأقوم\s+برسم|سوف\s+أقوم\s+برسم|أقوم\s+برسم\s+(?:المخطط|مخطط|الرسمة|رسمة)|جاري\s+رسم|سأجهز\s+(?:لك\s+)?(?:المخطط|مخطط|الرسمة|رسمة)|هجهز\s+(?:لك\s+)?(?:المخطط|مخطط|الرسمة|رسمة)|هعمل\s+(?:لك\s+)?(?:المخطط|مخطط|الرسمة|رسمة)|سأرسل\s+(?:لك\s+)?(?:المخطط|مخطط|الرسمة|رسمة)|سأرفق\s+(?:المخطط|مخطط|الرسمة|رسمة))/;
+// Arabic: "delivery" wording with no board behind it ("إليك المخطط:" + broken fence).
+const DIAGRAM_DELIVERY_AR_RE = /(إليك\s+(?:المخطط|مخطط|الرسمة|رسمة)|هذا\s+هو\s+(?:المخطط|الرسمة)|دي\s+(?:الرسمة|المخطط)|المخطط\s+(?:تحت|اللي\s+فوق))/;
+// English: first-person draw commitments ("I'll draw the diagram", "let me
+// sketch the SLD"). The ≤3-word gap skips teaching phrasing like
+// "I'll show you how to draw…" while still catching "I'll happily draw…".
+const DIAGRAM_PROMISE_EN_RE =
+  /\b(?:i'?ll|i will|i can|i'?m|i am|let me|allow me to|i'?m going to|i am going to)\s+(?:\w+\s+){0,3}?(?:draw|sketch|create|generate|make|build|prepare|drawing)\b[^\n]{0,60}?\b(?:diagram|sld|single[- ]line|one[- ]line|schematic|drawing)\b/i;
+// English: "here's the diagram" with no board behind it.
+const DIAGRAM_DELIVERY_EN_RE = /\bhere(?:'s| is)(?:\s+the|\s+your)?\s+(?:diagram|sld|schematic)|\bdiagram\s+(?:below|here)\b/i;
+
+/**
+ * True when this assistant message promised/announced a diagram but the
+ * rendered result contains NO valid SLD board (→ show the draw-now chip).
+ */
+export function detectUnfulfilledDiagramPromise(text: string): boolean {
+  if (!text || text.length > 20_000) return false;
+  if (hasValidSldFence(text)) return false;
+  return (
+    DIAGRAM_PROMISE_AR_RE.test(text) ||
+    DIAGRAM_PROMISE_EN_RE.test(text) ||
+    DIAGRAM_DELIVERY_AR_RE.test(text) ||
+    DIAGRAM_DELIVERY_EN_RE.test(text)
+  );
+}
+
+/**
  * Render a chat message to safe HTML. Text segments are escaped BEFORE the
  * markdown machine runs (the security invariant above); fenced code blocks
  * are escaped verbatim. While streaming, a momentarily unclosed fence is

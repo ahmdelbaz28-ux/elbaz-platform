@@ -74,8 +74,13 @@ import {
  *          Panniantong/Agent-Reach, MIT): three explicit evidence layers +
  *          metadata-is-not-content + unverified-attribution rejection +
  *          deliver-what-you-have + name-standards-never-link.
+ * 3.3.1 → Hardened never-weaken-a-correction + empathy gating (live eval).
+ * 3.4.0 → SLD IMMEDIATE EXECUTION RULE: draw in the FIRST reply when data
+ *          suffices (promises/deferrals/permission-asking banned), ask
+ *          exactly ONE question when one essential fact is missing, assume
+ *          + state when a sound engineering assumption can replace it.
  */
-export const PROMPT_VERSION = "3.3.1";
+export const PROMPT_VERSION = "3.4.0";
 
 export type ChatbotMode = "thinking" | "instant";
 

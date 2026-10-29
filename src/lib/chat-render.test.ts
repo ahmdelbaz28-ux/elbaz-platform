@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from "vitest";
 
-import { renderMarkdown, escapeHtml, ARABIC_RE } from "./chat-render";
+import { renderMarkdown, escapeHtml, ARABIC_RE, detectUnfulfilledDiagramPromise } from "./chat-render";
 
 describe("renderMarkdown — XSS regression (audit run-1)", () => {
   it("never emits a raw <img> tag from message content", () => {
@@ -122,5 +122,74 @@ describe("renderMarkdown — SLD diagram fences", () => {
     } else {
       expect(out).toContain("<pre");
     }
+  });
+});
+
+describe("detectUnfulfilledDiagramPromise — 📐 draw-now chip trigger", () => {
+  const GOOD = JSON.stringify({
+    title: "شبكة 11kV",
+    elements: [
+      { id: "G1", type: "grid", x: 2, y: 0 },
+      { id: "B1", type: "busbar", x: 1, y: 2, len: 3 },
+    ],
+    connections: [["G1", "B1"]],
+  });
+
+  it("happy: Arabic promise with no board → chip shows", () => {
+    expect(detectUnfulfilledDiagramPromise("حاضر، سأرسم لك مخطط الشبكة.")).toBe(true);
+    expect(detectUnfulfilledDiagramPromise("تمام، هجهز لك المخطط في الرد الجاي.")).toBe(true);
+    expect(detectUnfulfilledDiagramPromise("سأقوم برسم مخطط تدفق الأحمال الآن.")).toBe(true);
+  });
+
+  it("happy: English first-person promise with no board → chip shows", () => {
+    expect(detectUnfulfilledDiagramPromise("I'll draw the diagram for you.")).toBe(true);
+    expect(detectUnfulfilledDiagramPromise("Let me sketch the single-line diagram.")).toBe(true);
+    expect(detectUnfulfilledDiagramPromise("I can generate an SLD for this network.")).toBe(true);
+  });
+
+  it("happy: bare offer instead of drawing → chip shows", () => {
+    expect(detectUnfulfilledDiagramPromise("تحب أن أرسمه لك؟")).toBe(true);
+    expect(detectUnfulfilledDiagramPromise("أرسمه لك في خطوات؟")).toBe(true);
+  });
+
+  it("happy: delivery wording over a broken fence → chip shows", () => {
+    expect(detectUnfulfilledDiagramPromise("إليك المخطط:\n```sld\n{not json\n```")).toBe(true);
+    expect(detectUnfulfilledDiagramPromise("Here's the diagram:\n```sld\n{oops\n```")).toBe(true);
+  });
+
+  it("edge: promise wording AROUND a valid board → no chip (diagram delivered)", () => {
+    const withBoard = `سأرسم لك المخطط:\n\`\`\`sld\n${GOOD}\n\`\`\`\nافترضت: جهد شبكة 66kV.`;
+    expect(detectUnfulfilledDiagramPromise(withBoard)).toBe(false);
+  });
+
+  it("edge: token-cap cut right after the promise sentence → chip shows", () => {
+    expect(detectUnfulfilledDiagramPromise("سأرسم لك مخططاً يوضح")).toBe(true);
+  });
+
+  it("edge: teaching phrasing is NOT a promise → no chip", () => {
+    expect(detectUnfulfilledDiagramPromise("لرسم المخطط في ETAP: افتح قائمة Transient Analysis ثم اختر...")).toBe(false);
+    expect(detectUnfulfilledDiagramPromise("I'll show you how to draw the diagram in ETAP step by step.")).toBe(false);
+  });
+
+  it("edge: user-echo imperative is NOT a promise → no chip", () => {
+    expect(detectUnfulfilledDiagramPromise("اكتب: ارسم المخطط ثم اضغط Enter.")).toBe(false);
+    expect(detectUnfulfilledDiagramPromise("الرسمة تحتاج بيانات الجهد أولاً.")).toBe(false);
+  });
+
+  it("failure mode: broken sld fence + no promise wording → no chip (degrades to code block silently)", () => {
+    expect(detectUnfulfilledDiagramPromise("```sld\n{broken\n```")).toBe(false);
+  });
+
+  it("failure mode: empty/oversized input never throws or matches", () => {
+    expect(detectUnfulfilledDiagramPromise("")).toBe(false);
+    expect(detectUnfulfilledDiagramPromise("x".repeat(21_000) + "سأرسم")).toBe(false);
+  });
+
+  it("invariant: detection agrees with the renderer on what counts as a board", () => {
+    // Whatever renderMarkdown turns into an <img …/api/diagrams/sld…> must
+    // never trigger the chip — same shape check on both sides.
+    const out = renderMarkdown(`\`\`\`sld\n${GOOD}\n\`\`\``);
+    expect(out).toContain("/api/diagrams/sld");
+    expect(detectUnfulfilledDiagramPromise(`\`\`\`sld\n${GOOD}\n\`\`\``)).toBe(false);
   });
 });

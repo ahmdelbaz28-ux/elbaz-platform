@@ -30,7 +30,7 @@ import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 
 import { getSystemPrompt, PROMPT_VERSION, sanitizeReplyOutput } from "./chatbot-prompts";
-import { COURSE_CATALOG_PLACEHOLDER, buildCourseCatalogBlock } from "./chatbot-skills";
+import { COURSE_CATALOG_PLACEHOLDER, buildCourseCatalogBlock, sldSkillAr, sldSkillEn } from "./chatbot-skills";
 
 // ─── Option A — Electrical Depth Pack ───────────────────────────────────────
 
@@ -364,5 +364,68 @@ describe("composition matrix (core invariants, applies to every variant)", () =>
   it("FAILURE MODE: catalog builder never leaks the placeholder into prompts", () => {
     expect(buildCourseCatalogBlock("")).not.toContain(COURSE_CATALOG_PLACEHOLDER);
     expect(buildCourseCatalogBlock(MOCK_CATALOG)).toContain(MOCK_CATALOG);
+  });
+});
+
+// ─── SLD IMMEDIATE EXECUTION RULE (v3.4.0 — draw-now contract) ──────────────
+
+describe("SLD immediate execution rule (thinking mode, v3.4.0)", () => {
+  // The live failure this contract locks: the model promised "سأرسم لك
+  // مخططاً…" and the reply got cut (or deferred) with NO spec board — the
+  // user had to retype. The rule forces: sufficient data → draw in the SAME
+  // reply; one missing essential fact → ONE question; assumable → assume + state.
+  const arPrompt = getSystemPrompt("ar", "thinking");
+  const enPrompt = getSystemPrompt("en", "thinking");
+
+  it("HAPPY PATH: sufficient-data branch present in BOTH languages (draw in the same reply)", () => {
+    expect(sldSkillAr).toContain("قاعدة التنفيذ الفوري");
+    expect(sldSkillAr).toContain("ارسم فوراً في نفس الرد");
+    expect(sldSkillAr).toContain("لوحة المواصفات تظهر في أول رد");
+    expect(sldSkillEn).toContain("IMMEDIATE EXECUTION RULE");
+    expect(sldSkillEn).toContain("draw IMMEDIATELY in the same reply");
+    expect(sldSkillEn).toContain("the spec board appears in the very FIRST reply");
+  });
+
+  it("EDGE: missing-essential-fact branch → exactly ONE question OR assume-and-state (both languages)", () => {
+    expect(sldSkillAr).toContain("سؤال واحد محدد فقط");
+    expect(sldSkillAr).toContain("ممنوع قائمة أسئلة");
+    expect(sldSkillAr).toContain("افترضت:");
+    expect(sldSkillEn).toContain("exactly ONE specific question");
+    expect(sldSkillEn).toContain("never a list of questions");
+    expect(sldSkillEn).toContain("Assumed: X");
+  });
+
+  it("FAILURE MODE: the three observed promise patterns are banned VERBATIM in the rule text", () => {
+    // The rule itself quotes the forbidden phrasings so the model sees them
+    // as named-and-shamed patterns, not vague "avoid delays" guidance.
+    expect(sldSkillAr).toContain("ممنوع منعاً باتاً: التوعّد");
+    expect(sldSkillAr).toContain("«سأرسم لك»");
+    expect(sldSkillAr).toContain("«قريباً»");
+    expect(sldSkillAr).toContain("طلب الإذن («تحب أرسمه؟»)");
+    expect(sldSkillEn).toContain("Strictly forbidden: promising");
+    expect(sldSkillEn).toContain('"I\'ll draw it for you"');
+    expect(sldSkillEn).toContain('asking permission ("want me to draw it?")');
+  });
+
+  it("the rule is composed into BOTH thinking prompts (and only there)", () => {
+    expect(arPrompt).toContain("قاعدة التنفيذ الفوري");
+    expect(enPrompt).toContain("IMMEDIATE EXECUTION RULE");
+    // Deliberate: the SLD skill (and thus this rule) lives in thinking mode
+    // only — instant mode keeps its token budget; the 📐 draw-now chip in the
+    // UI covers instant-mode misses instead of inflating the speed prompt.
+    expect(getSystemPrompt("ar", "instant")).not.toContain("قاعدة التنفيذ الفوري");
+    expect(getSystemPrompt("en", "instant")).not.toContain("IMMEDIATE EXECUTION RULE");
+  });
+
+  it("the board example is still intact (rule did not displace the format contract)", () => {
+    expect(sldSkillAr).toContain('"type":"grid"');
+    expect(sldSkillAr).toContain("الأنواع المسموحة فقط");
+    expect(sldSkillEn).toContain("Allowed types only");
+  });
+
+  it("PROMPTS_CHANGELOG.md documents 3.4.0 with the rule name (traceability)", () => {
+    const changelog = readFileSync(new URL("../../PROMPTS_CHANGELOG.md", import.meta.url), "utf8");
+    expect(changelog).toContain("## [3.4.0]");
+    expect(changelog).toContain("SLD IMMEDIATE EXECUTION RULE");
   });
 });

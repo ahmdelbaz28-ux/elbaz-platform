@@ -157,7 +157,7 @@ function loadMessagesFromStorage(key: string): Message[] | null {
 // The renderer lives in src/lib/chat-render.ts (pure + unit-tested). SECURITY
 // INVARIANT (audit run-1): every text segment is HTML-escaped before any
 // markdown transformation — only renderer-synthesized tags survive.
-import { ARABIC_RE, renderMarkdown } from "@/lib/chat-render";
+import { ARABIC_RE, detectUnfulfilledDiagramPromise, renderMarkdown } from "@/lib/chat-render";
 
 
 
@@ -520,9 +520,12 @@ interface MessageBubbleProps {
   onCopy: (msgId: string, content: string) => void;
   onRetry: (msgId: string) => void;
   onFeedback: (msgId: string, rating: "up" | "down") => void;
+  /** 📐 draw-now chip: this assistant reply promised a diagram but carried none. */
+  showDrawNow: boolean;
+  onDrawNow: (msgId: string) => void;
 }
 
-const MessageBubble = memo(function MessageBubble({ msg, lang, copied, onCopy, onRetry, onFeedback }: MessageBubbleProps) {
+const MessageBubble = memo(function MessageBubble({ msg, lang, copied, onCopy, onRetry, onFeedback, showDrawNow, onDrawNow }: MessageBubbleProps) {
   const errorBubbleClass = msg.isError
     ? "bg-red-500/10 border border-red-500/30 text-red-300 rounded-ss-md"
     : "bg-[#111827] border border-[#1e2d3d] text-[#e8f0fe] rounded-ss-md";
@@ -624,6 +627,19 @@ const MessageBubble = memo(function MessageBubble({ msg, lang, copied, onCopy, o
               <span className="text-[10px] text-slate-500">{lang === "ar" ? "شكراً لتقييمك" : "Thanks for the feedback"}</span>
             )}
           </div>
+        )}
+
+        {/* 📐 Draw-now chip — the reply promised a diagram but delivered none
+            (token-cap cut / broken spec fence / bare offer). One tap sends the
+            follow-up instead of making the user retype their request. */}
+        {showDrawNow && (
+          <button
+            onClick={() => onDrawNow(msg.id)}
+            className="mt-2 ms-1 inline-flex items-center gap-1.5 self-start rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1.5 text-[11.5px] font-semibold text-cyan-300 transition-colors hover:border-cyan-300/50 hover:bg-cyan-400/20"
+            title={lang === "ar" ? "ابعت متابعة بتخلّي البوت يرسمها فوراً" : "Send a follow-up so the bot draws it now"}
+          >
+            📐 {lang === "ar" ? "ارسمها دلوقتي" : "Draw it now"}
+          </button>
         )}
 
         {/* Retry button (error messages) */}
@@ -1287,6 +1303,32 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     }
   }, [isLoading, messages, lang, chatMode, startReveal, stopReveal, drainReveal]);
 
+  // ─── 📐 "ارسمها دلوقتي" chip → one-tap follow-up ───
+  // The bot promised a diagram but the reply carried no SLD board: one tap
+  // sends a follow-up that re-anchors the immediate-draw rule (spec board
+  // now, sensible assumption if data is missing) — no retyping. The follow-up
+  // language mirrors the promising reply itself, and deliberately says "sld
+  // spec board" IN WORDS (no backticks) so it survives markdown rendering.
+  const handleDrawNow = useCallback((msgId: string) => {
+    if (isLoading) return;
+    const target = messagesRef.current.find((m) => m.id === msgId);
+    const ar = target ? ARABIC_RE.test(target.content) : lang !== "en";
+    const followUp = ar
+      ? "كمّل اللي بدأته: ارسم مخطط الـ SLD فوراً في ردك ده كلوحة مواصفات sld كاملة من غير أي مقدمات ولا وعود — ولو فيه بيانات ناقصة اعتمد افتراض هندسي منطقي واكتبه في سطر واحد بعد اللوحة."
+      : "Follow through: draw the SLD diagram right now in this reply as a complete sld spec board — no preamble, no promises. If any data is missing, use a sound engineering assumption and state it in one line after the board.";
+    void sendMessage(followUp);
+  }, [isLoading, lang, sendMessage]);
+
+  // The chip renders ONLY on the LAST message: the moment any follow-up reply
+  // lands (with or without a board) the stale chip disappears with it. While
+  // streaming/loading it stays hidden — there is nothing to follow up on yet.
+  const drawNowMsgId = (() => {
+    if (isLoading || messages.length === 0) return "";
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== "assistant" || last.isError || last.id === "welcome") return "";
+    return detectUnfulfilledDiagramPromise(last.content) ? last.id : "";
+  })();
+
   // ─── Persist messages to localStorage when they change ───
   useEffect(() => {
     if (messages.length > 0 && !isLoading) {
@@ -1634,6 +1676,8 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                       onCopy={copyMessage}
                       onRetry={handleRetry}
                       onFeedback={handleFeedback}
+                      showDrawNow={msg.id === drawNowMsgId}
+                      onDrawNow={handleDrawNow}
                     />
                   ))}
 
