@@ -76,7 +76,11 @@ diagramsRouter.get("/diagrams/sld", (c) => {
     "Cache-Control": "public, max-age=86400, immutable",
     "X-Content-Type-Options": "nosniff",
   };
-  if (actions.length > 0) headers["X-Sld-Repair"] = actions.slice(0, 8).join("; ");
+  if (actions.length > 0) {
+    // HTTP header values must stay latin-1 — belt-and-braces ASCII scrub
+    // (the action strings themselves are already ASCII-only by contract).
+    headers["X-Sld-Repair"] = actions.slice(0, 8).join("; ").replace(/[^\x20-\x7E]/g, "?");
+  }
   return c.body(result.svg, 200, headers);
 });
 

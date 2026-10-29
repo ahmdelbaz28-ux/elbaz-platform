@@ -75,7 +75,7 @@ export function repairSpec(spec: SldSpec): RepairResult {
     if (!ID_RE.test(final)) {
       const fixed = sanitizeId(final);
       if (!fixed) {
-        actions.push(`drop element "${orig}" — unusable id`);
+        actions.push(`drop element "${orig}" - unusable id`);
         continue;
       }
       actions.push(`rename id "${orig}" -> "${fixed}"`);
@@ -91,7 +91,7 @@ export function repairSpec(spec: SldSpec): RepairResult {
         }
       }
       if (!suffixed) {
-        actions.push(`drop element "${orig}" — id collision with no free name`);
+        actions.push(`drop element "${orig}" - id collision with no free name`);
         continue;
       }
       actions.push(`dedupe id "${orig}" -> "${suffixed}"`);
@@ -109,7 +109,7 @@ export function repairSpec(spec: SldSpec): RepairResult {
     elements.push({ ...el, id: final, x, y });
   }
   if (elements.length === 0) {
-    return { spec, actions: [...actions, "nothing salvageable — returning the original spec"] };
+    return { spec, actions: [...actions, "nothing salvageable - returning the original spec"] };
   }
 
   // ── 2) connections: remap through idMap, drop dead/duplicate wires ───────
@@ -119,12 +119,12 @@ export function repairSpec(spec: SldSpec): RepairResult {
     const a = idMap.get(String(pair?.[0] ?? ""));
     const b = idMap.get(String(pair?.[1] ?? ""));
     if (!a || !b) {
-      actions.push(`drop wire ${String(pair?.[0] ?? "?")}→${String(pair?.[1] ?? "?")} — endpoint missing`);
+      actions.push(`drop wire ${String(pair?.[0] ?? "?")}->${String(pair?.[1] ?? "?")} - endpoint missing`);
       continue;
     }
     const key = [a, b].sort().join("|");
     if (a === b || seenConn.has(key)) {
-      actions.push(`drop ${a === b ? "self-loop" : "duplicate"} wire ${a}→${b}`);
+      actions.push(`drop ${a === b ? "self-loop" : "duplicate"} wire ${a}->${b}`);
       continue;
     }
     seenConn.add(key);
@@ -146,11 +146,11 @@ export function repairSpec(spec: SldSpec): RepairResult {
         if (!collides(bboxAt(el, el.x + d, el.y + d), placedRects)) fixed = { x: el.x + d, y: el.y + d };
       }
       if (fixed) {
-        actions.push(`relocate "${el.id}" (${el.x},${el.y} -> ${fixed.x},${fixed.y}) — overlap`);
+        actions.push(`relocate "${el.id}" (${el.x},${el.y} -> ${fixed.x},${fixed.y}) - overlap`);
         placedRects.push(bboxAt(el, fixed.x, fixed.y));
         return { ...el, x: fixed.x, y: fixed.y };
       }
-      actions.push(`keep "${el.id}" as-is — no free cell found`);
+      actions.push(`keep "${el.id}" as-is - no free cell found`);
     }
     placedRects.push(bboxAt(el, el.x, el.y));
     return el;
