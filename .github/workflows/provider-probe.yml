@@ -59,9 +59,11 @@ jobs:
           SPACE_PROBE_URL: https://ahmdelbaz28-ahmdrtap.hf.space
           EDGE_ORIGIN_SECRET: ${{ secrets.EDGE_ORIGIN_SECRET }}
         run: |
-          npx -y tsx scripts/provider-probe.ts --alert > /tmp/probe.log 2>&1; CODE=$?
-          cat /tmp/probe.log
-          exit $CODE
+          set -x
+          npx -y tsx scripts/provider-probe.ts --alert 2>&1 | tee /tmp/probe.log
+          CODE=${PIPESTATUS[0]}
+          echo "probe exit code: $CODE"
+          exit "$CODE"
 
       - name: Append probe table to the run summary
         if: always()
