@@ -3,6 +3,7 @@ import { visualRandom } from "@/lib/random";
 import {
   useState,
   useEffect,
+  useLayoutEffect,
   useRef,
   useCallback,
   type ReactNode,
@@ -959,6 +960,37 @@ export default function NotificationCenter() { // NOSONAR — large component wi
     }
   }, [isOpen]);
 
+  // ── Keep the panel inside the viewport (mobile edge cure) ──
+  // The dropdown is anchored to the bell, which can sit within a few px of the
+  // screen edge (mobile drawer header). CSS anchoring alone lets the fixed-width
+  // panel overflow the opposite edge — cut-off title, half-visible rows. After
+  // opening (and on resize) we measure the real rect and shift the panel back
+  // inside via the individual `translate` property, which composes with the
+  // class-based transform used by the open/close animation instead of fighting it.
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    const panel = panelRef.current;
+    if (!panel) return;
+    const clampToViewport = () => {
+      panel.style.setProperty("translate", "0px 0px");
+      const rect = panel.getBoundingClientRect();
+      const margin = 8;
+      let dx = 0;
+      if (rect.left < margin) {
+        dx = margin - rect.left;
+      } else if (rect.right > window.innerWidth - margin) {
+        dx = window.innerWidth - margin - rect.right;
+      }
+      if (dx !== 0) panel.style.setProperty("translate", `${dx}px 0px`);
+    };
+    clampToViewport();
+    window.addEventListener("resize", clampToViewport);
+    return () => {
+      window.removeEventListener("resize", clampToViewport);
+      panel.style.setProperty("translate", "0px 0px");
+    };
+  }, [isOpen]);
+
   // ── Visible notifications (max 20) ──
   const visibleNotifications = notifications.slice(0, MAX_VISIBLE);
 
@@ -1015,7 +1047,7 @@ export default function NotificationCenter() { // NOSONAR — large component wi
         aria-modal="false"
         aria-label={isRTL ? "مركز الإشعارات" : "Notification Center"}
         dir={isRTL ? "rtl" : "ltr"}
-        className={`absolute z-50 mt-2 w-[360px] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-[#1e2d3d] bg-[#0d1420] shadow-[0_16px_48px_rgba(0,0,0,0.5)] transition-all duration-200 ${
+        className={`absolute z-50 mt-2 w-[360px] max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-[#1e2d3d] bg-[#0d1420] shadow-[0_16px_48px_rgba(0,0,0,0.5)] transition-all duration-200 ${
           // In LTR the dropdown opens to the right edge of the trigger; in
           // RTL it mirrors to the left edge. Previously both branches were
           // "right-0" (SonarCloud S3923).
@@ -1068,36 +1100,48 @@ export default function NotificationCenter() { // NOSONAR — large component wi
 
         {/* ── Web Push toggle: system notifications with the site closed ── */}
         {showPushToggle && (
-          <div className="flex items-center justify-between gap-2 border-b border-[#1e2d3d] px-4 py-2.5">
-            <div className="flex min-w-0 items-start gap-2">
-              <BellRing className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${push.isSubscribed ? "text-[#06b6d4]" : "text-[#475569]"}`} />
-              <div className="min-w-0">
-                <p className="text-[12px] font-semibold leading-tight text-[#e8f0fe]">
+          <div className="border-b border-[#1e2d3d] px-2.5 py-2.5">
+            <div className="flex items-center gap-3 rounded-xl bg-[rgba(6,182,212,0.05)] px-3 py-2.5 ring-1 ring-inset ring-[rgba(6,182,212,0.1)]">
+              <div
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+                  push.isSubscribed
+                    ? "bg-[rgba(6,182,212,0.15)] text-[#06b6d4]"
+                    : "bg-[rgba(148,163,184,0.08)] text-[#64748b]"
+                }`}
+              >
+                <BellRing className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[12.5px] font-semibold leading-snug text-[#e8f0fe]">
                   {isRTL ? "إشعارات المتصفح" : "Browser notifications"}
                 </p>
-                <p className="mt-0.5 truncate text-[10.5px] leading-tight text-[#64748b]">
+                <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-[#64748b]">
                   {pushToggleHint(isRTL, push.isSubscribed)}
                 </p>
               </div>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={push.isSubscribed}
-              aria-label={isRTL ? "تفعيل إشعارات المتصفح" : "Enable browser notifications"}
-              disabled={push.isBusy}
-              onClick={() => (push.isSubscribed ? void push.unsubscribe() : void push.subscribe())}
-              className={`relative h-5 w-9 shrink-0 rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#06b6d4] disabled:opacity-50 ${
-                push.isSubscribed ? "bg-[#06b6d4]" : "bg-[#1e2d3d]"
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all duration-200 ${
-                  push.isSubscribed === isRTL ? "left-0.5" : "right-0.5"
+              <button
+                type="button"
+                role="switch"
+                aria-checked={push.isSubscribed}
+                aria-label={isRTL ? "تفعيل إشعارات المتصفح" : "Enable browser notifications"}
+                disabled={push.isBusy}
+                onClick={() => (push.isSubscribed ? void push.unsubscribe() : void push.subscribe())}
+                className={`relative h-6 w-11 shrink-0 rounded-full border transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#06b6d4] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d1420] disabled:opacity-50 ${
+                  push.isSubscribed
+                    ? "border-transparent bg-gradient-to-r from-[#06b6d4] to-[#0284c7] shadow-[0_0_10px_rgba(6,182,212,0.35)]"
+                    : "border-[#2d3f52] bg-[#1a2736]"
                 }`}
-                aria-hidden="true"
-              />
-            </button>
+              >
+                {/* Knob travels on the physical `left` axis in BOTH directions
+                    so the slide animates smoothly in LTR and RTL alike; the
+                    start/end sides mirror manually because the panel sets `dir`. */}
+                <span
+                  className="absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow-md transition-all duration-200"
+                  style={{ left: push.isSubscribed ? (isRTL ? 3 : 21) : isRTL ? 21 : 3 }}
+                  aria-hidden="true"
+                />
+              </button>
+            </div>
           </div>
         )}
 
@@ -1107,7 +1151,7 @@ export default function NotificationCenter() { // NOSONAR — large component wi
           ref={listRef}
           role="list"
           aria-label={isRTL ? "قائمة الإشعارات" : "Notification list"}
-          className="max-h-[380px] overflow-y-auto overscroll-contain p-2"
+          className="max-h-[380px] overflow-y-auto overscroll-contain px-2.5 py-2"
           style={{
             scrollbarWidth: "thin",
             scrollbarColor: "#1e2d3d transparent",
