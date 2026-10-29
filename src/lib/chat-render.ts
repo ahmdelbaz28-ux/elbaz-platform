@@ -3,8 +3,13 @@
  *
  * SECURITY INVARIANT (audit run-1, finding chatbot.rendermarkdown.*):
  * EVERY text segment is HTML-escaped BEFORE any markdown transformation.
- * Only renderer-synthesized tags (h4/ol/ul/li/p/code/a/strong/em) may appear
- * in the output; the link URL regex additionally restricts hrefs to http(s).
+ * Only renderer-synthesized tags (h4/ol/ul/li/p/code/a/strong/em/img) may
+ * appear in the output; the link URL regex additionally restricts hrefs to
+ * http(s), and the ONLY allowed <img> is the SLD diagram image synthesized
+ * from a ```sld fence — a same-origin URL under /api/diagrams/ whose SVG is
+ * produced exclusively by the server-side linted renderer (api/lib/sld/).
+ * Model text NEVER becomes markup: a fence that fails spec validation falls
+ * back to the escaped code block.
  * The old code escaped only fenced code blocks, letting model/user/history
  * content like `<img src=x onerror=...>` reach dangerouslySetInnerHTML.
  *
@@ -108,6 +113,30 @@ function renderTextBlock(text: string): string {
 }
 
 /**
+ * SLD fence → same-origin diagram image. The spec is re-validated on the
+ * server (lint + render); client-side we only do a cheap shape check so a
+ * malformed fence degrades to a plain code block instead of a broken image.
+ * Returns null whenever anything is off — the caller keeps the code block.
+ */
+function renderSldFence(rawCode: string): string | null {
+  try {
+    const spec = JSON.parse(rawCode) as { title?: unknown; elements?: Array<{ id?: unknown; type?: unknown }>; connections?: Array<[unknown, unknown]> } | null;
+    if (!spec || typeof spec !== "object") return null;
+    const elements = Array.isArray(spec.elements) ? spec.elements : [];
+    if (elements.length === 0 || elements.length > 40) return null;
+    const ids = new Set(elements.map((e) => String(e?.id ?? "")));
+    if (elements.some((e) => !ids.has(String(e?.id ?? "")) || !String(e?.type ?? ""))) return null;
+    const conns = Array.isArray(spec.connections) ? spec.connections : [];
+    if (conns.some(([a, b]) => !ids.has(String(a)) || !ids.has(String(b)))) return null;
+    const url = `/api/diagrams/sld?spec=${encodeURIComponent(rawCode)}`;
+    const title = typeof spec.title === "string" && spec.title.trim() ? spec.title.trim() : "Single-line diagram";
+    return `<img src="${escapeHtml(url)}" alt="${escapeHtml(title)}" loading="lazy" decoding="async" class="max-w-full h-auto rounded-lg border border-[#1e2d3d] my-1.5" dir="ltr"/>`;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Render a chat message to safe HTML. Text segments are escaped BEFORE the
  * markdown machine runs (the security invariant above); fenced code blocks
  * are escaped verbatim. While streaming, a momentarily unclosed fence is
@@ -129,7 +158,16 @@ export function renderMarkdown(text: string): string {
     // fix for the unescaped-innerHTML XSS.
     html += renderTextBlock(escapeHtml(convertMarkdownTables(segments[i])));
     if (segments[i + 2] !== undefined) {
-      const code = escapeHtml(segments[i + 2].trim());
+      const lang = segments[i + 1];
+      const raw = segments[i + 2].trim();
+      if (lang === "sld") {
+        const img = renderSldFence(raw);
+        if (img) {
+          html += img;
+          continue;
+        }
+      }
+      const code = escapeHtml(raw);
       html += `<pre dir="ltr" class="bg-black/40 border border-[#1e2d3d] rounded-lg p-2.5 my-1.5 overflow-x-auto text-[12px] leading-5 text-[#b4c6e0]" style="text-align:left"><code>${code}</code></pre>`;
     }
   }

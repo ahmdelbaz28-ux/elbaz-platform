@@ -6,6 +6,7 @@ import { env } from "./lib/env.js";
 import { initRedis } from "./lib/rate-limiter.js";
 import { healthRouter } from "./health-router.js";
 import { promoRouter } from "./promo-router.js";
+import { diagramsRouter } from "./diagrams-router.js";
 import { paymobWebhook, paymobWebhookAlias } from "./paymob-webhook.js";
 import { chatbotRouter } from "./chatbot-router.js";
 import { googleAuthRouter } from "./google-auth-router.js";
@@ -114,6 +115,7 @@ app.use(
 
 // ── Health endpoints at /api/health, /api/ready, /api/live ──
 app.route("/api", healthRouter);
+app.route("/api", diagramsRouter);
 app.route("/api/promo", promoRouter);
 app.route("/api/paymob", paymobWebhook);
 // Legacy account-level callback URLs registered in the Paymob dashboard

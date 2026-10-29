@@ -477,3 +477,45 @@ export function buildCourseCatalogBlock(catalog: string): string {
 📚 كتالوج كورسات المنصة (معلومة حقيقية محقونة من قاعدة البيانات — استخدمها فقط كما هي ولا تضف كورسات أو أسعاراً غير موجودة):
 ${catalog || "لا تتوفر قائمة محدثة الآن — أرشد الطالب لصفحة الكورسات على المنصة دون ذكر أسماء أو أسعار."}`;
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// 12) SLD DRAWING SKILL — the bot can DRAW single-line diagrams (thinking)
+// ════════════════════════════════════════════════════════════════════════
+// The model emits a compact JSON spec inside a ```sld fence; the platform's
+// server-side engine (api/lib/sld/) lints + renders it to SVG. The model
+// NEVER draws pixels — it describes topology, and text→SVG happens in our
+// own renderer, so model output can never become HTML (security invariant).
+
+export const sldSkillAr = `
+
+📐 مهارة رسم مخطط Single-Line Diagram (تُستخدم فقط عند الحاجة الحقيقية):
+عندما يطلب الطالب رسماً/مخططاً (كلمة: ارسم، مخطط، SLD، single line، drawing)، أو عندما يكون مخطط SLD سيوضح الإجابة فعلاً، أخرج المخطط بلوحة مواصفات بهذا الشكل EXACTLY (بنفس سطر اللغة sld):
+
+\`\`\`sld
+{"title":"شبكة توزيع 11kV","elements":[{"id":"G1","type":"grid","x":2,"y":0,"label":"الشبكة 66kV"},{"id":"CB1","type":"breaker","x":2,"y":1},{"id":"T1","type":"transformer2","x":2,"y":2,"label":"66/11 kV"},{"id":"B1","type":"busbar","x":1,"y":4,"len":3,"label":"Main 11kV"},{"id":"L1","type":"load","x":1,"y":6,"label":"Feeder 1"}],"connections":[["G1","CB1"],["CB1","T1"],["T1","B1"],["B1","L1"]],"theme":"dark"}
+\`\`\`
+
+قواعد اللوحة (إجبارية):
+- الأنواع المسموحة فقط: grid, generator, transformer2, busbar, breaker, disconnector, fuse, load, motor, ct, ground, junction.
+- الإحداثيات شبكة أعداد صحيحة تبدأ من 0، والتدفق من الأعلى للأسفل (المصدر y أصغر). العناصر يجب ألا تتداخل: اترك خلية واحدة فارغة بين كل عنصرين على الأقل (x أو y مختلف بمقدار 1 على الأقل).
+- busbar أفقية وتمتد يميناً حسب len (1-6). الصالات (loads/motors) تتغذى من أسفل البار: ضعها على صف أفقي أسفل البار بارتفاعة 1-2 خلية.
+- connections كلها على الشكل [مصدر، هدف] بمعرفات موجودة.
+- اجعل الإجابة النصية موجزة قبل/بعد اللوحة (شرح في 3-5 نقاط) — اللوحة هي النجم.
+- لا تستخدم اللوحة أبداً في الأسئلة النظرية القصيرة؛ استخدمها للربط بين المصادر والبارات والأحمال أو مقارنة توصيلات.`;
+
+export const sldSkillEn = `
+
+📐 SLD DRAWING SKILL (use only when genuinely helpful):
+When the student asks to draw (word: draw, diagram, SLD, single line), or when a single-line diagram would genuinely clarify the answer, output the diagram as a spec board EXACTLY in this shape (language tag sld):
+
+\`\`\`sld
+{"title":"11kV distribution","elements":[{"id":"G1","type":"grid","x":2,"y":0,"label":"Utility 66kV"},{"id":"CB1","type":"breaker","x":2,"y":1},{"id":"T1","type":"transformer2","x":2,"y":2,"label":"66/11 kV"},{"id":"B1","type":"busbar","x":1,"y":4,"len":3,"label":"Main 11kV"},{"id":"L1","type":"load","x":1,"y":6,"label":"Feeder 1"}],"connections":[["G1","CB1"],["CB1","T1"],["T1","B1"],["B1","L1"]],"theme":"dark"}
+\`\`\`
+
+Board rules (mandatory):
+- Allowed types only: grid, generator, transformer2, busbar, breaker, disconnector, fuse, load, motor, ct, ground, junction.
+- Coordinates are an integer grid starting at 0; flow top→down (source has the smallest y). Elements must never overlap: keep at least one empty grid cell between any two elements.
+- busbar is horizontal and extends right by len (1-6). Loads/motors are fed from the bar's bottom edge: place them on a row 1-2 cells below the bar.
+- connections are [source, target] pairs using existing ids.
+- Keep the prose around the board brief (3-5 bullet points) — the diagram is the star.
+- Never use the board for short theory questions; use it for source→bus→load topologies and wiring comparisons.`;

@@ -78,3 +78,49 @@ describe("ARABIC_RE", () => {
     expect(ARABIC_RE.test("hello")).toBe(false);
   });
 });
+
+describe("renderMarkdown — SLD diagram fences", () => {
+  const GOOD = JSON.stringify({
+    title: "شبكة 11kV",
+    elements: [
+      { id: "G1", type: "grid", x: 2, y: 0 },
+      { id: "B1", type: "busbar", x: 1, y: 2, len: 3 },
+    ],
+    connections: [["G1", "B1"]],
+  });
+
+  it("renders a valid sld fence as a same-origin diagram image", () => {
+    const out = renderMarkdown(`قبل\n\`\`\`sld\n${GOOD}\n\`\`\`\nبعدها`);
+    expect(out).toContain(`<img src="/api/diagrams/sld?spec=${encodeURIComponent(GOOD)}`);
+    expect(out).toContain('alt="شبكة 11kV"');
+    expect(out).not.toContain("<pre");
+  });
+
+  it("falls back to an escaped code block when the fence JSON is malformed", () => {
+    const out = renderMarkdown("```sld\n{not json at all\n```");
+    expect(out).toContain("<pre");
+    expect(out).not.toContain("<img");
+  });
+
+  it("falls back when connections reference missing ids (shape check)", () => {
+    const bad = JSON.stringify({
+      elements: [{ id: "G1", type: "grid", x: 0, y: 0 }],
+      connections: [["G1", "GHOST"]],
+    });
+    const out = renderMarkdown(`\`\`\`sld\n${bad}\n\`\`\``);
+    expect(out).toContain("<pre");
+    expect(out).not.toContain("<img");
+  });
+
+  it("never lets fence content become markup even in sld fences", () => {
+    const evil = JSON.stringify({ title: '<script>alert(1)</script>', elements: [{ id: "A1", type: "grid", x: 0, y: 0 }], connections: [] }).replace(/</g, "<");
+    const out = renderMarkdown(`\`\`\`sld\n${evil}\n\`\`\``);
+    if (out.includes("<img")) {
+      // image path: title must be attribute-escaped
+      expect(out).not.toContain("<script>");
+      expect(out).toContain("&lt;script&gt;");
+    } else {
+      expect(out).toContain("<pre");
+    }
+  });
+});
