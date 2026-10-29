@@ -87,9 +87,11 @@ function safeJson(text: string): unknown {
 }
 
 function extractMessage(bodyText: string): string {
-  const parsed = safeJson(bodyText) as { message?: string; error?: { message?: string } } | null;
+  const parsed = safeJson(bodyText) as { message?: string; detail?: string; error?: { message?: string } } | null;
+  // `detail` is NVIDIA's error field — the key signal for the auth-OK heuristic.
   const msg =
     (typeof parsed?.message === "string" && parsed.message) ||
+    (typeof parsed?.detail === "string" && parsed.detail) ||
     (typeof parsed?.error === "object" && parsed?.error !== null && typeof (parsed.error as { message?: string }).message === "string"
       ? (parsed.error as { message: string }).message
       : "");
