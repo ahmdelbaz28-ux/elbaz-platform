@@ -301,9 +301,12 @@ interface ProviderProbeRow {
 
 function probeJsonMessage(bodyText: string): string {
   try {
-    const parsed = JSON.parse(bodyText) as { message?: string; error?: { message?: string } };
+    const parsed = JSON.parse(bodyText) as { message?: string; detail?: string; error?: { message?: string } };
+    // `detail` is NVIDIA's error field ("Function ...: Not found for account"),
+    // `message` is OpenAI-style, `error.message` is gateway-style.
     const msg =
       (typeof parsed?.message === "string" && parsed.message) ||
+      (typeof parsed?.detail === "string" && parsed.detail) ||
       (typeof parsed?.error === "object" && parsed?.error !== null && typeof (parsed.error as { message?: string }).message === "string"
         ? (parsed.error as { message: string }).message
         : "");
