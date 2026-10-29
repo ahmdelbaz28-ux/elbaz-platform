@@ -1,9 +1,14 @@
 /**
  * SLD renderer — spec → deterministic SVG string.
- * Routing: orthogonal 3-segment runs (down → across → down) with per-source
- * fan-out columns (unique X per outgoing wire — the KiCad skill's rule that
- * no two wires share a segment), best-effort with the linter as the quality
- * gate. Output is escaped XML; model text never becomes markup.
+ * Routing: orthogonal runs with a real connection-point allocator — every wire
+ * touching a busbar gets its OWN slot on the bar (unique X, >= MIN_SLOT apart,
+ * ordered left→right by the far endpoint so wires never cross), horizontal
+ * turns each get a collision-checked LANE (no two horizontal runs share a Y),
+ * and short bars auto-grow before lint so their connections always fit. This
+ * is the root fix for the live defect where feeder cables left the busbar
+ * bunched 10px apart on a shared horizontal lane, one of them hanging off the
+ * bar's rounded end instead of ON the bar. Output is escaped XML; model text
+ * never becomes markup.
  *
  * Label placement contract (visual-audit fix — "nothing on top of anything,
  * text beside what it describes"): a label must NEVER sit on a wire, another
@@ -15,9 +20,12 @@
 import { paintSymbol, THEMES, type Theme } from "./symbols";
 import { labelSideBand, lintSpec, sheetSize } from "./lint";
 import {
+  CELL,
   LABEL_FONT,
   LABEL_GAP,
   LABEL_SIDE_GAP,
+  placeElements,
+  rectsOverlap,
   textWidth,
   type BBox,
   type PlacedElement,
@@ -86,61 +94,236 @@ export function segHitsBox(
 
 type Pt = { x: number; y: number };
 
+/** Minimum px between two connection slots on the same busbar edge. */
+export const MIN_SLOT = 24;
+/** px a connection dot sits inside the bar ends — never on the rounded cap. */
+export const END_INSET = 10;
+/** Vertical px between the horizontal lanes of two different wires. */
+export const LANE_SEP = 12;
+
+const clampNum = (v: number, lo: number, hi: number): number => Math.min(Math.max(v, lo), hi);
+
 /**
- * Orthogonal routes with per-source fan-out stagger (unique X per outgoing
- * wire). Busbar targets land on the bar's top edge at the wire's own X;
- * busbar sources leave from their bottom edge, staggered LEFTWARD so the
- * connection dots stay ON the bar instead of floating past its end.
+ * Pre-lint pass: grow a busbar whose connections cannot fit its current
+ * length at >= MIN_SLOT spacing (the live bug — two feeders bunched on a
+ * 2-cell bar). Grows only when the wider body still clears every other
+ * element, so the linter stays the single quality gate.
+ */
+export function growBusbarsForConnections(spec: SldSpec): SldSpec {
+  const elements = Array.isArray(spec.elements) ? spec.elements : [];
+  const connections = Array.isArray(spec.connections) ? spec.connections : [];
+  if (elements.length === 0) return spec;
+  const byId = new Map(elements.map((e) => [e.id, e]));
+  const load = new Map<string, { top: number; bottom: number }>();
+  for (const [a, b] of connections) {
+    const A = byId.get(a);
+    const B = byId.get(b);
+    if (!A || !B || a === b) continue;
+    if (B.type === "busbar") {
+      const cur = load.get(b) ?? { top: 0, bottom: 0 };
+      cur.top += 1;
+      load.set(b, cur);
+    }
+    if (A.type === "busbar") {
+      const cur = load.get(a) ?? { top: 0, bottom: 0 };
+      cur.bottom += 1;
+      load.set(a, cur);
+    }
+  }
+  const placedOrig = placeElements(spec);
+  const selfById = new Map(placedOrig.map((p) => [p.el.id, p]));
+  const grown = elements.map((el) => {
+    if (el.type !== "busbar") return el;
+    const l = load.get(el.id);
+    const n = Math.max(l?.top ?? 0, l?.bottom ?? 0);
+    if (n <= 1) return el;
+    const minUnits = Math.max(1, Math.min(6, el.len ?? 2));
+    const needPx = 2 * END_INSET + MIN_SLOT * (n - 1);
+    const grownUnits = Math.max(minUnits, Math.min(6, Math.ceil(needPx / CELL)));
+    if (grownUnits <= minUnits) return el;
+    const self = selfById.get(el.id);
+    if (!self) return el;
+    const wider: BBox = { x1: self.bbox.x1, y1: self.bbox.y1, x2: self.bbox.x1 + grownUnits * CELL, y2: self.bbox.y2 };
+    const collides = placedOrig.some(
+      (p) => p.el.id !== el.id && rectsOverlap(wider, p.bbox, 2),
+    );
+    return collides ? el : { ...el, len: grownUnits };
+  });
+  return { ...spec, elements: grown };
+}
+
+/**
+ * Assign every wire that touches a busbar its own connection X on that bar:
+ * incoming wires land on the TOP edge, outgoing leave from the BOTTOM edge.
+ * Desired X = the far endpoint's position (so an aligned feed is a clean
+ * straight drop); slots are then spread left→right with a forward/backward
+ * sweep enforcing >= MIN_SLOT separation inside [x1+END_INSET, x2-END_INSET] —
+ * dots can never bunch up, never leave the bar, and never cross each other.
+ * Keyed by connection index: `"<idx>|T"` (bar as target) / `"<idx>|B"` (bar as source).
+ */
+function assignBarSlots(
+  placed: PlacedElement[],
+  connections: Array<[string, string]>,
+): Map<string, number> {
+  const byId = new Map(placed.map((p) => [p.el.id, p]));
+  interface Req {
+    idx: number;
+    desired: number;
+  }
+  const slots = new Map<string, number>();
+  const bars = new Map<string, { top: Req[]; bottom: Req[] }>();
+  connections.forEach(([a, b], idx) => {
+    const A = byId.get(a);
+    const B = byId.get(b);
+    if (!A || !B || A === B) return;
+    if (B.el.type === "busbar") {
+      const cur = bars.get(B.el.id) ?? { top: [], bottom: [] };
+      cur.top.push({ idx, desired: clampNum(A.bottom.x, B.bbox.x1 + END_INSET, B.bbox.x2 - END_INSET) });
+      bars.set(B.el.id, cur);
+    }
+    if (A.el.type === "busbar") {
+      const cur = bars.get(A.el.id) ?? { top: [], bottom: [] };
+      cur.bottom.push({ idx, desired: clampNum(B.top.x, A.bbox.x1 + END_INSET, A.bbox.x2 - END_INSET) });
+      bars.set(A.el.id, cur);
+    }
+  });
+  const spread = (reqs: Req[], lo: number, hi: number, edge: "T" | "B"): void => {
+    if (reqs.length === 0) return;
+    const order = [...reqs].sort((p, q) => p.desired - q.desired || p.idx - q.idx);
+    const xs = new Map<number, number>();
+    let prev = -Infinity;
+    for (const r of order) {
+      const x = Math.min(Math.max(clampNum(r.desired, lo, hi), prev + MIN_SLOT), hi);
+      xs.set(r.idx, x);
+      prev = x;
+    }
+    let next = Infinity;
+    for (let k = order.length - 1; k >= 0; k--) {
+      const r = order[k];
+      const x = Math.max(lo, Math.min(xs.get(r.idx)!, next - MIN_SLOT));
+      xs.set(r.idx, x);
+      next = x;
+    }
+    for (const [idx, x] of xs) slots.set(`${idx}|${edge}`, x);
+  };
+  for (const [barId, edge] of bars) {
+    const bar = byId.get(barId);
+    if (!bar) continue;
+    spread(edge.top, bar.bbox.x1 + END_INSET, bar.bbox.x2 - END_INSET, "T");
+    spread(edge.bottom, bar.bbox.x1 + END_INSET, bar.bbox.x2 - END_INSET, "B");
+  }
+  return slots;
+}
+
+/**
+ * Orthogonal routes with real connection points:
+ * - Busbar wires attach ON the bar (top edge in, bottom edge out) at their own
+ *   allocated slot — never at the bar's rounded end, never bunched together.
+ * - A wire falling inside its target's own top span lands where it is (straight
+ *   drop) instead of jogging sideways for a few px.
+ * - Every horizontal turn takes a collision-checked LANE, so no two horizontal
+ *   runs ever share (or even touch) the same Y — the collinear-overlap defect
+ *   is structurally impossible, not just unlikely.
+ * - Terminals shared by >= 2 wires (busbar slots always) get a junction dot,
+ *   painted after the bodies so it reads as a real connection node.
  */
 function routeWires(
   placed: PlacedElement[],
   connections: Array<[string, string]>,
 ): Array<{ pts: Pt[]; dots: Pt[] }> {
   const byId = new Map(placed.map((p) => [p.el.id, p]));
-  const fanIndex = new Map<string, number>();
-  const wires: Array<{ pts: Pt[]; dots: Pt[] }> = [];
+  const slots = assignBarSlots(placed, connections);
 
+  // Junction dots: a non-bar terminal feeding/receiving >= 2 wires is a T-joint.
+  const bottomUse = new Map<string, number>();
+  const topUse = new Map<string, number>();
   for (const [a, b] of connections) {
     const A = byId.get(a);
     const B = byId.get(b);
-    if (!A || !B) continue;
+    if (!A || !B || A === B) continue;
+    if (A.el.type !== "busbar") bottomUse.set(a, (bottomUse.get(a) ?? 0) + 1);
+    if (B.el.type !== "busbar") topUse.set(b, (topUse.get(b) ?? 0) + 1);
+  }
 
-    const idx = fanIndex.get(A.el.id) ?? 0;
-    fanIndex.set(A.el.id, idx + 1);
-    const startX =
-      A.el.type === "busbar" ? Math.max(A.bbox.x1 + 6, A.bottom.x - idx * 10) : A.bottom.x + idx * 10;
-    const startY = A.bottom.y;
-
-    let endX = B.top.x;
-    const endY = B.top.y;
-    if (B.el.type === "busbar") {
-      endX = Math.min(Math.max(startX, B.bbox.x1 + 6), B.bbox.x2 - 6);
+  // Horizontal-lane allocator: unique Y per horizontal run, collision-checked
+  // against every lane taken so far (|Δy| < 7 with intersecting X = clash).
+  const lanes: Array<{ y: number; x1: number; x2: number }> = [];
+  const laneClash = (y: number, lo: number, hi: number): boolean =>
+    lanes.some((l) => Math.abs(l.y - y) < 7 && Math.max(l.x1, lo) - 2 <= Math.min(l.x2, hi) + 2);
+  const takeLane = (startY: number, endY: number, xa: number, xb: number): number => {
+    const lo = Math.min(xa, xb);
+    const hi = Math.max(xa, xb);
+    const ceiling = endY - 8; // keep the final vertical drop >= 8px
+    for (let k = 0; ; k++) {
+      const y = startY + 10 + k * LANE_SEP;
+      const chosen = y > ceiling ? Math.max(startY + 4, ceiling) : y;
+      if (!laneClash(chosen, lo, hi)) {
+        lanes.push({ y: chosen, x1: lo, x2: hi });
+        return chosen;
+      }
+      if (y > ceiling) {
+        // Dense sheet: no free lane below the ceiling — deterministic fallback.
+        lanes.push({ y: chosen, x1: lo, x2: hi });
+        return chosen;
+      }
     }
+  };
+
+  const wires: Array<{ pts: Pt[]; dots: Pt[] }> = [];
+  connections.forEach(([a, b], idx) => {
+    const A = byId.get(a);
+    const B = byId.get(b);
+    if (!A || !B || A === B) return;
+
+    const startX = A.el.type === "busbar" ? (slots.get(`${idx}|B`) ?? A.bottom.x) : A.bottom.x;
+    const startY = A.bottom.y;
+    const endY = B.top.y;
+    let endX = B.el.type === "busbar" ? (slots.get(`${idx}|T`) ?? B.top.x) : B.top.x;
 
     const dots: Pt[] = [];
-    if (A.el.type === "busbar") dots.push({ x: startX, y: startY });
-    if (B.el.type === "busbar") dots.push({ x: endX, y: endY });
+    if (A.el.type === "busbar" || (bottomUse.get(a) ?? 0) >= 2) dots.push({ x: startX, y: startY });
+    if (B.el.type === "busbar" || (topUse.get(b) ?? 0) >= 2) dots.push({ x: endX, y: endY });
 
     const pts: Pt[] = [{ x: startX, y: startY }];
+
+    // Snap: falling inside the target's own top span → straight drop, no jog.
+    if (
+      B.el.type !== "busbar" &&
+      Math.abs(startX - endX) > 0 &&
+      startX >= B.bbox.x1 + 2 &&
+      startX <= B.bbox.x2 - 2
+    ) {
+      endX = startX;
+    }
+
     const gap = endY - startY;
     if (Math.abs(startX - endX) < 1) {
       pts.push({ x: startX, y: endY });
-    } else if (gap > 0) {
-      // The turn point must stay strictly INSIDE the vertical gap — a turn
-      // below the target's top edge would hook the wire backwards (seen live
-      // on the 1-grid-cell source→breaker hop during visual verification).
-      const midY =
-        gap >= 16
-          ? startY + Math.min(Math.max(12, Math.round(gap / 2) - 6), gap - 4)
-          : startY + Math.max(2, Math.round(gap / 2));
+    } else if (gap >= 18) {
+      const laneY = takeLane(startY, endY, startX, endX);
+      pts.push({ x: startX, y: laneY }, { x: endX, y: laneY }, { x: endX, y: endY });
+    } else if (gap >= 2) {
+      // Tight gap: single mid jog (no room for a lane stack).
+      const midY = startY + Math.max(2, Math.round(gap / 2));
       pts.push({ x: startX, y: midY }, { x: endX, y: midY }, { x: endX, y: endY });
     } else {
-      // Target ABOVE the source (spec modelling quirk): side-loop around.
-      const loopY = startY + 8;
+      // Target level with / above the source: loop below, then back up.
+      const lo = Math.min(startX, endX);
+      const hi = Math.max(startX, endX);
+      let loopY = startY + 8;
+      for (let k = 0; k <= 24; k++) {
+        const y = startY + 8 + k * LANE_SEP;
+        if (!laneClash(y, lo, hi)) {
+          loopY = y;
+          break;
+        }
+        loopY = y;
+      }
+      lanes.push({ y: loopY, x1: lo, x2: hi });
       pts.push({ x: startX, y: loopY }, { x: endX, y: loopY }, { x: endX, y: endY });
     }
     wires.push({ pts, dots });
-  }
+  });
   return wires;
 }
 
@@ -294,15 +477,18 @@ function shiftX(p: PlacedElement, dx: number): PlacedElement {
 }
 
 export function renderSld(spec: SldSpec): RenderResult {
-  const audit = lintSpec(spec);
-  const theme = THEMES[spec.theme === "light" ? "light" : "dark"];
-  const { width, height } = sheetSize(spec);
-  const connections = Array.isArray(spec.connections) ? spec.connections : [];
+  // Busbars grow (pre-lint) so their connections fit at proper spacing; the
+  // linter then audits the FINAL geometry, not the pre-growth spec.
+  const effective = growBusbarsForConnections(spec);
+  const audit = lintSpec(effective);
+  const theme = THEMES[effective.theme === "light" ? "light" : "dark"];
+  const { width, height } = sheetSize(effective);
+  const connections = Array.isArray(effective.connections) ? effective.connections : [];
 
   // Labeled elements reserve a side band scaled to the LONGEST label (see
   // labelSideBand in lint.ts) — split it half-left/half-right so beside-labels
   // fit on both sheet edges without clamping onto symbol bodies.
-  const DX = labelSideBand(spec) / 2;
+  const DX = labelSideBand(effective) / 2;
   const placed = audit.placed.map((p) => shiftX(p, DX));
 
   const wires = routeWires(placed, connections);
@@ -310,7 +496,7 @@ export function renderSld(spec: SldSpec): RenderResult {
 
   const bodies = placed.map((p) => paintSymbol(p, theme)).join("");
 
-  const title = (spec.title ?? "").trim();
+  const title = (effective.title ?? "").trim();
   let titleSvg = "";
   let titleBox: BBox | null = null;
   if (title) {
@@ -331,16 +517,22 @@ export function renderSld(spec: SldSpec): RenderResult {
   const wireSvg = wires
     .map(
       (w) =>
-        `<polyline points="${w.pts.map((pt) => `${pt.x},${pt.y}`).join(" ")}" fill="none" stroke="${theme.wire}" stroke-width="2" stroke-linejoin="round"/>${w.dots
-          .map((d) => `<circle cx="${d.x}" cy="${d.y}" r="3" fill="${theme.wire}"/>`)
-          .join("")}`,
+        `<polyline points="${w.pts.map((pt) => `${pt.x},${pt.y}`).join(" ")}" fill="none" stroke="${theme.wire}" stroke-width="2" stroke-linejoin="round"/>`,
     )
     .join("\n  ");
 
+  // Junction dots paint AFTER the bodies: on a busbar the dot sits ON the bar
+  // edge fully visible — the attachment point is unmistakable.
+  const dotSvg = wires
+    .flatMap((w) => w.dots)
+    .map((d) => `<circle cx="${d.x}" cy="${d.y}" r="3" fill="${theme.wire}"/>`)
+    .join("");
+
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title || "Single-line diagram")}">
-  <rect width="${width}" height="${height}" fill="${spec.theme === "light" ? "#ffffff" : "#0b1622"}"/>${titleSvg}
+  <rect width="${width}" height="${height}" fill="${effective.theme === "light" ? "#ffffff" : "#0b1622"}"/>${titleSvg}
   <g>${wireSvg}</g>
   <g>${bodies}</g>
+  <g>${dotSvg}</g>
   <g>${labels}</g>
 </svg>`;
 

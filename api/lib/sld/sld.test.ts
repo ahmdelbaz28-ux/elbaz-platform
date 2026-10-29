@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { lintSpec } from "./lint";
-import { renderSld, escapeXml, textWidth, labelBox } from "./render";
+import { renderSld, escapeXml, textWidth, labelBox, MIN_SLOT, END_INSET } from "./render";
+import { CELL } from "./types";
 import type { SldSpec } from "./types";
 
 /** Classic ETAP training diagram: grid → breaker → transformer → bus → loads. */
@@ -309,5 +310,200 @@ describe("sld label placement — no-overlap contract", () => {
     expect(textWidth("الشبكة 66kV", 12)).toBeGreaterThanOrEqual(11 * 12 * 0.5);
     expect(labelBox("Main 11kV", "end", 100, 200).x1).toBeLessThan(100);
     expect(labelBox("Main 11kV", "end", 100, 200).x2).toBeLessThanOrEqual(100);
+  });
+});
+
+describe("sld wire routing — busbar attachment & anti-overlap contract", () => {
+  interface Seg {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    wire: number; // polyline index
+  }
+  interface Bar {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+  }
+
+  function parseGeometry(svg: string) {
+    const polys = [...svg.matchAll(/<polyline points="([^"]+)"/g)].map((m) =>
+      m[1]
+        .split(" ")
+        .map((pt) => pt.split(",").map(Number))
+        .map(([x, y]) => ({ x, y })),
+    );
+    // busbars: the only 10px-tall rects
+    const bars: Bar[] = [...svg.matchAll(/<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="10"/g)].map(
+      (m) => ({ x1: +m[1], y1: +m[2], x2: +m[1] + +m[3], y2: +m[2] + 10 }),
+    );
+    // junction dots paint in their own <g> AFTER the bodies group
+    const dots = [...svg.matchAll(/<circle cx="([-\d.]+)" cy="([-\d.]+)" r="3"/g)].map((m) => ({
+      x: +m[1],
+      y: +m[2],
+    }));
+    return { polys, bars, dots };
+  }
+
+  function segments(poly: Array<{ x: number; y: number }>, wire: number): Seg[] {
+    const segs: Seg[] = [];
+    for (let i = 1; i < poly.length; i++) {
+      segs.push({ x1: poly[i - 1].x, y1: poly[i - 1].y, x2: poly[i].x, y2: poly[i].y, wire });
+    }
+    return segs;
+  }
+
+  /** The live defect: motor+lighting fed from one busbar (user-rejected render). */
+  const LIVE_SPEC: SldSpec = {
+    title: "منشأة صناعية",
+    elements: [
+      { id: "G1", type: "grid", x: 1, y: 0, label: "الشبكة 66kV" },
+      { id: "GEN", type: "generator", x: 4, y: 0, label: "مولد احتياطي" },
+      { id: "CB1", type: "breaker", x: 1, y: 1 },
+      { id: "CB2", type: "breaker", x: 4, y: 1 },
+      { id: "B1", type: "busbar", x: 1, y: 2, len: 3, label: "بار 11kV" },
+      { id: "M1", type: "motor", x: 1, y: 3, label: "محرك 500kW" },
+      { id: "L1", type: "load", x: 3, y: 3, label: "إنارة 150kVA" },
+    ],
+    connections: [
+      ["G1", "CB1"],
+      ["CB1", "B1"],
+      ["GEN", "CB2"],
+      ["CB2", "B1"],
+      ["B1", "M1"],
+      ["B1", "L1"],
+    ],
+    theme: "dark",
+  };
+
+  it("attaches every busbar wire ON the bar — endpoints on an edge, never past its ends", () => {
+    for (const spec of [GOOD_SPEC, LIVE_SPEC]) {
+      const { polys, bars } = parseGeometry(renderSld(spec).svg);
+      expect(bars.length).toBeGreaterThanOrEqual(1);
+      for (const bar of bars) {
+        for (const poly of polys) {
+          for (const pt of [poly[0], poly[poly.length - 1]]) {
+            const onTop = Math.abs(pt.y - bar.y1) < 0.5;
+            const onBottom = Math.abs(pt.y - bar.y2) < 0.5;
+            if (!onTop && !onBottom) continue;
+            expect(pt.x, `wire endpoint ${pt.x},${pt.y} hangs LEFT of the bar`).toBeGreaterThanOrEqual(bar.x1 + 4);
+            expect(pt.x, `wire endpoint ${pt.x},${pt.y} hangs off the bar's right end`).toBeLessThanOrEqual(bar.x2 - 4);
+          }
+        }
+      }
+    }
+  });
+
+  it("spaces busbar connection dots >= MIN_SLOT apart — no bunched cables", () => {
+    const { dots, bars } = parseGeometry(renderSld(LIVE_SPEC).svg);
+    expect(dots.length).toBeGreaterThanOrEqual(4); // 2 in + 2 out on B1
+    for (const bar of bars) {
+      for (const edgeY of [bar.y1, bar.y2]) {
+        const xs = dots.filter((d) => Math.abs(d.y - edgeY) < 0.5).map((d) => d.x);
+        for (let i = 1; i < xs.length; i++) {
+          expect(xs[i] - xs[i - 1], `dots ${xs[i - 1]},${xs[i]} bunched on one bar edge`).toBeGreaterThanOrEqual(MIN_SLOT - 0.5);
+        }
+      }
+    }
+  });
+
+  it("dots sit strictly inside the bar span (never on the rounded cap)", () => {
+    const { dots, bars } = parseGeometry(renderSld(LIVE_SPEC).svg);
+    for (const bar of bars) {
+      for (const d of dots) {
+        if (Math.abs(d.y - bar.y1) >= 0.5 && Math.abs(d.y - bar.y2) >= 0.5) continue;
+        expect(d.x).toBeGreaterThanOrEqual(bar.x1 + END_INSET - 0.5);
+        expect(d.x).toBeLessThanOrEqual(bar.x2 - END_INSET + 0.5);
+      }
+    }
+  });
+
+  it("no two horizontal runs share or touch the same lane (the collinear-overlap defect)", () => {
+    for (const spec of [GOOD_SPEC, LIVE_SPEC]) {
+      const { polys } = parseGeometry(renderSld(spec).svg);
+      const hs: Seg[] = polys.flatMap((p, i) => segments(p, i).filter((s) => s.y1 === s.y2));
+      for (let i = 0; i < hs.length; i++) {
+        for (let j = i + 1; j < hs.length; j++) {
+          const a = hs[i];
+          const b = hs[j];
+          if (a.wire === b.wire) continue;
+          if (Math.abs(a.y1 - b.y1) >= 7) continue; // different lanes — fine
+          const xOverlap = Math.max(Math.min(a.x1, a.x2), Math.min(b.x1, b.x2)) - 2 <= Math.min(Math.max(a.x1, a.x2), Math.max(b.x1, b.x2)) + 2;
+          expect(xOverlap, `horizontal runs of wires ${a.wire} and ${b.wire} overlap at y≈${a.y1}`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it("auto-grows a short busbar so its feeders fit with proper spacing", () => {
+    const SHORT_BAR: SldSpec = {
+      elements: [
+        { id: "G1", type: "grid", x: 2, y: 0 },
+        { id: "CB1", type: "breaker", x: 2, y: 1 },
+        { id: "B1", type: "busbar", x: 2, y: 2, len: 1 },
+        { id: "M1", type: "motor", x: 2, y: 3, label: "محرك" },
+        { id: "L1", type: "load", x: 3, y: 3, label: "إنارة" },
+      ],
+      connections: [
+        ["G1", "CB1"],
+        ["CB1", "B1"],
+        ["B1", "M1"],
+        ["B1", "L1"],
+      ],
+      theme: "dark",
+    };
+    const { bars, dots } = parseGeometry(renderSld(SHORT_BAR).svg);
+    expect(bars[0].x2 - bars[0].x1, "len-1 bar with 2 feeders must grow beyond one cell").toBeGreaterThan(CELL);
+    const bottomDots = dots.filter((d) => Math.abs(d.y - bars[0].y2) < 0.5).map((d) => d.x);
+    expect(bottomDots.length).toBe(2);
+    expect(bottomDots[1] - bottomDots[0]).toBeGreaterThanOrEqual(MIN_SLOT - 0.5);
+  });
+
+  it("keeps an aligned feed a clean straight drop (no Z-jog)", () => {
+    const { polys } = parseGeometry(renderSld(GOOD_SPEC).svg);
+    // G1→CB1: source directly above target → 2-point polyline
+    const straight = polys.filter((p) => p.length === 2);
+    expect(straight.length).toBeGreaterThanOrEqual(1);
+    for (const p of straight) {
+      expect(p[0].x).toBe(p[1].x);
+    }
+  });
+
+  it("marks every busbar connection with a visible junction dot", () => {
+    // B1 in LIVE_SPEC: 2 incoming (top edge) + 2 outgoing (bottom edge) = 4 dots
+    const { dots, bars } = parseGeometry(renderSld(LIVE_SPEC).svg);
+    const bar = bars[0];
+    const onBar = dots.filter((d) => Math.abs(d.y - bar.y1) < 0.5 || Math.abs(d.y - bar.y2) < 0.5);
+    expect(onBar.length).toBe(4);
+  });
+
+  it("renders the crowded 4-feeder spec with four separated slots", () => {
+    const CROWDED: SldSpec = {
+      elements: [
+        { id: "G1", type: "grid", x: 3, y: 0 },
+        { id: "B1", type: "busbar", x: 0, y: 1, len: 2 },
+        { id: "M1", type: "motor", x: 0, y: 2, label: "م1" },
+        { id: "M2", type: "motor", x: 1, y: 2, label: "م2" },
+        { id: "M3", type: "motor", x: 2, y: 2, label: "م3" },
+        { id: "M4", type: "motor", x: 3, y: 2, label: "م4" },
+      ],
+      connections: [
+        ["G1", "B1"],
+        ["B1", "M1"],
+        ["B1", "M2"],
+        ["B1", "M3"],
+        ["B1", "M4"],
+      ],
+      theme: "dark",
+    };
+    const { dots, bars } = parseGeometry(renderSld(CROWDED).svg);
+    const bar = bars[0];
+    const bottom = dots.filter((d) => Math.abs(d.y - bar.y2) < 0.5).map((d) => d.x);
+    expect(bottom.length).toBe(4);
+    for (let i = 1; i < bottom.length; i++) {
+      expect(bottom[i] - bottom[i - 1]).toBeGreaterThanOrEqual(MIN_SLOT - 0.5);
+    }
   });
 });
