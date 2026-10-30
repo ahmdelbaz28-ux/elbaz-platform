@@ -19,6 +19,8 @@ import {
   Check,
   CheckCheck,
   Inbox,
+  RefreshCw,
+  Send,
   TriangleAlert,
   X,
   BellRing,
@@ -34,7 +36,12 @@ import {
   classifyPushException,
   pushEnvironmentErrorCode,
   validateVapidPublicKey,
+  clearPushDeviceBlock,
+  readPushDeviceBlock,
+  savePushDeviceBlock,
+  type PushDeviceBlockState,
   type PushOutcome,
+  type PushStateDescriptor,
   type PushStatus,
   type PushTone,
 } from "@/lib/push-state";
@@ -132,9 +139,13 @@ interface PushNotificationState {
   lastError: string | null;
   /** Raw browser cause ("NotAllowedError: …") for the last failed op. */
   lastErrorDetail: string | null;
+  /** Persisted device-level push refusal (backend rejected repeatedly). */
+  deviceBlock: PushDeviceBlockState | null;
   requestPermission: () => Promise<NotificationPermission>;
   subscribe: () => Promise<PushOutcome>;
   unsubscribe: () => Promise<PushOutcome>;
+  /** Forget the device-level refusal and allow a fresh subscribe attempt. */
+  resetDeviceBlock: () => void;
 }
 
 /** Shape returned by useRealtimeNotifications. */
@@ -166,6 +177,44 @@ const SW_READY_TIMEOUT_MS = 8_000;
  *  become active — progress-driven, far above the blind 8s that killed the
  *  flow mid-install on first visits (the reproduced production failure). */
 const SW_SUBSCRIBE_READY_TIMEOUT_MS = 45_000;
+
+/** Quiet auto-retry delays for TRANSIENT subscribe aborts (AbortError without
+ *  an explicit refusal message). The user must never have to re-press the
+ *  toggle for a blip the push service can recover from within seconds — the
+ *  2026-10-30 production report showed users stuck in a manual retry loop.
+ *  If every attempt aborts, the flow ESCALATES to PUSH_SERVICE_UNAVAILABLE. */
+const ABORT_RETRY_DELAYS_MS = [900, 2_200] as const;
+
+/** Minimum spacing between client → server failure reports for the SAME
+ *  device (the report is log-only telemetry; one row per device per 6h is
+ *  plenty to size the problem without flooding the logs). */
+const FAILURE_REPORT_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
+/** Promise-based sleep for the retry backoff. */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Format any thrown cause into the compact "Name: message" diagnostics line. */
+function formatPushError(err: unknown): { name: string; detail: string } {
+  const name = err instanceof DOMException ? err.name : ((err as Error)?.name ?? "");
+  const message = err instanceof Error ? err.message : String(err);
+  return { name, detail: `${name || "Error"}: ${message}`.slice(0, 200) };
+}
+
+/**
+ * Fire-and-forget client telemetry: report a PERSISTENT push-registration
+ * refusal (device/network-level) so the server logs carry real numbers about
+ * affected users instead of silent attrition. Log-only on the server; any
+ * network failure here is irrelevant by design.
+ */
+function reportPushFailure(code: string, detail?: string): void {
+  void fetch(`${apiBaseUrl()}/api/notifications/push/failure-report`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code, detail }),
+  }).catch(() => {});
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Helpers
@@ -435,6 +484,12 @@ export function usePushNotification(
   });
   const [lastError, setLastError] = useState<string | null>(null);
   const [lastErrorDetail, setLastErrorDetail] = useState<string | null>(null);
+  // Device-level block: the push backend refused registration persistently.
+  // Restored from localStorage so future visits render the honest unavailable
+  // card immediately instead of a tempting toggle that will fail again.
+  const [deviceBlock, setDeviceBlock] = useState<PushDeviceBlockState | null>(
+    () => readPushDeviceBlock(),
+  );
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const isNativeApp = Boolean((globalThis as any).Capacitor?.isNativePlatform?.());
@@ -521,6 +576,19 @@ export function usePushNotification(
       setLastErrorDetail(detail ?? null);
       return { ok: false, outcome: "error", error: code, errorDetail: detail };
     };
+    /** Persistent (device-level) failures additionally REMEMBER the refusal
+     *  and report it once per interval — the row then stops promising retries. */
+    const failWithPersistent = (code: string, detail?: string): PushOutcome => {
+      const block = savePushDeviceBlock(code, detail);
+      setDeviceBlock(block);
+      // Rate-limit the report: read the FRESH stored state (this callback can
+      // run many times) — report only when the last one is older than the cap.
+      const previous = readPushDeviceBlock();
+      if (!previous || Date.now() - previous.at >= FAILURE_REPORT_INTERVAL_MS) {
+        reportPushFailure(code, detail);
+      }
+      return failWith(code, detail);
+    };
     try {
       // 0a. Pre-flight environment — name the real blocker BEFORE any prompt:
       //     insecure context, missing platform APIs, in-app WebView browsers
@@ -589,40 +657,75 @@ export function usePushNotification(
         PUSH_ERROR_CODES.SW_READY_TIMEOUT,
       );
       let subscription: PushSubscription | undefined;
-      try {
-        subscription = await registration.pushManager.subscribe({
+      const attempt = (key: string) =>
+        registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(appServerKey) as BufferSource,
+          applicationServerKey: urlBase64ToUint8Array(key) as BufferSource,
         });
+      try {
+        subscription = await attempt(appServerKey);
       } catch (err) {
         // NEVER swallow the DOMException: classify it so the UI names the real
         // cause, and keep the raw exception as the diagnostics detail line.
-        const exName = err instanceof DOMException ? err.name : (err as Error)?.name ?? "";
-        const exMsg = err instanceof Error ? err.message : String(err);
-        const detail = `${exName || "Error"}: ${exMsg}`.slice(0, 200);
-        console.error("[Push] subscribe() refused:", exName, exMsg);
-        const code = classifyPushException(exName, exMsg);
+        const { detail } = formatPushError(err);
+        console.error("[Push] subscribe() refused:", detail);
+        const code = classifyPushException(err instanceof DOMException ? err.name : (err as Error)?.name ?? "", err instanceof Error ? err.message : String(err));
         if (code === PUSH_ERROR_CODES.SUBSCRIBE_BAD_KEY) {
           // The served key MAY have rotated (or a CDN cached a stale one) —
           // one bounded retry with a freshly fetched key before giving up.
           try {
             const fresh = await fetchKey();
             if (fresh && fresh !== appServerKey && validateVapidPublicKey(fresh)) {
-              subscription = await registration.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey: urlBase64ToUint8Array(fresh) as BufferSource,
-              });
+              subscription = await attempt(fresh);
               appServerKey = fresh;
             }
           } catch (retryErr) {
-            const rName = retryErr instanceof DOMException ? retryErr.name : (retryErr as Error)?.name ?? "";
-            const rMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
-            return failWith(
-              classifyPushException(rName, rMsg),
-              `${rName || "Error"}: ${rMsg}`.slice(0, 200),
+            const r = formatPushError(retryErr);
+            const rc = classifyPushException(r.name, r.detail.replace(/^\w+:\s*/, ""));
+            // A transient abort after the fresh-key retry is still device-level
+            // in practice (the key was already correct) — normalize so the row
+            // never renders a device block with the "press again" copy.
+            return failWithPersistent(
+              rc === PUSH_ERROR_CODES.SUBSCRIBE_ABORTED
+                ? PUSH_ERROR_CODES.PUSH_SERVICE_UNAVAILABLE
+                : rc,
+              r.detail,
             );
           }
-          if (!subscription) return failWith(code, detail);
+          if (!subscription) return failWithPersistent(code, detail);
+        } else if (code === PUSH_ERROR_CODES.SUBSCRIBE_ABORTED) {
+          // SELF-HEAL: retry quietly with backoff inside this same call — the
+          // user never has to re-press for a transient abort (measured
+          // production loop). If EVERY attempt aborts, escalate: the push
+          // backend is refusing on this device/network, and the honest answer
+          // is the unavailable card, not "press again".
+          let lastDetail = detail;
+          let lastCode: string = PUSH_ERROR_CODES.SUBSCRIBE_ABORTED;
+          for (const delay of ABORT_RETRY_DELAYS_MS) {
+            await sleep(delay);
+            try {
+              subscription = await attempt(appServerKey);
+              break;
+            } catch (retryErr) {
+              const r = formatPushError(retryErr);
+              lastDetail = r.detail;
+              lastCode = classifyPushException(r.name, r.detail.replace(/^\w+:\s*/, ""));
+              console.error("[Push] subscribe retry refused:", lastDetail);
+              if (lastCode !== PUSH_ERROR_CODES.SUBSCRIBE_ABORTED) break;
+            }
+          }
+          if (!subscription) {
+            return failWithPersistent(
+              lastCode === PUSH_ERROR_CODES.SUBSCRIBE_ABORTED
+                ? PUSH_ERROR_CODES.PUSH_SERVICE_UNAVAILABLE
+                : lastCode,
+              lastDetail,
+            );
+          }
+        } else if (code === PUSH_ERROR_CODES.PUSH_SERVICE_UNAVAILABLE) {
+          // The browser's push backend refused explicitly ("Registration
+          // failed - push service error"). No retry can fix it here.
+          return failWithPersistent(code, detail);
         } else {
           return failWith(code, detail);
         }
@@ -646,6 +749,9 @@ export function usePushNotification(
 
       setIsSubscribed(true);
       setStatus("subscribed");
+      // Success clears any remembered device-level refusal — the device works.
+      clearPushDeviceBlock();
+      setDeviceBlock(null);
       console.info("[Push] Subscribed successfully", subJson.endpoint);
       return { ok: true, outcome: "subscribed" };
     } catch (err) {
@@ -703,6 +809,16 @@ export function usePushNotification(
     }
   }, [isSupported, isBusy]);
 
+  /** Wipe the remembered device-level refusal and try fresh (the "try again"
+   *  affordance on the unavailable card — opt-in, never the default). */
+  const resetDeviceBlock = useCallback(() => {
+    clearPushDeviceBlock();
+    setDeviceBlock(null);
+    setLastError(null);
+    setLastErrorDetail(null);
+    setStatus("idle");
+  }, []);
+
   // Listen for push messages forwarded by the service worker
   const onPushMessage = config.onPushMessage;
   useEffect(() => {
@@ -727,9 +843,11 @@ export function usePushNotification(
     status,
     lastError,
     lastErrorDetail,
+    deviceBlock,
     requestPermission,
     subscribe,
     unsubscribe,
+    resetDeviceBlock,
   };
 }
 
@@ -1120,6 +1238,94 @@ const PUSH_ROW_TONES: Record<
   },
 };
 
+/** Telegram fallback — every broadcast mirrors to the channel (see
+ *  api/lib/telegram-broadcast.ts), so it reaches users inside Telegram even
+ *  when their browser's push backend is unavailable (the honest alternative
+ *  for the closed-tab delivery this device cannot provide). */
+const TELEGRAM_CHANNEL_URL = "https://t.me/engahmedetap";
+
+/**
+ * Honest "push is not available on this device/network" card — rendered
+ * INSTEAD of the switch when the browser's push backend refused repeatedly.
+ * No fake switch, no dead-end "press again": concrete next steps, a working
+ * alternative (the Telegram mirror + in-app notifications), an OPT-IN retry,
+ * and a tap-to-copy diagnostics line for support.
+ */
+function PushUnavailableCard({
+  descriptor,
+  isRTL,
+  onRetry,
+  onCopyDetail,
+}: {
+  readonly descriptor: PushStateDescriptor;
+  readonly isRTL: boolean;
+  readonly onRetry: () => void;
+  readonly onCopyDetail: (text: string) => void;
+}) {
+  const tones = PUSH_ROW_TONES[descriptor.tone];
+  const detail = descriptor.detail;
+  return (
+    <div
+      data-push-unavailable
+      className={`rounded-xl px-3 py-3 text-start transition-all duration-200 ${tones.row}`}
+    >
+      <div className="flex items-start gap-3">
+        <span
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-300 ${tones.badge}`}
+        >
+          <BellOff className="h-4 w-4" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1.5">
+            <span className="text-[13px] font-bold text-[#e8f0fe]">
+              {isRTL ? "إشعارات المتصفح" : "Browser notifications"}
+            </span>
+            <span
+              className={`rounded-full px-1.5 py-0.5 text-[9.5px] font-bold leading-none ${tones.pill}`}
+            >
+              {descriptor.pill}
+            </span>
+          </span>
+          <span className={`mt-1 block text-[11px] leading-snug ${tones.hint}`}>
+            {descriptor.hint}
+          </span>
+          <span className="mt-2 flex flex-wrap items-center gap-1.5">
+            <a
+              href={TELEGRAM_CHANNEL_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded-lg bg-[rgba(6,182,212,0.12)] px-2.5 py-1.5 text-[11px] font-bold text-[#22d3ee] transition-colors hover:bg-[rgba(6,182,212,0.2)]"
+            >
+              <Send className="h-3 w-3" />
+              {isRTL ? "قناة تليجرام — كل جديد فوراً" : "Telegram channel — instant updates"}
+            </a>
+            <button
+              type="button"
+              onClick={onRetry}
+              className="inline-flex items-center gap-1 rounded-lg bg-[rgba(255,255,255,0.05)] px-2.5 py-1.5 text-[11px] font-semibold text-[#94a3b8] transition-colors hover:bg-[rgba(255,255,255,0.09)] hover:text-[#e8f0fe]"
+            >
+              <RefreshCw className="h-3 w-3" />
+              {isRTL ? "جرّب مرة تانية" : "Try again"}
+            </button>
+          </span>
+          {detail && (
+            <button
+              type="button"
+              dir="ltr"
+              onClick={() => onCopyDetail(detail)}
+              title={detail}
+              aria-label={isRTL ? "نسخ تفاصيل المشكلة" : "Copy diagnostics"}
+              className="mt-1.5 block w-full truncate rounded-md px-1 py-0.5 text-start font-mono text-[9.5px] text-[#64748b] transition-colors hover:text-[#94a3b8]"
+            >
+              {detail}
+            </button>
+          )}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function NotificationCenter() { // NOSONAR — large component with bell + dropdown + history hook + push-subscription wiring; extraction would require prop-drilling many state hooks
   const { lang } = useTranslation();
   const isRTL = lang === "ar";
@@ -1152,33 +1358,15 @@ export default function NotificationCenter() { // NOSONAR — large component wi
           isSubscribed: push.isSubscribed,
           lastError: push.lastError,
           lastErrorDetail: push.lastErrorDetail,
+          deviceBlock: push.deviceBlock,
         },
         lang,
       )
     : null;
 
-  const handlePushToggle = useCallback(() => {
-    if (push.isBusy) return;
-    if (push.isSubscribed) {
-      void push.unsubscribe().then((res) => {
-        if (res.ok) {
-          showNotification({
-            type: "info",
-            title: isRTL ? "تم إيقاف إشعارات المتصفح" : "Browser notifications turned off",
-            message: isRTL
-              ? "مش هيوصلك تنبيه والموقع مقفول — تقدر تفعّلها تاني في أي وقت"
-              : "You won't get system alerts while the site is closed — re-enable anytime",
-          });
-        } else {
-          showNotification({
-            type: "info",
-            title: isRTL ? "تعذّر إيقاف الإشعارات" : "Couldn't turn off notifications",
-            message: isRTL ? "جرب تاني من فضلك" : "Please try again",
-          });
-        }
-      });
-      return;
-    }
+  /** The subscribe flow (toasts included) — shared by the toggle and the
+   *  unavailable-card's opt-in retry button. */
+  const runSubscribeFlow = useCallback(() => {
     void push.subscribe().then((res) => {
       if (res.ok) {
         showNotification({
@@ -1207,6 +1395,57 @@ export default function NotificationCenter() { // NOSONAR — large component wi
       }
     });
   }, [push, isRTL, showNotification]);
+
+  const handlePushToggle = useCallback(() => {
+    if (push.isBusy) return;
+    if (push.isSubscribed) {
+      void push.unsubscribe().then((res) => {
+        if (res.ok) {
+          showNotification({
+            type: "info",
+            title: isRTL ? "تم إيقاف إشعارات المتصفح" : "Browser notifications turned off",
+            message: isRTL
+              ? "مش هيوصلك تنبيه والموقع مقفول — تقدر تفعّلها تاني في أي وقت"
+              : "You won't get system alerts while the site is closed — re-enable anytime",
+          });
+        } else {
+          showNotification({
+            type: "info",
+            title: isRTL ? "تعذّر إيقاف الإشعارات" : "Couldn't turn off notifications",
+            message: isRTL ? "جرب تاني من فضلك" : "Please try again",
+          });
+        }
+      });
+      return;
+    }
+    runSubscribeFlow();
+  }, [push, isRTL, showNotification, runSubscribeFlow]);
+
+  /** Opt-in retry from the unavailable card: forget the device block first so
+   *  the flow starts clean (the card re-renders as the switch while busy). */
+  const handleUnavailableRetry = useCallback(() => {
+    push.resetDeviceBlock();
+    runSubscribeFlow();
+  }, [push, runSubscribeFlow]);
+
+  /** Tap-to-copy for the diagnostics line — support gets the exact cause. */
+  const handleCopyPushDetail = useCallback(
+    (text: string) => {
+      void navigator.clipboard
+        ?.writeText(text)
+        .then(() => {
+          showNotification({
+            type: "info",
+            title: isRTL ? "اتنسخت تفاصيل المشكلة ✓" : "Diagnostics copied ✓",
+            message: isRTL
+              ? "ابعتهالدعم لو حابب مساعدة أسرع"
+              : "Send it to support for faster help",
+          });
+        })
+        .catch(() => {});
+    },
+    [isRTL, showNotification],
+  );
 
   // ── Notification click opened/focused this tab → navigate to the target ──
   useEffect(() => {
@@ -1405,11 +1644,22 @@ export default function NotificationCenter() { // NOSONAR — large component wi
         {/* ── Web Push toggle: system notifications with the site closed ── */}
         {showPushToggle && pushDescriptor && (
           <div className="border-b border-[#1e2d3d] px-2.5 py-2.5">
-            {/* One full-row switch (WAI-ARIA `switch`) — the whole card is the
+            {pushDescriptor.unavailable ? (
+              /* Device-level refusal (browser push backend said no, repeatedly):
+                 render the honest card — steps + Telegram alternative + opt-in
+                 retry — instead of a switch that would only fail again. */
+              <PushUnavailableCard
+                descriptor={pushDescriptor}
+                isRTL={isRTL}
+                onRetry={handleUnavailableRetry}
+                onCopyDetail={handleCopyPushDetail}
+              />
+            ) : (
+            /* One full-row switch (WAI-ARIA `switch`) — the whole card is the
                 tap target, not just the tiny track. Tone reflects the state:
                 active=on/working, idle=off, warning=permission blocked by the
                 browser, danger=operation failed. Every state is visible — no
-                silent failures. */}
+                silent failures. */
             <button
               type="button"
               role="switch"
@@ -1485,6 +1735,7 @@ export default function NotificationCenter() { // NOSONAR — large component wi
                 )}
               </span>
             </button>
+            )}
           </div>
         )}
 

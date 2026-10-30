@@ -142,3 +142,65 @@ describe("POST /unsubscribe", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("POST /failure-report — persistent-refusal telemetry (log-only)", () => {
+  it("accepts a report anonymously (session may have expired) and logs it", async () => {
+    resolveOptionalUser.mockResolvedValue(null);
+    const res = await pushSubscriptionRoute.request("/failure-report", {
+      method: "POST",
+      body: JSON.stringify({
+        code: "PUSH_SERVICE_UNAVAILABLE",
+        detail: "AbortError: Registration failed - push service error",
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean };
+    expect(body.ok).toBe(true);
+    expect(logger.warn).toHaveBeenCalledWith(
+      "[Push] client reported persistent subscribe refusal",
+      expect.objectContaining({ userId: null, code: "PUSH_SERVICE_UNAVAILABLE" }),
+    );
+  });
+
+  it("attaches the userId when a session exists", async () => {
+    resolveOptionalUser.mockResolvedValue(USER);
+    const res = await pushSubscriptionRoute.request("/failure-report", {
+      method: "POST",
+      body: JSON.stringify({ code: "PUSH_SERVICE_UNAVAILABLE" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(200);
+    expect(logger.warn).toHaveBeenCalledWith(
+      "[Push] client reported persistent subscribe refusal",
+      expect.objectContaining({ userId: 7, detail: null }),
+    );
+  });
+
+  it("rejects oversized / malformed payloads", async () => {
+    resolveOptionalUser.mockResolvedValue(USER);
+    const res = await pushSubscriptionRoute.request("/failure-report", {
+      method: "POST",
+      body: JSON.stringify({ code: "x".repeat(100) }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(400);
+
+    const bad = await pushSubscriptionRoute.request("/failure-report", {
+      method: "POST",
+      body: "not-json",
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(bad.status).toBe(400);
+  });
+
+  it("never fails the client even if identity resolution throws", async () => {
+    resolveOptionalUser.mockRejectedValue(new Error("auth backend down"));
+    const res = await pushSubscriptionRoute.request("/failure-report", {
+      method: "POST",
+      body: JSON.stringify({ code: "PUSH_SERVICE_UNAVAILABLE" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(200);
+  });
+});

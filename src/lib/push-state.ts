@@ -46,6 +46,13 @@ export const PUSH_ERROR_CODES = {
   SUBSCRIBE_BAD_KEY: "PUSH_BAD_KEY_OR_SERVICE",
   /** Transient abort (AbortError) — a plain retry usually fixes it. */
   SUBSCRIBE_ABORTED: "PUSH_SUBSCRIBE_ABORTED",
+  /** The browser's push BACKEND (FCM/autopush) refused registration on this
+   *  device/network — measured Chrome message: "AbortError: Registration
+   *  failed - push service error". Persists across retries; only another
+   *  network/browser fixes it. The 2026-10-30 production report: a user hit
+   *  this exact failure in an endless "Failed → try again" loop because it
+   *  used to be classified as transient. */
+  PUSH_SERVICE_UNAVAILABLE: "PUSH_SERVICE_UNAVAILABLE",
   /** Served VAPID key is structurally invalid — server misconfig, not the user. */
   INVALID_VAPID_KEY: "PUSH_INVALID_VAPID_KEY",
   /** Page is not a secure context (non-HTTPS) — push is unavailable. */
@@ -71,6 +78,7 @@ export const PUSH_ERROR_CODES = {
  *  Rendered as warning tone; everything else stays danger (retry may help). */
 const NON_RETRYABLE_CODES = new Set<string>([
   PUSH_ERROR_CODES.SUBSCRIBE_BLOCKED,
+  PUSH_ERROR_CODES.PUSH_SERVICE_UNAVAILABLE,
   PUSH_ERROR_CODES.INVALID_VAPID_KEY,
   PUSH_ERROR_CODES.ENV_INSECURE,
   PUSH_ERROR_CODES.ENV_NO_PUSH_API,
@@ -88,6 +96,11 @@ export interface PushStateInput {
   /** Raw browser cause ("NotAllowedError: …") from the last failed op —
    *  rendered as a small diagnostics line so a refusal is never opaque. */
   lastErrorDetail?: string | null;
+  /** Persisted device-level block (push backend refused repeatedly). When
+   *  present while the toggle is OFF and nothing fresher is happening, the row
+   *  renders the honest "unavailable on this device" card instead of inviting
+   *  the user into another doomed retry. */
+  deviceBlock?: PushDeviceBlockState | null;
 }
 
 /** Visual tone driving the row's colors. */
@@ -105,6 +118,61 @@ export interface PushStateDescriptor {
   /** Raw browser cause for the failure — small LTR diagnostics line, empty
    *  when the failure was not a browser exception. */
   detail?: string;
+  /** True when the row must render as the honest "not available on this
+   *  device/network" card (no switch, actions + alternatives instead). */
+  unavailable?: boolean;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Device-level block persistence — when the browser's push backend refuses
+// registration persistently, REMEMBER it (localStorage) so future visits show
+// the honest unavailable card instead of silently resetting to a tempting
+// toggle that will fail again. Framework-free and exception-safe.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** Persisted record of a persistent push-registration refusal on this device. */
+export interface PushDeviceBlockState {
+  /** Machine-readable cause (PUSH_ERROR_CODES value). */
+  code: string;
+  /** Raw browser exception text, kept for support/diagnostics. */
+  detail?: string;
+  /** Unix ms of the last persisted refusal. */
+  at: number;
+}
+
+const DEVICE_BLOCK_KEY = "elbaz_push_device_block";
+
+/** Read the stored device block (null when none / storage unavailable). */
+export function readPushDeviceBlock(): PushDeviceBlockState | null {
+  try {
+    const raw = globalThis.localStorage?.getItem(DEVICE_BLOCK_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PushDeviceBlockState;
+    if (typeof parsed?.code !== "string" || typeof parsed?.at !== "number") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/** Persist the device block. Never throws (private mode / quota). */
+export function savePushDeviceBlock(code: string, detail?: string): PushDeviceBlockState {
+  const state: PushDeviceBlockState = { code, detail: detail?.slice(0, 200), at: Date.now() };
+  try {
+    globalThis.localStorage?.setItem(DEVICE_BLOCK_KEY, JSON.stringify(state));
+  } catch {
+    // storage unavailable — the in-memory copy still covers this session
+  }
+  return state;
+}
+
+/** Clear the device block (successful subscribe or explicit user retry). */
+export function clearPushDeviceBlock(): void {
+  try {
+    globalThis.localStorage?.removeItem(DEVICE_BLOCK_KEY);
+  } catch {
+    // storage unavailable — nothing to clean
+  }
 }
 
 export type PushLang = "ar" | "en";
@@ -164,6 +232,12 @@ const ERROR_HINTS: Record<string, { ar: string; en: string }> = {
     ar: "اتلغى طلب الاشتراك بشكل مؤقت — اضغط تاني",
     en: "The subscription request was aborted — please try again",
   },
+  [PUSH_ERROR_CODES.PUSH_SERVICE_UNAVAILABLE]: {
+    // Honest copy: the browser's own push backend refused. Retrying the same
+    // toggle on the same network is a dead end — say so and name the real fix.
+    ar: "جهازك/شبكتك رفضت تسجيل الإشعارات الخلفية حتى بعد كذا محاولة. جرّب شبكة تانية (واي فاي بدل الداتا) أو كروم محدّث — وإشعارات الموقع جوه الصفحة شغالة زي ما هي",
+    en: "This device/network refused background push registration after several attempts. Try another network (Wi-Fi instead of mobile data) or an updated Chrome — in-app notifications keep working as usual",
+  },
   [PUSH_ERROR_CODES.INVALID_VAPID_KEY]: {
     ar: "فيه مشكلة إعدادات في خدمة الإشعارات على السيرفر — الإدارة اتعلمت بيها، جرب تاني بعد شوية",
     en: "The notifications service is misconfigured server-side — the team has been notified, please try again later",
@@ -208,8 +282,22 @@ const GENERIC_ERROR_HINT = {
 } as const;
 
 const PILL = {
-  ar: { on: "مفعّلة", off: "غير مفعّلة", busy: "جاري التجهيز…", denied: "محظورة", error: "فشل" },
-  en: { on: "On", off: "Off", busy: "Working…", denied: "Blocked", error: "Failed" },
+  ar: {
+    on: "مفعّلة",
+    off: "غير مفعّلة",
+    busy: "جاري التجهيز…",
+    denied: "محظورة",
+    error: "فشل",
+    unavailable: "غير متاحة على جهازك",
+  },
+  en: {
+    on: "On",
+    off: "Off",
+    busy: "Working…",
+    denied: "Blocked",
+    error: "Failed",
+    unavailable: "Unavailable here",
+  },
 } as const;
 
 /**
@@ -218,22 +306,31 @@ const PILL = {
  * yields a complete descriptor — no silent states.
  */
 export function describePushState(input: PushStateInput, lang: PushLang): PushStateDescriptor {
-  const { status, isBusy, isSubscribed, lastError, lastErrorDetail } = input;
+  const { status, isBusy, isSubscribed, lastError, lastErrorDetail, deviceBlock } = input;
 
   // ── Error overrides everything: the user must see why it failed ──
   if (status === "error") {
     const hint =
       (lastError !== null && ERROR_HINTS[lastError]?.[lang]) || GENERIC_ERROR_HINT[lang];
-    // Non-retryable causes (browser hard-block, wrong browser, server key…) get
-    // the warning tone — pressing the toggle again cannot fix them, and the
-    // danger/red styling would push the user into a useless retry loop.
+    // Non-retryable causes (browser hard-block, wrong browser, server key…,
+    // push-backend refusal) get the warning tone — pressing the toggle again
+    // cannot fix them, and the danger/red styling would push the user into a
+    // useless retry loop.
     const tone: PushTone =
       lastError !== null && NON_RETRYABLE_CODES.has(lastError) ? "warning" : "danger";
     const detail =
       lastErrorDetail && lastErrorDetail.trim().length > 0
         ? lastErrorDetail.trim().slice(0, 140)
         : undefined;
-    return { pill: PILL[lang].error, hint, tone, switchOn: isSubscribed, detail };
+    const unavailable = lastError === PUSH_ERROR_CODES.PUSH_SERVICE_UNAVAILABLE;
+    return {
+      pill: unavailable ? PILL[lang].unavailable : PILL[lang].error,
+      hint,
+      tone,
+      switchOn: isSubscribed,
+      detail,
+      unavailable,
+    };
   }
 
   // ── Browser denied permission: not retryable from JS, show the manual fix ──
@@ -254,6 +351,19 @@ export function describePushState(input: PushStateInput, lang: PushLang): PushSt
   // ── Steady states ──
   if (status === "subscribed" || isSubscribed) {
     return { pill: PILL[lang].on, hint: HINT_ON[lang], tone: "active", switchOn: true };
+  }
+
+  // ── Remembered device-level refusal: show the honest unavailable card ──
+  // (only in the calm steady-OFF state — busy/denied/fresh errors above win).
+  if (deviceBlock) {
+    return {
+      pill: PILL[lang].unavailable,
+      hint: ERROR_HINTS[deviceBlock.code]?.[lang] ?? GENERIC_ERROR_HINT[lang],
+      tone: NON_RETRYABLE_CODES.has(deviceBlock.code) ? "warning" : "danger",
+      switchOn: false,
+      detail: deviceBlock.detail?.slice(0, 140),
+      unavailable: true,
+    };
   }
 
   return { pill: PILL[lang].off, hint: HINT_OFF[lang], tone: "idle", switchOn: false };
@@ -315,7 +425,22 @@ export function classifyPushException(name: string, message = ""): string {
       if (m.includes("permission") || m.includes("denied")) {
         return PUSH_ERROR_CODES.SUBSCRIBE_BLOCKED;
       }
+      // Explicit push-backend refusal (measured Chrome message:
+      // "Registration failed - push service error"; legacy GCM: "no sender
+      // id"). The backend itself said no — retries on this device/network
+      // cannot fix it, so name the real cause instead of a retry loop.
+      if (
+        m.includes("push service error") ||
+        m.includes("no push service") ||
+        m.includes("push service not available") ||
+        m.includes("service not available") ||
+        m.includes("no sender id")
+      ) {
+        return PUSH_ERROR_CODES.PUSH_SERVICE_UNAVAILABLE;
+      }
       // Otherwise transient — the push service aborted; a retry usually works.
+      // (If retries keep failing, the subscribe flow escalates to
+      // PUSH_SERVICE_UNAVAILABLE itself — see usePushNotification.)
       return PUSH_ERROR_CODES.SUBSCRIBE_ABORTED;
     case "InvalidStateError":
       // No ACTIVE service worker on the registration yet → same UX as timeout.
@@ -326,7 +451,10 @@ export function classifyPushException(name: string, message = ""): string {
       if (m.includes("permission") || m.includes("denied")) {
         return PUSH_ERROR_CODES.SUBSCRIBE_BLOCKED;
       }
-      if (m.includes("key") || m.includes("vapid") || m.includes("push service")) {
+      if (m.includes("push service error") || m.includes("no push service")) {
+        return PUSH_ERROR_CODES.PUSH_SERVICE_UNAVAILABLE;
+      }
+      if (m.includes("key") || m.includes("vapid")) {
         return PUSH_ERROR_CODES.SUBSCRIBE_BAD_KEY;
       }
       return PUSH_ERROR_CODES.SUBSCRIBE_FAILED;

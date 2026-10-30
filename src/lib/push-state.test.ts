@@ -12,7 +12,10 @@ import {
   PUSH_ERROR_CODES,
   classifyPushEnvironment,
   classifyPushException,
+  clearPushDeviceBlock,
   pushEnvironmentErrorCode,
+  readPushDeviceBlock,
+  savePushDeviceBlock,
   validateVapidPublicKey,
   type PushStateInput,
 } from "./push-state";
@@ -20,6 +23,7 @@ import {
 /** Codes whose fix is NOT retrying — must render as warning, not danger. */
 const NON_RETRYABLE = new Set([
   PUSH_ERROR_CODES.SUBSCRIBE_BLOCKED,
+  PUSH_ERROR_CODES.PUSH_SERVICE_UNAVAILABLE,
   PUSH_ERROR_CODES.INVALID_VAPID_KEY,
   PUSH_ERROR_CODES.ENV_INSECURE,
   PUSH_ERROR_CODES.ENV_NO_PUSH_API,
@@ -217,6 +221,47 @@ describe("describePushState — browser notifications row (silent-failure fix)",
     const d = describePushState(input({ status: "idle", isBusy: true }), "ar");
     expect(d.hint).toContain("بنجهّز");
   });
+
+  it("PUSH_SERVICE_UNAVAILABLE renders the honest unavailable card (not a retry switch)", () => {
+    for (const lang of ["ar", "en"] as const) {
+      const d = describePushState(
+        input({
+          status: "error",
+          lastError: PUSH_ERROR_CODES.PUSH_SERVICE_UNAVAILABLE,
+          lastErrorDetail: "AbortError: Registration failed - push service error",
+        }),
+        lang,
+      );
+      expect(d.unavailable).toBe(true);
+      expect(d.tone).toBe("warning");
+      expect(d.switchOn).toBe(false);
+      expect(d.detail).toContain("push service error");
+    }
+    // The Arabic copy names the device/network cause and the working
+    // alternative — never a bare "try again".
+    expect(
+      describePushState(input({ status: "error", lastError: PUSH_ERROR_CODES.PUSH_SERVICE_UNAVAILABLE }), "ar").hint,
+    ).toContain("شبكة تانية");
+  });
+
+  it("a remembered device block renders unavailable even in the calm idle state", () => {
+    const block = { code: PUSH_ERROR_CODES.PUSH_SERVICE_UNAVAILABLE, detail: "AbortError: x", at: Date.now() };
+    const d = describePushState(input({ deviceBlock: block }), "ar");
+    expect(d.unavailable).toBe(true);
+    expect(d.tone).toBe("warning");
+    expect(d.switchOn).toBe(false);
+    expect(d.detail).toBe("AbortError: x");
+    // Fresher states always win over the remembered block.
+    expect(describePushState(input({ deviceBlock: block, isBusy: true, status: "busy" }), "ar").unavailable).toBeFalsy();
+    expect(
+      describePushState(input({ deviceBlock: block, isSubscribed: true, status: "subscribed" }), "ar").unavailable,
+    ).toBeFalsy();
+    expect(
+      describePushState(input({ deviceBlock: block, status: "error", lastError: PUSH_ERROR_CODES.SAVE_FAILED }), "ar")
+        .unavailable,
+    ).toBeFalsy();
+    expect(describePushState(input({ deviceBlock: block, status: "denied" }), "ar").unavailable).toBeFalsy();
+  });
 });
 
 describe("validateVapidPublicKey — catch server key rot BEFORE the browser sees it", () => {
@@ -268,6 +313,54 @@ describe("classifyPushException — every DOMException names its real cause", ()
     expect(classifyPushException("AbortError", "Registration failed - permission denied")).toBe(
       PUSH_ERROR_CODES.SUBSCRIBE_BLOCKED,
     );
+  });
+
+  it("AbortError with an explicit push-backend refusal → device-level unavailable", () => {
+    // Measured Chrome message (2026-10-30 production report — the user was
+    // stuck in an endless "Failed → try again" loop): the browser's push
+    // backend itself refused; retries on this device/network cannot fix it.
+    expect(classifyPushException("AbortError", "Registration failed - push service error")).toBe(
+      PUSH_ERROR_CODES.PUSH_SERVICE_UNAVAILABLE,
+    );
+    expect(classifyPushException("AbortError", "Registration failed - no push service")).toBe(
+      PUSH_ERROR_CODES.PUSH_SERVICE_UNAVAILABLE,
+    );
+    expect(classifyPushException("AbortError", "Registration failed - no sender id provided")).toBe(
+      PUSH_ERROR_CODES.PUSH_SERVICE_UNAVAILABLE,
+    );
+    // A bare message that merely MENTIONS the push service but describes an
+    // abort stays transient (the subscribe flow retries it, then escalates).
+    expect(classifyPushException("AbortError", "push service aborted the request")).toBe(
+      PUSH_ERROR_CODES.SUBSCRIBE_ABORTED,
+    );
+  });
+
+  it("bare Errors naming the push service map to unavailable, not bad-key", () => {
+    expect(classifyPushException("Error", "push service error while registering")).toBe(
+      PUSH_ERROR_CODES.PUSH_SERVICE_UNAVAILABLE,
+    );
+  });
+
+  it("device-block persistence round-trips and survives junk storage", () => {
+    // The test env may have no localStorage — helpers must never throw.
+    expect(() => clearPushDeviceBlock()).not.toThrow();
+    const saved = savePushDeviceBlock(PUSH_ERROR_CODES.PUSH_SERVICE_UNAVAILABLE, "AbortError: x");
+    expect(saved.code).toBe(PUSH_ERROR_CODES.PUSH_SERVICE_UNAVAILABLE);
+    expect(saved.detail).toBe("AbortError: x");
+    expect(typeof saved.at).toBe("number");
+    const read = readPushDeviceBlock();
+    if (read !== null) {
+      // When storage exists the round-trip must be exact.
+      expect(read.code).toBe(PUSH_ERROR_CODES.PUSH_SERVICE_UNAVAILABLE);
+    }
+    // A corrupted payload reads as "no block" instead of throwing.
+    try {
+      globalThis.localStorage?.setItem("elbaz_push_device_block", "{{{not-json");
+      expect(readPushDeviceBlock()).toBeNull();
+    } catch {
+      // no storage in this environment — nothing to corrupt
+    }
+    clearPushDeviceBlock();
   });
 
   it("bare Errors are salvaged from their message before falling back", () => {

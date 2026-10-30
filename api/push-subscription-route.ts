@@ -30,6 +30,13 @@ const unsubscribeSchema = z.object({
   endpoint: z.string().url().max(500),
 });
 
+/** Client telemetry: a PERSISTENT push-registration refusal (device/network
+ *  level). Log-only — no DB row, no PII beyond the existing request UA. */
+const failureReportSchema = z.object({
+  code: z.string().min(2).max(64),
+  detail: z.string().max(300).optional(),
+});
+
 export const pushSubscriptionRoute = new Hono();
 
 pushSubscriptionRoute.get("/public-key", (c) => {
@@ -104,4 +111,38 @@ pushSubscriptionRoute.post("/unsubscribe", async (c) => {
     logger.warn("[Push] unsubscribe failed", { error: err instanceof Error ? err.message : String(err) });
     return c.json({ error: "Failed to remove subscription" }, 500);
   }
+});
+
+// POST /failure-report — the client hit a PERSISTENT push-registration refusal
+// (e.g. Chrome's "AbortError: Registration failed - push service error": the
+// device/network has no working push backend). The subscribe UI then shows the
+// honest unavailable card; this endpoint turns that event into server-side
+// visibility (how many users are affected, on which devices) WITHOUT storing
+// anything. Authentication is optional — a session can expire before the
+// report fires, and the signal is still worth its UA alone.
+pushSubscriptionRoute.post("/failure-report", async (c) => {
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  const parsed = failureReportSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid payload" }, 400);
+  }
+
+  try {
+    const user = await resolveOptionalUser(c.req.raw);
+    logger.warn("[Push] client reported persistent subscribe refusal", {
+      userId: user?.id ?? null,
+      code: parsed.data.code,
+      detail: parsed.data.detail ?? null,
+      userAgent: (c.req.header("User-Agent") ?? "").slice(0, 200),
+    });
+  } catch {
+    // Telemetry must never fail the client — treat as accepted regardless.
+  }
+  return c.json({ ok: true });
 });
