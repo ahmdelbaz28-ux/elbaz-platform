@@ -30,6 +30,10 @@ import { useNotification } from "@/components/NotificationToast";
 import {
   describePushState,
   PUSH_ERROR_CODES,
+  classifyPushEnvironment,
+  classifyPushException,
+  pushEnvironmentErrorCode,
+  validateVapidPublicKey,
   type PushOutcome,
   type PushStatus,
   type PushTone,
@@ -126,6 +130,8 @@ interface PushNotificationState {
   status: PushStatus;
   /** Machine-readable error code from the last failed operation (null when none). */
   lastError: string | null;
+  /** Raw browser cause ("NotAllowedError: …") for the last failed op. */
+  lastErrorDetail: string | null;
   requestPermission: () => Promise<NotificationPermission>;
   subscribe: () => Promise<PushOutcome>;
   unsubscribe: () => Promise<PushOutcome>;
@@ -149,10 +155,17 @@ const MAX_STORED = 50;
 const MAX_VISIBLE = 20;
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** Time budget for `serviceWorker.ready` — it hangs FOREVER when the PWA SW
- *  never registered, which used to lock the toggle permanently with zero
- *  feedback (the silent "مش شغال" bug). Racing a timeout keeps the UI alive. */
+/** Time budget for the mount mirror's `serviceWorker.ready` probe. It only
+ *  decides the ROW's initial look — a timeout here now means "stay idle", not
+ *  "show Failed": on a first visit the PWA service worker can legitimately
+ *  need 15-40s to install+activate (precache download), which used to paint
+ *  a scary red Failed row before the user even touched anything. */
 const SW_READY_TIMEOUT_MS = 8_000;
+
+/** Time budget for subscribe()/unsubscribe() to WAIT for the service worker to
+ *  become active — progress-driven, far above the blind 8s that killed the
+ *  flow mid-install on first visits (the reproduced production failure). */
+const SW_SUBSCRIBE_READY_TIMEOUT_MS = 45_000;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Helpers
@@ -229,7 +242,11 @@ function relativeTimeEnglish(seconds: number, minutes: number, hours: number, da
   return `${days} days ago`;
 }
 
-/** Convert a base64-url VAPID key to Uint8Array. */
+/**
+ * Convert a base64-url VAPID key to Uint8Array.
+ * Callers MUST validate the key first (validateVapidPublicKey) — this helper
+ * assumes a well-formed unpadded base64url string.
+ */
 function urlBase64ToUint8Array(base64: string): Uint8Array {
   const padding = "=".repeat((4 - (base64.length % 4)) % 4);
   const b64 = (base64 + padding).replaceAll("-", "+").replaceAll("_", "/");
@@ -239,6 +256,19 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
     arr[i] = rawData.codePointAt(i) ?? 0;
   }
   return arr;
+}
+
+/** display-mode: standalone (installed PWA) — iOS push only works there. */
+function isStandaloneDisplay(): boolean {
+  try {
+    return (
+      globalThis.matchMedia?.("(display-mode: standalone)").matches === true ||
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (navigator as any).standalone === true
+    );
+  } catch {
+    return false;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -404,6 +434,7 @@ export function usePushNotification(
     return Notification.permission === "denied" ? "denied" : "idle";
   });
   const [lastError, setLastError] = useState<string | null>(null);
+  const [lastErrorDetail, setLastErrorDetail] = useState<string | null>(null);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const isNativeApp = Boolean((globalThis as any).Capacitor?.isNativePlatform?.());
@@ -446,8 +477,18 @@ export function usePushNotification(
           );
         }
       } catch {
-        // SW not ready / push blocked — toggle shows the error/blocked state.
-        if (!cancelled) setStatus("error");
+        // SW not ready YET — on a first visit the PWA SW is still installing
+        // (precache download can legitimately take 15-40s). This is NOT an
+        // error: stay idle/denied so the row stays honest and clickable;
+        // subscribe() itself waits for activation with its own budget.
+        if (!cancelled) {
+          setIsSubscribed(false);
+          setStatus(
+            typeof Notification !== "undefined" && Notification.permission === "denied"
+              ? "denied"
+              : "idle",
+          );
+        }
       }
       // Feature flag: does the server have VAPID keys configured?
       try {
@@ -472,26 +513,62 @@ export function usePushNotification(
     setIsBusy(true);
     setStatus("busy");
     setLastError(null);
+    setLastErrorDetail(null);
+    const failWith = (code: string, detail?: string): PushOutcome => {
+      setIsSubscribed(false);
+      setStatus("error");
+      setLastError(code);
+      setLastErrorDetail(detail ?? null);
+      return { ok: false, outcome: "error", error: code, errorDetail: detail };
+    };
     try {
-      // 0. A previously-denied site can never be re-enabled from JS (the
-      //    browser prompt is gone) — surface the manual fix, never fail silent.
-      if (typeof Notification !== "undefined" && Notification.permission === "denied") {
+      // 0a. Pre-flight environment — name the real blocker BEFORE any prompt:
+      //     insecure context, missing platform APIs, in-app WebView browsers
+      //     and iOS tabs are doomed contexts where retrying can never work.
+      //     (Capacitor native builds are already excluded via isSupported.)
+      const envCode = classifyPushEnvironment({
+        isSecureContext: globalThis.isSecureContext === true,
+        hasServiceWorker: "serviceWorker" in navigator,
+        hasPushManager: "PushManager" in globalThis,
+        hasNotification: "Notification" in globalThis,
+        userAgent: navigator.userAgent,
+        isStandalone: isStandaloneDisplay(),
+      });
+      if (envCode !== "ok") {
+        const code = pushEnvironmentErrorCode(envCode) ?? PUSH_ERROR_CODES.ENV_NO_PUSH_API;
+        setStatus("error");
+        setLastError(code);
+        setLastErrorDetail(null);
+        return { ok: false, outcome: "error", error: code };
+      }
+
+      // 0b. A previously-denied site can never be re-enabled from JS (the
+      //     browser prompt is gone) — surface the manual fix, never fail silent.
+      if (Notification.permission === "denied") {
         setStatus("denied");
         return { ok: false, outcome: "denied" };
       }
 
-      // 1. Resolve the VAPID public key (server is the source of truth).
-      let appServerKey = vapidPublicKey ?? null;
-      if (!appServerKey) {
+      // 1. Resolve the VAPID public key (server is the source of truth) and
+      //    validate its structure BEFORE the browser ever sees it.
+      const fetchKey = async (): Promise<string | null> => {
         const res = await fetch(`${apiBaseUrl()}/api/notifications/push/public-key`);
         if (!res.ok) throw new Error(PUSH_ERROR_CODES.KEY_UNAVAILABLE);
         const data = (await res.json()) as PushPublicKeyResponse;
         if (!data.enabled || !data.publicKey) throw new Error(PUSH_ERROR_CODES.DISABLED_SERVER);
-        appServerKey = data.publicKey;
+        return data.publicKey;
+      };
+      let appServerKey = vapidPublicKey ?? (await fetchKey());
+      if (!appServerKey || !validateVapidPublicKey(appServerKey)) {
+        // Chrome would throw a cryptic InvalidAccessError — name it for real:
+        // the SERVER is serving a broken key, the user cannot fix this.
+        return failWith(PUSH_ERROR_CODES.INVALID_VAPID_KEY);
       }
 
       // 2. Permission (must come from a user gesture — the toggle click).
-      let current = Notification.permission;
+      // Explicit type: the 0b check above narrows Notification.permission, and
+      // the reassignment below returns the full union — keep them compatible.
+      let current: NotificationPermission = Notification.permission;
       if (current === "default") {
         current = await Notification.requestPermission();
         setPermission(current);
@@ -503,20 +580,52 @@ export function usePushNotification(
         return { ok: false, outcome: "denied" };
       }
 
-      // 3. Subscribe through the (already registered) PWA service worker.
+      // 3. Subscribe through the PWA service worker — WAITING for activation
+      //    with a generous budget instead of failing mid-install (first visits
+      //    legitimately need 15-40s while the precache downloads).
       const registration = await withTimeout(
         navigator.serviceWorker.ready,
-        SW_READY_TIMEOUT_MS,
+        SW_SUBSCRIBE_READY_TIMEOUT_MS,
         PUSH_ERROR_CODES.SW_READY_TIMEOUT,
       );
-      let subscription: PushSubscription;
+      let subscription: PushSubscription | undefined;
       try {
         subscription = await registration.pushManager.subscribe({
           userVisibleOnly: true,
           applicationServerKey: urlBase64ToUint8Array(appServerKey) as BufferSource,
         });
-      } catch {
-        throw new Error(PUSH_ERROR_CODES.SUBSCRIBE_FAILED);
+      } catch (err) {
+        // NEVER swallow the DOMException: classify it so the UI names the real
+        // cause, and keep the raw exception as the diagnostics detail line.
+        const exName = err instanceof DOMException ? err.name : (err as Error)?.name ?? "";
+        const exMsg = err instanceof Error ? err.message : String(err);
+        const detail = `${exName || "Error"}: ${exMsg}`.slice(0, 200);
+        console.error("[Push] subscribe() refused:", exName, exMsg);
+        const code = classifyPushException(exName, exMsg);
+        if (code === PUSH_ERROR_CODES.SUBSCRIBE_BAD_KEY) {
+          // The served key MAY have rotated (or a CDN cached a stale one) —
+          // one bounded retry with a freshly fetched key before giving up.
+          try {
+            const fresh = await fetchKey();
+            if (fresh && fresh !== appServerKey && validateVapidPublicKey(fresh)) {
+              subscription = await registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(fresh) as BufferSource,
+              });
+              appServerKey = fresh;
+            }
+          } catch (retryErr) {
+            const rName = retryErr instanceof DOMException ? retryErr.name : (retryErr as Error)?.name ?? "";
+            const rMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+            return failWith(
+              classifyPushException(rName, rMsg),
+              `${rName || "Error"}: ${rMsg}`.slice(0, 200),
+            );
+          }
+          if (!subscription) return failWith(code, detail);
+        } else {
+          return failWith(code, detail);
+        }
       }
 
       // 4. Store the endpoint server-side so broadcasts fan out to it.
@@ -545,6 +654,7 @@ export function usePushNotification(
       setIsSubscribed(false);
       setStatus("error");
       setLastError(code);
+      setLastErrorDetail(null);
       return { ok: false, outcome: "error", error: code };
     } finally {
       setIsBusy(false);
@@ -558,10 +668,11 @@ export function usePushNotification(
     setIsBusy(true);
     setStatus("busy");
     setLastError(null);
+    setLastErrorDetail(null);
     try {
       const registration = await withTimeout(
         navigator.serviceWorker.ready,
-        SW_READY_TIMEOUT_MS,
+        SW_SUBSCRIBE_READY_TIMEOUT_MS,
         PUSH_ERROR_CODES.SW_READY_TIMEOUT,
       );
       const sub = await registration.pushManager.getSubscription();
@@ -585,6 +696,7 @@ export function usePushNotification(
       console.error("[Push] Unsubscribe failed", err);
       setStatus("error");
       setLastError(code);
+      setLastErrorDetail(null);
       return { ok: false, outcome: "error", error: code };
     } finally {
       setIsBusy(false);
@@ -614,6 +726,7 @@ export function usePushNotification(
     isBusy,
     status,
     lastError,
+    lastErrorDetail,
     requestPermission,
     subscribe,
     unsubscribe,
@@ -1038,6 +1151,7 @@ export default function NotificationCenter() { // NOSONAR — large component wi
           isBusy: push.isBusy,
           isSubscribed: push.isSubscribed,
           lastError: push.lastError,
+          lastErrorDetail: push.lastErrorDetail,
         },
         lang,
       )
@@ -1087,8 +1201,8 @@ export default function NotificationCenter() { // NOSONAR — large component wi
           type: "info",
           title: isRTL ? "تعذّر تفعيل الإشعارات" : "Couldn't enable notifications",
           message: isRTL
-            ? "جرب تاني — ولو استمرت المشكلة اتأكد من اتصالك بالإنترنت"
-            : "Please try again — if it persists, check your connection",
+            ? "السبب والحل ظاهرين في صف إشعارات المتصفح داخل مركز الإشعارات"
+            : "The reason and the fix are shown in the Browser notifications row inside the notification center",
         });
       }
     });
@@ -1332,6 +1446,15 @@ export default function NotificationCenter() { // NOSONAR — large component wi
                 >
                   {pushDescriptor.hint}
                 </span>
+                {pushDescriptor.detail && (
+                  <span
+                    dir="ltr"
+                    className="mt-0.5 block truncate text-[9.5px] font-mono text-[#64748b]"
+                    title={pushDescriptor.detail}
+                  >
+                    {pushDescriptor.detail}
+                  </span>
+                )}
               </span>
               {/* Switch — track 48×28, knob 24; the knob travels on the physical
                   `left` axis in BOTH directions so the slide animates smoothly

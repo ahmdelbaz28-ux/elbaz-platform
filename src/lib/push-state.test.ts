@@ -10,8 +10,27 @@ import { describe, expect, it } from "vitest";
 import {
   describePushState,
   PUSH_ERROR_CODES,
+  classifyPushEnvironment,
+  classifyPushException,
+  pushEnvironmentErrorCode,
+  validateVapidPublicKey,
   type PushStateInput,
 } from "./push-state";
+
+/** Codes whose fix is NOT retrying — must render as warning, not danger. */
+const NON_RETRYABLE = new Set([
+  PUSH_ERROR_CODES.SUBSCRIBE_BLOCKED,
+  PUSH_ERROR_CODES.INVALID_VAPID_KEY,
+  PUSH_ERROR_CODES.ENV_INSECURE,
+  PUSH_ERROR_CODES.ENV_NO_PUSH_API,
+  PUSH_ERROR_CODES.ENV_IN_APP_BROWSER,
+  PUSH_ERROR_CODES.ENV_IOS_BROWSER,
+]);
+
+/** Real-shaped valid VAPID public key fixture (65 bytes, uncompressed 0x04) —
+ *  structurally identical to the production key served by /public-key. */
+const VALID_KEY =
+  "BHbu_f0ekjZ3APPD01qmRERgyvkymslFh_qPsU2FtseqAc3PEOBZMP7uCO_jsluAjS9OxWAJDsPxsdf6jMlAYlk";
 
 function input(overrides: Partial<PushStateInput> = {}): PushStateInput {
   return {
@@ -102,11 +121,13 @@ describe("describePushState — browser notifications row (silent-failure fix)",
 
   it("every known error code maps to a non-generic, non-empty hint (ar+en)", () => {
     const codes = Object.values(PUSH_ERROR_CODES);
-    expect(codes.length).toBeGreaterThanOrEqual(8);
+    expect(codes.length).toBeGreaterThanOrEqual(16);
     for (const code of codes) {
       for (const lang of ["ar", "en"] as const) {
         const d = describePushState(input({ status: "error", lastError: code }), lang);
-        expect(d.tone).toBe("danger");
+        expect(NON_RETRYABLE.has(code) ? d.tone : "danger").toBe(
+          NON_RETRYABLE.has(code) ? "warning" : "danger",
+        );
         expect(d.pill.length).toBeGreaterThan(0);
         expect(d.hint.length).toBeGreaterThan(10);
       }
@@ -118,6 +139,53 @@ describe("describePushState — browser notifications row (silent-failure fix)",
     expect(
       describePushState(input({ status: "error", lastError: PUSH_ERROR_CODES.SW_READY_TIMEOUT }), "ar").hint,
     ).toContain("المتصفح");
+  });
+
+  it("non-retryable failures warn instead of pushing the user into a retry loop", () => {
+    // Browser hard-block: retrying the toggle can NEVER fix it.
+    const blocked = describePushState(
+      input({ status: "error", lastError: PUSH_ERROR_CODES.SUBSCRIBE_BLOCKED }),
+      "ar",
+    );
+    expect(blocked.tone).toBe("warning");
+    expect(blocked.hint).toContain("القفل");
+    // In-app browser: the fix is a different browser, not another click.
+    const inApp = describePushState(
+      input({ status: "error", lastError: PUSH_ERROR_CODES.ENV_IN_APP_BROWSER }),
+      "en",
+    );
+    expect(inApp.tone).toBe("warning");
+    expect(inApp.hint.toLowerCase()).toContain("chrome");
+    // Broken server key: not the user's fault, not retry-fixable.
+    const badKey = describePushState(
+      input({ status: "error", lastError: PUSH_ERROR_CODES.INVALID_VAPID_KEY }),
+      "ar",
+    );
+    expect(badKey.tone).toBe("warning");
+  });
+
+  it("raw browser cause surfaces as a truncated diagnostics detail line", () => {
+    const raw = "NotAllowedError: Registration failed - permission denied";
+    const d = describePushState(
+      input({ status: "error", lastError: PUSH_ERROR_CODES.SUBSCRIBE_BLOCKED, lastErrorDetail: raw }),
+      "en",
+    );
+    expect(d.detail).toBe(raw);
+    // Long causes are clipped to 140 chars so the row never blows up.
+    const long = "X".repeat(500);
+    const clipped = describePushState(
+      input({ status: "error", lastError: PUSH_ERROR_CODES.SUBSCRIBE_FAILED, lastErrorDetail: long }),
+      "en",
+    );
+    expect(clipped.detail?.length).toBe(140);
+    // No failure → no detail line.
+    expect(describePushState(input({ status: "subscribed", isSubscribed: true }), "en").detail).toBeUndefined();
+    // Whitespace-only detail is dropped.
+    const blank = describePushState(
+      input({ status: "error", lastError: PUSH_ERROR_CODES.SUBSCRIBE_FAILED, lastErrorDetail: "   " }),
+      "en",
+    );
+    expect(blank.detail).toBeUndefined();
   });
 
   it("unknown / missing error code falls back to the generic retry hint", () => {
@@ -148,5 +216,120 @@ describe("describePushState — browser notifications row (silent-failure fix)",
   it("isBusy alone (stale status) still renders busy — UI can never dead-lock", () => {
     const d = describePushState(input({ status: "idle", isBusy: true }), "ar");
     expect(d.hint).toContain("بنجهّز");
+  });
+});
+
+describe("validateVapidPublicKey — catch server key rot BEFORE the browser sees it", () => {
+  it("accepts the real 65-byte uncompressed P-256 key (production shape)", () => {
+    expect(VALID_KEY.length).toBe(87);
+    expect(validateVapidPublicKey(VALID_KEY)).toBe(true);
+  });
+
+  it("accepts padded base64url (the browser decoder tolerates '=')", () => {
+    expect(validateVapidPublicKey(VALID_KEY + "=")).toBe(true);
+  });
+
+  it("rejects truncated keys, wrong point prefix, PEM, whitespace and junk", () => {
+    expect(validateVapidPublicKey(VALID_KEY.slice(0, 60))).toBe(false); // wrong byte count
+    expect(validateVapidPublicKey("A" + VALID_KEY.slice(1))).toBe(false); // first byte 0x03
+    expect(
+      validateVapidPublicKey(
+        "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE\n-----END PUBLIC KEY-----",
+      ),
+    ).toBe(false);
+    expect(validateVapidPublicKey(` ${VALID_KEY} `)).toBe(false); // surrounding whitespace
+    expect(validateVapidPublicKey("")).toBe(false);
+    expect(validateVapidPublicKey(null)).toBe(false);
+    expect(validateVapidPublicKey(undefined)).toBe(false);
+  });
+});
+
+describe("classifyPushException — every DOMException names its real cause", () => {
+  it("NotAllowedError → browser-blocked (manual site-settings fix)", () => {
+    expect(classifyPushException("NotAllowedError")).toBe(PUSH_ERROR_CODES.SUBSCRIBE_BLOCKED);
+  });
+
+  it("InvalidAccessError / NotSupportedError → bad key or no push service", () => {
+    expect(classifyPushException("InvalidAccessError")).toBe(PUSH_ERROR_CODES.SUBSCRIBE_BAD_KEY);
+    expect(classifyPushException("NotSupportedError")).toBe(PUSH_ERROR_CODES.SUBSCRIBE_BAD_KEY);
+  });
+
+  it("AbortError → transient; InvalidStateError → SW not active yet", () => {
+    expect(classifyPushException("AbortError")).toBe(PUSH_ERROR_CODES.SUBSCRIBE_ABORTED);
+    expect(classifyPushException("InvalidStateError")).toBe(PUSH_ERROR_CODES.SW_READY_TIMEOUT);
+  });
+
+  it("bare Errors are salvaged from their message before falling back", () => {
+    expect(classifyPushException("Error", "permission dismissed by user")).toBe(
+      PUSH_ERROR_CODES.SUBSCRIBE_BLOCKED,
+    );
+    expect(classifyPushException("Error", "invalid VAPID key encoding")).toBe(
+      PUSH_ERROR_CODES.SUBSCRIBE_BAD_KEY,
+    );
+    expect(classifyPushException("RangeError", "something odd")).toBe(
+      PUSH_ERROR_CODES.SUBSCRIBE_FAILED,
+    );
+  });
+});
+
+describe("classifyPushEnvironment — doomed contexts are named BEFORE any prompt", () => {
+  const HEALTHY = {
+    isSecureContext: true,
+    hasServiceWorker: true,
+    hasPushManager: true,
+    hasNotification: true,
+    isStandalone: false,
+  };
+
+  const CHROME_ANDROID =
+    "Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
+  const CHROME_DESKTOP =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+  const WHATSAPP_IN_APP = `Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/116.0.0.0 Mobile Safari/537.36 WhatsApp/2.23.24`;
+  const FACEBOOK_IN_APP =
+    "[FBAN/FBIOS;FBAV/450.0.0.0;FBSV/17.0;...] Safari/604.1";
+  const ANDROID_WEBVIEW = `Mozilla/5.0 (Linux; Android 13; SM-G991B; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/116.0.0.0 Mobile Safari/537.36`;
+  const IOS_SAFARI =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
+
+  it("healthy desktop + Android Chrome pass", () => {
+    expect(classifyPushEnvironment({ ...HEALTHY, userAgent: CHROME_DESKTOP })).toBe("ok");
+    expect(classifyPushEnvironment({ ...HEALTHY, userAgent: CHROME_ANDROID })).toBe("ok");
+  });
+
+  it("in-app browsers (WhatsApp/Facebook/Android WebView) are detected", () => {
+    expect(classifyPushEnvironment({ ...HEALTHY, userAgent: WHATSAPP_IN_APP })).toBe("in_app_browser");
+    expect(classifyPushEnvironment({ ...HEALTHY, userAgent: FACEBOOK_IN_APP })).toBe("in_app_browser");
+    expect(classifyPushEnvironment({ ...HEALTHY, userAgent: ANDROID_WEBVIEW })).toBe("in_app_browser");
+  });
+
+  it("iOS tab without standalone → home-screen guidance; standalone passes", () => {
+    expect(classifyPushEnvironment({ ...HEALTHY, userAgent: IOS_SAFARI })).toBe("ios_browser");
+    expect(
+      classifyPushEnvironment({ ...HEALTHY, userAgent: IOS_SAFARI, isStandalone: true }),
+    ).toBe("ok");
+  });
+
+  it("structural gaps win over UA heuristics, insecure context wins over everything", () => {
+    expect(
+      classifyPushEnvironment({ ...HEALTHY, hasPushManager: false, userAgent: WHATSAPP_IN_APP }),
+    ).toBe("no_push");
+    expect(
+      classifyPushEnvironment({ ...HEALTHY, hasNotification: false, userAgent: CHROME_DESKTOP }),
+    ).toBe("no_notification");
+    expect(
+      classifyPushEnvironment({ ...HEALTHY, hasServiceWorker: false, userAgent: CHROME_DESKTOP }),
+    ).toBe("no_sw");
+    expect(
+      classifyPushEnvironment({ ...HEALTHY, isSecureContext: false, userAgent: WHATSAPP_IN_APP }),
+    ).toBe("insecure");
+  });
+
+  it("environment codes map onto user-facing error codes", () => {
+    expect(pushEnvironmentErrorCode("in_app_browser")).toBe(PUSH_ERROR_CODES.ENV_IN_APP_BROWSER);
+    expect(pushEnvironmentErrorCode("ios_browser")).toBe(PUSH_ERROR_CODES.ENV_IOS_BROWSER);
+    expect(pushEnvironmentErrorCode("no_push")).toBe(PUSH_ERROR_CODES.ENV_NO_PUSH_API);
+    expect(pushEnvironmentErrorCode("insecure")).toBe(PUSH_ERROR_CODES.ENV_INSECURE);
+    expect(pushEnvironmentErrorCode("ok")).toBeNull();
   });
 });
