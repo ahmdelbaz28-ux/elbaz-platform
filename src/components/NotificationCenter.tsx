@@ -579,14 +579,16 @@ export function usePushNotification(
     /** Persistent (device-level) failures additionally REMEMBER the refusal
      *  and report it once per interval — the row then stops promising retries. */
     const failWithPersistent = (code: string, detail?: string): PushOutcome => {
-      const block = savePushDeviceBlock(code, detail);
-      setDeviceBlock(block);
-      // Rate-limit the report: read the FRESH stored state (this callback can
-      // run many times) — report only when the last one is older than the cap.
+      // Rate-limit check MUST read the stored state BEFORE saving the fresh
+      // block: save-then-read would always find the just-written timestamp and
+      // silently suppress EVERY report (measured live: /failure-report never
+      // fired). previous=null (first refusal on this device) → always report.
       const previous = readPushDeviceBlock();
       if (!previous || Date.now() - previous.at >= FAILURE_REPORT_INTERVAL_MS) {
         reportPushFailure(code, detail);
       }
+      const block = savePushDeviceBlock(code, detail);
+      setDeviceBlock(block);
       return failWith(code, detail);
     };
     try {
