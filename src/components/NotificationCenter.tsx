@@ -1386,6 +1386,18 @@ export default function NotificationCenter() { // NOSONAR — large component wi
             ? "من أيقونة القفل جنب رابط الموقع اسمح بالإشعارات ثم جرّب تاني"
             : "Tap the lock icon next to the address bar, allow Notifications, then try again",
         });
+      } else if (res.error === PUSH_ERROR_CODES.PUSH_SERVICE_UNAVAILABLE) {
+        // First thing the device-blocked user reads — name the real cause and
+        // the working alternative, never a generic "couldn't enable".
+        showNotification({
+          type: "info",
+          title: isRTL
+            ? "الإشعارات الخلفية مش متاحة على الجهاز/الشبكة دي"
+            : "Background push isn't available on this device/network",
+          message: isRTL
+            ? "التفاصيل والبدائل جوه مركز الإشعارات — وإشعارات الموقع شغالة زي ما هي"
+            : "Details and alternatives are in the notification center — in-app notifications keep working",
+        });
       } else {
         showNotification({
           type: "info",
