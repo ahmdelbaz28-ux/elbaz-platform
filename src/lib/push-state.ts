@@ -308,7 +308,14 @@ export function classifyPushException(name: string, message = ""): string {
       // Bad applicationServerKey, or the device/network has no push service.
       return PUSH_ERROR_CODES.SUBSCRIBE_BAD_KEY;
     case "AbortError":
-      // Transient — the push service aborted; a retry usually succeeds.
+      // Some engines reject a permission refusal with AbortError and a message
+      // like "Registration failed - permission denied" (measured: incognito &
+      // restricted profiles). When the message names permission, the honest
+      // classification is BLOCKED — retrying cannot fix it.
+      if (m.includes("permission") || m.includes("denied")) {
+        return PUSH_ERROR_CODES.SUBSCRIBE_BLOCKED;
+      }
+      // Otherwise transient — the push service aborted; a retry usually works.
       return PUSH_ERROR_CODES.SUBSCRIBE_ABORTED;
     case "InvalidStateError":
       // No ACTIVE service worker on the registration yet → same UX as timeout.

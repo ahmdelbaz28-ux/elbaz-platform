@@ -255,8 +255,19 @@ describe("classifyPushException — every DOMException names its real cause", ()
   });
 
   it("AbortError → transient; InvalidStateError → SW not active yet", () => {
-    expect(classifyPushException("AbortError")).toBe(PUSH_ERROR_CODES.SUBSCRIBE_ABORTED);
+    expect(classifyPushException("AbortError", "push service aborted the request")).toBe(
+      PUSH_ERROR_CODES.SUBSCRIBE_ABORTED,
+    );
     expect(classifyPushException("InvalidStateError")).toBe(PUSH_ERROR_CODES.SW_READY_TIMEOUT);
+  });
+
+  it("AbortError with a permission-denied message → blocked, not 'transient'", () => {
+    // Measured live: restricted/incognito profiles reject with
+    // "AbortError: Registration failed - permission denied" — a retry cannot
+    // fix that, so the honest classification is the blocked one.
+    expect(classifyPushException("AbortError", "Registration failed - permission denied")).toBe(
+      PUSH_ERROR_CODES.SUBSCRIBE_BLOCKED,
+    );
   });
 
   it("bare Errors are salvaged from their message before falling back", () => {

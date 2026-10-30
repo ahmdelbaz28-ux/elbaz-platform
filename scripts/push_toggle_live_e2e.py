@@ -55,11 +55,20 @@ async () => {
 """
 
 with sync_playwright() as p:
-    browser = p.chromium.launch(
+    # PERSISTENT context on purpose: Playwright's regular new_context() runs as
+    # an incognito context, and Chrome DELIBERATELY refuses pushManager
+    # subscriptions there (crbug.com/401439) — measured on this very flow.
+    # A persistent profile is not incognito, so the real happy path is testable.
+    import shutil
+    profile_dir = "/tmp/push-e2e-profile"
+    shutil.rmtree(profile_dir, ignore_errors=True)  # always a true first visit
+    ctx = p.chromium.launch_persistent_context(
+        profile_dir,
         headless=False,
+        viewport={"width": 1280, "height": 850},
+        user_agent=UA,
         args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
     )
-    ctx = browser.new_context(viewport={"width": 1280, "height": 850}, user_agent=UA)
     ctx.grant_permissions(["notifications"], origin=PROD)
     pg = ctx.new_page()
     console_trail = []
@@ -108,13 +117,13 @@ with sync_playwright() as p:
     # Wait for the row to settle (busy → final state) then verify.
     settled = False
     final_state = {}
-    for _ in range(30):  # up to ~30s
+    for _ in range(60):  # up to ~60s (subscribe may wait ~45s for SW activation)
         pg.wait_for_timeout(1_000)
         final_state = pg.evaluate(PROBE_STATE_JS)
         row_text = row.inner_text().replace("\n", " | ")
         busy = "جاري" in row_text or "Working" in row_text
         if not busy and (final_state.get("subscribed") or "error" in row_text.lower()
-                         or "فشل" in row_text or time.time() - t0 > 20):
+                         or "فشل" in row_text or time.time() - t0 > 50):
             settled = True
             break
     check("toggle settles", settled, f"after {time.time()-t0:.0f}s")
@@ -145,7 +154,7 @@ with sync_playwright() as p:
     check("unsubscribed cleanly", off_state.get("subscribed") is False, str(off_state)[:160])
     pg.screenshot(path=f"{OUT}/03-panel-after-off.png")
 
-    browser.close()
+    ctx.close()
 
 fails = [n for n, ok in results if not ok]
 print(f"\nRESULT: {len(results) - len(fails)}/{len(results)} passed" + (f" — FAILURES: {fails}" if fails else ""))
