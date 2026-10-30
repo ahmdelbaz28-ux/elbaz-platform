@@ -11,12 +11,15 @@ import {
 import { useNavigate } from "react-router";
 import {
   Bell,
+  BellOff,
   BookOpen,
   Gift,
+  Loader2,
   Sparkles,
   Check,
   CheckCheck,
   Inbox,
+  TriangleAlert,
   X,
   BellRing,
   Youtube,
@@ -24,6 +27,13 @@ import {
 import { useTranslation } from "@/hooks/useTranslation";
 import { useAuth } from "@/hooks/useAuth";
 import { useNotification } from "@/components/NotificationToast";
+import {
+  describePushState,
+  PUSH_ERROR_CODES,
+  type PushOutcome,
+  type PushStatus,
+  type PushTone,
+} from "@/lib/push-state";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Types
@@ -112,9 +122,13 @@ interface PushNotificationState {
   isSubscribed: boolean;
   /** True while a subscribe/unsubscribe round-trip is in flight. */
   isBusy: boolean;
+  /** Lifecycle status driving the toggle row's pill/hint/tone (see push-state.ts). */
+  status: PushStatus;
+  /** Machine-readable error code from the last failed operation (null when none). */
+  lastError: string | null;
   requestPermission: () => Promise<NotificationPermission>;
-  subscribe: () => Promise<void>;
-  unsubscribe: () => Promise<void>;
+  subscribe: () => Promise<PushOutcome>;
+  unsubscribe: () => Promise<PushOutcome>;
 }
 
 /** Shape returned by useRealtimeNotifications. */
@@ -134,6 +148,11 @@ const STORAGE_KEY = "elbaz_notification_history";
 const MAX_STORED = 50;
 const MAX_VISIBLE = 20;
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Time budget for `serviceWorker.ready` — it hangs FOREVER when the PWA SW
+ *  never registered, which used to lock the toggle permanently with zero
+ *  feedback (the silent "مش شغال" bug). Racing a timeout keeps the UI alive. */
+const SW_READY_TIMEOUT_MS = 8_000;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Helpers
@@ -339,6 +358,23 @@ export function useNotificationHistory(): NotificationHistoryState {
  * - Unsubscribe mirrors the same path (`/push/unsubscribe`).
  * - Forwards SW→page push messages (`PUSH_RECEIVED`) to `onPushMessage`.
  */
+/** Race a promise against a timeout, rejecting with a machine-readable code. */
+function withTimeout<T>(promise: Promise<T>, ms: number, code: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(code)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err: unknown) => {
+        clearTimeout(timer);
+        reject(err instanceof Error ? err : new Error(code));
+      },
+    );
+  });
+}
+
 /** Same-origin base for API calls (Capacitor builds talk to the remote API). */
 function apiBaseUrl(): string {
    
@@ -361,6 +397,13 @@ export function usePushNotification(
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isPushEnabled, setIsPushEnabled] = useState(Boolean(vapidPublicKey));
   const [isBusy, setIsBusy] = useState(false);
+  // Start in "denied" when the browser already blocked notifications — the
+  // toggle row then shows the manual fix instead of pretending it's clickable.
+  const [status, setStatus] = useState<PushStatus>(() => {
+    if (typeof Notification === "undefined") return "idle";
+    return Notification.permission === "denied" ? "denied" : "idle";
+  });
+  const [lastError, setLastError] = useState<string | null>(null);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const isNativeApp = Boolean((globalThis as any).Capacitor?.isNativePlatform?.());
@@ -383,11 +426,28 @@ export function usePushNotification(
     let cancelled = false;
     void (async () => {
       try {
-        const registration = await navigator.serviceWorker.ready;
+        // Timeout guard: `serviceWorker.ready` never resolves when no SW is
+        // registered — without the race the toggle used to lock up silently.
+        const registration = await withTimeout(
+          navigator.serviceWorker.ready,
+          SW_READY_TIMEOUT_MS,
+          PUSH_ERROR_CODES.SW_READY_TIMEOUT,
+        );
         const sub = await registration.pushManager.getSubscription();
-        if (!cancelled) setIsSubscribed(Boolean(sub));
+        const isSub = Boolean(sub);
+        if (!cancelled) {
+          setIsSubscribed(isSub);
+          setStatus(
+            isSub
+              ? "subscribed"
+              : typeof Notification !== "undefined" && Notification.permission === "denied"
+                ? "denied"
+                : "idle",
+          );
+        }
       } catch {
-        // SW not ready / push blocked — toggle will just show "off"
+        // SW not ready / push blocked — toggle shows the error/blocked state.
+        if (!cancelled) setStatus("error");
       }
       // Feature flag: does the server have VAPID keys configured?
       try {
@@ -405,17 +465,28 @@ export function usePushNotification(
     };
   }, [isSupported, vapidPublicKey]);
 
-  const subscribe = useCallback(async () => {
-    if (!isSupported || isBusy) return;
+  const subscribe = useCallback(async (): Promise<PushOutcome> => {
+    if (!isSupported || isBusy) {
+      return { ok: false, outcome: "error", error: "PUSH_BUSY" };
+    }
     setIsBusy(true);
+    setStatus("busy");
+    setLastError(null);
     try {
+      // 0. A previously-denied site can never be re-enabled from JS (the
+      //    browser prompt is gone) — surface the manual fix, never fail silent.
+      if (typeof Notification !== "undefined" && Notification.permission === "denied") {
+        setStatus("denied");
+        return { ok: false, outcome: "denied" };
+      }
+
       // 1. Resolve the VAPID public key (server is the source of truth).
       let appServerKey = vapidPublicKey ?? null;
       if (!appServerKey) {
         const res = await fetch(`${apiBaseUrl()}/api/notifications/push/public-key`);
-        if (!res.ok) throw new Error("Push public key unavailable");
+        if (!res.ok) throw new Error(PUSH_ERROR_CODES.KEY_UNAVAILABLE);
         const data = (await res.json()) as PushPublicKeyResponse;
-        if (!data.enabled || !data.publicKey) throw new Error("Push disabled on server");
+        if (!data.enabled || !data.publicKey) throw new Error(PUSH_ERROR_CODES.DISABLED_SERVER);
         appServerKey = data.publicKey;
       }
 
@@ -425,14 +496,28 @@ export function usePushNotification(
         current = await Notification.requestPermission();
         setPermission(current);
       }
-      if (current !== "granted") return;
+      if (current !== "granted") {
+        // Android Chrome quietly auto-dismisses prompts for non-installed
+        // sites — the user must allow manually from site settings. Surface it.
+        setStatus("denied");
+        return { ok: false, outcome: "denied" };
+      }
 
       // 3. Subscribe through the (already registered) PWA service worker.
-      const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(appServerKey) as BufferSource,
-      });
+      const registration = await withTimeout(
+        navigator.serviceWorker.ready,
+        SW_READY_TIMEOUT_MS,
+        PUSH_ERROR_CODES.SW_READY_TIMEOUT,
+      );
+      let subscription: PushSubscription;
+      try {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(appServerKey) as BufferSource,
+        });
+      } catch {
+        throw new Error(PUSH_ERROR_CODES.SUBSCRIBE_FAILED);
+      }
 
       // 4. Store the endpoint server-side so broadcasts fan out to it.
       const subJson = subscription.toJSON() as {
@@ -440,37 +525,52 @@ export function usePushNotification(
         keys?: { p256dh?: string; auth?: string };
       };
       if (!subJson.endpoint || !subJson.keys?.p256dh || !subJson.keys?.auth) {
-        throw new Error("Incomplete push subscription");
+        throw new Error(PUSH_ERROR_CODES.INCOMPLETE);
       }
       const saveRes = await fetch(`${apiBaseUrl()}/api/notifications/push/subscribe`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(subJson),
       });
-      if (!saveRes.ok) throw new Error(`Subscribe save failed: ${saveRes.status}`);
+      if (saveRes.status === 401) throw new Error(PUSH_ERROR_CODES.AUTH_REQUIRED);
+      if (!saveRes.ok) throw new Error(PUSH_ERROR_CODES.SAVE_FAILED);
 
       setIsSubscribed(true);
+      setStatus("subscribed");
       console.info("[Push] Subscribed successfully", subJson.endpoint);
+      return { ok: true, outcome: "subscribed" };
     } catch (err) {
+      const code = err instanceof Error ? err.message : PUSH_ERROR_CODES.SUBSCRIBE_FAILED;
       console.error("[Push] Subscribe failed", err);
       setIsSubscribed(false);
+      setStatus("error");
+      setLastError(code);
+      return { ok: false, outcome: "error", error: code };
     } finally {
       setIsBusy(false);
     }
   }, [isSupported, isBusy, vapidPublicKey]);
 
-  const unsubscribe = useCallback(async () => {
-    if (!isSupported || isBusy) return;
+  const unsubscribe = useCallback(async (): Promise<PushOutcome> => {
+    if (!isSupported || isBusy) {
+      return { ok: false, outcome: "error", error: "PUSH_BUSY" };
+    }
     setIsBusy(true);
+    setStatus("busy");
+    setLastError(null);
     try {
-      const registration = await navigator.serviceWorker.ready;
+      const registration = await withTimeout(
+        navigator.serviceWorker.ready,
+        SW_READY_TIMEOUT_MS,
+        PUSH_ERROR_CODES.SW_READY_TIMEOUT,
+      );
       const sub = await registration.pushManager.getSubscription();
       if (sub) {
         const endpoint = sub.endpoint;
         await sub.unsubscribe();
         // Best-effort server cleanup — a failed call still leaves the browser
         // unsubscribed, and the dead endpoint is pruned on the next broadcast.
-        await fetch(`${apiBaseUrl()}/api/notifications/push/unsubscribe`, {
+        void fetch(`${apiBaseUrl()}/api/notifications/push/unsubscribe`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ endpoint }),
@@ -478,8 +578,14 @@ export function usePushNotification(
         console.info("[Push] Unsubscribed successfully");
       }
       setIsSubscribed(false);
+      setStatus("idle");
+      return { ok: true, outcome: "unsubscribed" };
     } catch (err) {
+      const code = err instanceof Error ? err.message : PUSH_ERROR_CODES.UNSUBSCRIBE_FAILED;
       console.error("[Push] Unsubscribe failed", err);
+      setStatus("error");
+      setLastError(code);
+      return { ok: false, outcome: "error", error: code };
     } finally {
       setIsBusy(false);
     }
@@ -506,6 +612,8 @@ export function usePushNotification(
     isPushEnabled,
     isSubscribed,
     isBusy,
+    status,
+    lastError,
     requestPermission,
     subscribe,
     unsubscribe,
@@ -868,17 +976,36 @@ function EmptyState({ lang }: { readonly lang: "en" | "ar" }) {
  * <NotificationCenter />
  * ```
  */
-/** One-line push status hint under the toggle (kept out of JSX to avoid nested ternaries). */
-function pushToggleHint(isRTL: boolean, isSubscribed: boolean): string {
-  if (isRTL) {
-    return isSubscribed
-      ? "مفعّلة — يوصلك كل جديد حتى والموقع مقفول ✓"
-      : "فعّلها ليوصلك كل جديد حتى والموقع مقفول";
-  }
-  return isSubscribed
-    ? "On — you'll hear from us even with the site closed ✓"
-    : "Enable to get new episodes even with the site closed";
-}
+/** Per-tone classes for the push toggle row (card, icon badge, pill, hint). */
+const PUSH_ROW_TONES: Record<
+  PushTone,
+  { row: string; badge: string; pill: string; hint: string }
+> = {
+  active: {
+    row: "bg-[rgba(6,182,212,0.08)] ring-1 ring-inset ring-[rgba(6,182,212,0.2)] hover:bg-[rgba(6,182,212,0.12)]",
+    badge: "bg-gradient-to-br from-[#06b6d4] to-[#0284c7] text-white shadow-[0_0_12px_rgba(6,182,212,0.35)]",
+    pill: "bg-[rgba(6,182,212,0.15)] text-[#22d3ee]",
+    hint: "text-[#64748b]",
+  },
+  idle: {
+    row: "bg-[rgba(255,255,255,0.03)] ring-1 ring-inset ring-[rgba(148,163,184,0.14)] hover:bg-[rgba(255,255,255,0.055)]",
+    badge: "bg-[rgba(148,163,184,0.1)] text-[#64748b]",
+    pill: "bg-[rgba(148,163,184,0.12)] text-[#94a3b8]",
+    hint: "text-[#64748b]",
+  },
+  warning: {
+    row: "bg-[rgba(245,158,11,0.07)] ring-1 ring-inset ring-[rgba(245,158,11,0.22)] hover:bg-[rgba(245,158,11,0.1)]",
+    badge: "bg-[rgba(245,158,11,0.14)] text-[#fbbf24]",
+    pill: "bg-[rgba(245,158,11,0.16)] text-[#fbbf24]",
+    hint: "text-[rgba(251,191,36,0.8)]",
+  },
+  danger: {
+    row: "bg-[rgba(244,63,94,0.07)] ring-1 ring-inset ring-[rgba(244,63,94,0.22)] hover:bg-[rgba(244,63,94,0.1)]",
+    badge: "bg-[rgba(244,63,94,0.14)] text-[#fb7185]",
+    pill: "bg-[rgba(244,63,94,0.16)] text-[#fb7185]",
+    hint: "text-[#fda4af]",
+  },
+};
 
 export default function NotificationCenter() { // NOSONAR — large component with bell + dropdown + history hook + push-subscription wiring; extraction would require prop-drilling many state hooks
   const { lang } = useTranslation();
@@ -898,11 +1025,74 @@ export default function NotificationCenter() { // NOSONAR — large component wi
 
   // ── Web Push (closed-tab system notifications) ──
   const push = usePushNotification();
+  const { showNotification } = useNotification();
+  // Show the row whenever push is supported & enabled — EVEN when the browser
+  // already denied permission: a blocked state with the manual fix is far more
+  // helpful than a mysteriously missing toggle (the old behavior hid it).
   const showPushToggle =
-    push.isSupported &&
-    push.isPushEnabled &&
-    typeof Notification !== "undefined" &&
-    Notification.permission !== "denied";
+    push.isSupported && push.isPushEnabled && typeof Notification !== "undefined";
+  const pushDescriptor = showPushToggle
+    ? describePushState(
+        {
+          status: push.status,
+          isBusy: push.isBusy,
+          isSubscribed: push.isSubscribed,
+          lastError: push.lastError,
+        },
+        lang,
+      )
+    : null;
+
+  const handlePushToggle = useCallback(() => {
+    if (push.isBusy) return;
+    if (push.isSubscribed) {
+      void push.unsubscribe().then((res) => {
+        if (res.ok) {
+          showNotification({
+            type: "info",
+            title: isRTL ? "تم إيقاف إشعارات المتصفح" : "Browser notifications turned off",
+            message: isRTL
+              ? "مش هيوصلك تنبيه والموقع مقفول — تقدر تفعّلها تاني في أي وقت"
+              : "You won't get system alerts while the site is closed — re-enable anytime",
+          });
+        } else {
+          showNotification({
+            type: "info",
+            title: isRTL ? "تعذّر إيقاف الإشعارات" : "Couldn't turn off notifications",
+            message: isRTL ? "جرب تاني من فضلك" : "Please try again",
+          });
+        }
+      });
+      return;
+    }
+    void push.subscribe().then((res) => {
+      if (res.ok) {
+        showNotification({
+          type: "success",
+          title: isRTL ? "تم تفعيل إشعارات المتصفح ✓" : "Browser notifications enabled ✓",
+          message: isRTL
+            ? "هيوصلك كل جديد حتى والموقع مقفول"
+            : "You'll hear from us even with the site closed",
+        });
+      } else if (res.outcome === "denied") {
+        showNotification({
+          type: "info",
+          title: isRTL ? "المتصفح محتاج إذنك" : "Browser needs your permission",
+          message: isRTL
+            ? "من أيقونة القفل جنب رابط الموقع اسمح بالإشعارات ثم جرّب تاني"
+            : "Tap the lock icon next to the address bar, allow Notifications, then try again",
+        });
+      } else {
+        showNotification({
+          type: "info",
+          title: isRTL ? "تعذّر تفعيل الإشعارات" : "Couldn't enable notifications",
+          message: isRTL
+            ? "جرب تاني — ولو استمرت المشكلة اتأكد من اتصالك بالإنترنت"
+            : "Please try again — if it persists, check your connection",
+        });
+      }
+    });
+  }, [push, isRTL, showNotification]);
 
   // ── Notification click opened/focused this tab → navigate to the target ──
   useEffect(() => {
@@ -1099,49 +1289,79 @@ export default function NotificationCenter() { // NOSONAR — large component wi
         </div>
 
         {/* ── Web Push toggle: system notifications with the site closed ── */}
-        {showPushToggle && (
+        {showPushToggle && pushDescriptor && (
           <div className="border-b border-[#1e2d3d] px-2.5 py-2.5">
-            <div className="flex items-center gap-3 rounded-xl bg-[rgba(6,182,212,0.05)] px-3 py-2.5 ring-1 ring-inset ring-[rgba(6,182,212,0.1)]">
-              <div
-                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-                  push.isSubscribed
-                    ? "bg-[rgba(6,182,212,0.15)] text-[#06b6d4]"
-                    : "bg-[rgba(148,163,184,0.08)] text-[#64748b]"
-                }`}
+            {/* One full-row switch (WAI-ARIA `switch`) — the whole card is the
+                tap target, not just the tiny track. Tone reflects the state:
+                active=on/working, idle=off, warning=permission blocked by the
+                browser, danger=operation failed. Every state is visible — no
+                silent failures. */}
+            <button
+              type="button"
+              role="switch"
+              aria-checked={push.isSubscribed}
+              aria-label={isRTL ? "تفعيل إشعارات المتصفح" : "Enable browser notifications"}
+              disabled={push.isBusy}
+              onClick={handlePushToggle}
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-start transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#06b6d4] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d1420] disabled:cursor-wait active:scale-[0.99] ${PUSH_ROW_TONES[pushDescriptor.tone].row}`}
+            >
+              <span
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-300 ${PUSH_ROW_TONES[pushDescriptor.tone].badge}`}
               >
-                <BellRing className="h-4 w-4" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-[12.5px] font-semibold leading-snug text-[#e8f0fe]">
-                  {isRTL ? "إشعارات المتصفح" : "Browser notifications"}
-                </p>
-                <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-[#64748b]">
-                  {pushToggleHint(isRTL, push.isSubscribed)}
-                </p>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={push.isSubscribed}
-                aria-label={isRTL ? "تفعيل إشعارات المتصفح" : "Enable browser notifications"}
-                disabled={push.isBusy}
-                onClick={() => (push.isSubscribed ? void push.unsubscribe() : void push.subscribe())}
-                className={`relative h-6 w-11 shrink-0 rounded-full border transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#06b6d4] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d1420] disabled:opacity-50 ${
-                  push.isSubscribed
-                    ? "border-transparent bg-gradient-to-r from-[#06b6d4] to-[#0284c7] shadow-[0_0_10px_rgba(6,182,212,0.35)]"
-                    : "border-[#2d3f52] bg-[#1a2736]"
-                }`}
-              >
-                {/* Knob travels on the physical `left` axis in BOTH directions
-                    so the slide animates smoothly in LTR and RTL alike; the
-                    start/end sides mirror manually because the panel sets `dir`. */}
+                {pushDescriptor.tone === "warning" ? (
+                  <BellOff className="h-4 w-4" />
+                ) : pushDescriptor.tone === "danger" ? (
+                  <TriangleAlert className="h-4 w-4" />
+                ) : (
+                  <BellRing className="h-4 w-4" />
+                )}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-1.5">
+                  <span className="text-[13px] font-bold text-[#e8f0fe]">
+                    {isRTL ? "إشعارات المتصفح" : "Browser notifications"}
+                  </span>
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 text-[9.5px] font-bold leading-none ${PUSH_ROW_TONES[pushDescriptor.tone].pill}`}
+                  >
+                    {pushDescriptor.pill}
+                  </span>
+                </span>
                 <span
-                  className="absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow-md transition-all duration-200"
-                  style={{ left: push.isSubscribed ? (isRTL ? 3 : 21) : isRTL ? 21 : 3 }}
-                  aria-hidden="true"
-                />
-              </button>
-            </div>
+                  className={`mt-1 line-clamp-2 block text-[11px] leading-snug transition-colors duration-300 ${PUSH_ROW_TONES[pushDescriptor.tone].hint}`}
+                >
+                  {pushDescriptor.hint}
+                </span>
+              </span>
+              {/* Switch — track 48×28, knob 24; the knob travels on the physical
+                  `left` axis in BOTH directions so the slide animates smoothly
+                  in LTR and RTL alike (the panel sets `dir`). */}
+              <span
+                aria-hidden="true"
+                className={`relative h-7 w-12 shrink-0 rounded-full transition-colors duration-300 ${
+                  pushDescriptor.switchOn
+                    ? "bg-gradient-to-r from-[#06b6d4] to-[#0284c7] shadow-[0_0_14px_rgba(6,182,212,0.4)]"
+                    : "bg-[#22303f] ring-1 ring-inset ring-[#33475c]"
+                } ${push.isBusy ? "opacity-80" : ""}`}
+              >
+                {push.isBusy ? (
+                  <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                    <Loader2 className="h-4 w-4 animate-spin text-[#e8f0fe]" />
+                  </span>
+                ) : (
+                  <span
+                    className="absolute top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full bg-white shadow-[0_2px_6px_rgba(0,0,0,0.45)] transition-all duration-300"
+                    style={{
+                      left: pushDescriptor.switchOn ? (isRTL ? 2 : 22) : isRTL ? 22 : 2,
+                    }}
+                  >
+                    {pushDescriptor.switchOn && (
+                      <Check className="h-3.5 w-3.5 text-[#0284c7]" strokeWidth={3} />
+                    )}
+                  </span>
+                )}
+              </span>
+            </button>
           </div>
         )}
 
