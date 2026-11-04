@@ -13,6 +13,7 @@ import crypto from "node:crypto";
 import { generateR2PresignedUrl } from "./r2";
 import { env } from "./env";
 import { logger } from "./logger.js";
+import { buildYouTubeEmbedUrl, extractYouTubeId, isYouTubeVideoRef } from "../../src/lib/youtube-url";
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 const VIDEO_URL_EXPIRY_SECONDS = 1800; // 30 minutes
@@ -44,6 +45,12 @@ interface VideoAccessResult {
   expiresAt: string;
   /** Watermark token to identify leaker */
   watermarkToken: string;
+  /** Source kind driving the frontend player branch: "youtube" renders the
+   *  embedded YouTube player (playback streams from YouTube — nothing from
+   *  our server); "r2" is the legacy self-hosted <video> path. */
+  kind: "youtube" | "r2";
+  /** 11-char YouTube video id when kind === "youtube", else null. */
+  youtubeId: string | null;
 }
 
 // ─── Main Function ───────────────────────────────────────────────────────────
@@ -62,9 +69,48 @@ export async function getSecureVideoUrl(options: VideoAccessOptions): Promise<Vi
     hlsUrl: null as string | null,
     expiresAt: new Date(Date.now() + VIDEO_URL_EXPIRY_SECONDS * 1000).toISOString(),
     watermarkToken: generateWatermarkToken(userId, username, lessonId),
+    kind: "r2" as const,
+    youtubeId: null as string | null,
   };
 
   if (!videoUrl) return defaultResult;
+
+  // ─── Strategy 0: YouTube playlist video — ZERO bytes from our server ───
+  // The lesson stores a YouTube link (watch/shorts/youtu.be/embed or a bare
+  // id). Playback is handed to the embedded YouTube player on the client:
+  // no R2 presigning, no proxying, no storage cost. The returned videoUrl is
+  // the canonical watch link (kept for display/fallback) while youtubeId
+  // drives the embed. MUST branch BEFORE any R2 call — presigning a YouTube
+  // URL used to throw and fail-closed with a misleading 503.
+
+  if (isYouTubeVideoRef(videoUrl)) {
+    const youtubeId = extractYouTubeId(videoUrl) ?? "";
+    const origin = env.FRONTEND_URL;
+    let embedUrl: string;
+    try {
+      embedUrl = buildYouTubeEmbedUrl(youtubeId, origin);
+    } catch (err) {
+      // extractYouTubeId is the guard, so this is unreachable in practice —
+      // but never let a broken link fail the whole procedure: log and surface
+      // the legacy error path.
+      logger.error("[VideoProtection] YouTube embed build failed", {
+        lessonId,
+        videoUrl: videoUrl.slice(0, 200),
+        error: err instanceof Error ? err.message : String(err),
+      });
+      const trpcError = new Error("Video temporarily unavailable — please retry in a moment.") as Error & { status?: number };
+      trpcError.status = 503;
+      throw trpcError;
+    }
+    return {
+      videoUrl: embedUrl,
+      hlsUrl: null,
+      expiresAt: new Date(Date.now() + VIDEO_URL_EXPIRY_SECONDS * 1000).toISOString(),
+      watermarkToken: generateWatermarkToken(userId, username, lessonId),
+      kind: "youtube" as const,
+      youtubeId,
+    };
+  }
 
   // Check if the videoUrl already points to an HLS manifest (.m3u8)
   const isHlsSource = videoUrl.endsWith(".m3u8");
@@ -84,6 +130,8 @@ export async function getSecureVideoUrl(options: VideoAccessOptions): Promise<Vi
         hlsUrl: presignedUrl,
         expiresAt: new Date(Date.now() + VIDEO_URL_EXPIRY_SECONDS * 1000).toISOString(),
         watermarkToken: generateWatermarkToken(userId, username, lessonId),
+        kind: "r2" as const,
+        youtubeId: null,
       };
     }
 
@@ -109,6 +157,8 @@ export async function getSecureVideoUrl(options: VideoAccessOptions): Promise<Vi
       hlsUrl,
       expiresAt: new Date(Date.now() + VIDEO_URL_EXPIRY_SECONDS * 1000).toISOString(),
       watermarkToken: generateWatermarkToken(userId, username, lessonId),
+      kind: "r2" as const,
+      youtubeId: null,
     };
   } catch (err) {
     // ✅ SECURITY FIX (post-audit): FAIL CLOSED. The previous fallback returned

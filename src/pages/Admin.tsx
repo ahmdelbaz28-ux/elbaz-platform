@@ -9,6 +9,7 @@ import {
   LayoutDashboard, Users, BookOpen, Headphones, DollarSign, Phone, FileText, Palette, Tag, Megaphone, Bot, Bell,
   Plus, Pencil, Trash2, Save, Eye, Zap, TrendingUp, CheckCircle, ChevronLeft, ChevronRight,
   LogOut, ArrowUpRight, Shield, PlayCircle, Newspaper, X, Menu, MessageSquareText, ThumbsUp, ThumbsDown, Download,
+  Youtube, Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,10 +23,73 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { toast } from "sonner";
 import { AiProvidersPanel } from "@/components/admin/AiProvidersPanel";
 import AdminNotificationPanel from "@/components/AdminNotificationPanel";
+import { extractYouTubeId } from "@/lib/youtube-url";
 import { bilingual } from "@/lib/i18n";
 
 interface SettingItem { id?: string; key: string; value: string; section: string; type?: string; }
 interface ThemeItem { id: string; name: string; primaryColor: string; secondaryColor: string; accentColor: string; bgColor: string; textColor: string; cardBgColor: string; borderColor: string; isActive: boolean; createdAt: string; }
+
+/** Rows of the channel's YouTube playlist for the lesson-import dialog. */
+function PlaylistImportList({ isRTL, onPick }: { readonly isRTL: boolean; readonly onPick: (watchUrl: string) => void }) {
+  const { data, isLoading, isError } = trpc.admin.youtubePlaylistVideos.useQuery(undefined, {
+    staleTime: 10 * 60 * 1000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-10 text-text-muted">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        <span className="text-sm">{isRTL ? "جاري جلب البلايليست..." : "Fetching the playlist..."}</span>
+      </div>
+    );
+  }
+
+  if (isError || data?.error) {
+    return (
+      <p className="py-10 text-center text-sm text-destructive">
+        {isRTL ? "تعذّر جلب البلايليست — جرّب تاني بعد شوية" : "Couldn't fetch the playlist — try again shortly"}
+      </p>
+    );
+  }
+
+  const items = data?.items ?? [];
+  if (items.length === 0) {
+    return (
+      <p className="py-10 text-center text-sm text-text-muted">
+        {isRTL ? "البلايليست فاضية أو مش متاحة حالياً" : "The playlist is empty or currently unavailable"}
+      </p>
+    );
+  }
+
+  return (
+    <div className="max-h-[46vh] space-y-1.5 overflow-y-auto pr-1">
+      {items.map((item: { videoId: string; title: string; watchUrl: string; thumbnailUrl: string }) => (
+        <button
+          key={item.videoId}
+          type="button"
+          dir={isRTL ? "rtl" : "ltr"}
+          onClick={() => onPick(item.watchUrl)}
+          className="flex w-full items-center gap-3 rounded-lg border border-border bg-background p-2 text-start transition-colors hover:bg-[rgba(6,182,212,0.06)]"
+        >
+          <img
+            src={item.thumbnailUrl}
+            alt=""
+            loading="lazy"
+            className="h-11 w-20 shrink-0 rounded-md object-cover"
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }}
+          />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[13px] font-medium text-foreground">{item.title}</span>
+            <span dir="ltr" className="block truncate font-mono text-[10px] text-text-muted">{item.videoId}</span>
+          </span>
+          <span className="shrink-0 rounded-md bg-[rgba(6,182,212,0.12)] px-2 py-1 text-[10px] font-bold text-[#22d3ee]">
+            {isRTL ? "اختيار" : "Pick"}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
 interface PromoItem { id: string; code: string; discount: number; type: "percentage" | "fixed"; maxUses: number; usedCount: number; status: "active" | "expired" | "used_up"; validFrom: string; validUntil: string; createdAt: string; }
 interface PromotionItem { id: string; titleEn: string; titleAr: string; subtitleEn: string; subtitleAr: string; discountText: string; ctaTextEn: string; ctaTextAr: string; ctaUrl: string; startDate: string; endDate: string; bgColor: string; textColor: string; buttonColor: string; position: "top" | "bottom"; showCountdown: boolean; isActive: boolean; createdAt: string; }
 interface CourseItem { id: number; slug: string; titleEn: string; titleAr: string; descriptionEn: string | null; descriptionAr: string | null; shortDescEn?: string | null; shortDescAr?: string | null; thumbnailUrl: string | null; price: number; currency: string; isFeatured: boolean; isPublished: boolean; level: string; category: number | null; studentCount: number; createdAt: Date; updatedAt: Date; }
@@ -214,6 +278,7 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
   const [showLessonForm, setShowLessonForm] = useState(false);
   const [editingLesson, setEditingLesson] = useState<LessonItem | null>(null);
   const [lessonForm, setLessonForm] = useState({ titleEn: "", titleAr: "", descriptionEn: "", descriptionAr: "", videoUrl: "", durationMinutes: 30, isFree: false, isPublished: true });
+  const [showPlaylistImport, setShowPlaylistImport] = useState(false);
 
   const openLessonForm = (lesson?: LessonItem) => {
     if (lesson) {
@@ -1397,7 +1462,7 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
         <DialogContent className="bg-[#0d1420] border-border max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-foreground">{isRTL ? `دروس: ${lessonsCourse?.titleAr ?? ""}` : `Lessons: ${lessonsCourse?.titleEn ?? ""}`}</DialogTitle>
-            <DialogDescription className="text-text-muted">{(lessonsData?.items as LessonItem[] | undefined)?.length ?? 0} {isRTL ? "درس — أضف رابط الفيديو (R2 أو URL خارجي) لكل درس" : "lessons — add a video URL (R2 key or external URL) per lesson"}</DialogDescription>
+            <DialogDescription className="text-text-muted">{(lessonsData?.items as LessonItem[] | undefined)?.length ?? 0} {isRTL ? "درس — الفيديو رابط يوتيوب من البلايليست (يُبث جوه الموقع) أو مفتاح R2" : "lessons — each video is a YouTube playlist link (streams in-site) or an R2 key"}</DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-2">
             {((lessonsData?.items as LessonItem[] | undefined) ?? []).length === 0 && (
@@ -1429,7 +1494,7 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
         <DialogContent className="bg-[#0d1420] border-border max-w-xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-foreground">{editingLesson ? (isRTL ? "تعديل الدرس" : "Edit Lesson") : (isRTL ? "درس جديد" : "New Lesson")}</DialogTitle>
-            <DialogDescription className="text-text-muted">{isRTL ? "رابط الفيديو: مفتاح R2 (مثل etap/lesson01.mp4) أو رابط مباشر" : "Video URL: an R2 object key (e.g. etap/lesson01.mp4) or a direct URL"}</DialogDescription>
+            <DialogDescription className="text-text-muted">{isRTL ? "رابط يوتيوب من بلايليست القناة (يُبث جوه الموقع) أو مفتاح R2 مثل etap/lesson01.mp4" : "A YouTube playlist link (streams in-site) or an R2 key like etap/lesson01.mp4"}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 py-2">
             <div className="grid grid-cols-2 gap-3">
@@ -1440,8 +1505,29 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
               <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "الوصف (إنجليزي)" : "Description (EN)"}</Label><Textarea rows={2} value={lessonForm.descriptionEn} onChange={(e) => setLessonForm((f) => ({ ...f, descriptionEn: e.target.value }))} className="border-border bg-background text-foreground" /></div>
               <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "الوصف (عربي)" : "Description (AR)"}</Label><Textarea rows={2} value={lessonForm.descriptionAr} onChange={(e) => setLessonForm((f) => ({ ...f, descriptionAr: e.target.value }))} dir="rtl" className="border-border bg-background text-foreground" /></div>
             </div>
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-text-muted">{isRTL ? "رابط الفيديو" : "Video URL"}</Label>
+                <button
+                  type="button"
+                  onClick={() => setShowPlaylistImport(true)}
+                  className="inline-flex items-center gap-1 rounded-md bg-[rgba(255,59,48,0.08)] px-2 py-1 text-[11px] font-semibold text-[#ff5f57] transition-colors hover:bg-[rgba(255,59,48,0.16)]"
+                >
+                  <Youtube className="h-3.5 w-3.5" />
+                  {isRTL ? "استيراد من بلايليست اليوتيوب" : "Import from YouTube playlist"}
+                </button>
+              </div>
+              <Input value={lessonForm.videoUrl} onChange={(e) => setLessonForm((f) => ({ ...f, videoUrl: e.target.value }))} placeholder={isRTL ? "https://www.youtube.com/watch?v=... أو etap/lesson01.mp4" : "https://www.youtube.com/watch?v=... or etap/lesson01.mp4"} dir={extractYouTubeId(lessonForm.videoUrl) ? "ltr" : undefined} className="border-border bg-background text-foreground" />
+              {extractYouTubeId(lessonForm.videoUrl) ? (
+                <p className="flex items-center gap-1 text-[11px] font-medium text-[#22d3ee]">
+                  <Youtube className="h-3 w-3" />
+                  {isRTL ? "يوتيوب ✓ — هيُبث جوه الموقع من البلايليست بدون تحميل على السيرفر" : "YouTube ✓ — streams inside the site from the playlist, nothing hosted here"}
+                </p>
+              ) : lessonForm.videoUrl.trim() ? (
+                <p className="text-[11px] text-text-muted">{isRTL ? "رابط مباشر / مفتاح R2 — هيُبث من مشغل المنصة المحمي" : "Direct link / R2 key — plays in the protected self-hosted player"}</p>
+              ) : null}
+            </div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "رابط الفيديو" : "Video URL"}</Label><Input value={lessonForm.videoUrl} onChange={(e) => setLessonForm((f) => ({ ...f, videoUrl: e.target.value }))} placeholder="etap/lesson01.mp4" className="border-border bg-background text-foreground" /></div>
               <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "المدة (دقائق)" : "Duration (min)"}</Label><Input type="number" min={0} max={1440} value={lessonForm.durationMinutes} onChange={(e) => setLessonForm((f) => ({ ...f, durationMinutes: Number(e.target.value) }))} className="border-border bg-background text-foreground" /></div>
             </div>
             <div className="flex items-center gap-6 pt-1">
@@ -1452,6 +1538,37 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowLessonForm(false)} className="border-border text-text-muted">{isRTL ? "إلغاء" : "Cancel"}</Button>
             <Button onClick={submitLessonForm} disabled={createLesson.isPending || updateLesson.isPending} className="bg-[#06b6d4] text-background">{isRTL ? "حفظ" : "Save"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══════════════ YOUTUBE PLAYLIST IMPORT DIALOG ═══════════════ */}
+      {/* One-click lesson → playlist-video binding: lists the channel's
+          playlist (the same multi-source pipeline the notification watcher
+          uses), and fills the lesson form with the chosen watch link. */}
+      <Dialog open={showPlaylistImport} onOpenChange={setShowPlaylistImport}>
+        <DialogContent className="bg-[#0d1420] border-border max-w-xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-foreground">
+              <Youtube className="h-4 w-4 text-[#ff5f57]" />
+              {isRTL ? "فيديوهات بلايليست القناة" : "Channel playlist videos"}
+            </DialogTitle>
+            <DialogDescription className="text-text-muted">
+              {isRTL
+                ? "اختار الفيديو ويتملّى رابطه في خانة الدرس — التشغيل هيبقى جوه الموقع من غير أي ثقل على السيرفر"
+                : "Pick a video and its link fills the lesson form — playback happens inside the site with zero server load"}
+            </DialogDescription>
+          </DialogHeader>
+          <PlaylistImportList
+            isRTL={isRTL}
+            onPick={(watchUrl) => {
+              setLessonForm((f) => ({ ...f, videoUrl: watchUrl }));
+              setShowPlaylistImport(false);
+              toast.success(isRTL ? "تم اختيار الفيديو — اضغط حفظ" : "Video selected — press Save");
+            }}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPlaylistImport(false)} className="border-border text-text-muted">{isRTL ? "إغلاق" : "Close"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -216,6 +216,30 @@ function watchUrl(videoId: string): string {
   return `https://www.youtube.com/watch?v=${videoId}&list=${PLAYLIST_ID}`;
 }
 
+/** The playlist id the watcher follows (exposed for the admin import dialog). */
+export function getPlaylistId(): string {
+  return PLAYLIST_ID;
+}
+
+/**
+ * Fetch the channel playlist for the ADMIN LESSON-IMPORT dialog.
+ * Reuses the watcher's robust multi-source pipeline (InnerTube → HTML → RSS,
+ * merged by union) so the dialog shows every video even when one source is
+ * throttled. Read-only: it never touches watcher state or notifications.
+ */
+export async function fetchPlaylistVideosForImport(): Promise<Array<{ videoId: string; title: string; watchUrl: string; thumbnailUrl: string }>> {
+  const { buildYouTubeThumbnailUrl } = await import("../../src/lib/youtube-url");
+  const videos = await fetchAllSources();
+  return videos
+    .filter((v) => v.videoId)
+    .map((v) => ({
+      videoId: v.videoId,
+      title: v.title,
+      watchUrl: watchUrl(v.videoId),
+      thumbnailUrl: buildYouTubeThumbnailUrl(v.videoId),
+    }));
+}
+
 /**
  * One detection pass. Returns the episodes that were announced this tick.
  *

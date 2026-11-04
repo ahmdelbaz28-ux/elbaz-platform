@@ -22,7 +22,6 @@ function buildIdPlugin(): Plugin {
 
   return {
     name: 'elbaz-build-id',
-    apply: 'build',
 
     buildStart() {
       // Generate a unique build ID: timestamp (base36) + 8 random hex chars
@@ -32,9 +31,17 @@ function buildIdPlugin(): Plugin {
       console.log(`[Build ID] ${buildId}`)
     },
 
-    // Replace %%CACHE_BUST%% in index.html to bust Cloudflare/CDN caches
+    // Replace %%CACHE_BUST%% in index.html to bust Cloudflare/CDN caches.
+    // 🐛 DEV FIX: the whole plugin used to be gated by apply:'build', so the
+    // dev server served the RAW %%CACHE_BUST%% placeholder in <script src> —
+    // every module import then carried a bogus query and vite served the
+    // UNTRANSPILLED TypeScript ("Unexpected identifier 'as'" → white page).
+    // Production was unaffected; local UI testing (and `npm run dev`) was
+    // broken. The html hook must run in BOTH modes — dev falls back to a
+    // per-session id because buildStart may not have generated one yet.
     transformIndexHtml(html: string) {
-      return html.replaceAll('%%CACHE_BUST%%', buildId)
+      const id = buildId ?? `dev-${Date.now().toString(36)}`
+      return html.replaceAll('%%CACHE_BUST%%', id)
     },
 
     async writeBundle() {

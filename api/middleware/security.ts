@@ -42,7 +42,7 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
 
     const cspDirectives = [
       "default-src 'self'",
-      `script-src 'self' 'nonce-${nonce}' https://cdn.jsdelivr.net https://www.clarity.ms https://accounts.google.com https://oauth2.googleapis.com`,
+      `script-src 'self' 'nonce-${nonce}' https://cdn.jsdelivr.net https://www.clarity.ms https://accounts.google.com https://oauth2.googleapis.com https://www.youtube.com https://s.ytimg.com`,
       "worker-src 'self'",
       "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
@@ -53,6 +53,12 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
       // were CSP-blocked: the player rendered but the browser refused to
       // fetch ("no supported sources") in production too.
       "media-src 'self' blob: https:",
+      // 🎬 YOUTUBE-BASED LESSON PLAYBACK: lessons stream from the channel's
+      // YouTube playlist INSIDE the site's own player screen — nothing is
+      // hosted on our server. frame-src allows the embedded player, the
+      // script hosts feed the IFrame API (www.youtube.com/iframe_api →
+      // s.ytimg.com widget bundle). Everything else stays locked down.
+      "frame-src 'self' https://www.youtube-nocookie.com https://www.youtube.com",
       "connect-src 'self' https://api.openrouter.ai https://*.aivencloud.com https://www.clarity.ms https://www.googleapis.com https://accounts.google.com",
       "frame-ancestors 'none'",
       "base-uri 'self'",
@@ -79,7 +85,7 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
     // nonce-based CSP but prevents the site from breaking on the custom domain.
     const cspDirectives = [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://www.clarity.ms https://accounts.google.com https://oauth2.googleapis.com",
+      "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://www.clarity.ms https://accounts.google.com https://oauth2.googleapis.com https://www.youtube.com https://s.ytimg.com",
       "worker-src 'self'",
       "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
@@ -90,6 +96,9 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
       // were CSP-blocked: the player rendered but the browser refused to
       // fetch ("no supported sources") in production too.
       "media-src 'self' blob: https:",
+      // 🎬 Same YouTube allowances for the CDN-cached fallback CSP (see the
+      // nonce block above for the full rationale).
+      "frame-src 'self' https://www.youtube-nocookie.com https://www.youtube.com",
       "connect-src 'self' https://api.openrouter.ai https://*.aivencloud.com https://www.clarity.ms https://www.googleapis.com https://accounts.google.com",
       "frame-ancestors 'none'",
       "base-uri 'self'",

@@ -2,6 +2,7 @@ import { useParams, useNavigate, useSearchParams, Link } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useAuth } from "@/hooks/useAuth";
 import { trpc } from "@/providers/trpc";
+import YouTubeLessonPlayer from "@/components/YouTubeLessonPlayer";
 import { useState, useRef, useEffect, useCallback, forwardRef, lazy, Suspense } from 'react';
 import { useWatchTracker } from "@/hooks/useWatchTracker";
 import { trackLearning, trackPlatform, trackEvent } from "@/lib/clarity";
@@ -943,6 +944,11 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
     return isEnrolled;
   };
 
+  // 🎬 YOUTUBE-HYBRID PLAYBACK: when the lesson's videoUrl is a YouTube link,
+  // the API returns kind="youtube" + the 11-char id, and the video streams
+  // from the channel's playlist INSIDE the site's player screen — zero bytes
+  // from our server. Legacy R2 lessons keep the self-hosted player unchanged.
+  const isYouTubeLesson = videoData?.kind === "youtube" && !!videoData?.youtubeId;
   const isVideoReady = activeLesson && !!activeLessonData && canAccessLesson(activeLessonData) && videoData?.videoUrl;
 
   // Payment method icons
@@ -1083,7 +1089,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                     </div>
                   )}
 
-                  {isVideoReady && (
+                  {isVideoReady && !isYouTubeLesson && (
                     <ProtectedVideoPlayer
                       videoUrl={videoData.videoUrl}
                       hlsUrl={videoData.hlsUrl}
@@ -1093,6 +1099,19 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                       courseId={course?.id}
                       isTrackingEnabled={isAuthenticated}
                       lang={lang}
+                      onLessonCompleted={() => { void refetchEnrollment(); }}
+                    />
+                  )}
+
+                  {isVideoReady && isYouTubeLesson && (
+                    <YouTubeLessonPlayer
+                      key={videoData.youtubeId!}
+                      videoId={videoData.youtubeId!}
+                      lessonId={activeLesson || undefined}
+                      courseId={course?.id}
+                      lessonTitle={activeLessonTitle}
+                      lang={lang}
+                      isTrackingEnabled={isAuthenticated}
                       onLessonCompleted={() => { void refetchEnrollment(); }}
                     />
                   )}

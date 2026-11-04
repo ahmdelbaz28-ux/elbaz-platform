@@ -12,6 +12,7 @@ import { adminQuery, adminMutation } from "./middleware";
 import { getDb } from "./queries/connection";
 import { courses, lessons, enrollments, payments, wishlists, reviews } from "@db/schema";
 import { pushNotification } from "./lib/notification-broadcast.js";
+import { fetchPlaylistVideosForImport, getPlaylistId } from "./lib/youtube-watcher.js";
 
 export const adminCoursesProcedures = {
   listCourses: adminQuery
@@ -261,5 +262,26 @@ export const adminCoursesProcedures = {
       await db.delete(userNotes).where(eq(userNotes.lessonId, input.id));
       await db.delete(lessons).where(eq(lessons.id, input.id));
       return { success: true };
+    }),
+
+  // ─── YouTube playlist import (lesson videos stream from the playlist) ───
+  // The creator uploads lessons to the channel's YouTube playlist; the site
+  // embeds them instead of hosting video files. This admin-only query lists
+  // the playlist for the one-click "import into lesson" dialog. Playlist
+  // fetches are throttled-prone (the watcher polls the same sources every
+  // 15 min), so a failure surfaces as an honest empty result + error flag
+  // instead of a hanging dialog.
+  youtubePlaylistVideos: adminQuery
+    .query(async () => {
+      try {
+        const items = await fetchPlaylistVideosForImport();
+        return { playlistId: getPlaylistId(), items, error: null as string | null };
+      } catch (err) {
+        return {
+          playlistId: getPlaylistId(),
+          items: [],
+          error: err instanceof Error ? err.message : "Playlist fetch failed",
+        };
+      }
     }),
 };
