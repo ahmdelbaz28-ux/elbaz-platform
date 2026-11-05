@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, type CSSProperties } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -10,6 +10,7 @@ import {
   Plus, Pencil, Trash2, Save, Eye, Zap, TrendingUp, CheckCircle, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   LogOut, ArrowUpRight, Shield, PlayCircle, Newspaper, X, Menu, MessageSquareText, ThumbsUp, ThumbsDown, Download,
   Youtube, Loader2, ListVideo,
+  CalendarDays, ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -144,6 +145,17 @@ const SIDEBAR_ITEMS = [
   { id: "notifications", icon: Bell, labelEn: "Notifications", labelAr: "الإشعارات" },
 ];
 
+// Sidebar sections — grouped nav so 14 entries don't read as one flat wall.
+const SIDEBAR_GROUPS: { labelAr: string; labelEn: string; ids: string[] }[] = [
+  { labelAr: "عام", labelEn: "Overview", ids: ["dashboard"] },
+  { labelAr: "الإدارة", labelEn: "Management", ids: ["users", "courses", "articles", "tickets", "payments"] },
+  { labelAr: "المنصة", labelEn: "Platform", ids: ["ai", "chatbot", "contact", "cms", "themes"] },
+  { labelAr: "التسويق", labelEn: "Marketing", ids: ["promos", "promotions", "notifications"] },
+];
+
+// Avatar colour cycle for the dashboard's newest-users list.
+const AVATAR_COLORS = ["#06b6d4", "#10b981", "#f59e0b", "#8b5cf6", "#f43f5e", "#38bdf8"];
+
 export default function Admin() { // NOSONAR — admin dashboard with many CMS/CMS-settings panels, user management, and conditional rendering; extraction would require prop-drilling 15+ hooks
   const { isAuthenticated, isAdmin, isLoading } = useAuth();
   const { t, lang } = useTranslation();
@@ -186,7 +198,8 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
   const utils = trpc.useUtils();
   const { data: stats } = trpc.admin.stats.useQuery(undefined, { enabled: !!isAdmin });
   const { data: analytics } = trpc.admin.analytics.useQuery(undefined, { enabled: !!isAdmin && activeTab === "dashboard" });
-  const { data: usersData } = trpc.admin.users.useQuery(undefined, { enabled: !!isAdmin && activeTab === "users" });
+  // Also fetched on the dashboard tab — the overview's "Newest users" card reads it.
+  const { data: usersData } = trpc.admin.users.useQuery(undefined, { enabled: !!isAdmin && (activeTab === "users" || activeTab === "dashboard") });
   const { data: coursesData } = trpc.admin.listCourses.useQuery(undefined, { enabled: !!isAdmin && activeTab === "courses" });
   const { data: allTickets } = trpc.admin.tickets.useQuery(undefined, { enabled: !!isAdmin && activeTab === "tickets" });
   const [feedbackRatingFilter, setFeedbackRatingFilter] = useState<"all" | "up" | "down">("all");
@@ -194,7 +207,8 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
     { limit: 100, rating: feedbackRatingFilter },
     { enabled: !!isAdmin && activeTab === "chatbot" }
   );
-  const { data: paymentsData } = trpc.admin.payments.useQuery(undefined, { enabled: !!isAdmin && activeTab === "payments" });
+  // Also fetched on the dashboard tab — the overview's "Latest payments" card reads it.
+  const { data: paymentsData } = trpc.admin.payments.useQuery(undefined, { enabled: !!isAdmin && (activeTab === "payments" || activeTab === "dashboard") });
   const { data: manualPayDetails, refetch: refetchManualPayDetails } = trpc.payment.manualDetails.useQuery(undefined, { enabled: !!isAdmin && activeTab === "payments" });
   const { data: paymobStatusAdmin } = trpc.payment.isConfigured.useQuery(undefined, { enabled: !!isAdmin && activeTab === "payments" });
 
@@ -468,6 +482,28 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
   const isRTL = lang === "ar";
   const allUsers = usersData?.items ?? [];
   const allPayments = paymentsData?.items ?? [];
+
+  // ── Dashboard overview helpers ──
+  // "Now" is captured once per mount (impure reads must not run on every render).
+  const [nowMs] = useState(() => Date.now());
+  const hourNow = new Date(nowMs).getHours();
+  const dashGreeting = isRTL
+    ? (hourNow < 12 ? "صباح الخير" : hourNow < 17 ? "طاب يومك" : "مساء الخير")
+    : (hourNow < 12 ? "Good morning" : hourNow < 17 ? "Good afternoon" : "Good evening");
+  const todayLabel = new Intl.DateTimeFormat(isRTL ? "ar-EG" : "en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date(nowMs));
+  // 30-day revenue series: the API only returns days that had payments, so we
+  // rebuild a dense 30-day axis and map the sparse amounts onto it.
+  const revenueSeries = analytics?.revenueByDay ?? [];
+  const revenue30dTotal = revenueSeries.reduce((sum, r) => sum + r.amount, 0);
+  const chartMax = Math.max(...revenueSeries.map((r) => r.amount), 1);
+  const revenueMap = new Map(revenueSeries.map((r) => [r.date, r.amount]));
+  const DAY_MS = 86400000;
+  const chartDays = Array.from({ length: 30 }, (_, i) => {
+    const key = new Date(nowMs - (29 - i) * DAY_MS).toISOString().slice(0, 10);
+    const amount = revenueMap.get(key) ?? 0;
+    return { key, amount, pct: Math.max((amount / chartMax) * 100, 2), title: `${key} — ${Math.round(amount).toLocaleString("en-US")} EGP` };
+  });
+  const chartStartLabel = chartDays[0]?.key.slice(5) ?? "";
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const allCourses = (coursesData as any)?.items ?? [];
   const allArticles = (articlesData?.items ?? []) as unknown as ArticleRow[];
@@ -532,40 +568,69 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
         className="admin-sidebar fixed left-0 top-0 z-50 h-screen flex flex-col shadow-2xl rounded-r-2xl lg:rounded-none lg:shadow-none"
         aria-label={isRTL ? "قائمة لوحة التحكم" : "Admin navigation"}
       >
-        <div className="flex items-center justify-between p-4 border-b border-border">
-          {(!isDesktop || !sidebarCollapsed) && (
-            <div className="flex items-center gap-2">
-              <Shield className="h-5 w-5 text-accent-secondary" />
-              <span className="text-sm font-bold text-foreground">{t("adminPanel")}</span>
+        <div className="flex items-center justify-between gap-2 border-b border-border p-4">
+          {(!isDesktop || !sidebarCollapsed) ? (
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#06b6d4] to-[#0e7490] shadow-[0_0_18px_rgba(6,182,212,0.35)]">
+                <Shield className="h-4 w-4 text-white" />
+              </div>
+              <div className="leading-tight">
+                <p className="text-sm font-extrabold tracking-wide text-foreground">ELBAZ</p>
+                <p className="text-[11px] text-text-muted">{t("adminPanel")}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="mx-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#06b6d4] to-[#0e7490] shadow-[0_0_18px_rgba(6,182,212,0.35)]">
+              <Shield className="h-4 w-4 text-white" />
             </div>
           )}
           {isDesktop ? (
-            <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)} aria-label={sidebarCollapsed ? (isRTL ? "توسيع القائمة" : "Expand sidebar") : (isRTL ? "تصغير القائمة" : "Collapse sidebar")} className="p-1.5 rounded-lg hover:bg-[#1f2d44] text-text-muted transition-colors">
+            <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)} aria-label={sidebarCollapsed ? (isRTL ? "توسيع القائمة" : "Expand sidebar") : (isRTL ? "تصغير القائمة" : "Collapse sidebar")} className="rounded-lg p-1.5 hover:bg-[#1f2d44] text-text-muted transition-colors hover:text-foreground">
               {sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
             </button>
           ) : (
-            <button onClick={() => setMobileSidebarOpen(false)} aria-label={isRTL ? "إغلاق القائمة" : "Close menu"} className="p-1.5 rounded-lg hover:bg-[#1f2d44] text-text-muted transition-colors">
+            <button onClick={() => setMobileSidebarOpen(false)} aria-label={isRTL ? "إغلاق القائمة" : "Close menu"} className="rounded-lg p-1.5 hover:bg-[#1f2d44] text-text-muted transition-colors hover:text-foreground">
               <X className="h-4 w-4" />
             </button>
           )}
         </div>
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {SIDEBAR_ITEMS.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.id;
-            return (
-              <motion.button
-                key={item.id}
-                whileHover={{ x: 4 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => { setActiveTab(item.id); if (!isDesktop) setMobileSidebarOpen(false); }}
-                className={`admin-sidebar-item w-full ${isActive ? "active" : ""}`}
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                {(!isDesktop || !sidebarCollapsed) && <span>{isRTL ? item.labelAr : item.labelEn}</span>}
-              </motion.button>
-            );
-          })}
+        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+          {SIDEBAR_GROUPS.map((group) => (
+            <div key={group.labelEn}>
+              {(!isDesktop || !sidebarCollapsed) && (
+                <p className="admin-sidebar-label">{isRTL ? group.labelAr : group.labelEn}</p>
+              )}
+              {group.ids.map((id) => {
+                const item = SIDEBAR_ITEMS.find((i) => i.id === id);
+                if (!item) return null;
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                const expanded = !isDesktop || !sidebarCollapsed;
+                const openTickets = stats?.openTickets ?? 0;
+                return (
+                  <motion.button
+                    key={item.id}
+                    whileHover={{ x: 4 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => { setActiveTab(item.id); if (!isDesktop) setMobileSidebarOpen(false); }}
+                    title={isDesktop && sidebarCollapsed ? (isRTL ? item.labelAr : item.labelEn) : undefined}
+                    className={`admin-sidebar-item w-full ${isActive ? "active" : ""}`}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {expanded && <span>{isRTL ? item.labelAr : item.labelEn}</span>}
+                    {item.id === "tickets" && openTickets > 0 && expanded && (
+                      <span className="ms-auto rounded-full bg-[rgba(244,63,94,0.16)] px-1.5 py-0.5 text-[10px] font-bold text-[#fb7185]">
+                        {openTickets > 99 ? "99+" : openTickets}
+                      </span>
+                    )}
+                    {item.id === "tickets" && openTickets > 0 && !expanded && (
+                      <span className="admin-nav-badge">{openTickets > 9 ? "9+" : openTickets}</span>
+                    )}
+                  </motion.button>
+                );
+              })}
+            </div>
+          ))}
         </nav>
         <div className="p-3 border-t border-border">
           <button onClick={() => { navigate("/"); if (!isDesktop) setMobileSidebarOpen(false); }} className="admin-sidebar-item w-full text-destructive hover:bg-[rgba(244,63,94,0.08)]">
@@ -592,77 +657,204 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
             {(() => { const cur = SIDEBAR_ITEMS.find((i) => i.id === activeTab); return cur ? (isRTL ? cur.labelAr : cur.labelEn) : t("adminPanel"); })()}
           </span>
         </div>
-        <div className="p-6 lg:p-8">
+        <div className="mx-auto max-w-[1400px] p-4 sm:p-6 lg:p-8">
           <AnimatePresence mode="wait">
             <motion.div key={activeTab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
 
               {/* ═══════════════════ DASHBOARD ═══════════════════ */}
               {activeTab === "dashboard" && (
-                <div className="space-y-8">
-                  <div>
-                    <h1 className="text-2xl font-bold text-foreground">{isRTL ? "لوحة التحكم" : "Dashboard"}</h1>
-                    <p className="text-sm text-text-muted mt-1">{isRTL ? "نظرة عامة على أداء المنصة" : "Platform performance overview"}</p>
+                <div className="space-y-6">
+                  {/* Welcome hero band */}
+                  <div className="admin-hero-band px-5 py-6 sm:px-7">
+                    <div className="relative z-10 flex flex-wrap items-center justify-between gap-4">
+                      <div>
+                        <p className="text-xs font-semibold text-[#22d3ee]">{dashGreeting}</p>
+                        <h1 className="mt-1 text-2xl font-extrabold text-foreground sm:text-3xl">{isRTL ? "لوحة التحكم" : "Dashboard"}</h1>
+                        <p className="mt-1.5 text-sm text-text-muted">{isRTL ? "نظرة عامة على أداء المنصة" : "Platform performance overview"}</p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-[rgba(17,24,39,0.65)] px-3 py-1.5 text-xs text-text-muted">
+                          <CalendarDays className="h-3.5 w-3.5 text-[#22d3ee]" />
+                          {todayLabel}
+                        </span>
+                        <Button variant="outline" size="sm" onClick={() => navigate("/")} className="gap-1.5">
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          {isRTL ? "عرض الموقع" : "View site"}
+                        </Button>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Stats Grid */}
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
                     {[
-                      { icon: Users, label: t("totalUsers"), value: stats?.totalUsers || 0, color: "#06b6d4", change: analytics?.newUsers30d },
-                      { icon: BookOpen, label: t("totalCourses"), value: stats?.totalCourses || 0, color: "#22d3ee" },
-                      { icon: TrendingUp, label: t("totalEnrollments"), value: stats?.totalEnrollments || 0, color: "#10b981", change: analytics?.newEnrollments30d },
-                      { icon: DollarSign, label: t("totalRevenue"), value: `${stats?.totalRevenue || 0} EGP`, color: "#f59e0b", change: analytics?.revenue30d },
-                      { icon: Headphones, label: t("openTickets"), value: stats?.openTickets || 0, color: "#f43f5e" },
+                      { icon: Users, label: t("totalUsers"), value: (stats?.totalUsers || 0).toLocaleString(isRTL ? "ar-EG" : "en-US"), color: "#06b6d4", change: analytics?.newUsers30d },
+                      { icon: BookOpen, label: t("totalCourses"), value: (stats?.totalCourses || 0).toLocaleString(isRTL ? "ar-EG" : "en-US"), color: "#22d3ee" },
+                      { icon: TrendingUp, label: t("totalEnrollments"), value: (stats?.totalEnrollments || 0).toLocaleString(isRTL ? "ar-EG" : "en-US"), color: "#10b981", change: analytics?.newEnrollments30d },
+                      { icon: DollarSign, label: t("totalRevenue"), value: `${Math.round(stats?.totalRevenue || 0).toLocaleString("en-US")} EGP`, color: "#f59e0b", change: analytics?.revenue30d },
+                      { icon: Headphones, label: t("openTickets"), value: (stats?.openTickets || 0).toLocaleString(isRTL ? "ar-EG" : "en-US"), color: "#f43f5e" },
                     ].map((stat) => (
-                      <motion.div key={stat.label} whileHover={{ y: -4 }} className="admin-stat-card p-5">
+                      <motion.div
+                        key={stat.label}
+                        whileHover={{ y: -4 }}
+                        className="admin-stat-card p-5"
+                        style={{ "--stat-accent": stat.color, "--stat-accent-rgb": hexToRgb(stat.color) } as CSSProperties}
+                      >
                         <div className="flex items-center justify-between">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-lg" style={{ background: `rgba(${hexToRgb(stat.color)}, 0.1)` }}>
+                          <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: `rgba(${hexToRgb(stat.color)}, 0.12)` }}>
                             <stat.icon className="h-5 w-5" style={{ color: stat.color }} />
                           </div>
                           {stat.change !== undefined && stat.change > 0 && (
-                            <span className="flex items-center gap-0.5 text-xs font-medium text-emerald-500">
-                              <ArrowUpRight className="h-3 w-3" />+{stat.change}
+                            <span className="flex items-center gap-0.5 rounded-full bg-[rgba(16,185,129,0.12)] px-2 py-0.5 text-[11px] font-semibold text-emerald-500">
+                              <ArrowUpRight className="h-3 w-3" />+{Math.round(stat.change).toLocaleString("en-US")}
                             </span>
                           )}
                         </div>
-                        <p className="mt-3 text-2xl font-bold text-foreground">{stat.value}</p>
+                        <p className="mt-3 text-[1.65rem] font-extrabold leading-tight tracking-tight text-foreground">{stat.value}</p>
                         <p className="mt-1 text-xs text-text-muted">{stat.label}</p>
                       </motion.div>
                     ))}
                   </div>
 
-                  {/* Quick Actions */}
-                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    {[
-                      { icon: BookOpen, label: isRTL ? "إدارة الكورسات" : "Manage Courses", tab: "courses", color: "#06b6d4" },
-                      { icon: Users, label: isRTL ? "إدارة المستخدمين" : "Manage Users", tab: "users", color: "#10b981" },
-                      { icon: FileText, label: isRTL ? "تعديل المحتوى" : "Edit Content", tab: "cms", color: "#f59e0b" },
-                      { icon: Palette, label: isRTL ? "تخصيص الثيم" : "Customize Theme", tab: "themes", color: "#8b5cf6" },
-                    ].map((action) => (
-                      <motion.button key={action.tab} whileHover={{ y: -4, scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setActiveTab(action.tab)} className="rounded-xl border border-border bg-primary p-6 text-start hover:border-[rgba(6,182,212,0.3)] transition-all">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-lg mb-4" style={{ background: `rgba(${hexToRgb(action.color)}, 0.1)` }}>
-                          <action.icon className="h-6 w-6" style={{ color: action.color }} />
+                  {/* 30-day pulse: revenue chart + quick summary */}
+                  <div className="grid gap-4 lg:grid-cols-3">
+                    <div className="admin-panel-card p-5 sm:p-6 lg:col-span-2">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <h3 className="text-base font-semibold text-foreground">{isRTL ? "إيرادات آخر 30 يوماً" : "Revenue — last 30 days"}</h3>
+                          <p className="mt-0.5 text-xs text-text-muted">{isRTL ? "المدفوعات المكتملة يوم بيوم" : "Completed payments, day by day"}</p>
                         </div>
-                        <p className="text-sm font-semibold text-foreground">{action.label}</p>
-                      </motion.button>
-                    ))}
+                        <span className="rounded-full bg-[rgba(6,182,212,0.12)] px-3 py-1 text-xs font-bold text-[#22d3ee]">
+                          {Math.round(analytics?.revenue30d ?? 0).toLocaleString("en-US")} EGP
+                        </span>
+                      </div>
+                      <div className="relative mt-6">
+                        <div className="flex h-36 items-end gap-1" dir="ltr" aria-hidden="true">
+                          {chartDays.map((d) => (
+                            <div key={d.key} className="flex h-full flex-1 flex-col justify-end" title={d.title}>
+                              <div className="admin-chart-bar w-full" style={{ height: `${d.pct}%` }} />
+                            </div>
+                          ))}
+                        </div>
+                        {revenue30dTotal === 0 && (
+                          <p className="absolute inset-x-0 top-1/2 -translate-y-1/2 text-center text-xs text-text-faint">
+                            {isRTL ? "لا توجد مدفوعات مسجلة في آخر 30 يوماً" : "No recorded payments in the last 30 days"}
+                          </p>
+                        )}
+                      </div>
+                      <div className="mt-2 flex justify-between text-[10px] text-text-faint" dir="ltr">
+                        <span>{chartStartLabel}</span>
+                        <span>{isRTL ? "اليوم" : "Today"}</span>
+                      </div>
+                    </div>
+                    <div className="admin-panel-card p-5 sm:p-6">
+                      <h3 className="text-base font-semibold text-foreground">{isRTL ? "نبض آخر 30 يوماً" : "Last 30 days"}</h3>
+                      <div className="mt-4 space-y-2.5">
+                        {[
+                          { icon: Users, label: isRTL ? "مستخدمون جدد" : "New users", value: (analytics?.newUsers30d ?? 0).toLocaleString(isRTL ? "ar-EG" : "en-US"), color: "#06b6d4" },
+                          { icon: TrendingUp, label: isRTL ? "اشتراكات جديدة" : "New enrollments", value: (analytics?.newEnrollments30d ?? 0).toLocaleString(isRTL ? "ar-EG" : "en-US"), color: "#10b981" },
+                          { icon: DollarSign, label: isRTL ? "الإيرادات" : "Revenue", value: `${Math.round(analytics?.revenue30d ?? 0).toLocaleString("en-US")} EGP`, color: "#f59e0b" },
+                          { icon: PlayCircle, label: isRTL ? "إجمالي الدروس" : "Total lessons", value: (analytics?.totalLessons ?? 0).toLocaleString(isRTL ? "ar-EG" : "en-US"), color: "#8b5cf6" },
+                        ].map((row) => (
+                          <div key={row.label} className="flex items-center gap-3 rounded-xl border border-border/60 bg-[rgba(15,23,42,0.5)] px-3.5 py-2.5">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ background: `rgba(${hexToRgb(row.color)}, 0.12)` }}>
+                              <row.icon className="h-4 w-4" style={{ color: row.color }} />
+                            </div>
+                            <span className="flex-1 text-xs text-text-muted">{row.label}</span>
+                            <span className="text-sm font-bold text-foreground">{row.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Recent Activity */}
-                  <div className="rounded-xl border border-border bg-primary p-6">
-                    <h3 className="text-lg font-semibold text-foreground mb-4">{isRTL ? "النشاط الأخير" : "Recent Activity"}</h3>
-                    <div className="space-y-3">
-                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                      {allUsers.slice(0, 5).map((u: any) => (
-                        <div key={u.id} className="flex items-center gap-3 py-2 border-b border-border/50 last:border-0">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[rgba(6,182,212,0.1)] text-xs font-bold text-accent-secondary">{(u.name || u.username || "?").charAt(0).toUpperCase()}</div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm text-foreground truncate">{u.name || u.username}</p>
-                            <p className="text-xs text-text-faint">{u.email || "—"}</p>
+                  {/* Quick Actions */}
+                  <div>
+                    <h3 className="mb-3 text-sm font-semibold text-text-secondary">{isRTL ? "إجراءات سريعة" : "Quick actions"}</h3>
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                      {[
+                        { icon: BookOpen, label: isRTL ? "إدارة الكورسات" : "Manage Courses", tab: "courses", color: "#06b6d4" },
+                        { icon: Users, label: isRTL ? "إدارة المستخدمين" : "Manage Users", tab: "users", color: "#10b981" },
+                        { icon: Newspaper, label: isRTL ? "المقالات" : "Articles", tab: "articles", color: "#f59e0b" },
+                        { icon: Headphones, label: isRTL ? "التذاكر" : "Tickets", tab: "tickets", color: "#f43f5e" },
+                        { icon: FileText, label: isRTL ? "تعديل المحتوى" : "Edit Content", tab: "cms", color: "#8b5cf6" },
+                        { icon: Palette, label: isRTL ? "تخصيص الثيم" : "Customize Theme", tab: "themes", color: "#38bdf8" },
+                      ].map((action) => (
+                        <motion.button
+                          key={action.tab}
+                          whileHover={{ y: -3 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => setActiveTab(action.tab)}
+                          className="admin-quick-action group p-5 text-start"
+                          style={{ "--stat-accent-rgb": hexToRgb(action.color) } as CSSProperties}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex h-11 w-11 items-center justify-center rounded-xl" style={{ background: `rgba(${hexToRgb(action.color)}, 0.12)` }}>
+                              <action.icon className="h-5 w-5" style={{ color: action.color }} />
+                            </div>
+                            <ArrowUpRight className="qa-arrow h-4 w-4" style={{ color: action.color }} />
                           </div>
-                          <Badge variant="outline" className="border-border text-[10px] text-text-faint">{u.role}</Badge>
-                        </div>
+                          <p className="mt-4 text-sm font-semibold text-foreground">{action.label}</p>
+                        </motion.button>
                       ))}
-                      {allUsers.length === 0 && <p className="text-sm text-text-faint text-center py-8">{isRTL ? "لا يوجد نشاط بعد" : "No activity yet"}</p>}
+                    </div>
+                  </div>
+
+                  {/* Recent Activity: newest users + latest payments (real data) */}
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div className="admin-panel-card p-5 sm:p-6">
+                      <div className="mb-2 flex items-center justify-between">
+                        <h3 className="text-base font-semibold text-foreground">{isRTL ? "أحدث المستخدمين" : "Newest users"}</h3>
+                        <button onClick={() => setActiveTab("users")} className="text-xs font-medium text-[#22d3ee] hover:underline">
+                          {isRTL ? "عرض الكل" : "View all"}
+                        </button>
+                      </div>
+                      <div className="space-y-1">
+                        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                        {allUsers.slice(0, 5).map((u: any) => (
+                          <div key={u.id} className="flex items-center gap-3 rounded-xl px-2 py-2.5 transition-colors hover:bg-[rgba(15,23,42,0.6)]">
+                            <div
+                              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold"
+                              style={{ background: `rgba(${hexToRgb(AVATAR_COLORS[u.id % AVATAR_COLORS.length])}, 0.15)`, color: AVATAR_COLORS[u.id % AVATAR_COLORS.length] }}
+                            >
+                              {(u.name || u.username || "?").charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm text-foreground">{u.name || u.username}</p>
+                              <p className="truncate text-xs text-text-faint">{u.email || "—"}</p>
+                            </div>
+                            <div className="flex shrink-0 flex-col items-end gap-1">
+                              <Badge variant="outline" className="border-border text-[10px] text-text-faint">{u.role}</Badge>
+                              <span className="text-[10px] text-text-faint">{u.createdAt ? new Date(u.createdAt).toLocaleDateString(isRTL ? "ar-EG" : "en-GB") : "—"}</span>
+                            </div>
+                          </div>
+                        ))}
+                        {allUsers.length === 0 && <p className="py-8 text-center text-sm text-text-faint">{isRTL ? "لا يوجد مستخدمون بعد" : "No users yet"}</p>}
+                      </div>
+                    </div>
+                    <div className="admin-panel-card p-5 sm:p-6">
+                      <div className="mb-2 flex items-center justify-between">
+                        <h3 className="text-base font-semibold text-foreground">{isRTL ? "آخر المدفوعات" : "Latest payments"}</h3>
+                        <button onClick={() => setActiveTab("payments")} className="text-xs font-medium text-[#22d3ee] hover:underline">
+                          {isRTL ? "عرض الكل" : "View all"}
+                        </button>
+                      </div>
+                      <div className="space-y-1">
+                        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                        {allPayments.slice(0, 5).map((p: any) => (
+                          <div key={p.id} className="flex items-center gap-3 rounded-xl px-2 py-2.5 transition-colors hover:bg-[rgba(15,23,42,0.6)]">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[rgba(245,158,11,0.12)]">
+                              <DollarSign className="h-4 w-4 text-[#f59e0b]" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-bold text-foreground">{Number(p.amount).toLocaleString("en-US")} {p.currency}</p>
+                              <p className="truncate text-xs text-text-faint">{p.provider}{p.createdAt ? ` · ${new Date(p.createdAt).toLocaleDateString(isRTL ? "ar-EG" : "en-GB")}` : ""}</p>
+                            </div>
+                            <Badge className={`border-0 text-[10px] ${paymentStatusBadgeClass[p.status] ?? "bg-[rgba(148,163,184,0.15)] text-text-muted"}`}>{p.status}</Badge>
+                          </div>
+                        ))}
+                        {allPayments.length === 0 && <p className="py-8 text-center text-sm text-text-faint">{isRTL ? "لا توجد مدفوعات بعد" : "No payments yet"}</p>}
+                      </div>
                     </div>
                   </div>
                 </div>

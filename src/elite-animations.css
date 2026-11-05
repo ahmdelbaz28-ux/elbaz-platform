@@ -502,54 +502,166 @@
 
 /* ── Admin Dashboard Styles ── */
 .admin-sidebar {
-  background: rgba(10, 14, 23, 0.95);
+  background: linear-gradient(180deg, rgba(10, 14, 23, 0.98) 0%, rgba(8, 11, 18, 0.96) 100%);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-right: 1px solid rgba(31, 45, 68, 0.5);
+  border-inline-end: 1px solid rgba(31, 45, 68, 0.55);
 }
 .admin-sidebar-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  border-radius: 0.5rem;
+  padding: 0.62rem 0.85rem;
+  border-radius: 0.7rem;
   color: #94a3b8;
-  transition: all 0.2s ease;
+  transition: color 0.2s ease, background-color 0.2s ease;
   cursor: pointer;
-  font-size: 0.875rem;
+  font-size: 0.85rem;
+  font-weight: 500;
 }
 .admin-sidebar-item:hover {
-  background: #0f172a;
+  background: rgba(15, 23, 42, 0.9);
   color: #e8f0fe;
 }
 .admin-sidebar-item.active {
-  background: #0f172a;
-  color: #06b6d4;
-  box-shadow: inset 3px 0 0 #06b6d4;
+  background: linear-gradient(90deg, rgba(6, 182, 212, 0.16), rgba(6, 182, 212, 0.04));
+  color: #22d3ee;
+}
+/* Active rail — logical property so it hugs the reading edge in RTL and LTR */
+.admin-sidebar-item.active::after {
+  content: '';
+  position: absolute;
+  inset-inline-start: 0;
+  top: 22%;
+  height: 56%;
+  width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #22d3ee, #06b6d4);
+  box-shadow: 0 0 8px rgba(6, 182, 212, 0.55);
+}
+/* Tiny muted group label between sidebar sections (no letter-spacing — Arabic) */
+.admin-sidebar-label {
+  padding: 0.85rem 0.85rem 0.3rem;
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: #52627c;
+  user-select: none;
+}
+/* Open-tickets counter chip pinned to the sidebar icon */
+.admin-nav-badge {
+  position: absolute;
+  top: 0.3rem;
+  inset-inline-start: 1.55rem;
+  min-width: 1rem;
+  height: 1rem;
+  padding: 0 0.28rem;
+  border-radius: 999px;
+  background: #f43f5e;
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1rem;
+  text-align: center;
+  box-shadow: 0 0 0 2px rgba(10, 14, 23, 0.95);
 }
 .admin-stat-card {
+  --stat-accent: #06b6d4;
+  --stat-accent-rgb: 6, 182, 212;
   position: relative;
   overflow: hidden;
   border-radius: 1rem;
-  border: 1px solid rgba(31, 45, 68, 0.5);
-  background: rgba(17, 24, 39, 0.6);
+  border: 1px solid rgba(31, 45, 68, 0.6);
+  background: linear-gradient(160deg, rgba(17, 24, 39, 0.9), rgba(13, 18, 30, 0.94));
   backdrop-filter: blur(16px);
-  transition: all 0.3s ease;
-}
-.admin-stat-card:hover {
-  border-color: rgba(6, 182, 212, 0.3);
-  box-shadow: 0 0 20px rgba(6, 182, 212, 0.05);
+  transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
 }
 .admin-stat-card::before {
   content: '';
   position: absolute;
+  inset-inline: 0;
   top: 0;
-  right: 0;
-  width: 80px;
-  height: 80px;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, rgba(var(--stat-accent-rgb), 0.9), transparent);
+}
+.admin-stat-card::after {
+  content: '';
+  position: absolute;
+  top: -52px;
+  inset-inline-end: -52px;
+  width: 130px;
+  height: 130px;
   border-radius: 50%;
-  opacity: 0.1;
-  transform: translate(20px, -20px);
+  background: radial-gradient(circle, rgba(var(--stat-accent-rgb), 1), transparent 70%);
+  opacity: 0.13;
+  pointer-events: none;
+}
+.admin-stat-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(var(--stat-accent-rgb), 0.4);
+  box-shadow: 0 14px 34px -14px rgba(var(--stat-accent-rgb), 0.35);
+}
+/* Gradient hero band at the top of the dashboard tab */
+.admin-hero-band {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(31, 45, 68, 0.6);
+  background:
+    radial-gradient(560px 200px at 12% -30%, rgba(6, 182, 212, 0.22), transparent 65%),
+    radial-gradient(420px 190px at 88% 130%, rgba(249, 115, 22, 0.12), transparent 60%),
+    linear-gradient(120deg, rgba(13, 20, 34, 0.95), rgba(10, 14, 23, 0.98));
+}
+.admin-hero-band::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(148, 163, 184, 0.09) 1px, transparent 1px);
+  background-size: 22px 22px;
+  mask-image: linear-gradient(120deg, rgba(0, 0, 0, 0.7), transparent 55%);
+  pointer-events: none;
+}
+/* Quick-action tile on the dashboard */
+.admin-quick-action {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1rem;
+  border: 1px solid rgba(31, 45, 68, 0.6);
+  background: linear-gradient(160deg, rgba(17, 24, 39, 0.85), rgba(12, 17, 28, 0.92));
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.admin-quick-action:hover {
+  transform: translateY(-3px);
+  border-color: rgba(var(--stat-accent-rgb, 6, 182, 212), 0.4);
+  box-shadow: 0 14px 30px -14px rgba(var(--stat-accent-rgb, 6, 182, 212), 0.35);
+}
+.admin-quick-action .qa-arrow {
+  transition: transform 0.2s ease, opacity 0.2s ease;
+  opacity: 0.45;
+}
+.admin-quick-action:hover .qa-arrow {
+  transform: translateX(3px);
+  opacity: 1;
+}
+[dir='rtl'] .admin-quick-action:hover .qa-arrow {
+  transform: translateX(-3px) scaleX(-1);
+}
+/* Mini bar chart (30-day revenue) */
+.admin-chart-bar {
+  border-radius: 4px 4px 2px 2px;
+  background: linear-gradient(180deg, #22d3ee, rgba(6, 182, 212, 0.25));
+  min-height: 3px;
+  transition: opacity 0.2s ease, filter 0.2s ease;
+  cursor: default;
+}
+.admin-chart-bar:hover {
+  filter: brightness(1.35) drop-shadow(0 0 6px rgba(34, 211, 238, 0.6));
+}
+/* Soft surface card used across the new dashboard sections */
+.admin-panel-card {
+  border-radius: 1rem;
+  border: 1px solid rgba(31, 45, 68, 0.6);
+  background: linear-gradient(160deg, rgba(17, 24, 39, 0.85), rgba(12, 17, 28, 0.92));
 }
 
 /* ── Inline Edit Highlight ── */
