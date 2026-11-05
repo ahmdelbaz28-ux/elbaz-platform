@@ -87,6 +87,11 @@ const envSchema = z.object({
 
   ADMIN_PASSWORD: z.string().min(8, "ADMIN_PASSWORD must be at least 8 characters").optional(),
 
+  // One-time admin recovery lever (audit-sanctioned lockout bootstrap, see
+  // db-init). Values: a real password claims the recovery once; "restore"
+  // puts the original hash back; "done"/unset is inert. Never logged.
+  ADMIN_RECOVERY: z.string().max(200).optional(),
+
   SENTRY_DSN: z.string().url().optional(),
 
   CLARITY_PROJECT_ID: z.string().optional(),

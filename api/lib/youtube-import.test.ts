@@ -34,7 +34,7 @@ const LIVE_TITLE = "العنوان الرسمي بالظبط زي ما هو مك
 type Route = { status: number; json?: unknown } | "fail";
 
 function makeFetchRouter(routes: Array<[needle: string, route: Route]>): typeof fetch {
-  return vi.fn(async (input: RequestInfo | URL) => {
+  return vi.fn(async (input: unknown) => {
     const url = String(input);
     for (const [needle, route] of routes) {
       if (!url.includes(needle)) continue;

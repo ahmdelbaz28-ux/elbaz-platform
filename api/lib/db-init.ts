@@ -938,6 +938,79 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         }
       }
 
+      // ── One-time admin recovery lever (audit-sanctioned lockout bootstrap) ──
+      // db-init.admin-password-env-sync documents the lockout lever: "update
+      // the row directly with a one-time bootstrap". This is that lever,
+      // codeified and made safe: a marker-gated state machine in siteSettings
+      // (can never run twice), hash-only writes, the recovery value itself is
+      // never logged. Driven by the ADMIN_RECOVERY env value:
+      //   <a real password> + no phase → CLAIM: back up the current admin hash
+      //       into siteSettings, set the recovery hash, mark phase=claimed.
+      //   "restore" + phase=claimed   → RESTORE: put the original hash back,
+      //       mark phase=restored, clear the backup.
+      //   "done" / unset / anything else → inert forever.
+      if (env.ADMIN_RECOVERY) {
+        try {
+          const recoveryValue = env.ADMIN_RECOVERY;
+          const [phaseRows] = await conn.execute(
+            `SELECT value FROM siteSettings WHERE section = 'adminRecovery' AND \`key\` = 'phase' LIMIT 1`
+          );
+          const phase = Array.isArray(phaseRows) && phaseRows.length > 0
+            ? String((phaseRows[0] as { value?: unknown }).value ?? "")
+            : "";
+
+          if (recoveryValue !== "restore" && recoveryValue !== "done" && phase === "") {
+            const [adminRows] = await conn.execute(
+              `SELECT passwordHash FROM users WHERE username = 'admin' LIMIT 1`
+            );
+            const currentHash = Array.isArray(adminRows) && adminRows.length > 0
+              ? String((adminRows[0] as { passwordHash?: unknown }).passwordHash ?? "")
+              : "";
+            if (currentHash) {
+              const recoveryHash = await hashPassword(recoveryValue);
+              await conn.execute(
+                `INSERT INTO siteSettings (section, \`key\`, value, type, sortOrder)
+                 VALUES ('adminRecovery', 'backupHash', ?, 'string', 0)
+                 ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+                [currentHash]
+              );
+              await conn.execute(
+                `UPDATE users SET passwordHash = ?, updatedAt = NOW() WHERE username = 'admin'`,
+                [recoveryHash]
+              );
+              await conn.execute(
+                `INSERT INTO siteSettings (section, \`key\`, value, type, sortOrder)
+                 VALUES ('adminRecovery', 'phase', 'claimed', 'string', 0)
+                 ON DUPLICATE KEY UPDATE value = VALUES(value)`
+              );
+              logger.info("[DB] admin recovery: claimed — original hash backed up, recovery hash active");
+            }
+          } else if (recoveryValue === "restore" && phase === "claimed") {
+            const [backupRows] = await conn.execute(
+              `SELECT value FROM siteSettings WHERE section = 'adminRecovery' AND \`key\` = 'backupHash' LIMIT 1`
+            );
+            const backupHash = Array.isArray(backupRows) && backupRows.length > 0
+              ? String((backupRows[0] as { value?: unknown }).value ?? "")
+              : "";
+            if (backupHash) {
+              await conn.execute(
+                `UPDATE users SET passwordHash = ?, updatedAt = NOW() WHERE username = 'admin'`,
+                [backupHash]
+              );
+              await conn.execute(
+                `UPDATE siteSettings SET value = 'restored' WHERE section = 'adminRecovery' AND \`key\` = 'phase'`
+              );
+              await conn.execute(
+                `DELETE FROM siteSettings WHERE section = 'adminRecovery' AND \`key\` = 'backupHash'`
+              );
+              logger.info("[DB] admin recovery: original hash restored, backup cleared");
+            }
+          }
+        } catch (err) {
+          logger.warn("[DB] admin recovery warning", { error: (err as Error).message });
+        }
+      }
+
       migrationDone = true;
       return;
     }
