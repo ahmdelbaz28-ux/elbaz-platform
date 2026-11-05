@@ -43,17 +43,21 @@ def pass_cf(pg):
     return False
 
 def dismiss_cookie(pg):
-    pg.evaluate("try{localStorage.setItem('elbaz_cookie_consent', JSON.stringify({necessary:true,analytics:false,marketing:false}));}catch(e){}")
-    for sel in ['[data-testid="cookie-accept-all"]', '[data-testid="cookie-accept-essential"]',
-                '[data-testid="cookie-consent-backdrop"]']:
-        try:
-            loc = pg.locator(sel).first
-            if loc.is_visible(timeout=800):
-                loc.click(timeout=2500, force=True)
-                pg.wait_for_timeout(300)
-                return
-        except Exception:
-            continue
+    for round_ in range(3):
+        pg.evaluate("try{localStorage.setItem('elbaz_cookie_consent', JSON.stringify({necessary:true,analytics:false,marketing:false}));}catch(e){}")
+        gone = True
+        for sel in ['[data-testid="cookie-accept-all"]', '[data-testid="cookie-accept-essential"]',
+                    '[data-testid="cookie-consent-backdrop"]']:
+            try:
+                loc = pg.locator(sel).first
+                if loc.is_visible(timeout=800):
+                    loc.click(timeout=2500, force=True)
+                    pg.wait_for_timeout(400)
+                    gone = False
+            except Exception:
+                continue
+        if gone:
+            return
 
 def geom(pg):
     return pg.evaluate("""() => {
@@ -95,7 +99,8 @@ with sync_playwright() as p:
     dismiss_cookie(pg)
     pg.screenshot(path=f"{OUT}/p1_course.png")
 
-    # click lesson #1
+    # click lesson #1 (dismiss any consent modal that may have re-rendered)
+    dismiss_cookie(pg)
     rows = pg.locator("button:has(p)")
     clicked = False
     for i in range(min(rows.count(), 12)):

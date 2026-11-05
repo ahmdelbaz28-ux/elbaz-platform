@@ -39,11 +39,11 @@ LESSONS = [
     # REAL verbatim playlist titles (the long nowrap strings that used to
     # stretch the grid and crop the video on phones — regression guard).
     {"id": 71, "titleAr": "1. كورس ETAP المجاني | تعلم ETAP من الصفر وحتى الاحتراف", "titleEn": "1. Free ETAP course | Learn ETAP from zero to pro", "isFree": True,
-     "durationMinutes": 45, "videoUrl": "https://www.youtube.com/watch?v=aqz-KE-bpKQ", "type": "youtube"},
+     "durationMinutes": 45, "videoUrl": "https://www.youtube.com/watch?v=jNQXAC9IVRw", "type": "youtube"},
     {"id": 72, "titleAr": "2. تحميل وتسطيب برنامج ETAP 2021 كامل | كورس ايتاب كامل بالعربي خطوة بخطوة", "titleEn": "2. Download and install ETAP 2021 full | step by step", "isFree": True,
-     "durationMinutes": 32, "videoUrl": "https://www.youtube.com/watch?v=aqz-KE-bpKQ", "type": "youtube"},
+     "durationMinutes": 32, "videoUrl": "https://www.youtube.com/watch?v=jNQXAC9IVRw", "type": "youtube"},
     {"id": 73, "titleAr": "3. شرح رسم الشبكة الكهربائية Single Line Diagram في برنامج ETAP بالتفصيل للمبتدئين", "titleEn": "3. Single Line Diagram explained", "isFree": False,
-     "durationMinutes": 28, "videoUrl": "https://www.youtube.com/watch?v=aqz-KE-bpKQ", "type": "youtube"},
+     "durationMinutes": 28, "videoUrl": "https://www.youtube.com/watch?v=jNQXAC9IVRw", "type": "youtube"},
 ]
 COURSE = {
     "id": 44, "slug": "etap-complete-course",
@@ -56,7 +56,7 @@ COURSE = {
     "durationHours": 12, "category": {"nameEn": "Power Systems", "nameAr": "قوى كهربائية"},
     "lessons": LESSONS,
 }
-YOUTUBE_IDS = {71: "aqz-KE-bpKQ", 72: "aqz-KE-bpKQ", 73: "aqz-KE-bpKQ"}
+YOUTUBE_IDS = {71: "jNQXAC9IVRw", 72: "jNQXAC9IVRw", 73: "jNQXAC9IVRw"}
 
 SECTIONS = {
     "subscribeGate": {"enabled": "true", "days": "30", "channelUrl": "https://www.youtube.com/@AhmedElbazEng"},
@@ -69,7 +69,7 @@ def json_body(payload):
 
 
 def lesson_video(lesson_id):
-    yid = YOUTUBE_IDS.get(lesson_id, "aqz-KE-bpKQ")
+    yid = YOUTUBE_IDS.get(lesson_id, "jNQXAC9IVRw")
     return {
         "videoUrl": f"https://www.youtube-nocookie.com/embed/{yid}?enablejsapi=1",
         "hlsUrl": None,
