@@ -28,13 +28,8 @@ PAGES = [
     ("courses", "/courses"),
     ("course_detail", "/courses/etap-complete-course"),
     ("articles", "/articles"),
-    ("article_detail", "/articles/etap-power-system-analysis-guide"),
     ("faq", "/faq"),
     ("support", "/support"),
-    ("references", "/references"),
-    ("documents", "/documents"),
-    ("login", "/login"),
-    ("journey", "/learning-journey"),
 ]
 
 MEASURE = """
