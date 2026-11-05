@@ -970,7 +970,7 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
               const recoveryHash = await hashPassword(recoveryValue);
               await conn.execute(
                 `INSERT INTO siteSettings (section, \`key\`, value, type, sortOrder)
-                 VALUES ('adminRecovery', 'backupHash', ?, 'string', 0)
+                 VALUES ('adminRecovery', 'backupHash', ?, 'text', 0)
                  ON DUPLICATE KEY UPDATE value = VALUES(value)`,
                 [currentHash]
               );
@@ -980,7 +980,7 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
               );
               await conn.execute(
                 `INSERT INTO siteSettings (section, \`key\`, value, type, sortOrder)
-                 VALUES ('adminRecovery', 'phase', 'claimed', 'string', 0)
+                 VALUES ('adminRecovery', 'phase', 'claimed', 'text', 0)
                  ON DUPLICATE KEY UPDATE value = VALUES(value)`
               );
               logger.info("[DB] admin recovery: claimed — original hash backed up, recovery hash active");
