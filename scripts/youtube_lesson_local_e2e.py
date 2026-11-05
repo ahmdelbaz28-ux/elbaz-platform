@@ -136,6 +136,16 @@ with sync_playwright() as p:
             continue
         target.click()
         pg.wait_for_timeout(2_000)
+        # The subscribe gate (if enabled) takes the video slot first — unlock
+        # via the honest «already subscribed» escape, then wait for the player.
+        try:
+            gate = pg.locator("[data-testid=subscribe-gate]")
+            if gate.count() > 0 and gate.first.is_visible():
+                print("subscribe gate shown — unlocking (already-subscribed path)")
+                pg.locator("[data-testid=subscribe-gate-already]").first.click()
+                pg.wait_for_timeout(1_500)
+        except Exception:
+            pass
         # Wait for the video area to resolve
         deadline = time.time() + 15
         ready = False

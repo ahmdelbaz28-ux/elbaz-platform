@@ -3,6 +3,8 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { useAuth } from "@/hooks/useAuth";
 import { trpc } from "@/providers/trpc";
 import YouTubeLessonPlayer from "@/components/YouTubeLessonPlayer";
+import SubscribeGate from "@/components/SubscribeGate";
+import { isSubscribeUnlocked, unlockSubscribe } from "@/lib/subscribe-gate";
 import { useState, useRef, useEffect, useCallback, forwardRef, lazy, Suspense } from 'react';
 import { useWatchTracker } from "@/hooks/useWatchTracker";
 import { trackLearning, trackPlatform, trackEvent } from "@/lib/clarity";
@@ -582,6 +584,26 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
     { enabled: !!activeLesson && isAuthenticated }
   );
 
+  // ── Subscribe-to-the-channel gate (support prompt before playback) ───────
+  // Config lives in siteSettings section "subscribeGate" (admin-editable):
+  //   enabled: "true"|"false" · channelUrl · days (unlock window).
+  // Defaults keep the gate ON with the channel's known handle so the feature
+  // works even before the owner opens the settings panel.
+  const { data: subGateCfg } = trpc.settings.getSection.useQuery(
+    { section: "subscribeGate" },
+    { staleTime: 5 * 60_000 },
+  );
+  const gateEnabled = subGateCfg?.enabled !== "false"; // default ON
+  const gateDaysRaw = Number.parseInt(subGateCfg?.days ?? "", 10);
+  const gateDays = Number.isFinite(gateDaysRaw) && gateDaysRaw >= 1 ? gateDaysRaw : 30;
+  const gateChannel = subGateCfg?.channelUrl?.trim() || "https://www.youtube.com/@AhmedElbazEng";
+  const [gateUnlocked, setGateUnlocked] = useState(() => isSubscribeUnlocked());
+  const subscribeGateActive = gateEnabled && !gateUnlocked;
+  const handleGateUnlocked = useCallback(() => {
+    unlockSubscribe(gateDays);
+    setGateUnlocked(true);
+  }, [gateDays]);
+
   // ✅ Derive values from course data (must be declared before use in hooks)
   const price = Number.parseFloat(course?.price || "0");
   const title = (lang === "ar" && course?.titleAr) ? course.titleAr : (course?.titleEn ?? "");
@@ -1000,7 +1022,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
     : fixedDiscountText;
 
   return (
-    <div className="min-h-screen bg-[#0a0e17] pt-24">
+    <div className="min-h-screen bg-[#0a0e17] pt-[calc(6rem+env(safe-area-inset-top,0px))]">
       <Seo
         title={title}
         description={description || ""}
@@ -1089,7 +1111,23 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                     </div>
                   )}
 
-                  {isVideoReady && !isYouTubeLesson && (
+                  {isVideoReady && subscribeGateActive && (
+                    /* NOT aspect-video: combined with min-height, the ratio
+                       transfers 400px→711px width on phones (panel wider than
+                       the screen). The gate is a panel, not a screen — plain
+                       width + min-height keeps it inside the card on every
+                       viewport; wide screens get the same comfortable panel. */
+                    <div className="w-full min-h-[400px]">
+                      <SubscribeGate
+                        lang={lang}
+                        channelUrl={gateChannel}
+                        days={gateDays}
+                        onUnlocked={handleGateUnlocked}
+                      />
+                    </div>
+                  )}
+
+                  {isVideoReady && !subscribeGateActive && !isYouTubeLesson && (
                     <ProtectedVideoPlayer
                       videoUrl={videoData.videoUrl}
                       hlsUrl={videoData.hlsUrl}
@@ -1103,7 +1141,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                     />
                   )}
 
-                  {isVideoReady && isYouTubeLesson && (
+                  {isVideoReady && !subscribeGateActive && isYouTubeLesson && (
                     <YouTubeLessonPlayer
                       key={videoData.youtubeId!}
                       videoId={videoData.youtubeId!}

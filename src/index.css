@@ -1902,3 +1902,44 @@ img[loading="lazy"] {
 [data-theme="light"] .bg-background {
   background-color: #f8fafc !important;
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   EMBEDDED YOUTUBE LESSON PLAYER — fluid 16:9 fit on EVERY viewport
+   ════════════════════════════════════════════════════════════════════
+   The IFrame Player API replaces the mount <div> with an <iframe> that
+   carries its own width/height attributes (640×360 defaults). On phones
+   the 16:9 screen slot is narrower than 640px, so the raw iframe
+   overflowed its box and the site cropped it — the "edges cut / broken
+   video proportions" bug. These rules re-fit the iframe to the screen
+   slot at any width (the constructor also passes width/height "100%").
+   The screen slot is `.relative.aspect-video` — the nearest positioned
+   ancestor of the iframe — so absolute inset-0 pins it exactly. */
+[data-youtube-player] iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+/* Never let ANY media node inside a player screen poke out of its slot
+   (covers the self-hosted <video> path and future embeds too). */
+[data-youtube-player] video,
+[data-youtube-player] embed,
+[data-youtube-player] object {
+  max-width: 100%;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   NOTCHED / EDGE-TO-EDGE PHONES (viewport-fit=cover)
+   ════════════════════════════════════════════════════════════════════
+   The site declares viewport-fit=cover, so on notched phones the page
+   extends under the sensor notch / home indicator. Without these pads
+   the text and page edges get literally cut ("الحواف مقصوصة"). Every
+   env() evaluates to 0 on ordinary displays → zero visual change there;
+   the fixed navbar carries its own copy (fixed nodes ignore body padding).
+*/
+body {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}

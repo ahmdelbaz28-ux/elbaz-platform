@@ -66,7 +66,7 @@ export default function CertificateView() { // NOSONAR — certificate view with
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background pt-24">
+      <div className="flex min-h-screen items-center justify-center bg-background pt-[calc(6rem+env(safe-area-inset-top,0px))]">
         <div className="text-center">
           <Loader2 className="mx-auto h-10 w-10 animate-spin text-accent-secondary" />
           <p className="mt-4 text-text-muted">
@@ -94,7 +94,7 @@ export default function CertificateView() { // NOSONAR — certificate view with
   );
 
   return (
-    <div className="min-h-screen bg-background pt-24 pb-20">
+    <div className="min-h-screen bg-background pt-[calc(6rem+env(safe-area-inset-top,0px))] pb-20">
       <div className="mx-auto max-w-7xl px-4 lg:px-6">
         {/* Breadcrumb */}
         <button

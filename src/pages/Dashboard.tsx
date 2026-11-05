@@ -45,7 +45,7 @@ export default function Dashboard() {
   if (!isAuthenticated) return null;
 
   return (
-    <div className="min-h-screen bg-background pt-24">
+    <div className="min-h-screen bg-background pt-[calc(6rem+env(safe-area-inset-top,0px))]">
       <div className="mx-auto max-w-7xl px-4 pb-20 lg:px-6">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-foreground">{t("myDashboard")}</h1>

@@ -116,7 +116,7 @@ export default function Courses() {
   };
 
   return (
-    <div className="min-h-screen bg-background pt-24">
+    <div className="min-h-screen bg-background pt-[calc(6rem+env(safe-area-inset-top,0px))]">
       <Seo title={lang === "en" ? "Courses" : "الكورسات"} description={lang === "en" ? "Explore our premium electrical engineering courses." : "تصفح الكورسات الهندسية الكهربية المتميزة."} />
       <div className="mx-auto max-w-7xl px-4 pb-20 lg:px-6">
         <div className="mb-8">

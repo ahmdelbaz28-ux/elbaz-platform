@@ -7,9 +7,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import "@/elite-animations.css";
 import {
   LayoutDashboard, Users, BookOpen, Headphones, DollarSign, Phone, FileText, Palette, Tag, Megaphone, Bot, Bell,
-  Plus, Pencil, Trash2, Save, Eye, Zap, TrendingUp, CheckCircle, ChevronLeft, ChevronRight,
+  Plus, Pencil, Trash2, Save, Eye, Zap, TrendingUp, CheckCircle, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   LogOut, ArrowUpRight, Shield, PlayCircle, Newspaper, X, Menu, MessageSquareText, ThumbsUp, ThumbsDown, Download,
-  Youtube, Loader2,
+  Youtube, Loader2, ListVideo,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -229,6 +229,57 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
     },
     onError: (err) => toast.error(err.message),
   });
+  // ── Full playlist control: reorder + bulk import ──
+  const moveLesson = trpc.admin.moveLesson.useMutation({
+    onSuccess: () => { utils.admin.listLessons.invalidate(); },
+    onError: (err) => toast.error(err.message),
+  });
+  const importAllPlaylist = trpc.admin.importPlaylistVideos.useMutation({
+    onSuccess: (res) => {
+      utils.admin.listLessons.invalidate();
+      if (res.created > 0) {
+        toast.success(isRTL
+          ? `اتضاف ${res.created} درس بعناوين يوتيوب الرسمية حرفياً ✓ (متخطّى ${res.skipped} موجود مسبقاً)`
+          : `Imported ${res.created} lessons with exact YouTube titles ✓ (skipped ${res.skipped} already linked)`);
+      } else {
+        toast.info(isRTL ? "كل فيديوهات البلايليست مستوردة بالفعل — مفيش جديد" : "All playlist videos are already imported — nothing new");
+      }
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  // ── Subscribe-gate settings (siteSettings section "subscribeGate") ──
+  const { data: subGateCfgData } = trpc.settings.getSection.useQuery(
+    { section: "subscribeGate" },
+    { enabled: !!isAdmin && activeTab === "courses" },
+  );
+  const [subGateForm, setSubGateForm] = useState({ enabled: true, channelUrl: "https://www.youtube.com/@AhmedElbazEng", days: 30 });
+  const [subGateLoaded, setSubGateLoaded] = useState(false);
+  useEffect(() => {
+    if (subGateCfgData && !subGateLoaded) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSubGateForm({
+        enabled: subGateCfgData.enabled !== "false",
+        channelUrl: subGateCfgData.channelUrl?.trim() || "https://www.youtube.com/@AhmedElbazEng",
+        days: Math.max(1, Number.parseInt(subGateCfgData.days ?? "30", 10) || 30),
+      });
+      setSubGateLoaded(true);
+    }
+  }, [subGateCfgData, subGateLoaded]);
+  const bulkUpsertSubGate = trpc.settings.bulkUpsert.useMutation({
+    onSuccess: () => { utils.settings.getSection.invalidate(); toast.success(lang === "en" ? "Subscribe-gate settings saved" : "تم حفظ إعدادات بوابة الاشتراك"); },
+    onError: (err) => toast.error(err.message),
+  });
+  const saveSubGate = () => {
+    bulkUpsertSubGate.mutate({
+      section: "subscribeGate",
+      settings: [
+        { key: "enabled", value: String(subGateForm.enabled), type: "text", sortOrder: 1 },
+        { key: "channelUrl", value: subGateForm.channelUrl.trim(), type: "url", sortOrder: 2 },
+        { key: "days", value: String(Math.max(1, Math.floor(subGateForm.days) || 30)), type: "number", sortOrder: 3 },
+      ],
+    });
+  };
   // ── Articles (blog) management ──
   const { data: articlesData } = trpc.articles.adminList.useQuery(undefined, { enabled: !!isAdmin && activeTab === "articles" });
   const createArticle = trpc.articles.create.useMutation({ onSuccess: () => { utils.articles.adminList.invalidate(); setShowArticleForm(false); toast.success(lang === "en" ? "Article saved" : "تم حفظ المقال"); }, onError: (err) => toast.error(err.message) });
@@ -688,6 +739,40 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                     <Button onClick={() => setShowCourseForm(true)} className="bg-[#06b6d4] text-background hover:bg-[#0891b2]">
                       <Plus className="h-4 w-4 mr-1" />{isRTL ? "كورس جديد" : "New Course"}
                     </Button>
+                  </div>
+
+                  {/* ═══ Subscribe-gate: require channel subscription before watching ═══ */}
+                  <div className="rounded-xl border border-border bg-primary p-4" data-testid="subscribe-gate-settings">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <Youtube className="h-5 w-5 text-[#ff5f57]" />
+                        <div>
+                          <h3 className="text-sm font-semibold text-foreground">{isRTL ? "بوابة اشتراك القناة قبل المشاهدة" : "Channel-subscription gate before playback"}</h3>
+                          <p className="text-xs text-text-muted">{isRTL ? "لوحة واحدة قبل أول فيديو تطلب اشتراك مجاني في القناة — مرة واحدة على الجهاز ولمدة تختارها، بدون إزعاج متكرر" : "One panel before the first video asks for a free channel subscription — once per device for a window you choose, never nagging"}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Switch checked={subGateForm.enabled} onCheckedChange={(v) => setSubGateForm((f) => ({ ...f, enabled: v }))} data-testid="subscribe-gate-enabled" />
+                        <Label className="text-text-muted text-xs">{subGateForm.enabled ? (isRTL ? "مفعّلة" : "Enabled") : (isRTL ? "متوقفة" : "Disabled")}</Label>
+                      </div>
+                    </div>
+                    {subGateForm.enabled && (
+                      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        <div className="space-y-1 sm:col-span-2">
+                          <Label className="text-text-muted text-xs">{isRTL ? "رابط القناة على يوتيوب" : "YouTube channel URL"}</Label>
+                          <Input value={subGateForm.channelUrl} onChange={(e) => setSubGateForm((f) => ({ ...f, channelUrl: e.target.value }))} dir="ltr" placeholder="https://www.youtube.com/@AhmedElbazEng" className="border-border bg-background text-foreground" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-text-muted text-xs">{isRTL ? "مدة عدم الإزعاج (أيام)" : "Re-ask window (days)"}</Label>
+                          <Input type="number" min={1} max={365} value={subGateForm.days} onChange={(e) => setSubGateForm((f) => ({ ...f, days: Number(e.target.value) }))} className="border-border bg-background text-foreground" />
+                        </div>
+                      </div>
+                    )}
+                    <div className="mt-3 flex justify-end">
+                      <Button size="sm" onClick={saveSubGate} disabled={bulkUpsertSubGate.isPending} className="bg-[#06b6d4] text-background">
+                        <Save className="h-3.5 w-3.5 mr-1" />{bulkUpsertSubGate.isPending ? (isRTL ? "جارٍ الحفظ..." : "Saving...") : (isRTL ? "حفظ الإعدادات" : "Save settings")}
+                      </Button>
+                    </div>
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {(allCourses || []).map((course: CourseItem) => (
@@ -1430,7 +1515,7 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
             <DialogDescription className="text-text-muted">{isRTL ? "أضف كورساً جديداً ثم أضف دروسه من زر الدروس" : "Create a course, then add lessons via the Lessons button"}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 py-2">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label className="text-text-muted">{isRTL ? "الـ Slug (رابط)" : "Slug (URL)"}</Label>
                 <Input value={courseForm.slug} onChange={(e) => setCourseForm((f) => ({ ...f, slug: e.target.value }))} placeholder="etap-basics" className="border-border bg-background text-foreground" />
@@ -1447,17 +1532,17 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "العنوان (إنجليزي)" : "Title (EN)"}</Label><Input value={courseForm.titleEn} onChange={(e) => setCourseForm((f) => ({ ...f, titleEn: e.target.value }))} className="border-border bg-background text-foreground" /></div>
               <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "العنوان (عربي)" : "Title (AR)"}</Label><Input value={courseForm.titleAr} onChange={(e) => setCourseForm((f) => ({ ...f, titleAr: e.target.value }))} dir="rtl" className="border-border bg-background text-foreground" /></div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "وصف قصير (إنجليزي)" : "Short desc (EN)"}</Label><Input value={courseForm.shortDescEn} onChange={(e) => setCourseForm((f) => ({ ...f, shortDescEn: e.target.value }))} className="border-border bg-background text-foreground" /></div>
               <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "وصف قصير (عربي)" : "Short desc (AR)"}</Label><Input value={courseForm.shortDescAr} onChange={(e) => setCourseForm((f) => ({ ...f, shortDescAr: e.target.value }))} dir="rtl" className="border-border bg-background text-foreground" /></div>
             </div>
             <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "الوصف الكامل (إنجليزي)" : "Full description (EN)"}</Label><Textarea rows={3} value={courseForm.descriptionEn} onChange={(e) => setCourseForm((f) => ({ ...f, descriptionEn: e.target.value }))} className="border-border bg-background text-foreground" /></div>
             <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "الوصف الكامل (عربي)" : "Full description (AR)"}</Label><Textarea rows={3} value={courseForm.descriptionAr} onChange={(e) => setCourseForm((f) => ({ ...f, descriptionAr: e.target.value }))} dir="rtl" className="border-border bg-background text-foreground" /></div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "السعر (EGP)" : "Price (EGP)"}</Label><Input type="number" min={0} value={courseForm.price} onChange={(e) => setCourseForm((f) => ({ ...f, price: Number(e.target.value) }))} className="border-border bg-background text-foreground" /></div>
               <div className="space-y-1">
                 <Label className="text-text-muted">{isRTL ? "المستوى" : "Level"}</Label>
@@ -1505,14 +1590,30 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                 </div>
                 <div className="flex gap-1">
                   {lesson.isFree && <Badge className="bg-[rgba(16,185,129,0.15)] text-emerald-500 text-[10px]">{isRTL ? "مجاني" : "Free"}</Badge>}
+                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-text-muted" aria-label={isRTL ? "تحريك لأعلى" : "Move up"} disabled={idx === 0 || moveLesson.isPending} onClick={() => moveLesson.mutate({ id: lesson.id, direction: "up" })} data-testid={`lesson-move-up-${lesson.id}`}><ChevronUp className="h-3.5 w-3.5" /></Button>
+                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-text-muted" aria-label={isRTL ? "تحريك لأسفل" : "Move down"} disabled={idx === (((lessonsData?.items as LessonItem[] | undefined) ?? []).length - 1) || moveLesson.isPending} onClick={() => moveLesson.mutate({ id: lesson.id, direction: "down" })} data-testid={`lesson-move-down-${lesson.id}`}><ChevronDown className="h-3.5 w-3.5" /></Button>
                   <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-accent-secondary" onClick={() => openLessonForm(lesson)}><Pencil className="h-3.5 w-3.5" /></Button>
                   <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive" onClick={() => { if (window.confirm(isRTL ? "حذف هذا الدرس؟" : "Delete this lesson?")) deleteLesson.mutate({ id: lesson.id }); }}><Trash2 className="h-3.5 w-3.5" /></Button>
                 </div>
               </div>
             ))}
-            <Button variant="outline" className="w-full border-dashed border-border text-accent-secondary hover:bg-[rgba(6,182,212,0.05)]" onClick={() => openLessonForm()}>
-              <Plus className="h-4 w-4 mr-1" />{isRTL ? "إضافة درس" : "Add Lesson"}
-            </Button>
+                <div className="flex flex-wrap items-center gap-2 py-2">
+                  <Button variant="outline" className="flex-1 border-dashed border-border text-accent-secondary hover:bg-[rgba(6,182,212,0.05)] min-h-11" onClick={() => openLessonForm()}>
+                    <Plus className="h-4 w-4 mr-1" />{isRTL ? "إضافة درس" : "Add Lesson"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1 border-[rgba(255,59,48,0.35)] text-[#ff5f57] hover:bg-[rgba(255,59,48,0.08)] min-h-11"
+                    onClick={() => { if (lessonsCourse) importAllPlaylist.mutate({ courseId: lessonsCourse.id }); }}
+                    disabled={importAllPlaylist.isPending}
+                    data-testid="import-all-playlist"
+                  >
+                    {importAllPlaylist.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ListVideo className="h-4 w-4 mr-1" />}
+                    {importAllPlaylist.isPending
+                      ? (isRTL ? "جارٍ الاستيراد..." : "Importing...")
+                      : (isRTL ? "استيراد كل فيديوهات البلايليست" : "Import ALL playlist videos")}
+                  </Button>
+                </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -1525,11 +1626,11 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
             <DialogDescription className="text-text-muted">{isRTL ? "رابط يوتيوب من بلايليست القناة (يُبث جوه الموقع) أو مفتاح R2 مثل etap/lesson01.mp4" : "A YouTube playlist link (streams in-site) or an R2 key like etap/lesson01.mp4"}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 py-2">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "العنوان (إنجليزي)" : "Title (EN)"}</Label><Input value={lessonForm.titleEn} onChange={(e) => setLessonForm((f) => ({ ...f, titleEn: e.target.value }))} className="border-border bg-background text-foreground" /></div>
               <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "العنوان (عربي)" : "Title (AR)"}</Label><Input value={lessonForm.titleAr} onChange={(e) => setLessonForm((f) => ({ ...f, titleAr: e.target.value }))} dir="rtl" className="border-border bg-background text-foreground" /></div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "الوصف (إنجليزي)" : "Description (EN)"}</Label><Textarea rows={2} value={lessonForm.descriptionEn} onChange={(e) => setLessonForm((f) => ({ ...f, descriptionEn: e.target.value }))} className="border-border bg-background text-foreground" /></div>
               <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "الوصف (عربي)" : "Description (AR)"}</Label><Textarea rows={2} value={lessonForm.descriptionAr} onChange={(e) => setLessonForm((f) => ({ ...f, descriptionAr: e.target.value }))} dir="rtl" className="border-border bg-background text-foreground" /></div>
             </div>
@@ -1568,7 +1669,7 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                 <p className="text-[11px] text-text-muted">{isRTL ? "رابط مباشر / مفتاح R2 — هيُبث من مشغل المنصة المحمي" : "Direct link / R2 key — plays in the protected self-hosted player"}</p>
               ) : null}
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "المدة (دقائق)" : "Duration (min)"}</Label><Input type="number" min={0} max={1440} value={lessonForm.durationMinutes} onChange={(e) => setLessonForm((f) => ({ ...f, durationMinutes: Number(e.target.value) }))} className="border-border bg-background text-foreground" /></div>
             </div>
             <div className="flex items-center gap-6 pt-1">
@@ -1621,19 +1722,19 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
             <DialogDescription className="text-text-muted">{isRTL ? "المحتوى نصي — فقرات بأسطر فارغة، ## للعناوين الفرعية، - للقوائم" : "Plain text — blank-line paragraphs, ## subheadings, - list items"}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 py-2">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "العنوان (عربي)" : "Title (AR)"}</Label><Input value={articleForm.titleAr} onChange={(e) => setArticleForm((f) => ({ ...f, titleAr: e.target.value }))} dir="rtl" className="border-border bg-background text-foreground" /></div>
               <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "العنوان (إنجليزي)" : "Title (EN)"}</Label><Input value={articleForm.titleEn} onChange={(e) => setArticleForm((f) => ({ ...f, titleEn: e.target.value }))} className="border-border bg-background text-foreground" /></div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "الـ Slug (اختياري)" : "Slug (optional)"}</Label><Input value={articleForm.slug} onChange={(e) => setArticleForm((f) => ({ ...f, slug: e.target.value }))} placeholder="etap-guide" dir="ltr" className="border-border bg-background text-foreground" /></div>
               <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "الفئة" : "Category"}</Label><Input value={articleForm.category} onChange={(e) => setArticleForm((f) => ({ ...f, category: e.target.value }))} className="border-border bg-background text-foreground" /></div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "المقتطف (عربي)" : "Excerpt (AR)"}</Label><Textarea rows={2} value={articleForm.excerptAr} onChange={(e) => setArticleForm((f) => ({ ...f, excerptAr: e.target.value }))} dir="rtl" className="border-border bg-background text-foreground" /></div>
               <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "المقتطف (إنجليزي)" : "Excerpt (EN)"}</Label><Textarea rows={2} value={articleForm.excerptEn} onChange={(e) => setArticleForm((f) => ({ ...f, excerptEn: e.target.value }))} className="border-border bg-background text-foreground" /></div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "الوسوم (فاصلة بينها)" : "Tags (comma-separated)"}</Label><Input value={articleForm.tags} onChange={(e) => setArticleForm((f) => ({ ...f, tags: e.target.value }))} placeholder="ETAP, تحليل أنظمة" className="border-border bg-background text-foreground" /></div>
               <div className="space-y-1"><Label className="text-text-muted">{isRTL ? "رابط صورة الغلاف" : "Cover image URL"}</Label><Input value={articleForm.coverImage} onChange={(e) => setArticleForm((f) => ({ ...f, coverImage: e.target.value }))} placeholder="/course-etap.jpg" dir="ltr" className="border-border bg-background text-foreground" /></div>
             </div>

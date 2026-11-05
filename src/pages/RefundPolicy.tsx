@@ -8,7 +8,7 @@ export default function RefundPolicy() {
   const { data: contact } = useContactSettings();
 
   return (
-    <div className="min-h-screen bg-background pt-24">
+    <div className="min-h-screen bg-background pt-[calc(6rem+env(safe-area-inset-top,0px))]">
       <div className="mx-auto max-w-3xl px-4 pb-20 lg:px-6">
         {/* Back */}
         <button

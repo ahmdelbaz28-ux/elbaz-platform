@@ -32,6 +32,10 @@ interface YTNamespace {
     config: {
       videoId: string;
       host?: string;
+      // "100%" keeps the created iframe fluid — without it the widget
+      // hardcodes width/height attributes (640×360) and phones must crop it.
+      width?: string | number;
+      height?: string | number;
       playerVars?: Record<string, string | number>;
       events?: {
         onReady?: (event: YTPlayerEvent) => void;

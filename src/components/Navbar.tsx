@@ -108,6 +108,15 @@ export default function Navbar() {
         className={`fixed top-0 left-0 right-0 z-50 h-16 transition-all duration-300 ${
           hidden ? "-translate-y-full" : "translate-y-0"
         }`}
+        /* MOBILE FIX: with viewport-fit=cover the page is edge-to-edge on
+           notched phones — without safe-area padding the brand/actions sit
+           UNDER the sensor notch (landscape) or the status bar (PWA).
+           env() evaluates to 0 on ordinary displays → zero visual change. */
+        style={{
+          paddingLeft: "env(safe-area-inset-left, 0px)",
+          paddingRight: "env(safe-area-inset-right, 0px)",
+          paddingTop: "env(safe-area-inset-top, 0px)",
+        }}
       >
         <div
           className={`mx-auto flex h-full max-w-7xl items-center justify-between px-4 lg:px-6 transition-all duration-300 ${

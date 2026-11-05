@@ -128,6 +128,13 @@ export default function YouTubeLessonPlayer({
         playerRef.current = new YT.Player(mountRef.current, {
           videoId,
           host: "https://www.youtube-nocookie.com",
+          // MOBILE FIX: the widget replaces the mount div with an <iframe>
+          // carrying its attributes. Without these it defaults to 640×360,
+          // overflowing (and getting cropped by) the 16:9 screen on phones.
+          // The CSS rule on [data-youtube-player] iframe enforces the same
+          // fit independently of the API's behaviour.
+          width: "100%",
+          height: "100%",
           playerVars: {
             rel: 0,
             playsinline: 1,
