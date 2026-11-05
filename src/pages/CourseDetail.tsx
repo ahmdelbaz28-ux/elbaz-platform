@@ -1042,7 +1042,10 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
 
         <div className="grid gap-8 lg:grid-cols-3">
           {/* Main Content */}
-          <div className="lg:col-span-2">
+          {/* min-w-0: a grid item's auto min-size is its content's min-content —
+              without it, one unbreakable child (e.g. a nowrap lesson title)
+              stretches the whole track and the video gets clipped on phones. */}
+          <div className="min-w-0 lg:col-span-2">
             {/* Video Player Area */}
             <div className="relative mb-8 overflow-hidden rounded-xl border border-[#1f2d44] bg-black">
 
@@ -1273,9 +1276,9 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
           </div>
 
           {/* Sidebar */}
-          <div className="space-y-6">
+          <div className="min-w-0 space-y-6">
             {/* Enrollment Card */}
-            <div className="sticky top-24 rounded-xl border border-[#1f2d44] bg-[#111827] p-6">
+            <div className="sticky top-24 min-w-0 rounded-xl border border-[#1f2d44] bg-[#111827] p-6">
               {isEnrolled ? (
                 <>
                   <div className="flex items-center gap-2 text-[#10b981]">
@@ -1387,10 +1390,12 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
               </div>
             </div>
 
-            {/* Lesson List */}
-            <div className="rounded-xl border border-[#1f2d44] bg-[#111827] p-6">
+            {/* Lesson List — overflow-hidden + min-w-0 keep the verbatim
+                (long!) YouTube titles from stretching the grid on phones;
+                the row's truncate does the visual clipping. */}
+            <div className="min-w-0 overflow-hidden rounded-xl border border-[#1f2d44] bg-[#111827] p-6">
               <h2 className="mb-4 text-lg font-semibold text-[#f0f4f8]">{t("courseContent")}</h2>
-              <div className="space-y-1">
+              <div className="min-w-0 space-y-1">
                 {course.lessons?.map((lesson, i) => {
                   const canAccess = canAccessLesson(lesson);
                   const isActive = activeLesson === lesson.id;
@@ -1409,7 +1414,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                           setShowQuiz(false);
                         }
                       }}
-                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-start transition-colors ${lessonRowClass}`}
+                      className={`flex w-full min-w-0 items-center gap-3 rounded-lg px-3 py-2.5 text-start transition-colors ${lessonRowClass}`}
                     >
                       {canAccess ? (
                         <PlayCircle className={`h-4 w-4 shrink-0 ${isActive ? "text-[#06b6d4]" : "text-[#94a3b8]"}`} />

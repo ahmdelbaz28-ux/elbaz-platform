@@ -148,7 +148,7 @@ export default function Dashboard() {
         </div>
 
         <div className="grid gap-8 lg:grid-cols-2">
-          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3, type: "spring", stiffness: 150 }} className="rounded-xl border border-border bg-primary p-6">
+          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3, type: "spring", stiffness: 150 }} className="min-w-0 overflow-hidden rounded-xl border border-border bg-primary p-6">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-foreground">{t("myCertificates")}</h2>
               <motion.div whileHover={{ rotate: [0, -10, 10, 0], scale: 1.1 }} transition={{ duration: 0.3 }} className="text-accent-secondary">
@@ -162,7 +162,7 @@ export default function Dashboard() {
                   const gradeColor = cert.grade?.toLowerCase() === "distinction" ? "bg-amber-500/15 text-amber-500" : innerGradeColor;
                   return (
                     <motion.div key={cert.id} whileHover={{ x: 4, borderColor: "rgba(6,182,212,0.35)" }} whileTap={{ scale: 0.99 }}>
-                      <Link to={`/certificate/${cert.certificateNumber}`} className="group flex items-center gap-3 rounded-lg bg-background p-3 transition-all hover:border-accent-secondary/40 hover:bg-secondary">
+                      <Link to={`/certificate/${cert.certificateNumber}`} className="group flex min-w-0 items-center gap-3 rounded-lg bg-background p-3 transition-all hover:border-accent-secondary/40 hover:bg-secondary">
                         <motion.div whileHover={{ rotate: 360, scale: 1.1 }} transition={{ duration: 0.5 }} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent-secondary/10">
                           <Award className="h-5 w-5 text-accent-secondary" />
                         </motion.div>

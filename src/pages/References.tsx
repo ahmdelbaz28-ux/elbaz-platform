@@ -83,7 +83,7 @@ interface FileCardProps {
 
 function FileCard({ item, lang, isAdmin, isDownloading, onDownload, onDelete }: FileCardProps) {
   return (
-    <div className="group relative flex flex-col rounded-xl border border-border bg-background p-5 transition-all hover:border-accent-secondary/40 hover:bg-primary hover:shadow-lg hover:shadow-accent-secondary/5">
+    <div className="group relative flex min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-background p-5 transition-all hover:border-accent-secondary/40 hover:bg-primary hover:shadow-lg hover:shadow-accent-secondary/5">
       {/* File icon + extension badge */}
       <div className="mb-3 flex items-start justify-between">
         <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary">
@@ -105,9 +105,9 @@ function FileCard({ item, lang, isAdmin, isDownloading, onDownload, onDelete }: 
       )}
 
       {/* File meta */}
-        <div className="mt-auto space-y-2">
-        <div className="flex items-center justify-between text-[11px] text-text-muted">
-          <span className="truncate" title={item.fileName}>{item.fileName}</span>
+        <div className="mt-auto min-w-0 space-y-2">
+        <div className="flex min-w-0 items-center justify-between text-[11px] text-text-muted">
+          <span className="min-w-0 truncate" title={item.fileName}>{item.fileName}</span>
         </div>
         <div className="flex items-center justify-between text-[11px] text-text-muted">
           <span>{formatFileSize(item.fileSize)}</span>
