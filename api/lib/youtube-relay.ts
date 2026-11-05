@@ -17,9 +17,10 @@
  * never grants the other route.
  *
  * ORIGIN — explicit YOUTUBE_RELAY_URL wins; otherwise derived from
- * TELEGRAM_API_BASE (e.g. https://<worker>.workers.dev/tg → its origin),
- * but ONLY for *.workers.dev hosts so we never tunnel YouTube reads through
- * an arbitrary third-party host.
+ * TELEGRAM_API_BASE (e.g. https://<worker>.workers.dev/tg → its origin,
+ * *.workers.dev hosts only); otherwise the platform's own worker origin
+ * (DEFAULT_RELAY_ORIGIN). We never tunnel YouTube reads through an
+ * arbitrary third-party host.
  */
 
 import { createHmac } from "node:crypto";
@@ -29,6 +30,15 @@ import type { ParsedVideo } from "./notification-utils.js";
 /** Domain-separated HMAC context — MUST match the worker's YT_RELAY_CONTEXT. */
 export const YT_RELAY_CONTEXT = "yt-relay-v1";
 
+/**
+ * Known relay origin — this repo's own edge worker (same URL as .env.example
+ * and the deploy workflow's verify step). A code default keeps the relay
+ * zero-config: any deployment that has the relay secret activates
+ * automatically, and deployments without it stay fully dormant (the token
+ * derivation fails first, so no call is ever made).
+ */
+const DEFAULT_RELAY_ORIGIN = "https://ahmedelbaz.ahmdelbaz28.workers.dev";
+
 const VIDEO_ID_RE = /^[\w-]{11}$/;
 const RELAY_TIMEOUT_MS = 15 * 1000;
 
@@ -37,7 +47,12 @@ export type YoutubeOembedVerdict =
   | { status: "gone" }
   | { status: "unknown" };
 
-/** Worker origin for /yt/* calls, or null when the relay is not usable. */
+/**
+ * Worker origin for /yt/* calls. Fallback chain: explicit YOUTUBE_RELAY_URL →
+ * TELEGRAM_API_BASE derivation (workers.dev hosts only) → the platform's own
+ * worker (DEFAULT_RELAY_ORIGIN). The relay is only ever ACTIVATED when the
+ * token side is configured too (see relayGet).
+ */
 export function youtubeRelayOrigin(): string | null {
   const explicit = (process.env.YOUTUBE_RELAY_URL ?? "").trim();
   if (explicit) {
@@ -45,18 +60,19 @@ export function youtubeRelayOrigin(): string | null {
       const url = new URL(explicit);
       if (url.protocol === "https:") return url.origin;
     } catch {
-      // fall through to the TELEGRAM_API_BASE derivation
+      // fall through
     }
   }
   const tgBase = (process.env.TELEGRAM_API_BASE ?? "").trim();
-  if (!tgBase) return null;
-  try {
-    const url = new URL(tgBase);
-    if (url.protocol === "https:" && url.hostname.endsWith(".workers.dev")) return url.origin;
-  } catch {
-    // unparseable base — relay stays off
+  if (tgBase) {
+    try {
+      const url = new URL(tgBase);
+      if (url.protocol === "https:" && url.hostname.endsWith(".workers.dev")) return url.origin;
+    } catch {
+      // unparseable base — fall through to the code default
+    }
   }
-  return null;
+  return DEFAULT_RELAY_ORIGIN;
 }
 
 /** hex(HMAC-SHA256(TELEGRAM_API_RELAY_SECRET, "yt-relay-v1")) — the worker's gate value. */
@@ -69,13 +85,20 @@ export function youtubeRelayToken(): string | null {
 async function relayGet(path: string): Promise<Response | null> {
   const origin = youtubeRelayOrigin();
   const token = youtubeRelayToken();
-  if (!origin || !token) return null;
+  if (!origin || !token) return null; // unconfigured — stay silent, direct sources carry
   try {
-    return await fetch(`${origin}${path}`, {
+    const res = await fetch(`${origin}${path}`, {
       headers: { "X-Yt-Relay-Token": token },
       signal: AbortSignal.timeout(RELAY_TIMEOUT_MS),
       cache: "no-store",
     });
+    if (!res.ok) {
+      // Configured but refused — visible in Space logs (e.g. a 302 from a
+      // Cloudflare Access wall on workers.dev means an Access bypass policy
+      // for /yt* is missing; 5xx/502 means the relay itself errored).
+      logger.warn("[YouTubeRelay] relay answered non-ok", { path, status: res.status });
+    }
+    return res;
   } catch {
     return null;
   }

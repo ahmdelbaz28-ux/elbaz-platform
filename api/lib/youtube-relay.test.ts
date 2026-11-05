@@ -71,16 +71,18 @@ describe("youtubeRelayOrigin", () => {
     expect(youtubeRelayOrigin()).toBe(WORKER);
   });
 
-  it("never derives from a non-workers.dev host (no third-party tunnels)", () => {
+  it("never tunnels through a non-workers.dev base — falls back to OUR worker", () => {
     vi.stubEnv("YOUTUBE_RELAY_URL", "");
     vi.stubEnv("TELEGRAM_API_BASE", "https://someone-else.example.com/tg");
-    expect(youtubeRelayOrigin()).toBeNull();
+    const origin = youtubeRelayOrigin();
+    expect(origin).toBe(WORKER);
+    expect(origin).not.toContain("someone-else");
   });
 
-  it("null when nothing is configured", () => {
+  it("falls back to the platform's own worker origin when nothing is configured", () => {
     vi.stubEnv("YOUTUBE_RELAY_URL", "");
     vi.stubEnv("TELEGRAM_API_BASE", "");
-    expect(youtubeRelayOrigin()).toBeNull();
+    expect(youtubeRelayOrigin()).toBe(WORKER);
   });
 });
 
