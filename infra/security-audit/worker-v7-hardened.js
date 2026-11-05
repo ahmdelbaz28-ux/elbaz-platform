@@ -504,6 +504,316 @@ async function handleTelegramRelay(request, requestUrl) {
   });
 }
 
+// ─── YouTube data relay (/yt/*) ────────────────────────────────────────
+// DATA relay (2026-11-05): the HF Space's shared datacenter egress is
+// throttled by YouTube (429s / consent pages) — the origin's playlist watcher
+// and the admin lesson-import dialog degrade exactly when they are needed
+// (production incidents 2026-10-28 and 2026-11-05). Cloudflare → YouTube
+// egress is clean (same property that fixed Telegram above). Two GET routes:
+//   /yt/playlist?list=<id> → {ok, playlistId, items:[{videoId,title}], sources}
+//   /yt/oembed?v=<id>      → {ok, exists:true,title} | {ok, exists:false}
+// Titles are forwarded VERBATIM — this relay exists so the site can obey the
+// owner rule "no invented titles, only the ones YouTube itself shows".
+//
+// AUTH — derived token, zero new secrets: header X-Yt-Relay-Token must equal
+//   hex(HMAC-SHA256(TG_RELAY_SECRET, "yt-relay-v1"))
+// The Space computes the same derivation from TELEGRAM_API_RELAY_SECRET
+// (proven provisioned on BOTH sides by the live /tg relay — same GitHub
+// secret feeds the worker binding and the Space secret). Deriving a route key
+// instead of reusing the raw secret means one leaked header never grants the
+// other route. Unauthenticated requests get the same stealth 404 as /tg —
+// this is never an open YouTube proxy.
+const YT_RELAY_CONTEXT = 'yt-relay-v1';
+const YT_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+const YT_VIDEO_ID_RE = /^[\w-]{11}$/;
+const YT_PLAYLIST_ID_RE = /^[\w-]{10,64}$/;
+const YT_FETCH_TIMEOUT_MS = 12000;
+
+async function ytRelayToken() {
+  if (typeof TG_RELAY_SECRET !== 'string' || TG_RELAY_SECRET.length < 16) return null;
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode(TG_RELAY_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(YT_RELAY_CONTEXT));
+  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ── YouTube parsers (standalone ports of api/lib/notification-utils.ts —
+//    the worker is a single-file module and cannot import from api/) ──
+
+function ytDecodeJsonStringLiteral(raw) {
+  try { return JSON.parse(`"${raw}"`); } catch {
+    return raw.replaceAll('\\u0026', '&').replaceAll('\\"', '"').replaceAll('\\\\', '\\');
+  }
+}
+
+function ytCollect(out, seen, videoId, title) {
+  if (!videoId || seen.has(videoId)) return;
+  seen.add(videoId);
+  out.push({ videoId, title });
+}
+
+function ytParsePlaylistHtml(html) {
+  const out = [];
+  const seen = new Set();
+  // Layout A (legacy playlistVideoRenderer)
+  const blocks = html.split('"playlistVideoRenderer"');
+  for (let i = 1; i < blocks.length; i++) {
+    const block = blocks[i].slice(0, 4000);
+    const idMatch = /"videoId":"([\w-]{11})"/.exec(block);
+    if (!idMatch) continue;
+    const titleMatch = /"title":\{"runs":\[\{"text":"((?:[^"\\]|\\.)*)"/.exec(block);
+    ytCollect(out, seen, idMatch[1], titleMatch ? ytDecodeJsonStringLiteral(titleMatch[1]) : '');
+  }
+  if (out.length > 0) return out;
+  // Layout B (2025+ lockupViewModel)
+  const lockups = html.split('{"lockupViewModel"');
+  for (let i = 1; i < lockups.length; i++) {
+    const block = lockups[i].slice(0, 10000);
+    if (!block.includes('contentImage')) continue;
+    const idMatch = /\/vi\/([\w-]{11})\//.exec(block);
+    if (!idMatch) continue;
+    const titleMatch =
+      /"lockupMetadataViewModel":\{"title":\{"content":"((?:[^"\\]|\\.)*)"/.exec(block) ??
+      /"title":\{"content":"((?:[^"\\]|\\.)*)"/.exec(block);
+    ytCollect(out, seen, idMatch[1], titleMatch ? ytDecodeJsonStringLiteral(titleMatch[1]) : '');
+  }
+  if (out.length > 0) return out;
+  // Loose fallback
+  const looseIds = html.match(/"videoId":"([\w-]{11})"/g) ?? [];
+  for (const raw of looseIds) {
+    ytCollect(out, seen, /"videoId":"([\w-]{11})"/.exec(raw)?.[1], '');
+  }
+  return out;
+}
+
+function ytTitleFromNode(node) {
+  const title = node.title;
+  if (typeof title === 'string') return title;
+  if (title && typeof title === 'object') {
+    if (typeof title.content === 'string') return title.content;
+    if (Array.isArray(title.runs)) {
+      return title.runs.map((run) => (run && typeof run === 'object' ? String(run.text ?? '') : '')).join('');
+    }
+  }
+  const metadata = node.metadata;
+  if (metadata && typeof metadata === 'object' && metadata.lockupMetadataViewModel && typeof metadata.lockupMetadataViewModel === 'object') {
+    return ytTitleFromNode(metadata.lockupMetadataViewModel);
+  }
+  return '';
+}
+
+function ytParseInnertube(payload) {
+  if (!payload || typeof payload !== 'object') return [];
+  const out = [];
+  const seen = new Set();
+  const loose = [];
+  const walk = (node) => {
+    if (Array.isArray(node)) { for (const child of node) walk(child); return; }
+    if (!node || typeof node !== 'object') return;
+    const obj = node;
+    const lockup = obj.lockupViewModel;
+    if (lockup && typeof lockup === 'object') {
+      let videoId = lockup.contentId;
+      if (typeof videoId !== 'string' || !YT_VIDEO_ID_RE.test(videoId)) {
+        videoId = /\/vi\/([\w-]{11})\//.exec(JSON.stringify(lockup.contentImage ?? ''))?.[1];
+      }
+      ytCollect(out, seen, videoId, ytTitleFromNode(lockup));
+    }
+    const renderer = obj.playlistVideoRenderer;
+    if (renderer && typeof renderer === 'object') {
+      ytCollect(out, seen, renderer.videoId, ytTitleFromNode(renderer));
+    }
+    if (typeof obj.videoId === 'string' && YT_VIDEO_ID_RE.test(obj.videoId)) loose.push(obj.videoId);
+    for (const value of Object.values(obj)) walk(value);
+  };
+  walk(payload);
+  if (out.length > 0) return out;
+  for (const videoId of loose) ytCollect(out, seen, videoId, '');
+  return out;
+}
+
+function ytParseRss(xml) {
+  const out = [];
+  const seen = new Set();
+  const entries = xml.split('<entry>').slice(1);
+  for (const entry of entries) {
+    const idMatch = /<yt:videoId>([\w-]{11})<\/yt:videoId>/.exec(entry);
+    if (!idMatch || seen.has(idMatch[1])) continue;
+    const titleMatch = /<title>([^<]*)<\/title>/.exec(entry);
+    seen.add(idMatch[1]);
+    out.push({
+      videoId: idMatch[1],
+      title: titleMatch
+        ? titleMatch[1].replaceAll('&amp;', '&').replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&quot;', '"').replaceAll('&#39;', "'")
+        : '',
+    });
+  }
+  return out;
+}
+
+function ytMergeSources(...sources) {
+  const out = [];
+  const indexById = new Map();
+  for (const source of sources) {
+    if (!Array.isArray(source)) continue;
+    for (const video of source) {
+      if (!video?.videoId) continue;
+      const existingIdx = indexById.get(video.videoId);
+      if (existingIdx === undefined) {
+        indexById.set(video.videoId, out.length);
+        out.push({ videoId: video.videoId, title: video.title });
+      } else if (!out[existingIdx].title && video.title) {
+        out[existingIdx] = { ...out[existingIdx], title: video.title };
+      }
+    }
+  }
+  return out;
+}
+
+async function ytFetchText(url, init) {
+  try {
+    const res = await fetch(url, {
+      ...init,
+      headers: { 'User-Agent': YT_UA, 'Accept-Language': 'ar,en;q=0.8', ...(init && init.headers) },
+      signal: AbortSignal.timeout(YT_FETCH_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    return await res.text();
+  } catch {
+    return null;
+  }
+}
+
+async function ytFetchPlaylistUpstream(playlistId) {
+  const [innertubeRaw, htmlRaw, rssRaw] = await Promise.all([
+    ytFetchText('https://www.youtube.com/youtubei/v1/browse?prettyPrint=false', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        context: { client: { clientName: 'WEB', clientVersion: '2.20241001.00.00', hl: 'ar', gl: 'EG' } },
+        browseId: `VL${playlistId}`,
+      }),
+    }),
+    ytFetchText(`https://www.youtube.com/playlist?list=${playlistId}&hl=ar`),
+    ytFetchText(`https://www.youtube.com/feeds/videos.xml?playlist_id=${playlistId}`),
+  ]);
+  let innertube = [];
+  try { innertube = innertubeRaw ? ytParseInnertube(JSON.parse(innertubeRaw)) : []; } catch { innertube = []; }
+  const html = htmlRaw ? ytParsePlaylistHtml(htmlRaw) : [];
+  const rss = rssRaw ? ytParseRss(rssRaw) : [];
+  return {
+    items: ytMergeSources(innertube, html, rss),
+    sources: { innertube: innertube.length, html: html.length, rss: rss.length },
+  };
+}
+
+/** YouTube oEmbed: existence check AND the authoritative title in one call. */
+async function ytFetchOembedUpstream(videoId) {
+  const target = encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`);
+  try {
+    const res = await fetch(`https://www.youtube.com/oembed?format=json&hl=ar&url=${target}`, {
+      headers: { 'User-Agent': YT_UA, 'Accept-Language': 'ar,en;q=0.8' },
+      signal: AbortSignal.timeout(YT_FETCH_TIMEOUT_MS),
+    });
+    if (res.ok) {
+      let data = null;
+      try { data = await res.json(); } catch { data = null; }
+      if (data && typeof data.title === 'string' && data.title.trim()) {
+        return { ok: true, exists: true, videoId, title: data.title };
+      }
+      return null; // 200 without a usable title — report "unknown", never guess
+    }
+    if (res.status === 400 || res.status === 401 || res.status === 404) {
+      return { ok: true, exists: false, videoId };
+    }
+    return null; // throttled / 5xx — unknown
+  } catch {
+    return null;
+  }
+}
+
+function ytJson(payload, ttl) {
+  return new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${ttl}`, 'X-Yt-Cache': 'miss' },
+  });
+}
+
+async function handleYoutubeRelay(request, requestUrl, ctx) {
+  // Gate first (stealth), exactly like /tg — the route does not exist for
+  // anyone without the derived token.
+  const expected = await ytRelayToken();
+  const provided = request.headers.get('X-Yt-Relay-Token') || '';
+  if (!expected || !safeEqual(provided, expected)) {
+    return new Response(JSON.stringify({ error: 'Not Found' }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  if (request.method !== 'GET') {
+    return new Response(JSON.stringify({ ok: false, error: 'GET only' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  const cache = (typeof caches !== 'undefined' && caches.default) ? caches.default : null;
+  const cacheKey = new Request(requestUrl.toString(), { method: 'GET' });
+  const serve = async (build) => {
+    if (cache) {
+      try {
+        const hit = await cache.match(cacheKey);
+        if (hit) {
+          const cloned = new Response(hit.body, hit);
+          cloned.headers.set('X-Yt-Cache', 'hit');
+          return cloned;
+        }
+      } catch { /* best-effort cache */ }
+    }
+    const fresh = await build();
+    if (fresh && fresh.status === 200 && cache && ctx && typeof ctx.waitUntil === 'function') {
+      try { ctx.waitUntil(cache.put(cacheKey, fresh.clone())); } catch { /* best-effort cache */ }
+    }
+    return fresh;
+  };
+
+  const pathname = requestUrl.pathname;
+  if (pathname === '/yt/oembed') {
+    const videoId = requestUrl.searchParams.get('v') || '';
+    if (!YT_VIDEO_ID_RE.test(videoId)) {
+      return new Response(JSON.stringify({ ok: false, error: 'bad video id' }), {
+        status: 400, headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return serve(async () => {
+      const verdict = await ytFetchOembedUpstream(videoId);
+      // 502 (NOT cached): lets the origin fall back to its own direct check.
+      if (!verdict) {
+        return new Response(JSON.stringify({ ok: false, error: 'upstream unknown' }), {
+          status: 502, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return ytJson(verdict, 1800);
+    });
+  }
+  if (pathname === '/yt/playlist') {
+    const playlistId = requestUrl.searchParams.get('list') || '';
+    if (!YT_PLAYLIST_ID_RE.test(playlistId)) {
+      return new Response(JSON.stringify({ ok: false, error: 'bad playlist id' }), {
+        status: 400, headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return serve(async () => {
+      const { items, sources } = await ytFetchPlaylistUpstream(playlistId);
+      return ytJson({ ok: true, playlistId, items, sources }, 300);
+    });
+  }
+  return new Response(JSON.stringify({ error: 'Not Found' }), {
+    status: 404,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
 async function handleRequest(request, _env, ctx) {
   // ✅ SECURITY FIX (audit run-1): read the worker var from the module scope or env binding.
   try { EDGE_ORIGIN_SECRET = (typeof EDGE_ORIGIN_SECRET !== 'undefined' && EDGE_ORIGIN_SECRET) ? EDGE_ORIGIN_SECRET : ((_env && _env.EDGE_ORIGIN_SECRET) || undefined); } catch { /* not configured */ }
@@ -526,6 +836,22 @@ async function handleRequest(request, _env, ctx) {
     } catch (err) {
       console.error('Telegram relay failed:', err);
       return new Response(JSON.stringify({ ok: false, description: 'relay upstream error' }), {
+        status: 502,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+  }
+
+  // YouTube data relay — own gate, before the WAF (same pattern as /tg):
+  // YouTube titles/ids in query strings must never trip text heuristics, and
+  // the relay has its own strict parameter grammar + derived-token gate.
+  if (requestUrl.pathname === '/yt' || requestUrl.pathname.startsWith('/yt/')) {
+    try {
+      const relayResponse = await handleYoutubeRelay(request, requestUrl, ctx);
+      return addSecurityHeaders(relayResponse, requestUrl);
+    } catch (err) {
+      console.error('YouTube relay failed:', err);
+      return new Response(JSON.stringify({ ok: false, error: 'relay upstream error' }), {
         status: 502,
         headers: { 'Content-Type': 'application/json' },
       });

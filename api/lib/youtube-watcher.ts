@@ -7,6 +7,11 @@ import {
   parsePlaylistVideos,
   type ParsedVideo,
 } from "./notification-utils.js";
+import {
+  fetchRelayOembedVerdict,
+  fetchRelayPlaylist,
+  type YoutubeOembedVerdict,
+} from "./youtube-relay.js";
 
 // ─── Configuration ─────────────────────────────────────────────────────────────
 
@@ -183,13 +188,20 @@ async function fetchInnertubePlaylist(): Promise<ParsedVideo[]> {
 }
 
 /**
- * One robust multi-source fetch. InnerTube first (compact JSON, throttling-
- * resistant), then the desktop playlist HTML, then the Atom feed — all three
- * merged by union so ANY healthy source carries the tick, and the first
- * non-empty title wins. A single degraded source can no longer blind us.
+ * One robust multi-source fetch. The Cloudflare Worker relay (/yt/*, clean
+ * egress where the datacenter IP is throttled) runs concurrently with
+ * InnerTube, then the desktop playlist HTML, then the Atom feed — all merged
+ * by union so ANY healthy source carries the tick, and the first non-empty
+ * title wins (the relay leads the order, so its titles win ties). A single
+ * degraded source can no longer blind us; an unconfigured relay is a no-op.
  */
 async function fetchAllSources(): Promise<ParsedVideo[]> {
-  const innertube = await fetchInnertubePlaylist();
+  // Concurrent, not serial — the admin import dialog is user-facing and must
+  // not eat an extra round-trip to Cloudflare.
+  const [relay, innertube] = await Promise.all([
+    fetchRelayPlaylist(PLAYLIST_ID),
+    fetchInnertubePlaylist(),
+  ]);
 
   const html = await fetchText(PLAYLIST_URL);
   const fromHtml = html ? parsePlaylistVideos(html) : [];
@@ -197,7 +209,7 @@ async function fetchAllSources(): Promise<ParsedVideo[]> {
   const rss = await fetchText(PLAYLIST_RSS_URL);
   const fromRss = rss ? extractFromRss(rss) : [];
 
-  const merged = mergeVideoSources(innertube, fromHtml, fromRss);
+  const merged = mergeVideoSources(relay ?? [], innertube, fromHtml, fromRss);
   if (merged.length > 0) return merged;
 
   // Every source came back empty — most likely a transient throttle wave.
@@ -241,7 +253,7 @@ export function isUnavailableTitle(title: string): boolean {
  *  keeps answering where the HTML scrape gets throttled. */
 const OEMBED_URL = "https://www.youtube.com/oembed?format=json&hl=ar&url=";
 
-type OembedVerdict = { status: "ok"; title: string } | { status: "gone" } | { status: "unknown" };
+type OembedVerdict = YoutubeOembedVerdict;
 
 /**
  * Ask YouTube about ONE video. This is the existence check AND the
@@ -252,6 +264,11 @@ type OembedVerdict = { status: "ok"; title: string } | { status: "gone" } | { st
  *  - anything else (5xx, 429, timeout) → unknown — we could not check.
  */
 export async function fetchOembedVerdict(videoId: string): Promise<OembedVerdict> {
+  // Worker relay first — its Cloudflare egress answers where the datacenter
+  // IP is throttled. null (unconfigured / unknown / transport failure) falls
+  // through to the direct call unchanged.
+  const viaRelay = await fetchRelayOembedVerdict(videoId);
+  if (viaRelay) return viaRelay;
   try {
     const res = await fetch(`${OEMBED_URL}${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}`, {
       headers: { "User-Agent": BROWSER_UA, "Accept-Language": "ar,en;q=0.8" },

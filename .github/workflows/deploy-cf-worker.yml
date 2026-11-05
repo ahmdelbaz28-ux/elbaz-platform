@@ -167,6 +167,7 @@ jobs:
       - name: Verify deployment
         env:
           WORKER_NAME: ahmedelbaz
+          TG_RELAY_SECRET: ${{ secrets.TG_RELAY_SECRET }}
         run: |
           sleep 5
           # Test worker.dev endpoint (Worker v7 blocks empty UAs)
@@ -180,6 +181,37 @@ jobs:
             -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \
             https://ahmedelbaz.qzz.io)
           echo "Custom domain returned HTTP $DOMAIN_STATUS"
+
+          # ── YouTube data relay live check (/yt/*) ──
+          # Derive the EXACT token the Space derives from TELEGRAM_API_RELAY_
+          # SECRET (hex(HMAC-SHA256(secret, "yt-relay-v1"))) and expect a real
+          # 200 ok:true answer — proves auth, YouTube egress and parsing on
+          # the live edge in one shot. Unauthenticated calls must stay a
+          # stealth 404 (never an open YouTube proxy).
+          YT_TOKEN=$(TG_RELAY_SECRET="$TG_RELAY_SECRET" python3 -c 'import os,hmac,hashlib; s=os.environ.get("TG_RELAY_SECRET","").strip(); print(hmac.new(s.encode(), b"yt-relay-v1", hashlib.sha256).hexdigest() if len(s)>=16 else "")')
+          if [ -n "$YT_TOKEN" ]; then
+            UA='User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            STEALTH=$(curl -sS -o /dev/null -w "%{http_code}" -H "$UA" \
+              "https://${WORKER_NAME}.ahmdelbaz28.workers.dev/yt/playlist?list=PLeeb5_Qjhcgc")
+            echo "Relay without token (expect 404 stealth): HTTP $STEALTH"
+            YT_CODE=$(curl -sS -o /tmp/yt.json -w "%{http_code}" -H "$UA" \
+              -H "X-Yt-Relay-Token: $YT_TOKEN" \
+              "https://${WORKER_NAME}.ahmdelbaz28.workers.dev/yt/playlist?list=PLeeb5_Qjhcgc")
+            echo "Relay with derived token: HTTP $YT_CODE"
+            if [ "$STEALTH" != "404" ] || [ "$YT_CODE" != "200" ] || ! python3 -c "import json,sys; sys.exit(0 if json.load(open('/tmp/yt.json')).get('ok') is True else 1)"; then
+              echo "❌ YouTube data relay verification failed:"
+              head -c 300 /tmp/yt.json 2>/dev/null; echo
+              exit 1
+            fi
+            ITEMS=$(python3 -c "import json; print(len(json.load(open('/tmp/yt.json')).get('items', [])))")
+            if [ "$ITEMS" -gt 0 ]; then
+              echo "✅ YouTube data relay verified live — ok:true, $ITEMS playlist items with verbatim titles"
+            else
+              echo "⚠️ Relay answered ok:true but 0 items — verify the playlist id still exists on YouTube"
+            fi
+          else
+            echo "⚠️ TG_RELAY_SECRET unavailable in this step — /yt live check skipped"
+          fi
 
           if [ "$WORKER_STATUS" = "200" ] || [ "$WORKER_STATUS" = "302" ] || [ "$WORKER_STATUS" = "404" ]; then
             echo "✅ Worker is responding correctly"
