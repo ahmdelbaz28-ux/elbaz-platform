@@ -32,6 +32,8 @@ const INNERTUBE_URL = "https://www.youtube.com/youtubei/v1/browse?prettyPrint=fa
 /** One quick in-tick retry after a throttled/failed primary source. */
 const SOURCE_RETRY_DELAY_MS = 5 * 1000;
 
+/** Parallel oEmbed existence checks during admin import (bounded — be polite). */
+const OEMBED_CONCURRENCY = 8;
 /** YouTube search indexes new videos within ~15 min; polling faster is waste. */
 const WATCH_INTERVAL_MS = 15 * 60 * 1000;
 /** First tick delay — let the server finish booting and DB init settle. */
@@ -209,6 +211,81 @@ async function fetchAllSources(): Promise<ParsedVideo[]> {
   return mergeVideoSources(innertubeRetry, htmlRetry ? parsePlaylistVideos(htmlRetry) : []);
 }
 
+// ─── Playlist import (admin dialog) ──────────────────────────────
+
+/**
+ * Titles YouTube itself puts on playlist entries that no longer exist as
+ * watchable videos (deleted, private). These entries still carry a videoId
+ * in InnerTube/HTML responses, so without this filter the site could list
+ * videos that do not actually play. Covers the EN + AR phrasings YouTube
+ * serves us (hl=ar requests); bracket/case/whitespace-proof.
+ */
+const UNAVAILABLE_TITLES = new Set([
+  "private video",
+  "deleted video",
+  "video unavailable",
+  "فيديو خاص",
+  "فيديو محذوف",
+  "الفيديو غير متاح",
+  "هذا الفيديو غير متاح",
+]);
+
+/** True when the scraped title is one of YouTube's placeholder names for an
+ *  unavailable entry. Empty titles are NOT placeholders — oEmbed names them. */
+export function isUnavailableTitle(title: string): boolean {
+  const normalized = title.trim().toLowerCase().replace(/[[\]()]/g, "").replace(/\s+/g, " ");
+  return UNAVAILABLE_TITLES.has(normalized);
+}
+
+/** YouTube's official oEmbed endpoint — metadata, not the player page, so it
+ *  keeps answering where the HTML scrape gets throttled. */
+const OEMBED_URL = "https://www.youtube.com/oembed?format=json&hl=ar&url=";
+
+type OembedVerdict = { status: "ok"; title: string } | { status: "gone" } | { status: "unknown" };
+
+/**
+ * Ask YouTube about ONE video. This is the existence check AND the
+ * authoritative title in a single call:
+ *  - 200  → the video actually exists right now, and `title` IS the live
+ *           YouTube title (the site may never invent or paraphrase one).
+ *  - 400/401/404 → definitively not usable (mistyped id / private / deleted).
+ *  - anything else (5xx, 429, timeout) → unknown — we could not check.
+ */
+export async function fetchOembedVerdict(videoId: string): Promise<OembedVerdict> {
+  try {
+    const res = await fetch(`${OEMBED_URL}${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}`, {
+      headers: { "User-Agent": BROWSER_UA, "Accept-Language": "ar,en;q=0.8" },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      cache: "no-store",
+    });
+    if (res.ok) {
+      const data = (await res.json()) as { title?: unknown };
+      if (typeof data.title === "string" && data.title.trim()) {
+        return { status: "ok", title: data.title };
+      }
+      return { status: "unknown" };
+    }
+    if (res.status === 400 || res.status === 401 || res.status === 404) return { status: "gone" };
+    return { status: "unknown" };
+  } catch {
+    return { status: "unknown" };
+  }
+}
+
+/** Fixed-size promise pool that preserves input order. */
+async function mapWithConcurrency<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor++;
+      results[index] = await fn(items[index]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 // ─── Detection ─────────────────────────────────────────────────────────────────
 
 /** Build the watch URL for a video (opens inside the course playlist). */
@@ -221,23 +298,70 @@ export function getPlaylistId(): string {
   return PLAYLIST_ID;
 }
 
+export interface PlaylistImportItem {
+  videoId: string;
+  title: string;
+  watchUrl: string;
+  thumbnailUrl: string;
+}
+
 /**
  * Fetch the channel playlist for the ADMIN LESSON-IMPORT dialog.
  * Reuses the watcher's robust multi-source pipeline (InnerTube → HTML → RSS,
  * merged by union) so the dialog shows every video even when one source is
  * throttled. Read-only: it never touches watcher state or notifications.
+ *
+ * OWNER RULE — the site playlist must mirror YouTube exactly: only videos
+ * that really exist there, only with their exact YouTube titles. Two hard
+ * guarantees enforce it:
+ *  1. Placeholder entries YouTube keeps for dead videos ("Private video" /
+ *     "فيديو خاص" / …) are dropped before anything is shown.
+ *  2. Every survivor is re-checked against YouTube's own oEmbed endpoint,
+ *     which answers ONLY for videos that exist right now — and whose `title`
+ *     field IS the live YouTube title, replacing any scraped one verbatim.
+ *
+ * `verified=false` means at least one candidate could not be checked
+ * (throttling/network) — the honest flag the dialog surfaces; if oEmbed is
+ * fully unreachable the scraped, placeholder-free list degrades through with
+ * the flag set, never silently.
  */
-export async function fetchPlaylistVideosForImport(): Promise<Array<{ videoId: string; title: string; watchUrl: string; thumbnailUrl: string }>> {
+export async function fetchPlaylistVideosForImport(): Promise<{ items: PlaylistImportItem[]; verified: boolean }> {
   const { buildYouTubeThumbnailUrl } = await import("../../src/lib/youtube-url");
-  const videos = await fetchAllSources();
-  return videos
-    .filter((v) => v.videoId)
-    .map((v) => ({
-      videoId: v.videoId,
-      title: v.title,
-      watchUrl: watchUrl(v.videoId),
-      thumbnailUrl: buildYouTubeThumbnailUrl(v.videoId),
-    }));
+  const candidates = (await fetchAllSources()).filter((v) => v.videoId && !isUnavailableTitle(v.title));
+  if (candidates.length === 0) return { items: [], verified: false };
+
+  const toImportItem = (videoId: string, title: string): PlaylistImportItem => ({
+    videoId,
+    title,
+    watchUrl: watchUrl(videoId),
+    thumbnailUrl: buildYouTubeThumbnailUrl(videoId),
+  });
+
+  const verdicts = await mapWithConcurrency(candidates, OEMBED_CONCURRENCY, (v) => fetchOembedVerdict(v.videoId));
+
+  const kept: PlaylistImportItem[] = [];
+  let gone = 0;
+  let unknown = 0;
+  candidates.forEach((v, i) => {
+    const verdict = verdicts[i];
+    if (verdict.status === "ok") kept.push(toImportItem(v.videoId, verdict.title));
+    else if (verdict.status === "gone") gone++;
+    else unknown++;
+  });
+
+  if (kept.length > 0) {
+    logger.info("[YouTubeWatch] import list verified against YouTube", {
+      candidates: candidates.length, kept: kept.length, droppedUnavailable: gone, unchecked: unknown,
+    });
+    return { items: kept, verified: unknown === 0 };
+  }
+
+  // oEmbed fully unreachable (datacenter throttle wave) — degrade to the
+  // scraped list (still placeholder-free) and say so, never fake a check.
+  logger.warn("[YouTubeWatch] oembed unreachable — serving scraped playlist unverified", {
+    candidates: candidates.length,
+  });
+  return { items: candidates.filter((v) => v.title).map((v) => toImportItem(v.videoId, v.title)), verified: false };
 }
 
 /**

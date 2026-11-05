@@ -12,7 +12,7 @@ import { adminQuery, adminMutation } from "./middleware";
 import { getDb } from "./queries/connection";
 import { courses, lessons, enrollments, payments, wishlists, reviews } from "@db/schema";
 import { pushNotification } from "./lib/notification-broadcast.js";
-import { fetchPlaylistVideosForImport, getPlaylistId } from "./lib/youtube-watcher.js";
+import { fetchOembedVerdict, fetchPlaylistVideosForImport, getPlaylistId } from "./lib/youtube-watcher.js";
 
 export const adminCoursesProcedures = {
   listCourses: adminQuery
@@ -274,14 +274,34 @@ export const adminCoursesProcedures = {
   youtubePlaylistVideos: adminQuery
     .query(async () => {
       try {
-        const items = await fetchPlaylistVideosForImport();
-        return { playlistId: getPlaylistId(), items, error: null as string | null };
+        const { items, verified } = await fetchPlaylistVideosForImport();
+        return { playlistId: getPlaylistId(), items, verified, error: null as string | null };
       } catch (err) {
         return {
           playlistId: getPlaylistId(),
           items: [],
+          verified: false,
           error: err instanceof Error ? err.message : "Playlist fetch failed",
         };
+      }
+    }),
+
+  // The authoritative YouTube title for any pasted link — the backend of the
+  // "use the official YouTube title" button in the lesson form. OWNER RULE:
+  // lesson titles for YouTube videos are NEVER hand-invented; this returns
+  // the live oEmbed title (exact, as written on YouTube) or null when the
+  // link isn't YouTube / the video is gone — the UI surfaces that honestly.
+  youtubeVideoTitle: adminQuery
+    .input(z.object({ url: z.string().min(1).max(1000) }))
+    .mutation(async ({ input }) => {
+      try {
+        const { extractYouTubeId } = await import("../src/lib/youtube-url");
+        const videoId = extractYouTubeId(input.url);
+        if (!videoId) return { videoId: null, title: null };
+        const verdict = await fetchOembedVerdict(videoId);
+        return { videoId, title: verdict.status === "ok" ? verdict.title : null };
+      } catch {
+        return { videoId: null, title: null };
       }
     }),
 };

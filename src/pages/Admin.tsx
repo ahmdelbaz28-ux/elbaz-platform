@@ -29,8 +29,12 @@ import { bilingual } from "@/lib/i18n";
 interface SettingItem { id?: string; key: string; value: string; section: string; type?: string; }
 interface ThemeItem { id: string; name: string; primaryColor: string; secondaryColor: string; accentColor: string; bgColor: string; textColor: string; cardBgColor: string; borderColor: string; isActive: boolean; createdAt: string; }
 
-/** Rows of the channel's YouTube playlist for the lesson-import dialog. */
-function PlaylistImportList({ isRTL, onPick }: { readonly isRTL: boolean; readonly onPick: (watchUrl: string) => void }) {
+/** Rows of the channel's YouTube playlist for the lesson-import dialog.
+ *  OWNER RULE: this list mirrors YouTube exactly — only videos that really
+ *  exist there (server drops placeholders + verifies via oEmbed) and ONLY
+ *  their exact YouTube titles; picking a row fills BOTH the link and the
+ *  verbatim title, so a hand-invented name can never reach a lesson. */
+function PlaylistImportList({ isRTL, onPick }: { readonly isRTL: boolean; readonly onPick: (picked: { watchUrl: string; title: string }) => void }) {
   const { data, isLoading, isError } = trpc.admin.youtubePlaylistVideos.useQuery(undefined, {
     staleTime: 10 * 60 * 1000,
   });
@@ -62,31 +66,40 @@ function PlaylistImportList({ isRTL, onPick }: { readonly isRTL: boolean; readon
   }
 
   return (
-    <div className="max-h-[46vh] space-y-1.5 overflow-y-auto pr-1">
-      {items.map((item: { videoId: string; title: string; watchUrl: string; thumbnailUrl: string }) => (
-        <button
-          key={item.videoId}
-          type="button"
-          dir={isRTL ? "rtl" : "ltr"}
-          onClick={() => onPick(item.watchUrl)}
-          className="flex w-full items-center gap-3 rounded-lg border border-border bg-background p-2 text-start transition-colors hover:bg-[rgba(6,182,212,0.06)]"
-        >
-          <img
-            src={item.thumbnailUrl}
-            alt=""
-            loading="lazy"
-            className="h-11 w-20 shrink-0 rounded-md object-cover"
-            onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }}
-          />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-[13px] font-medium text-foreground">{item.title}</span>
-            <span dir="ltr" className="block truncate font-mono text-[10px] text-text-muted">{item.videoId}</span>
-          </span>
-          <span className="shrink-0 rounded-md bg-[rgba(6,182,212,0.12)] px-2 py-1 text-[10px] font-bold text-[#22d3ee]">
-            {isRTL ? "اختيار" : "Pick"}
-          </span>
-        </button>
-      ))}
+    <div className="space-y-2">
+      {data && data.verified === false && (
+        <p className="rounded-lg border border-amber-500/30 bg-[rgba(245,158,11,0.08)] px-3 py-2 text-[11px] leading-relaxed text-amber-400">
+          {isRTL
+            ? "تعذّر التحقق النهائي من يوتيوب الآن (شبكة) — القائمة من مصادر يوتيوب مباشرة وبدون الفيديوهات غير المتاحة، بس مش مؤكّدة 100%"
+            : "Live YouTube verification unavailable right now — list comes straight from YouTube sources without unavailable videos, but is not 100% confirmed"}
+        </p>
+      )}
+      <div className="max-h-[46vh] space-y-1.5 overflow-y-auto pr-1">
+        {items.map((item: { videoId: string; title: string; watchUrl: string; thumbnailUrl: string }) => (
+          <button
+            key={item.videoId}
+            type="button"
+            dir={isRTL ? "rtl" : "ltr"}
+            onClick={() => onPick({ watchUrl: item.watchUrl, title: item.title })}
+            className="flex w-full items-center gap-3 rounded-lg border border-border bg-background p-2 text-start transition-colors hover:bg-[rgba(6,182,212,0.06)]"
+          >
+            <img
+              src={item.thumbnailUrl}
+              alt=""
+              loading="lazy"
+              className="h-11 w-20 shrink-0 rounded-md object-cover"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }}
+            />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] font-medium text-foreground">{item.title}</span>
+              <span dir="ltr" className="block truncate font-mono text-[10px] text-text-muted">{item.videoId}</span>
+            </span>
+            <span className="shrink-0 rounded-md bg-[rgba(6,182,212,0.12)] px-2 py-1 text-[10px] font-bold text-[#22d3ee]">
+              {isRTL ? "اختيار" : "Pick"}
+            </span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -201,6 +214,21 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
   const createLesson = trpc.admin.createLesson.useMutation({ onSuccess: () => { utils.admin.listLessons.invalidate(); setShowLessonForm(false); toast.success(lang === "en" ? "Lesson added" : "تمت إضافة الدرس"); }, onError: (err) => toast.error(err.message) });
   const updateLesson = trpc.admin.updateLesson.useMutation({ onSuccess: () => { utils.admin.listLessons.invalidate(); setShowLessonForm(false); toast.success(lang === "en" ? "Lesson updated" : "تم تحديث الدرس"); }, onError: (err) => toast.error(err.message) });
   const deleteLesson = trpc.admin.deleteLesson.useMutation({ onSuccess: () => { utils.admin.listLessons.invalidate(); toast.success(lang === "en" ? "Lesson deleted" : "تم حذف الدرس"); }, onError: (err) => toast.error(err.message) });
+  // OWNER RULE enforcement: lesson titles for YouTube videos must be the exact
+  // title written on YouTube — this button pulls it live from YouTube (oEmbed)
+  // and fills BOTH title fields verbatim, so no hand-invented title survives.
+  const syncYouTubeTitle = trpc.admin.youtubeVideoTitle.useMutation({
+    onSuccess: (data) => {
+      const title = data.title;
+      if (!title) {
+        toast.error(isRTL ? "تعذّر جلب العنوان من يوتيوب — اتأكد إن الفيديو موجود ومتاح" : "Couldn't fetch the YouTube title — make sure the video exists and is available");
+        return;
+      }
+      setLessonForm((f) => ({ ...f, titleAr: title, titleEn: title }));
+      toast.success(isRTL ? "العنوان اتنسخ من يوتيوب حرفياً ✓" : "Title copied verbatim from YouTube ✓");
+    },
+    onError: (err) => toast.error(err.message),
+  });
   // ── Articles (blog) management ──
   const { data: articlesData } = trpc.articles.adminList.useQuery(undefined, { enabled: !!isAdmin && activeTab === "articles" });
   const createArticle = trpc.articles.create.useMutation({ onSuccess: () => { utils.articles.adminList.invalidate(); setShowArticleForm(false); toast.success(lang === "en" ? "Article saved" : "تم حفظ المقال"); }, onError: (err) => toast.error(err.message) });
@@ -1519,10 +1547,23 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
               </div>
               <Input value={lessonForm.videoUrl} onChange={(e) => setLessonForm((f) => ({ ...f, videoUrl: e.target.value }))} placeholder={isRTL ? "https://www.youtube.com/watch?v=... أو etap/lesson01.mp4" : "https://www.youtube.com/watch?v=... or etap/lesson01.mp4"} dir={extractYouTubeId(lessonForm.videoUrl) ? "ltr" : undefined} className="border-border bg-background text-foreground" />
               {extractYouTubeId(lessonForm.videoUrl) ? (
-                <p className="flex items-center gap-1 text-[11px] font-medium text-[#22d3ee]">
-                  <Youtube className="h-3 w-3" />
-                  {isRTL ? "يوتيوب ✓ — هيُبث جوه الموقع من البلايليست بدون تحميل على السيرفر" : "YouTube ✓ — streams inside the site from the playlist, nothing hosted here"}
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="flex items-center gap-1 text-[11px] font-medium text-[#22d3ee]">
+                    <Youtube className="h-3 w-3" />
+                    {isRTL ? "يوتيوب ✓ — هيُبث جوه الموقع من البلايليست بدون تحميل على السيرفر" : "YouTube ✓ — streams inside the site from the playlist, nothing hosted here"}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => syncYouTubeTitle.mutate({ url: lessonForm.videoUrl })}
+                    disabled={syncYouTubeTitle.isPending}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-md bg-[rgba(34,211,238,0.1)] px-2 py-1 text-[11px] font-semibold text-[#22d3ee] transition-colors hover:bg-[rgba(34,211,238,0.2)] disabled:opacity-50"
+                  >
+                    <Youtube className="h-3 w-3" />
+                    {syncYouTubeTitle.isPending
+                      ? (isRTL ? "جاري الجلب..." : "Fetching...")
+                      : (isRTL ? "استخدم عنوان اليوتيوب الرسمي" : "Use official YouTube title")}
+                  </button>
+                </div>
               ) : lessonForm.videoUrl.trim() ? (
                 <p className="text-[11px] text-text-muted">{isRTL ? "رابط مباشر / مفتاح R2 — هيُبث من مشغل المنصة المحمي" : "Direct link / R2 key — plays in the protected self-hosted player"}</p>
               ) : null}
@@ -1555,16 +1596,16 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
             </DialogTitle>
             <DialogDescription className="text-text-muted">
               {isRTL
-                ? "اختار الفيديو ويتملّى رابطه في خانة الدرس — التشغيل هيبقى جوه الموقع من غير أي ثقل على السيرفر"
-                : "Pick a video and its link fills the lesson form — playback happens inside the site with zero server load"}
+                ? "قائمة حية من بلايليست القناة — نفس الفيديوهات الموجودة فعلاً على يوتيوب ونفس عناوينها حرفياً. اختار فيديو والرابط والعنوان بيتملّوا لوحدهم"
+                : "Live view of the channel playlist — exactly the videos that exist on YouTube with their exact titles. Pick one and both the link and the title auto-fill"}
             </DialogDescription>
           </DialogHeader>
           <PlaylistImportList
             isRTL={isRTL}
-            onPick={(watchUrl) => {
-              setLessonForm((f) => ({ ...f, videoUrl: watchUrl }));
+            onPick={({ watchUrl, title }) => {
+              setLessonForm((f) => ({ ...f, videoUrl: watchUrl, titleAr: title, titleEn: title }));
               setShowPlaylistImport(false);
-              toast.success(isRTL ? "تم اختيار الفيديو — اضغط حفظ" : "Video selected — press Save");
+              toast.success(isRTL ? "الفيديو اتحط بعنوانه الرسمي من يوتيوب حرفياً — اضغط حفظ" : "Video set with its exact YouTube title — press Save");
             }}
           />
           <DialogFooter>
