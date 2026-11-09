@@ -11,6 +11,7 @@ import {
   LogOut, ArrowUpRight, Shield, PlayCircle, Newspaper, X, Menu, MessageSquareText, ThumbsUp, ThumbsDown, Download,
   Youtube, Loader2, ListVideo,
   CalendarDays, ExternalLink, RefreshCw, ImageOff,
+  FolderTree, ListChecks, UserPlus, UserMinus, RotateCcw, GraduationCap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -296,6 +297,82 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
     if (!ytSync) return;
     updateSyncSettings.mutate({ [key]: value });
   };
+
+  // ─── Categories manager (dashboard CRUD — previously SQL-only) ───
+  const { data: adminCats, refetch: refetchAdminCats } = trpc.admin.adminCategories.useQuery(undefined, { enabled: !!isAdmin && activeTab === "courses" });
+  const [showCats, setShowCats] = useState(false);
+  interface CatItem { id: number; slug: string; nameEn: string; nameAr: string; icon: string; sortOrder: number; courseCount: number; }
+  const [catForm, setCatForm] = useState<{ id?: number; slug: string; nameEn: string; nameAr: string; icon: string; sortOrder: number }>({ slug: "", nameEn: "", nameAr: "", icon: "book", sortOrder: 0 });
+  const invalidateCatCaches = () => { void refetchAdminCats(); utils.course.categories.invalidate(); utils.admin.listCourses.invalidate(); };
+  const createCategory = trpc.admin.createCategory.useMutation({ onSuccess: () => { invalidateCatCaches(); setShowCats(false); toast.success(lang === "en" ? "Category created" : "تم إنشاء التصنيف"); }, onError: (err) => toast.error(err.message) });
+  const updateCategory = trpc.admin.updateCategory.useMutation({ onSuccess: () => { invalidateCatCaches(); setShowCats(false); toast.success(lang === "en" ? "Category updated" : "تم تحديث التصنيف"); }, onError: (err) => toast.error(err.message) });
+  const deleteCategory = trpc.admin.deleteCategory.useMutation({ onSuccess: () => { invalidateCatCaches(); toast.success(lang === "en" ? "Category deleted" : "تم حذف التصنيف"); }, onError: (err) => toast.error(err.message) });
+  const submitCatForm = () => {
+    if (!catForm.nameEn.trim() || !catForm.nameAr.trim()) { toast.error(isRTL ? "الاسمان مطلوبان" : "Both names are required"); return; }
+    if (catForm.id) {
+      updateCategory.mutate({ id: catForm.id, nameEn: catForm.nameEn.trim(), nameAr: catForm.nameAr.trim(), icon: catForm.icon.trim() || "book", sortOrder: catForm.sortOrder });
+    } else {
+      const slug = catForm.slug.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      if (!slug) { toast.error(isRTL ? "أدخل معرفاً لاتينياً صالحاً" : "Enter a valid latin slug"); return; }
+      createCategory.mutate({ slug, nameEn: catForm.nameEn.trim(), nameAr: catForm.nameAr.trim(), icon: catForm.icon.trim() || "book", sortOrder: catForm.sortOrder });
+    }
+  };
+
+  // ─── Quiz question bank (per lesson — previously no write path at all) ───
+  const [quizLesson, setQuizLesson] = useState<LessonItem | null>(null);
+  const { data: quizData, refetch: refetchQuiz } = trpc.admin.adminQuizByLesson.useQuery(
+    { lessonId: quizLesson?.id ?? 0 },
+    { enabled: !!isAdmin && !!quizLesson },
+  );
+  interface QuizItem { id: number; lessonId: number; questionEn: string; questionAr: string; optionsEn: string[] | null; optionsAr: string[] | null; correctIndex: number | null; points: number; sortOrder: number; }
+  const [quizForm, setQuizForm] = useState<{ id?: number; questionAr: string; questionEn: string; optionsAr: string; optionsEn: string; correctIndex: number; points: number }>({ questionAr: "", questionEn: "", optionsAr: "", optionsEn: "", correctIndex: 0, points: 10 });
+  const invalidateQuiz = () => { void refetchQuiz(); };
+  const createQuizQuestion = trpc.admin.createQuizQuestion.useMutation({ onSuccess: () => { invalidateQuiz(); setShowQuizForm(false); toast.success(isRTL ? "تمت إضافة السؤال" : "Question added"); }, onError: (err) => toast.error(err.message) });
+  const updateQuizQuestion = trpc.admin.updateQuizQuestion.useMutation({ onSuccess: () => { invalidateQuiz(); setShowQuizForm(false); toast.success(isRTL ? "تم تحديث السؤال" : "Question updated"); }, onError: (err) => toast.error(err.message) });
+  const deleteQuizQuestion = trpc.admin.deleteQuizQuestion.useMutation({ onSuccess: () => { invalidateQuiz(); toast.success(isRTL ? "تم حذف السؤال" : "Question deleted"); }, onError: (err) => toast.error(err.message) });
+  const [showQuizForm, setShowQuizForm] = useState(false);
+  const openQuizForm = (q?: QuizItem) => {
+    if (q) {
+      setQuizForm({ id: q.id, questionAr: q.questionAr, questionEn: q.questionEn, optionsAr: (q.optionsAr ?? []).join("\n"), optionsEn: (q.optionsEn ?? []).join("\n"), correctIndex: q.correctIndex ?? 0, points: q.points });
+    } else {
+      setQuizForm({ questionAr: "", questionEn: "", optionsAr: "", optionsEn: "", correctIndex: 0, points: 10 });
+    }
+    setShowQuizForm(true);
+  };
+  const submitQuizForm = () => {
+    const optionsAr = quizForm.optionsAr.split("\n").map((s) => s.trim()).filter(Boolean);
+    const optionsEn = quizForm.optionsEn.split("\n").map((s) => s.trim()).filter(Boolean);
+    if (!quizForm.questionAr.trim() || !quizForm.questionEn.trim()) { toast.error(isRTL ? "نص السؤال مطلوب باللغتين" : "Both question texts are required"); return; }
+    if (optionsAr.length < 2 || optionsEn.length < 2) { toast.error(isRTL ? "خياران على الأقل لكل لغة" : "At least 2 options per language"); return; }
+    if (quizForm.correctIndex >= optionsAr.length) { toast.error(isRTL ? "الإجابة الصحيحة خارج نطاق الخيارات" : "Correct answer is out of range"); return; }
+    const payload = { questionAr: quizForm.questionAr.trim(), questionEn: quizForm.questionEn.trim(), optionsAr, optionsEn, correctIndex: quizForm.correctIndex, points: quizForm.points };
+    if (!quizLesson) return;
+    if (quizForm.id) updateQuizQuestion.mutate({ id: quizForm.id, ...payload });
+    else createQuizQuestion.mutate({ lessonId: quizLesson.id, ...payload });
+  };
+
+  // ─── Course roster (enrollments: list / grant / revoke / reactivate) ───
+  const [rosterCourse, setRosterCourse] = useState<CourseItem | null>(null);
+  const [rosterStatus, setRosterStatus] = useState<"all" | "active" | "completed" | "refunded" | "cancelled">("all");
+  const [rosterSearch, setRosterSearch] = useState("");
+  const { data: rosterData, refetch: refetchRoster } = trpc.admin.courseEnrollments.useQuery(
+    { courseId: rosterCourse?.id ?? 0, status: rosterStatus, search: rosterSearch },
+    { enabled: !!isAdmin && !!rosterCourse },
+  );
+  const { data: rosterCounts } = trpc.admin.enrollmentCounts.useQuery(
+    { courseId: rosterCourse?.id ?? 0 },
+    { enabled: !!isAdmin && !!rosterCourse },
+  );
+  interface RosterRow { id: number; userId: number; username: string; email: string; fullName: string | null; status: string; progress: string; isCompleted: boolean | null; enrolledAt: string | Date; completedAt: string | Date | null; }
+  const invalidateRoster = () => { void refetchRoster(); utils.admin.enrollmentCounts.invalidate({ courseId: rosterCourse?.id ?? 0 }); utils.admin.listCourses.invalidate(); };
+  const grantEnrollment = trpc.admin.grantEnrollment.useMutation({
+    onSuccess: (res) => { invalidateRoster(); if (res.alreadyActive) toast.info(isRTL ? "الطالب مسجل فعلاً في هذا الكورس" : "Student is already active in this course"); else toast.success(isRTL ? "تم تسجيل الطالب في الكورس" : "Student enrolled"); },
+    onError: (err) => toast.error(err.message),
+  });
+  const revokeEnrollment = trpc.admin.revokeEnrollment.useMutation({ onSuccess: () => { invalidateRoster(); toast.success(isRTL ? "تم سحب الوصول" : "Access revoked"); }, onError: (err) => toast.error(err.message) });
+  const reactivateEnrollment = trpc.admin.reactivateEnrollment.useMutation({ onSuccess: () => { invalidateRoster(); toast.success(isRTL ? "تم تفعيل الوصول مجدداً" : "Access reactivated"); }, onError: (err) => toast.error(err.message) });
+  const [grantQuery, setGrantQuery] = useState("");
+  const { data: grantUsers } = trpc.admin.searchUsers.useQuery({ q: grantQuery }, { enabled: !!rosterCourse && grantQuery.trim().length >= 2 });
 
   // ── Subscribe-gate settings (siteSettings section "subscribeGate") ──
   const { data: subGateCfgData } = trpc.settings.getSection.useQuery(
@@ -963,9 +1040,14 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                       <h1 className="text-2xl font-bold text-foreground">{isRTL ? "إدارة الكورسات" : "Course Management"}</h1>
                       <p className="text-sm text-text-muted mt-1">{allCourses.length} {isRTL ? "كورس" : "courses"}</p>
                     </div>
-                    <Button onClick={() => setShowCourseForm(true)} className="bg-[#06b6d4] text-background hover:bg-[#0891b2]">
-                      <Plus className="h-4 w-4 mr-1" />{isRTL ? "كورس جديد" : "New Course"}
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="outline" onClick={() => setShowCats(true)} className="border-border text-accent-secondary hover:bg-[rgba(6,182,212,0.06)]" data-testid="manage-categories">
+                        <FolderTree className="h-4 w-4 mr-1" />{isRTL ? "التصنيفات" : "Categories"}
+                      </Button>
+                      <Button onClick={() => setShowCourseForm(true)} className="bg-[#06b6d4] text-background hover:bg-[#0891b2]">
+                        <Plus className="h-4 w-4 mr-1" />{isRTL ? "كورس جديد" : "New Course"}
+                      </Button>
+                    </div>
                   </div>
 
                   {/* ═══ Subscribe-gate: require channel subscription before watching ═══ */}
@@ -1157,6 +1239,12 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                               <PlayCircle className="h-3 w-3 mr-1" />
                               {isRTL ? "الدروس" : "Lessons"}
                             </Button>
+                            <Button size="sm" variant="ghost" className="flex-1 text-xs text-violet-400 hover:bg-[rgba(139,92,246,0.08)]" onClick={() => { setRosterCourse(course); setRosterStatus("all"); setRosterSearch(""); setGrantQuery(""); }} data-testid={`roster-${course.id}`}>
+                              <GraduationCap className="h-3 w-3 mr-1" />
+                              {isRTL ? "الطلاب" : "Students"}
+                            </Button>
+                          </div>
+                          <div className="flex gap-2">
                             <Button size="sm" variant="ghost" className="flex-1 text-xs text-destructive hover:bg-[rgba(244,63,94,0.08)]" onClick={() => {
                               if (window.confirm(isRTL ? "⚠️ حذف الكورس سيحذف كل دروسه وتسجيلاته. متأكد؟" : "⚠️ Deleting this course removes all its lessons and enrollments. Continue?")) {
                                 deleteCourse.mutate({ id: course.id });
@@ -1959,6 +2047,7 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                   {lesson.isFree && <Badge className="bg-[rgba(16,185,129,0.15)] text-emerald-500 text-[10px]">{isRTL ? "مجاني" : "Free"}</Badge>}
                   <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-text-muted" aria-label={isRTL ? "تحريك لأعلى" : "Move up"} disabled={idx === 0 || moveLesson.isPending} onClick={() => moveLesson.mutate({ id: lesson.id, direction: "up" })} data-testid={`lesson-move-up-${lesson.id}`}><ChevronUp className="h-3.5 w-3.5" /></Button>
                   <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-text-muted" aria-label={isRTL ? "تحريك لأسفل" : "Move down"} disabled={idx === (((lessonsData?.items as LessonItem[] | undefined) ?? []).length - 1) || moveLesson.isPending} onClick={() => moveLesson.mutate({ id: lesson.id, direction: "down" })} data-testid={`lesson-move-down-${lesson.id}`}><ChevronDown className="h-3.5 w-3.5" /></Button>
+                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-accent-secondary" title={isRTL ? "بنك أسئلة الاختبار" : "Quiz question bank"} aria-label={isRTL ? "بنك أسئلة الاختبار" : "Quiz question bank"} onClick={() => { setQuizLesson(lesson); setShowQuizForm(false); }} data-testid={`lesson-quiz-${lesson.id}`}><ListChecks className="h-3.5 w-3.5" /></Button>
                   <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-accent-secondary" onClick={() => openLessonForm(lesson)}><Pencil className="h-3.5 w-3.5" /></Button>
                   <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive" onClick={() => { if (window.confirm(isRTL ? "حذف هذا الدرس؟" : "Delete this lesson?")) deleteLesson.mutate({ id: lesson.id }); }}><Trash2 className="h-3.5 w-3.5" /></Button>
                 </div>
@@ -2115,6 +2204,208 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
             <Button variant="outline" onClick={() => setShowArticleForm(false)} className="border-border text-text-muted">{isRTL ? "إلغاء" : "Cancel"}</Button>
             <Button onClick={submitArticleForm} disabled={createArticle.isPending || updateArticle.isPending} className="bg-[#06b6d4] text-background">{isRTL ? "حفظ" : "Save"}</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══════════════ CATEGORIES MANAGER DIALOG ═══════════════ */}
+      <Dialog open={showCats} onOpenChange={setShowCats}>
+        <DialogContent className="bg-[#0d1420] border-border max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="categories-dialog">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">{isRTL ? "إدارة التصنيفات" : "Manage Categories"}</DialogTitle>
+            <DialogDescription className="text-text-muted">{isRTL ? "التصنيفات تظهر في صفحة الكورسات والفلاتر — لا يمكن حذف تصنيف فيه كورسات" : "Categories appear on the courses page and filters — a category with courses cannot be deleted"}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            {((adminCats?.items as CatItem[] | undefined) ?? []).length === 0 && (
+              <p className="text-sm text-text-muted text-center py-4">{isRTL ? "لا توجد تصنيفات بعد" : "No categories yet"}</p>
+            )}
+            {((adminCats?.items as CatItem[] | undefined) ?? []).map((cat) => (
+              <div key={cat.id} className="flex items-center gap-3 rounded-lg border border-border bg-background p-3" data-testid={`category-row-${cat.id}`}>
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[rgba(6,182,212,0.12)]"><FolderTree className="h-4 w-4 text-accent-secondary" /></div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{isRTL ? cat.nameAr : cat.nameEn} <span className="text-text-faint" dir="ltr">/{cat.slug}</span></p>
+                  <p className="text-xs text-text-muted">{cat.courseCount} {isRTL ? "كورس" : "courses"} · {isRTL ? "ترتيب" : "order"} {cat.sortOrder}</p>
+                </div>
+                <div className="flex gap-1">
+                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-accent-secondary" aria-label={isRTL ? "تعديل" : "Edit"} onClick={() => { setCatForm({ id: cat.id, slug: cat.slug, nameEn: cat.nameEn, nameAr: cat.nameAr, icon: cat.icon, sortOrder: cat.sortOrder }); }}><Pencil className="h-3.5 w-3.5" /></Button>
+                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive" aria-label={isRTL ? "حذف" : "Delete"} disabled={cat.courseCount > 0 || deleteCategory.isPending} onClick={() => { if (window.confirm(isRTL ? `حذف التصنيف «${cat.nameAr}»؟` : `Delete category "${cat.nameEn}"?`)) deleteCategory.mutate({ id: cat.id }); }}><Trash2 className="h-3.5 w-3.5" /></Button>
+                </div>
+              </div>
+            ))}
+            <Button variant="outline" className="w-full border-dashed border-border text-accent-secondary hover:bg-[rgba(6,182,212,0.05)] min-h-11" onClick={() => setCatForm({ slug: "", nameEn: "", nameAr: "", icon: "book", sortOrder: 0 })} data-testid="add-category">
+              <Plus className="h-4 w-4 mr-1" />{isRTL ? "تصنيف جديد" : "New Category"}
+            </Button>
+          </div>
+          <div className="grid gap-3 border-t border-border pt-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1"><Label className="text-text-muted text-xs">{isRTL ? "الاسم (عربي)" : "Name (AR)"}</Label><Input value={catForm.nameAr} onChange={(e) => setCatForm((f) => ({ ...f, nameAr: e.target.value }))} dir="rtl" className="border-border bg-background text-foreground" data-testid="category-name-ar" /></div>
+              <div className="space-y-1"><Label className="text-text-muted text-xs">{isRTL ? "الاسم (إنجليزي)" : "Name (EN)"}</Label><Input value={catForm.nameEn} onChange={(e) => setCatForm((f) => ({ ...f, nameEn: e.target.value }))} className="border-border bg-background text-foreground" data-testid="category-name-en" /></div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="space-y-1"><Label className="text-text-muted text-xs">{isRTL ? "المعرف (slug)" : "Slug"}</Label><Input value={catForm.slug} onChange={(e) => setCatForm((f) => ({ ...f, slug: e.target.value }))} placeholder="power-systems" dir="ltr" disabled={!!catForm.id} className="border-border bg-background text-foreground" /></div>
+              <div className="space-y-1"><Label className="text-text-muted text-xs">{isRTL ? "الأيقونة" : "Icon"}</Label><Input value={catForm.icon} onChange={(e) => setCatForm((f) => ({ ...f, icon: e.target.value }))} dir="ltr" className="border-border bg-background text-foreground" /></div>
+              <div className="space-y-1"><Label className="text-text-muted text-xs">{isRTL ? "الترتيب" : "Sort order"}</Label><Input type="number" value={catForm.sortOrder} onChange={(e) => setCatForm((f) => ({ ...f, sortOrder: Number(e.target.value) || 0 }))} className="border-border bg-background text-foreground" /></div>
+            </div>
+            <div className="flex justify-end gap-2">
+              {catForm.id && <Button variant="outline" className="border-border text-text-muted" onClick={() => setCatForm({ slug: "", nameEn: "", nameAr: "", icon: "book", sortOrder: 0 })}>{isRTL ? "جديد" : "New"}</Button>}
+              <Button onClick={submitCatForm} disabled={createCategory.isPending || updateCategory.isPending} className="bg-[#06b6d4] text-background" data-testid="save-category">
+                <Save className="h-3.5 w-3.5 mr-1" />{catForm.id ? (isRTL ? "حفظ التعديل" : "Save changes") : (isRTL ? "إنشاء" : "Create")}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══════════════ QUIZ QUESTION BANK DIALOG ═══════════════ */}
+      <Dialog open={!!quizLesson} onOpenChange={(open) => { if (!open) { setQuizLesson(null); setShowQuizForm(false); } }}>
+        <DialogContent className="bg-[#0d1420] border-border max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="quiz-dialog">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">{isRTL ? `أسئلة اختبار: ${quizLesson?.titleAr ?? ""}` : `Quiz: ${quizLesson?.titleEn ?? ""}`}</DialogTitle>
+            <DialogDescription className="text-text-muted">
+              {isRTL
+                ? "الشهادة تشترط معدلاً ≥70% — أضف أسئلة بخيارات صحيحة واضحة. الإجابة الصحيحة تُخبَّر للطالب أبداً."
+                : "Certificates require a ≥70% average — add clear questions. The correct answer is never sent to students."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            {((quizData?.items as QuizItem[] | undefined) ?? []).length === 0 && (
+              <p className="text-sm text-text-muted text-center py-4" data-testid="quiz-empty">{isRTL ? "لا توجد أسئلة بعد — أضف أول سؤال" : "No questions yet — add the first one"}</p>
+            )}
+            {((quizData?.items as QuizItem[] | undefined) ?? []).map((q, i) => (
+              <div key={q.id} className="rounded-lg border border-border bg-background p-3" data-testid={`quiz-row-${q.id}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-sm font-medium text-foreground">{i + 1}. {isRTL ? q.questionAr : q.questionEn}</p>
+                  <div className="flex gap-1 shrink-0">
+                    <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-accent-secondary" aria-label={isRTL ? "تعديل" : "Edit"} onClick={() => openQuizForm(q)}><Pencil className="h-3.5 w-3.5" /></Button>
+                    <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive" aria-label={isRTL ? "حذف" : "Delete"} onClick={() => { if (window.confirm(isRTL ? "حذف هذا السؤال؟" : "Delete this question?")) deleteQuizQuestion.mutate({ id: q.id }); }}><Trash2 className="h-3.5 w-3.5" /></Button>
+                  </div>
+                </div>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {(isRTL ? (q.optionsAr ?? []) : (q.optionsEn ?? [])).map((opt, oi) => (
+                    <span key={oi} className={`rounded px-2 py-0.5 text-[11px] ${oi === q.correctIndex ? "bg-[rgba(16,185,129,0.15)] text-emerald-500 font-semibold" : "bg-[rgba(31,45,68,0.6)] text-text-muted"}`}>
+                      {oi === q.correctIndex ? "✓ " : ""}{opt}
+                    </span>
+                  ))}
+                  <span className="rounded bg-[rgba(245,158,11,0.12)] px-2 py-0.5 text-[10px] text-amber-500">{q.points} {isRTL ? "نقطة" : "pts"}</span>
+                </div>
+              </div>
+            ))}
+            <Button variant="outline" className="w-full border-dashed border-border text-accent-secondary hover:bg-[rgba(6,182,212,0.05)] min-h-11" onClick={() => openQuizForm()} data-testid="add-quiz-question">
+              <Plus className="h-4 w-4 mr-1" />{isRTL ? "سؤال جديد" : "New Question"}
+            </Button>
+          </div>
+          {showQuizForm && (
+            <div className="grid gap-3 border-t border-border pt-3" data-testid="quiz-form">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1"><Label className="text-text-muted text-xs">{isRTL ? "السؤال (عربي)" : "Question (AR)"}</Label><Textarea rows={2} value={quizForm.questionAr} onChange={(e) => setQuizForm((f) => ({ ...f, questionAr: e.target.value }))} dir="rtl" className="border-border bg-background text-foreground" data-testid="quiz-question-ar" /></div>
+                <div className="space-y-1"><Label className="text-text-muted text-xs">{isRTL ? "السؤال (إنجليزي)" : "Question (EN)"}</Label><Textarea rows={2} value={quizForm.questionEn} onChange={(e) => setQuizForm((f) => ({ ...f, questionEn: e.target.value }))} className="border-border bg-background text-foreground" data-testid="quiz-question-en" /></div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1"><Label className="text-text-muted text-xs">{isRTL ? "الخيارات العربية (خيار في كل سطر)" : "Arabic options (one per line)"}</Label><Textarea rows={4} value={quizForm.optionsAr} onChange={(e) => setQuizForm((f) => ({ ...f, optionsAr: e.target.value }))} dir="rtl" className="border-border bg-background text-foreground" data-testid="quiz-options-ar" /></div>
+                <div className="space-y-1"><Label className="text-text-muted text-xs">{isRTL ? "الخيارات الإنجليزية (خيار في كل سطر)" : "English options (one per line)"}</Label><Textarea rows={4} value={quizForm.optionsEn} onChange={(e) => setQuizForm((f) => ({ ...f, optionsEn: e.target.value }))} className="border-border bg-background text-foreground" data-testid="quiz-options-en" /></div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label className="text-text-muted text-xs">{isRTL ? "رقم الإجابة الصحيحة" : "Correct option index"}</Label>
+                  <Select value={String(quizForm.correctIndex)} onValueChange={(v) => setQuizForm((f) => ({ ...f, correctIndex: Number(v) }))}>
+                    <SelectTrigger className="border-border bg-background text-foreground" data-testid="quiz-correct-index"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {[0, 1, 2, 3, 4, 5].map((n) => <SelectItem key={n} value={String(n)}>{isRTL ? `الخيار ${n + 1}` : `Option ${n + 1}`}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1"><Label className="text-text-muted text-xs">{isRTL ? "النقاط" : "Points"}</Label><Input type="number" min={1} max={100} value={quizForm.points} onChange={(e) => setQuizForm((f) => ({ ...f, points: Number(e.target.value) || 10 }))} className="border-border bg-background text-foreground" /></div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" className="border-border text-text-muted" onClick={() => setShowQuizForm(false)}>{isRTL ? "إلغاء" : "Cancel"}</Button>
+                <Button onClick={submitQuizForm} disabled={createQuizQuestion.isPending || updateQuizQuestion.isPending} className="bg-[#06b6d4] text-background" data-testid="save-quiz-question">
+                  <Save className="h-3.5 w-3.5 mr-1" />{quizForm.id ? (isRTL ? "حفظ التعديل" : "Save changes") : (isRTL ? "إضافة السؤال" : "Add question")}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══════════════ COURSE ROSTER (ENROLLMENTS) DIALOG ═══════════════ */}
+      <Dialog open={!!rosterCourse} onOpenChange={(open) => { if (!open) setRosterCourse(null); }}>
+        <DialogContent className="bg-[#0d1420] border-border max-w-3xl max-h-[85vh] overflow-y-auto" data-testid="roster-dialog">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">{isRTL ? `طلاب: ${rosterCourse?.titleAr ?? ""}` : `Students: ${rosterCourse?.titleEn ?? ""}`}</DialogTitle>
+            <DialogDescription className="text-text-muted">{isRTL ? "منح وصول يدوياً لمن دفع خارج المنصة، أو اسحب الوصول — كل شيء يُحدَّث فوراً" : "Grant access manually (e.g. paid off-platform) or revoke it — everything updates instantly"}</DialogDescription>
+          </DialogHeader>
+
+          {/* Status filter chips */}
+          <div className="flex flex-wrap gap-1.5 py-1" data-testid="roster-filters">
+            {(["all", "active", "completed", "refunded", "cancelled"] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setRosterStatus(s)}
+                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${rosterStatus === s ? "bg-[#06b6d4] text-background" : "border border-border text-text-muted hover:bg-[rgba(6,182,212,0.06)]"}`}
+                data-testid={`roster-filter-${s}`}
+              >
+                {s === "all" ? (isRTL ? "الكل" : "All")
+                  : s === "active" ? (isRTL ? "نشط" : "Active")
+                  : s === "completed" ? (isRTL ? "مكتمل" : "Completed")
+                  : s === "refunded" ? (isRTL ? "مسترد" : "Refunded")
+                  : (isRTL ? "ملغى" : "Cancelled")}
+                {rosterCounts && typeof rosterCounts[s] === "number" ? ` (${rosterCounts[s]})` : ""}
+              </button>
+            ))}
+          </div>
+
+          {/* Manual grant */}
+          <div className="rounded-lg border border-border bg-background p-3 space-y-2" data-testid="grant-box">
+            <div className="flex items-center gap-2">
+              <UserPlus className="h-4 w-4 text-emerald-500" />
+              <p className="text-sm font-medium text-foreground">{isRTL ? "منح وصول يدوي" : "Manual grant"}</p>
+            </div>
+            <Input value={grantQuery} onChange={(e) => setGrantQuery(e.target.value)} placeholder={isRTL ? "ابحث بالبريد أو اسم المستخدم (حرفان على الأقل)..." : "Search by email or username (min 2 chars)..."} className="border-border bg-primary text-foreground" data-testid="grant-search" />
+            {grantQuery.trim().length >= 2 && ((grantUsers?.items as { id: number; username: string; email: string; fullName: string | null }[] | undefined) ?? []).length > 0 && (
+              <div className="grid gap-1 max-h-40 overflow-y-auto">
+                {((grantUsers?.items as { id: number; username: string; email: string; fullName: string | null }[] | undefined) ?? []).map((u) => (
+                  <button
+                    key={u.id}
+                    className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-start hover:bg-[rgba(6,182,212,0.06)]"
+                    onClick={() => { if (rosterCourse) grantEnrollment.mutate({ courseId: rosterCourse.id, userId: u.id }); }}
+                    data-testid={`grant-user-${u.id}`}
+                  >
+                    <span className="text-sm text-foreground truncate">{u.fullName || u.username} <span className="text-text-faint" dir="ltr">({u.email})</span></span>
+                    <span className="text-xs font-semibold text-emerald-500">{isRTL ? "تسجيل" : "Enroll"}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {grantQuery.trim().length >= 2 && ((grantUsers?.items as unknown[] | undefined) ?? []).length === 0 && (
+              <p className="text-xs text-text-faint">{isRTL ? "لا نتائج مطابقة" : "No matching users"}</p>
+            )}
+          </div>
+
+          {/* Roster list */}
+          <div className="space-y-2" data-testid="roster-list">
+            <Input value={rosterSearch} onChange={(e) => setRosterSearch(e.target.value)} placeholder={isRTL ? "تصفية القائمة الحالية..." : "Filter current list..."} className="border-border bg-background text-foreground" />
+            {((rosterData?.items as RosterRow[] | undefined) ?? []).length === 0 && (
+              <p className="text-sm text-text-muted text-center py-4" data-testid="roster-empty">{isRTL ? "لا يوجد طلاب مطابقون" : "No matching students"}</p>
+            )}
+            {((rosterData?.items as RosterRow[] | undefined) ?? []).map((row) => (
+              <div key={row.id} className="flex items-center gap-3 rounded-lg border border-border bg-background p-3" data-testid={`roster-row-${row.id}`}>
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[rgba(139,92,246,0.14)] text-sm font-bold text-violet-400">{(row.fullName || row.username || "?").charAt(0).toUpperCase()}</div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{row.fullName || row.username}</p>
+                  <p className="text-xs text-text-muted truncate" dir="ltr">{row.email} · {Math.round(Number(row.progress))}% {isRTL ? "تقدم" : "progress"}</p>
+                </div>
+                <Badge className={`text-[10px] ${row.status === "active" ? "bg-[rgba(16,185,129,0.15)] text-emerald-500" : row.status === "completed" ? "bg-[rgba(6,182,212,0.15)] text-accent-secondary" : "bg-[rgba(244,63,94,0.12)] text-destructive"}`}>
+                  {row.status === "active" ? (isRTL ? "نشط" : "Active") : row.status === "completed" ? (isRTL ? "مكتمل" : "Completed") : row.status === "refunded" ? (isRTL ? "مسترد" : "Refunded") : (isRTL ? "ملغى" : "Cancelled")}
+                </Badge>
+                <div className="flex gap-1">
+                  {row.status !== "active" ? (
+                    <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-emerald-500" title={isRTL ? "إعادة تفعيل" : "Reactivate"} aria-label={isRTL ? "إعادة تفعيل" : "Reactivate"} onClick={() => reactivateEnrollment.mutate({ enrollmentId: row.id })} data-testid={`reactivate-${row.id}`}><RotateCcw className="h-3.5 w-3.5" /></Button>
+                  ) : (
+                    <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive" title={isRTL ? "سحب الوصول" : "Revoke access"} aria-label={isRTL ? "سحب الوصول" : "Revoke access"} onClick={() => { if (window.confirm(isRTL ? `سحب وصول ${row.fullName || row.username} من هذا الكورس؟` : `Revoke ${row.fullName || row.username}'s access to this course?`)) revokeEnrollment.mutate({ enrollmentId: row.id }); }} data-testid={`revoke-${row.id}`}><UserMinus className="h-3.5 w-3.5" /></Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

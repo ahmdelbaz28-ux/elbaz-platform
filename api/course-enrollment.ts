@@ -6,7 +6,7 @@
  */
 
 import { z } from "zod";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc, sql } from "drizzle-orm";
 import { authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { courses, enrollments } from "@db/schema";
@@ -16,6 +16,10 @@ import { activeEnrollmentWhere } from "./lib/enrollment";
 export const courseEnrollmentProcedures = {
   enrollments: authedQuery.query(async ({ ctx }) => {
     const db = getDb();
+    // ✅ FIX (pre-launch audit): the student dashboard previously listed EVERY
+    // enrollment row — including refunded/cancelled ones the access gate
+    // denies, producing "My Courses" cards that 403 on click. Keep completed
+    // enrollments visible (certificate history) but hide refunded/cancelled.
     return await db
       .select({
         id: enrollments.id,
@@ -39,7 +43,10 @@ export const courseEnrollmentProcedures = {
       })
       .from(enrollments)
       .leftJoin(courses, eq(enrollments.courseId, courses.id))
-      .where(eq(enrollments.userId, ctx.user.id))
+      .where(and(
+        eq(enrollments.userId, ctx.user.id),
+        sql`${enrollments.status} <> 'refunded' AND ${enrollments.status} <> 'cancelled'`,
+      ))
       .orderBy(desc(enrollments.lastAccessedAt));
   }),
 

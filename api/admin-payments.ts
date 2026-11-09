@@ -227,14 +227,17 @@ export const adminPaymentsProcedures = {
           .set({ status: "completed", paidAt: new Date() })
           .where(eq(payments.id, input.paymentId));
 
-        // Grant enrollment if missing (same idempotent pattern as the webhook)
-        const existingEnrollment = await tx
-          .select({ id: enrollments.id })
+        // Grant enrollment if missing (same idempotent pattern as the webhook).
+        // ✅ RE-PURCHASE FIX: a refunded/cancelled student who pays again via
+        // a manual transfer must get access back — reactivate the existing row
+        // instead of silently doing nothing.
+        const [existingEnrollment] = await tx
+          .select({ id: enrollments.id, status: enrollments.status })
           .from(enrollments)
           .where(and(eq(enrollments.userId, payment.userId), eq(enrollments.courseId, payment.courseId)))
           .limit(1);
 
-        if (existingEnrollment.length === 0) {
+        if (!existingEnrollment) {
           await tx.insert(enrollments).values({
             userId: payment.userId,
             courseId: payment.courseId,
@@ -245,6 +248,11 @@ export const adminPaymentsProcedures = {
             .update(courses)
             .set({ studentCount: sql`${courses.studentCount} + 1` })
             .where(eq(courses.id, payment.courseId));
+        } else if (existingEnrollment.status !== "active") {
+          await tx
+            .update(enrollments)
+            .set({ status: "active" })
+            .where(eq(enrollments.id, existingEnrollment.id));
         }
 
         await invalidateCourseCache();

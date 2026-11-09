@@ -28,8 +28,11 @@ export default function VerifyEmail() {
     ? "رابط التحقق غير مكتمل. يرجى التأكد من نسخ الرابط كاملاً من البريد الإلكتروني."
     : "Incomplete verification link. Please make sure you copied the full link from the email.";
 
-  const [state, setState] = useState<VerifyState>(!token || uid ? "loading" : "error");
-  const [errorMessage, setErrorMessage] = useState(!token || uid ? "" : incompleteLinkMessage);
+  // ✅ FIX (pre-launch audit): the condition was inverted (`!token || uid`)
+  // — a link missing `uid` rendered an ETERNAL spinner because the effect
+  // below requires BOTH params while the initial state read "has uid" as OK.
+  const [state, setState] = useState<VerifyState>(token && uid ? "loading" : "error");
+  const [errorMessage, setErrorMessage] = useState(token && uid ? "" : incompleteLinkMessage);
 
   const verifyMutation = trpc.auth.verifyEmail.useMutation({
     onSuccess: (data) => {

@@ -87,11 +87,16 @@ export default function Register() {
     const injected = (globalThis as any).__ENV__ as Record<string, string> | undefined;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (injected?.GOOGLE_CLIENT_ID) { setGoogleClientId(injected.GOOGLE_CLIENT_ID); return; }
-    console.warn("[GoogleAuth] globalThis.__ENV__ not found, falling back to /api/health fetch");
-    fetch("/api/health", { cache: "no-store" })
+    // ✅ FIX (pre-launch audit): the fallback previously hit /api/health and
+    // read `data.env.GOOGLE_CLIENT_ID` — /api/health never exposes env keys,
+    // so the Google sign-up button silently vanished on the register page
+    // whenever the build-time __ENV__ injection was absent. The dedicated
+    // public-env endpoint is /api/env (same source Login.tsx already uses).
+    console.warn("[GoogleAuth] globalThis.__ENV__ not found, falling back to /api/env fetch");
+    fetch("/api/env", { cache: "no-store" })
       .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then(data => { if (data?.env?.GOOGLE_CLIENT_ID) setGoogleClientId(data.env.GOOGLE_CLIENT_ID); })
-      .catch((err) => console.warn("[GoogleAuth] Could not fetch /api/health:", err.message));
+      .then(data => { if (data?.GOOGLE_CLIENT_ID) setGoogleClientId(data.GOOGLE_CLIENT_ID); })
+      .catch((err) => console.warn("[GoogleAuth] Could not fetch /api/env:", err.message));
   }, []);
 
   const handleGoogleCallback = useCallback(async (response: GoogleCredentialResponse) => {

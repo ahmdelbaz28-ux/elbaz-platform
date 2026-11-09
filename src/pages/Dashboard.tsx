@@ -32,7 +32,12 @@ export default function Dashboard() {
 
   const enrolledCoursesCount = myEnrollments?.length || 0;
   const certificatesCount = myCertificates?.length || 0;
-  const totalSpent = Array.isArray(payments) ? payments.reduce((sum, p) => sum + (Number.parseFloat(String(p.amount)) || 0), 0) : 0;
+  // ✅ FIX (pre-launch audit): "Total Spent" previously summed EVERY payment
+  // row — failed, pending and refunded purchases included — inflating the
+  // number students see. journey-router already filters completed; align it.
+  const totalSpent = Array.isArray(payments)
+    ? payments.filter((p) => p.status === "completed").reduce((sum, p) => sum + (Number.parseFloat(String(p.amount)) || 0), 0)
+    : 0;
 
   if (isLoading) {
     return (

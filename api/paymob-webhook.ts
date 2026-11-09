@@ -71,7 +71,7 @@ async function createEnrollmentIfMissing(
   paymentRecord: { userId: number | string; courseId: number | string },
 ): Promise<void> {
   const existingEnrollment = await tx
-    .select({ id: enrollments.id })
+    .select({ id: enrollments.id, status: enrollments.status })
     .from(enrollments)
     .where(
       and(
@@ -81,7 +81,22 @@ async function createEnrollmentIfMissing(
     )
     .limit(1);
 
-  if (existingEnrollment.length > 0) return;
+  // ✅ RE-PURCHASE FIX: a refunded/cancelled student who pays again must get
+  // access back. The unique index on (userId, courseId) forbids a second row,
+  // so the old "insert if missing" logic silently left re-purchasers locked
+  // out (row existed with status="refunded" → return = no access restored).
+  // Now: active row → no-op; non-active row → reactivate; missing → create.
+  if (existingEnrollment.length > 0) {
+    const current = existingEnrollment[0]!;
+    if (current.status !== "active") {
+      await tx
+        .update(enrollments)
+        .set({ status: "active" })
+        .where(eq(enrollments.id, current.id));
+      logger.info(`[Paymob Webhook] Enrollment reactivated after re-purchase`, { userId: paymentRecord.userId, courseId: paymentRecord.courseId });
+    }
+    return;
+  }
 
   // Create enrollment
   await tx.insert(enrollments).values({

@@ -3,6 +3,7 @@
  */
 import { z } from "zod";
 import { desc, eq, sql } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
 import { createRouter, authedQuery, authMutation } from "./middleware";
 import { getDb } from "./queries/connection";
 import { wishlists, courses } from "@db/schema";
@@ -33,10 +34,22 @@ export const wishlistRouter = createRouter({
     .input(z.object({ courseId: z.number().int().positive() }))
     .mutation(async ({ input, ctx }) => {
       const db = getDb();
-      await db.insert(wishlists).values({
-        userId: ctx.user.id,
-        courseId: input.courseId,
-      }).catch(() => { /* unique constraint — already in wishlist */ });
+      // ✅ FIX (pre-launch audit): `.catch(() => {})` swallowed EVERY error —
+      // a DB outage answered { success: true } while nothing was stored.
+      // Only the duplicate-key case (already wishlisted) may fail soft.
+      try {
+        await db.insert(wishlists).values({
+          userId: ctx.user.id,
+          courseId: input.courseId,
+        });
+      } catch (err) {
+        const code = (err as { code?: string }).code ?? "";
+        if (code === "ER_DUP_ENTRY" || code === "23505" || /duplicate|unique/i.test(String(err))) {
+          // Already wishlisted — idempotent no-op.
+          return { success: true };
+        }
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Could not add to wishlist. Please try again." });
+      }
       return { success: true };
     }),
 

@@ -41,7 +41,10 @@ export default function CertificateView() { // NOSONAR — certificate view with
   };
 
   const handleShareLinkedIn = () => {
-    const certUrl = `https://ahmedelbaz.qzz.io/certificate/${certificateNumber}`;
+    // ✅ FIX (pre-launch audit): the certificate URL was hardcoded to the
+    // production domain — previews/dev/native shells shared broken links.
+    // location.origin always matches wherever the certificate is actually served.
+    const certUrl = `${globalThis.location.origin}/certificate/${certificateNumber}`;
     const fallbackShareText = lang === "ar"
       ? "لقد حصلت على شهادة من منصة الباز!"
       : "I've earned a certificate from Elbaz Platform!";

@@ -7,6 +7,7 @@ import { adminCoursesProcedures } from "./admin-courses";
 import { adminPaymentsProcedures } from "./admin-payments";
 import { adminAiProcedures } from "./admin-ai-providers";
 import { adminChatbotProcedures } from "./admin-chatbot";
+import { categoryProcedures, quizAdminProcedures, enrollmentAdminProcedures } from "./admin-learning";
 import { pushNotification } from "./lib/notification-broadcast.js";
 
 /**
@@ -19,6 +20,8 @@ import { pushNotification } from "./lib/notification-broadcast.js";
  *   admin-payments  — Payments & analytics (payments, stats, analytics)
  *   admin-ai        — Dynamic AI router (providers, models, discovery, health)
  *   admin-chatbot   — Chatbot 👍/👎 feedback review (evolution loop fuel)
+ *   admin-learning  — Categories CRUD, quiz question bank, course rosters
+ *                     (grant / revoke / reactivate enrollments)
  *
  * NOTE: Each sub-module exports a PLAIN object of procedures (not wrapped in
  * createRouter()). They must be spread into a single createRouter() call to
@@ -31,6 +34,9 @@ export const adminRouter = createRouter({
   ...adminPaymentsProcedures,
   ...adminAiProcedures,
   ...adminChatbotProcedures,
+  ...categoryProcedures,
+  ...quizAdminProcedures,
+  ...enrollmentAdminProcedures,
 
   // ─── Manual broadcast (Admin → Notifications tab) ───
   // Stores ONE broadcast row — every registered user sees it in their bell.

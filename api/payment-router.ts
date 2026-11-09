@@ -92,17 +92,33 @@ async function enrollInFreeCourse(
     phoneNumber: input.phoneNumber || null,
   });
 
-  await tx.insert(enrollments).values({
-    userId: ctx.user.id,
-    courseId: input.courseId,
-    progress: "0",
-    isCompleted: false,
-  });
+  const [existingEnrollment] = await tx
+    .select({ id: enrollments.id, status: enrollments.status })
+    .from(enrollments)
+    .where(and(eq(enrollments.userId, ctx.user.id), eq(enrollments.courseId, input.courseId)))
+    .limit(1);
 
-  await tx
-    .update(courses)
-    .set({ studentCount: sql`${courses.studentCount} + 1` })
-    .where(eq(courses.id, input.courseId));
+  // ✅ RE-PURCHASE FIX: the unique index on (userId, courseId) means a
+  // refunded/cancelled student re-buying a FREE course must REACTIVATE the
+  // existing row — a blind INSERT used to fail the whole transaction.
+  if (existingEnrollment) {
+    await tx
+      .update(enrollments)
+      .set({ status: "active", enrolledAt: new Date() })
+      .where(eq(enrollments.id, existingEnrollment.id));
+  } else {
+    await tx.insert(enrollments).values({
+      userId: ctx.user.id,
+      courseId: input.courseId,
+      progress: "0",
+      isCompleted: false,
+    });
+
+    await tx
+      .update(courses)
+      .set({ studentCount: sql`${courses.studentCount} + 1` })
+      .where(eq(courses.id, input.courseId));
+  }
 
   await invalidateCourseCache();
   await invalidateStatsCache();
@@ -172,14 +188,18 @@ export const paymentRouter = createRouter({
           return { success: true, transactionId: `IDEM-${input.idempotencyKey}`, duplicate: true };
         }
 
-        // ✅ Check already enrolled — inside transaction to prevent race condition
-        const alreadyEnrolled = await tx
-          .select({ id: enrollments.id })
+        // ✅ Check already enrolled — inside transaction to prevent race condition.
+        // ✅ RE-PURCHASE FIX: only an ACTIVE enrollment blocks a new purchase.
+        // The old raw-existence check permanently locked out refunded/cancelled
+        // students (course-watching denied them access, yet re-buying threw
+        // CONFLICT "Already enrolled") — an unrecoverable money-path dead end.
+        const [currentEnrollment] = await tx
+          .select({ id: enrollments.id, status: enrollments.status })
           .from(enrollments)
           .where(and(eq(enrollments.userId, ctx.user.id), eq(enrollments.courseId, input.courseId)))
           .limit(1);
 
-        if (alreadyEnrolled.length > 0) {
+        if (currentEnrollment && currentEnrollment.status === "active") {
           throw new TRPCError({ code: "CONFLICT", message: "Already enrolled in this course" });
         }
 
@@ -478,13 +498,15 @@ export const paymentRouter = createRouter({
           return { success: true, transactionId: `IDEM-${input.idempotencyKey}`, duplicate: true };
         }
 
-        // ✅ Already enrolled guard (inside transaction like `create`)
-        const alreadyEnrolled = await tx
-          .select({ id: enrollments.id })
+        // ✅ Already enrolled guard (inside transaction like `create`).
+        // ✅ RE-PURCHASE FIX: only an ACTIVE enrollment blocks — refunded /
+        // cancelled students may apply again (admin re-approval reactivates).
+        const [currentEnrollment] = await tx
+          .select({ id: enrollments.id, status: enrollments.status })
           .from(enrollments)
           .where(and(eq(enrollments.userId, ctx.user.id), eq(enrollments.courseId, input.courseId)))
           .limit(1);
-        if (alreadyEnrolled.length > 0) {
+        if (currentEnrollment && currentEnrollment.status === "active") {
           throw new TRPCError({ code: "CONFLICT", message: "Already enrolled in this course" });
         }
 
