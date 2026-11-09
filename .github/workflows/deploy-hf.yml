@@ -49,6 +49,12 @@ jobs:
           APP_SECRET: test-secret-not-for-production-minimum-32-chars
           OPENROUTER_API_KEY: sk-or-v1-test-key-for-ci-only
           DATABASE_URL: mysql2://test:test@localhost:3306/test
+          # ✅ pre-launch audit fix: the CSRF regression suite
+          # (api/middleware/security.csrf.test.ts) imports the REAL
+          # security middleware -> api/lib/env.ts, whose zod schema
+          # requires GOOGLE_CLIENT_ID even in test mode. Without this
+          # dummy value the import throws ZodError and the suite fails.
+          GOOGLE_CLIENT_ID: test-google-client-id.apps.googleusercontent.com
         run: npm run test:coverage -- --reporter=verbose  # was: npx vitest ... (S8543)
 
       # tsc -b builds ALL project references (app src/ strict + node + server api/).
