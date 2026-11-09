@@ -119,3 +119,22 @@ GitHub → Actions → `Deploy to HuggingFace Spaces` → اختر آخر run أ
 | `#10 worker.v7.dead-webhook-skiplist-and-unapplied-zone-configs` (low) | **مُصلح في المصدر + موثّق** | الـ skiplist الميتة (`/api/webhooks/`) لم يعد لها أثر في المصدر — `API_PATHS` يحوي المسارات الحقيقية فقط (`/api/paymob` + الاسم القديم المسجل فعليًا في boot.ts:104 وهو `/api/webhooks/paymob`). أما `cloudflare-zone-config.json` و `access-policies.json` فهما **مرجعان بلا مُطبّق** — يُفعّلان يدويًا في لوحة Cloudflare فقط لو نُقل الدومين خلف حسابنا، ومطلوب لذلك توكن CF صالح (المحاولات السابقة بتوكينات مرفوضة — Invalid API Token) |
 
 الخلاصة التشغيلية: لا تعتمد على `deploy-cf-worker.yml` كطبقة أمان إنتاجية — طبقة الحافة الفعلية هي (حافة HF + بوابة shield على الأصل)، وأي تحسين WAF مستقبلي يبدأ بنقل الدومين خلف حساب CF أولًا.
+
+## 10) جولة الأمان ما قبل الإطلاق — run-2 (2026-11-10)
+
+جولة مراجعة شاملة ثانية (3 محاور متوازية: مصادقة/تفويض، حقن/مدخلات، أسرار/نقل) + تدقيق شامل للشات بوت. لا توجد نتائج CRITICAL. ما أُغلق في هذا الالتزام:
+
+| النتيجة | الخطورة | الإصلاح |
+|---|---|---|
+| `sessions.revoke.broken-sql` — قالب drizzle تالف (`${"$"}{...}`) يجعل تحديث tokenVersion يفشل بخطأ MySQL، فيبقى الـ JWT «الملغى» صالحًا (تعليق الإصلاح السابق كان بلا تنفيذ فعلي) | **HIGH** | التصحيح إلى الاستيفاء الصحيح في revoke وrevokeAll + اختبار انحدار `api/sessions-router.sql.test.ts` يمنع عودة النمط |
+| `auth-cache.revocation-window` — كاش المستخدمين (30 ثانية) يُفحص قبل مقارنة tokenVersion، فبقاء جلسة مسروقة صالحة حتى 30 ثانية بعد الخروج/تغيير كلمة السر | MEDIUM | `evictUserAuthCache()` في context.ts تُستدعى من كل موقع إبطال: logout، changePassword، reset، revoke، revokeAll |
+| `logs.reset-token` / `logs.verify-token` — روابط إعادة التعيين والتحقق الحيّة (بتوكنات صالحة) تُطبع في اللوجس عند فشل البريد | MEDIUM | لا يُسجَّل إلا بادئة هاش التوكن (8 محارف) للاستشهاد — الرابط لا يُسجل أبدًا |
+| `logs.pii-emails` — إيميلات المستخدمين في اللوجس | MEDIUM | `maskEmail()` في logger.ts مطبقة على كل مواقع تسجيل الإيميل (local + google auth) |
+| `chatbot.daily-quota` — API الشات مكشوف مقصودًا وحدّه الوحيد 30/دقيقة؛ IP واحد يستنزف حصص المزودين المجانية (وأي مفتاح مدفوع مستقبلًا) بدقائق | HIGH (chatbot) | حصة يومية قبل الإرسال في النقطتين: 60/يوم لكل IP + 200/يوم لكل مستخدم مسجل، برسائل عربية/إنجليزية |
+| `chatbot.prompt-leak` — لا يوجد شرط سرية ولا فلتر إخراج؛ «اكشف تعليماتك» قد ينجح أمام نماذج الشلال الأضعف | MEDIUM (chatbot) | شرط سرية في reasoningGuard + قاطع حتمي (`containsPromptLeak`) على الرد النهائي وعلى كل قطعة ستريم بنافذة زحف 160 محرفًا يستبدل الرد برفض ثنائي اللغة ويمنع تسرّبه للسجل أيضًا |
+| `chatbot.map-bounds` — خرائط الـ IP في الشات/التصويت/حصة الصور تنمو بلا سقف (قيم XFF منتحلة) | MEDIUM (chatbot) | سقف + إخلاء لكل الخرائط (نمط shield) |
+| `health.info-leak` — `/api/health` المجهول يكشف uptime/الذاكرة/أسماء مزودي AI/حالة Paymob/يوزر تيليجرام | LOW | التفاصيل خلف `Bearer EDGE_ORIGIN_SECRET` (نفس بوابة /health/providers)؛ للمجهول status + دلالة 200/503 فقط |
+| `login.per-account-throttle` — حدود الدخول per-IP فقط؛ مهاجم بـ IP متعدد يتجاوزها | MEDIUM | سقف فشل لكل حساب (20/15 دقيقة) قبل الاستعلام، يُمسح عند النجاح |
+| `reset.timing-safe-compare` + `upload.ext-sanitize` + `cors.wildcard-guard` + `shield.redirect-legacy-host` | LOW/UX | مقارنة timingSafeEqual لتوكن إعادة التعيين؛ تعقيم امتداد مفتاح الرفع إلى `[a-z0-9]`؛ شريط `*` من CORS_ORIGINS عند الإقلاع مع تحذير؛ تحويل 302 لطلبات تصفح hf.space المباشرة إلى `ahmedelbaz.qzz.io` (بدل 404 يوحي بعطل — **التصميم سليم: الموقع يعمل على النطاق المخصص والفضاء المباشر مغلق مقصودًا**) |
+
+ملاحظات مقبولة وموثقة (لا تعيق الإطلاق): تسجيل الدخول يكشف وجود المستخدم في register فقط (مقايضة UX موثقة)؛ بصمة الجهاز في JWT غير مفعّلة (LOW موثق)؛ رموز 2FA الاحتياطية 32-bit لكنها مُهاشَم HMAC ومستهلكة خلف حدود المعدل؛ تكامل صورة الحصة (check-then-act) محصور بالتزامن.

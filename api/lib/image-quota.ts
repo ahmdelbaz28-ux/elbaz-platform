@@ -18,6 +18,21 @@ import { logger } from "./logger.js";
 export const DAILY_IMAGE_LIMIT = 5;
 
 const memQuota = new Map<string, { day: string; used: number }>();
+// ✅ SECURITY FIX (pre-launch audit run-2, chatbot.map-bounds): the mirror
+// is keyed by client IP — spoofable header values used to grow it without
+// bound between cleanup ticks. Hard cap with stale-entry eviction.
+const MEM_QUOTA_MAX_SIZE = 20_000;
+
+function evictMemQuotaIfNeeded(today: string): void {
+  if (memQuota.size < MEM_QUOTA_MAX_SIZE) return;
+  for (const [key, entry] of memQuota) {
+    if (entry.day !== today) memQuota.delete(key);
+  }
+  if (memQuota.size >= MEM_QUOTA_MAX_SIZE) {
+    const oldest = memQuota.keys().next().value;
+    if (oldest !== undefined) memQuota.delete(oldest);
+  }
+}
 
 /** Cleanup ticker keeps the memory mirror bounded (matches chatbot-router style). */
 setInterval(() => {
@@ -62,6 +77,7 @@ export async function getImageQuotaUsed(key: string): Promise<number> {
  */
 export async function incrementImageQuota(key: string, n: number): Promise<void> {
   const day = todayUtc();
+  evictMemQuotaIfNeeded(day);
   const entry = memQuota.get(key);
   if (entry && entry.day === day) {
     entry.used += n;

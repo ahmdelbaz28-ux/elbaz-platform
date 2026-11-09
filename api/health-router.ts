@@ -19,6 +19,27 @@ interface HealthCheckSnapshot {
   detail?: string;
 }
 
+/**
+ * ✅ SECURITY FIX (pre-launch audit run-2, health.info-leak): the anonymous
+ * /api/health body exposed uptime, memory, per-dependency check details
+ * (AI provider names, Telegram bot username, Paymob config state) — a free
+ * reconnaissance surface. The detailed `checks`/`memory`/`uptime` fields are
+ * now only returned to the operator (Authorization: Bearer EDGE_ORIGIN_SECRET,
+ * same gate as /health/providers — timing-safe, disguised 404 on mismatch).
+ * Anonymous callers still get status + HTTP 200/503 semantics, so HF's
+ * container healthcheck, uptime monitors and probes are unaffected.
+ */
+function isHealthOperator(c: { req: { header(name: string): string | undefined } }): boolean {
+  const secret = env.EDGE_ORIGIN_SECRET;
+  if (!secret) return false;
+  const auth = c.req.header("Authorization") ?? "";
+  const presented = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  if (!presented) return false;
+  const a = Buffer.from(presented, "utf8");
+  const b = Buffer.from(secret, "utf8");
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 
 healthRouter.get("/health", async (c) => {
   const cache = getCache();
@@ -26,14 +47,12 @@ healthRouter.get("/health", async (c) => {
 
   if (cached) {
     const isHealthy = Object.values(cached.checks).every((check) => check.status === "healthy" || check.status === "degraded");
+    const operator = isHealthOperator(c);
     return c.json(
       {
         status: isHealthy ? "ok" : "unhealthy",
         timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
-        memory: process.memoryUsage(),
-        version: process.env.npm_package_version ?? "unknown",
-        checks: cached.checks,
+        ...(operator ? { uptime: process.uptime(), memory: process.memoryUsage(), checks: cached.checks } : {}),
         env: getPublicEnvKeys(),
         cached: true,
       },
@@ -262,15 +281,13 @@ healthRouter.get("/health", async (c) => {
 
   const dbHealthy = checks.database.status === "healthy";
   const allHealthy = dbHealthy; // Database is the only critical dependency
+  const operator = isHealthOperator(c);
 
   return c.json(
     {
       status: allHealthy ? "ok" : "unhealthy",
       timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      memory: process.memoryUsage(),
-      version: process.env.npm_package_version ?? "unknown",
-      checks,
+      ...(operator ? { uptime: process.uptime(), memory: process.memoryUsage(), version: process.env.npm_package_version ?? "unknown", checks } : {}),
       env: getPublicEnvKeys(),
       cached: false,
     },

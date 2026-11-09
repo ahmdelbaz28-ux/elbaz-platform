@@ -28,9 +28,14 @@ const feedbackSchema = z.object({
 const voteWindowMs = 10 * 60_000;
 const voteMaxPerWindow = 30;
 const votes = new Map<string, { count: number; resetAt: number }>();
+// ✅ SECURITY FIX (pre-launch audit run-2, chatbot.map-bounds): spoofable
+// x-forwarded-for values used to grow the map without bound (time-only
+// cleanup). Same MAX_SIZE pattern as the shield's rateLimitMap.
+const VOTES_MAP_MAX_SIZE = 5000;
 
 function voteAllowed(ip: string): boolean {
   const now = Date.now();
+  if (votes.size >= VOTES_MAP_MAX_SIZE) cleanupVotes(now);
   const entry = votes.get(ip);
   if (!entry || now > entry.resetAt) {
     votes.set(ip, { count: 1, resetAt: now + voteWindowMs });
@@ -41,11 +46,14 @@ function voteAllowed(ip: string): boolean {
   return true;
 }
 
-setInterval(() => {
-  const now = Date.now();
+function cleanupVotes(now: number): void {
   for (const [key, entry] of votes) {
     if (now > entry.resetAt) votes.delete(key);
   }
+}
+
+setInterval(() => {
+  cleanupVotes(Date.now());
 }, 5 * 60_000).unref();
 
 export const chatbotFeedbackRoute = new Hono();

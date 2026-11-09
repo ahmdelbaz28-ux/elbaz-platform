@@ -9,7 +9,7 @@
 import { Hono, type Context } from "hono";
 import { getChatResponse, getStreamResponse, type ChatApiMessage, type ContentPart } from "./lib/chatbot.js";
 import { getCourseCatalogText } from "./lib/course-catalog.js";
-import { sanitizeReplyOutput } from "./lib/chatbot-prompts.js";
+import { containsPromptLeak, promptLeakRefusal, sanitizeReplyOutput } from "./lib/chatbot-prompts.js";
 import { chatbotError, logSafeError, scrubCredentials, type ChatbotErrorCode } from "./lib/chatbot-errors.js";
 import { getClientIpFromHono as getChatbotIp } from "./lib/client-ip";
 import { getImageQuotaUsed, incrementImageQuota, DAILY_IMAGE_LIMIT } from "./lib/image-quota.js";
@@ -35,9 +35,14 @@ function errorResponse(
 const chatbotRequests = new Map<string, { count: number; resetAt: number }>();
 const CHATBOT_RATE_LIMIT = 30; // requests per window per IP (client silent retries included)
 const CHATBOT_WINDOW_MS = 60_000; // 1 minute window
+// ✅ SECURITY FIX (pre-launch audit run-2, chatbot.map-bounds): spoofable
+// x-forwarded-for values used to grow this map without bound (time-only
+// cleanup). Same MAX_SIZE pattern as the shield's rateLimitMap.
+const CHATBOT_MAP_MAX_SIZE = 5000;
 
 function checkChatbotRateLimit(ip: string): boolean {
   const now = Date.now();
+  if (chatbotRequests.size >= CHATBOT_MAP_MAX_SIZE) cleanupChatbotMap(now);
   const entry = chatbotRequests.get(ip);
   if (!entry || now > entry.resetAt) {
     chatbotRequests.set(ip, { count: 1, resetAt: now + CHATBOT_WINDOW_MS });
@@ -50,13 +55,70 @@ function checkChatbotRateLimit(ip: string): boolean {
   return true;
 }
 
-// Periodic cleanup
-setInterval(() => {
-  const now = Date.now();
+function cleanupChatbotMap(now: number): void {
   for (const [key, entry] of chatbotRequests) {
     if (now > entry.resetAt) chatbotRequests.delete(key);
   }
+}
+
+// Periodic cleanup
+setInterval(() => {
+  cleanupChatbotMap(Date.now());
 }, 5 * 60_000).unref();
+
+// ── Daily message quota (pre-launch audit run-2, chatbot.daily-quota) ──
+// Before this, the ONLY brake on the unauthenticated-by-design chat API was
+// 30 req/min/IP — a single scripted IP could burn the shared free-tier
+// provider allowance (and, if a paid key is ever configured, real money)
+// in minutes, degrading the bot for everyone. Two UTC-day buckets now gate
+// every chat request BEFORE dispatch:
+//   • per-IP  60/day — the abuse brake (covers anonymous direct-API callers)
+//   • per-user 200/day — generous headroom for real, logged-in students
+// In-memory is deliberate (single HF pod; a restart merely resets a soft
+// daily cap — the provider breakers remain the hard line).
+const CHATBOT_DAILY_IP_LIMIT = 60;
+const CHATBOT_DAILY_USER_LIMIT = 200;
+const CHATBOT_DAILY_MAP_MAX = 20_000;
+const chatbotDailyUsage = new Map<string, { day: string; count: number }>();
+
+function chatbotDayUtc(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function bumpAndCheckChatbotDaily(key: string, limit: number): boolean {
+  const day = chatbotDayUtc();
+  const entry = chatbotDailyUsage.get(key);
+  if (!entry || entry.day !== day) {
+    if (chatbotDailyUsage.size >= CHATBOT_DAILY_MAP_MAX) {
+      for (const [k, v] of chatbotDailyUsage) {
+        if (v.day !== day) chatbotDailyUsage.delete(k);
+      }
+      // Absolute fallback: evict the oldest inserted key (Map order = insertion).
+      if (chatbotDailyUsage.size >= CHATBOT_DAILY_MAP_MAX) {
+        const oldest = chatbotDailyUsage.keys().next().value;
+        if (oldest !== undefined) chatbotDailyUsage.delete(oldest);
+      }
+    }
+    chatbotDailyUsage.set(key, { day, count: 1 });
+    return true;
+  }
+  if (entry.count >= limit) return false;
+  entry.count++;
+  return true;
+}
+
+function chatbotDailyQuotaMessage(limit: number, lang: "ar" | "en"): string {
+  return lang === "ar"
+    ? `وصلت الحد اليومي للمحادثة (${limit} رسالة). يتجدد الرصيد كل يوم — يرجى المحاولة غداً.`
+    : `You've reached today's chat limit (${limit} messages). Your allowance resets daily — please try again tomorrow.`;
+}
+
+setInterval(() => {
+  const day = chatbotDayUtc();
+  for (const [key, entry] of chatbotDailyUsage) {
+    if (entry.day !== day) chatbotDailyUsage.delete(key);
+  }
+}, 30 * 60_000).unref();
 
 // ── Language mirror: reply in the language of the user's LAST message ──
 // The UI language is irrelevant — an Arabic message must get an Arabic reply
@@ -301,6 +363,13 @@ chatbotRouter.post("/", async (c) => {
       return errorResponse(c, "TOO_LARGE", { message: "Conversation too long. Please start a new chat." });
     }
 
+    // ✅ SECURITY FIX (pre-launch audit run-2): daily per-IP message quota —
+    // the abuse brake for anonymous direct-API callers (see block above).
+    const dailyLang = resolveChatLanguage(body.language, messages) === "ar" ? "ar" : "en";
+    if (!bumpAndCheckChatbotDaily(`ip:${ip}`, CHATBOT_DAILY_IP_LIMIT)) {
+      return errorResponse(c, "RATE_LIMITED", { lang: dailyLang, chatId: body.chatId, message: chatbotDailyQuotaMessage(CHATBOT_DAILY_IP_LIMIT, dailyLang) });
+    }
+
     // Vision quota — enforced BEFORE dispatch so no provider call is wasted.
     if (vision) {
       const used = await getImageQuotaUsed(ip);
@@ -319,9 +388,11 @@ chatbotRouter.post("/", async (c) => {
     const chatUser = await resolveOptionalUser(c.req.raw);
     const historySummary = chatUser ? await getLatestSummaryText(chatUser.id).catch(() => null) : null;
 
-    // Bounded persistence for the fallback path: when every provider is
-    // momentarily saturated, wait and re-walk instead of failing fast (the
-    // streaming endpoint — the primary path — persists far longer).
+    // ✅ SECURITY FIX (pre-launch audit run-2): daily per-USER message quota —
+    // generous headroom for real students; only an automated loop hits it.
+    if (chatUser && !bumpAndCheckChatbotDaily(`user:${chatUser.id}`, CHATBOT_DAILY_USER_LIMIT)) {
+      return errorResponse(c, "RATE_LIMITED", { lang: dailyLang, chatId: body.chatId, message: chatbotDailyQuotaMessage(CHATBOT_DAILY_USER_LIMIT, dailyLang) });
+    }
     const nonStreamPersistDeadline = Date.now()
       + (Number.isFinite(Number(process.env.CHATBOT_NONSTREAM_PERSIST_MS)) && Number(process.env.CHATBOT_NONSTREAM_PERSIST_MS) > 0
         ? Number(process.env.CHATBOT_NONSTREAM_PERSIST_MS)
@@ -347,11 +418,18 @@ chatbotRouter.post("/", async (c) => {
     if (result.success) {
       // Quota is only consumed by SUCCESSFUL image analysis.
       if (vision) await incrementImageQuota(ip, imageCount);
+      // ✅ SECURITY FIX (pre-launch audit run-2, chatbot.prompt-leak): the
+      // reply must never carry verbatim system-prompt text — deterministic
+      // backstop behind the confidentiality instruction.
+      const rawReply = result.reply ?? "";
+      const safeReply = containsPromptLeak(rawReply)
+        ? promptLeakRefusal(dailyLang)
+        : sanitizeReplyOutput(rawReply);
       // Persist the round for logged-in users (fails open internally).
-      if (chatUser) persistRoundSafe(chatUser.id, messages, vision, result.reply ?? "", result.model, body.mode);
+      if (chatUser) persistRoundSafe(chatUser.id, messages, vision, safeReply, result.model, body.mode);
       return c.json({
         success: true,
-        reply: sanitizeReplyOutput(result.reply ?? ""),
+        reply: safeReply,
         model: result.model,
         chatId: body.chatId,
       });
@@ -445,6 +523,14 @@ chatbotRouter.post("/stream", async (c) => {
     return errorResponse(c, "TOO_LARGE", { chatId: body.chatId, message: "Conversation too long. Please start a new chat." });
   }
 
+  // ✅ SECURITY FIX (pre-launch audit run-2): daily per-IP message quota —
+  // the abuse brake for anonymous direct-API callers (same contract as the
+  // non-stream endpoint above).
+  const dailyLang = resolveChatLanguage(body.language, messages) === "ar" ? "ar" : "en";
+  if (!bumpAndCheckChatbotDaily(`ip:${ip}`, CHATBOT_DAILY_IP_LIMIT)) {
+    return errorResponse(c, "RATE_LIMITED", { lang: dailyLang, chatId: body.chatId, message: chatbotDailyQuotaMessage(CHATBOT_DAILY_IP_LIMIT, dailyLang) });
+  }
+
   // Vision quota — enforced BEFORE dispatch so no provider call is wasted.
   if (vision) {
     const used = await getImageQuotaUsed(ip);
@@ -464,6 +550,12 @@ chatbotRouter.post("/stream", async (c) => {
   const catalog = await getCourseCatalogText();
   const chatUser = await resolveOptionalUser(c.req.raw);
   const historySummary = chatUser ? await getLatestSummaryText(chatUser.id).catch(() => null) : null;
+
+  // ✅ SECURITY FIX (pre-launch audit run-2): daily per-USER message quota —
+  // generous headroom for real students; only an automated loop hits it.
+  if (chatUser && !bumpAndCheckChatbotDaily(`user:${chatUser.id}`, CHATBOT_DAILY_USER_LIMIT)) {
+    return errorResponse(c, "RATE_LIMITED", { lang: dailyLang, chatId: body.chatId, message: chatbotDailyQuotaMessage(CHATBOT_DAILY_USER_LIMIT, dailyLang) });
+  }
 
   const timeoutController = new AbortController();
   const timeoutId = setTimeout(() => {
@@ -493,6 +585,17 @@ chatbotRouter.post("/stream", async (c) => {
   let sseCarry = "";
   const decoder = new TextDecoder();
   const forwardEncoder = new TextEncoder();
+  // ✅ SECURITY FIX (pre-launch audit run-2, chatbot.prompt-leak): streaming
+  // leak gate. A short rolling tail (markers are ≤ ~50 chars; the window is
+  // 160) is checked against verbatim system-prompt fragments BEFORE each
+  // piece is re-emitted. On a hit the client immediately receives the
+  // bilingual refusal, nothing further is forwarded, and accumulatedReply is
+  // REPLACED by the refusal so the persisted history contains no prompt text
+  // either. A marker split across chunk boundaries is caught once the tail
+  // reassembles it — at most a harmless fragment slips out first.
+  let leakDetected = false;
+  let leakTail = "";
+  const LEAK_TAIL_CHARS = 160;
   /**
    * Parse one winner-stream chunk and return the CLIENT-facing bytes.
    * Text events are accumulated AND re-emitted; the winner's own
@@ -516,6 +619,16 @@ chatbotRouter.post("/stream", async (c) => {
         try {
           const parsed = JSON.parse(trimmed.slice(6)) as { text?: string; error?: string };
           if (typeof parsed.text === "string") {
+            if (leakDetected) continue; // swallow everything after a leak hit
+            leakTail = (leakTail + parsed.text).slice(-LEAK_TAIL_CHARS);
+            if (containsPromptLeak(leakTail)) {
+              leakDetected = true;
+              const refusal = promptLeakRefusal(language);
+              accumulatedReply = refusal;
+              out += `data: ${JSON.stringify({ text: refusal })}\n\n`;
+              logger.warn("[Chatbot] prompt-leak tripwire fired on stream — reply replaced with refusal");
+              continue;
+            }
             accumulatedReply += parsed.text;
             out += `data: ${JSON.stringify({ text: parsed.text })}\n\n`;
           }

@@ -172,6 +172,22 @@ function evictOldestCacheEntries(): void {
   }
 }
 
+/**
+ * ✅ SECURITY FIX (pre-launch audit run-2, auth-cache.revocation-window):
+ * The user cache is keyed `userId:tokenVersion` and checked BEFORE the DB
+ * tokenVersion comparison, so after a logout / password change / reset /
+ * session revoke (all of which bump tokenVersion) a stolen JWT remained
+ * servable from cache for up to USER_CACHE_TTL_MS (30s). Every revocation
+ * site now calls this helper to drop ALL cache entries for the user, making
+ * revocation effective on the very next request.
+ */
+export function evictUserAuthCache(userId: number): void {
+  const prefix = `${userId}:`;
+  for (const key of userCache.keys()) {
+    if (key.startsWith(prefix)) userCache.delete(key);
+  }
+}
+
 async function loadUserFromDb(
   payload: TokenPayload,
   cacheKey: string,

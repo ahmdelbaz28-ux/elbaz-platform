@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { desc, eq, and, sql } from "drizzle-orm";
 import { createRouter, authQuery, authMutation } from "./middleware";
 import { getDb } from "./queries/connection";
+import { evictUserAuthCache } from "./context.js";
 import { userSessions, users } from "@db/schema";
 
 export const sessionsRouter = createRouter({
@@ -80,10 +81,18 @@ export const sessionsRouter = createRouter({
       // isRevoked alone left the "revoked" JWT fully valid. Bump tokenVersion
       // so revocation terminates access (all-device semantics, matching
       // revokeAll below).
+      // ✅ SECURITY FIX (pre-launch audit run-2, sessions.revoke.broken-sql):
+      // the template was `sql`${"$"}{users.tokenVersion} + 1`` — the escaped
+      // `${"$"}` made drizzle emit the literal string `$` as a bound param and
+      // `{users.tokenVersion}` as raw SQL text, producing invalid MySQL
+      // ("'$'{users.tokenVersion} + 1") → the update 500'd and the revoked
+      // JWT stayed valid. Correct interpolation form (identical to revokeAll
+      // below) + cache eviction so revocation is also instant, not 30s.
       await db
         .update(users)
-        .set({ tokenVersion: sql`${"$"}{users.tokenVersion} + 1` })
+        .set({ tokenVersion: sql`${users.tokenVersion} + 1` })
         .where(eq(users.id, ctx.user.id));
+      evictUserAuthCache(ctx.user.id);
 
       return { success: true };
     }),
@@ -101,6 +110,9 @@ export const sessionsRouter = createRouter({
       .update(users)
       .set({ tokenVersion: sql`${users.tokenVersion} + 1` })
       .where(eq(users.id, ctx.user.id));
+    // ✅ SECURITY FIX (pre-launch audit run-2): drop the 30s user-cache window
+    // so revocation takes effect on the very next request.
+    evictUserAuthCache(ctx.user.id);
     return { success: true };
   }),
 

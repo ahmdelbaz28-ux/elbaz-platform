@@ -22,7 +22,7 @@ import { createToken } from "./lib/jwt";
 import { serializeAuthCookie, serializeAuthFlagCookie } from "./lib/cookies";
 import { env } from "./lib/env";
 import { checkRateLimit } from "./lib/rate-limiter";
-import { logger } from "./lib/logger";
+import { logger, maskEmail } from "./lib/logger";
 import { getClientIpFromHono as getClientIp } from "./lib/client-ip";
 
 const googleAuthRouter = new Hono();
@@ -684,7 +684,8 @@ googleAuthRouter.post("/", async (c) => {
     });
 
     setAuthCookies(c, token);
-    logger.info("Google auth — new user created", { userId, username, email: googleEmail });
+    // ✅ SECURITY FIX (pre-launch audit run-2, logs.pii-emails): mask PII.
+    logger.info("Google auth — new user created", { userId, username, email: maskEmail(googleEmail) });
 
     return successResponse(c, {
       id: userId,

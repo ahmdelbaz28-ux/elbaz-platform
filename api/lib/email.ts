@@ -18,7 +18,11 @@ import { eq, sql } from "drizzle-orm";
 import { getDb } from "../queries/connection";
 import { users } from "@db/schema";
 import { env, getActiveFrontendUrl } from "./env";
-import { logger } from "./logger.js";
+import { logger, maskEmail } from "./logger.js";
+// ✅ SECURITY FIX (pre-launch audit run-2): instant cache eviction after
+// password reset revokes sessions (no 30s cache window for the old JWT).
+// Import direction is safe: context.ts does not import email.ts.
+import { evictUserAuthCache } from "../context.js";
 
 // ─── Configuration ───
 const RESET_TOKEN_EXPIRY_MINUTES = 15;
@@ -214,15 +218,19 @@ export async function initiatePasswordReset(email: string, headers?: Headers): P
   });
 
   if (!sendResult.ok) {
-    logger.error("[Email] Failed to send password reset email", { to: user.email, reason: sendResult.reason });
+    // ✅ SECURITY FIX (pre-launch audit run-2, logs.reset-token): the recovery
+    // log previously printed the LIVE reset URL — a working account-takeover
+    // link readable by anyone with log access during a mail outage. Only a
+    // short, non-functional reference is logged now: hash prefix + expiry.
+    // Operator recovery: use the admin password-reset tool, or extend this
+    // helper to re-send via a second channel.
+    logger.error("[Email] Failed to send password reset email", { to: maskEmail(user.email), reason: sendResult.reason });
     // 🔒 SECURITY FIX (Task ID 3): NEVER surface the reset URL in the API response.
     // Previously this returned `recoveryLink: resetUrl` which allowed anyone who
     // knows a user's email to trigger a reset and immediately receive the live
     // reset token in the JSON response — a complete account-takeover primitive.
-    // The reset link is now ONLY delivered via email. If email delivery is broken,
-    // the operator must investigate server logs (which still print the link for
-    // recovery purposes) or use the admin password-reset tool.
-    logger.warn("[Email/Recovery] Password reset link (email delivery failed — operator must investigate)", { to: user.email, resetUrl });
+    // The reset link is now ONLY delivered via email.
+    logger.warn("[Email/Recovery] Password reset email FAILED — a reset token was minted and is valid for " + RESET_TOKEN_EXPIRY_MINUTES + " minutes (token hash prefix logged for correlation only)", { to: maskEmail(user.email), tokenHashPrefix: tokenHash.slice(0, 8) });
     return {
       success: true,
       message: genericMessage,
@@ -266,7 +274,13 @@ export async function completePasswordReset(
 
   // Verify token hash
   const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-  if (!user.passwordResetToken || tokenHash !== user.passwordResetToken) {
+  // ✅ SECURITY FIX (pre-launch audit run-2, reset.timing-safe-compare): use
+  // timingSafeEqual for the stored-hash comparison, matching verifyEmail's
+  // hardened path. The hash is of a 256-bit random token so the practical
+  // risk was nil, but consistency costs nothing.
+  const a = Buffer.from(tokenHash, "utf8");
+  const b = Buffer.from(user.passwordResetToken ?? "", "utf8");
+  if (!user.passwordResetToken || a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
     return { success: false, message: genericError };
   }
 
@@ -285,6 +299,10 @@ export async function completePasswordReset(
       updatedAt: new Date(),
     })
     .where(eq(users.id, userId));
+
+  // ✅ SECURITY FIX (pre-launch audit run-2): evict the auth cache so the
+  // tokenVersion bump is honored on the very next request, not up to 30s later.
+  evictUserAuthCache(userId);
 
   return { success: true, message: "Password has been reset successfully. Please log in with your new password." };
 }
@@ -384,10 +402,10 @@ export async function initiateEmailVerification(userId: number, newEmail?: strin
   });
 
   if (!sendResult.ok) {
-    logger.error("[Email] Failed to send verification email", { to: targetEmail, reason: sendResult.reason });
-    // Same recovery pattern as password reset: log the verification link so
-    // the operator can recover the flow when email delivery is broken.
-    logger.warn("[Email/Recovery] Verification link (email delivery failed — use this link to verify manually)", { to: targetEmail, verificationUrl });
+    // ✅ SECURITY FIX (pre-launch audit run-2, logs.verify-token): same rule as
+    // the reset link — never log the live verification URL. Hash prefix only.
+    logger.error("[Email] Failed to send verification email", { to: maskEmail(targetEmail), reason: sendResult.reason });
+    logger.warn("[Email/Recovery] Verification email FAILED — a verification token was minted and is valid for " + EMAIL_VERIFICATION_EXPIRY_MINUTES + " minutes (token hash prefix logged for correlation only)", { to: maskEmail(targetEmail), userId, tokenHashPrefix: tokenHash.slice(0, 8) });
     return { success: false, message: "Could not send verification email. Please try again later." };
   }
 

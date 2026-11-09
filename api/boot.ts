@@ -79,6 +79,22 @@ const corsOrigins = env.CORS_ORIGINS
   ? env.CORS_ORIGINS.split(",").map((o) => o.trim())
   : [env.FRONTEND_URL];
 
+// ✅ SECURITY FIX (pre-launch audit run-2, cors.wildcard-guard): CORS runs
+// with credentials:true, where a wildcard origin would let ANY site read
+// authenticated responses. A literal "*" entry in the array form is inert in
+// hono (exact-match), but silently breaks the whole SPA; and a future
+// refactor to a dynamic origin function could turn it into a real hole.
+// Strip wildcards at boot and say so loudly.
+const wildcardOrigins = corsOrigins.filter((o) => o === "*");
+if (wildcardOrigins.length > 0) {
+  appLogger.error("[Boot] CORS_ORIGINS contains a wildcard \"*\" — removed. credentials:true forbids wildcards; list exact origins instead.", { count: wildcardOrigins.length });
+}
+const safeCorsOrigins = corsOrigins.filter((o) => o && o !== "*");
+if (safeCorsOrigins.length === 0 && corsOrigins.length > 0) {
+  appLogger.error("[Boot] CORS_ORIGINS was ONLY wildcards — falling back to FRONTEND_URL");
+}
+const finalCorsOrigins = safeCorsOrigins.length > 0 ? safeCorsOrigins : [env.FRONTEND_URL];
+
 // ✅ SESSION PERSISTENCE FIX (Capacitor/Electron apps): the shipped Android
 // WebView runs on https://localhost and the desktop shell on file:// (Origin
 // "null") — without these in the allowlist every APK request died at CORS
@@ -99,13 +115,13 @@ const NATIVE_APP_ORIGINS = [
   // they never relied on ambient cookies for API access.
 ];
 for (const o of NATIVE_APP_ORIGINS) {
-  if (!corsOrigins.includes(o)) corsOrigins.push(o);
+  if (!finalCorsOrigins.includes(o)) finalCorsOrigins.push(o);
 }
 
 app.use(
   "*",
   cors({
-    origin: corsOrigins,
+    origin: finalCorsOrigins,
     allowMethods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowHeaders: [
       "Content-Type",

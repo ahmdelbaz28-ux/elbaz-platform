@@ -10,8 +10,11 @@ import { createToken } from "./lib/jwt";
 import { initiatePasswordReset, completePasswordReset, initiateEmailVerification, completeEmailVerification } from "./lib/email";
 // ✅ SECURITY FIX: Import auth cookie helpers for httpOnly cookie auth
 import { serializeAuthCookie, serializeAuthFlagCookie, clearAuthCookies } from "./lib/cookies";
-import { logger } from "./lib/logger";
+import { logger, maskEmail } from "./lib/logger";
 import { getClientIpFromHeaders } from "./lib/client-ip";
+// ✅ SECURITY FIX (pre-launch audit run-2): instant auth-cache eviction on
+// every revocation site (logout / password change) — closes the 30s window.
+import { evictUserAuthCache } from "./context.js";
 // ✅ SECURITY FIX (audit run-1): enforce the enrolled second factor at login.
 import { verifyTotp, hashToken } from "./twofa-router";
 
@@ -36,6 +39,55 @@ function getDummyHash(): Promise<string> {
   }
   return _dummyHashPromise;
 }
+
+// ─── Per-account login throttle (pre-launch audit run-2) ────────────────────
+// The IP-keyed login bucket (10/15min) is defeated by a distributed or
+// IP-rotating attacker who gets a fresh bucket per IP. This second, USERNAME-
+// keyed bucket bounds failures per account regardless of source IP. The
+// threshold is deliberately generous (20/15min) so it never locks out a real
+// user, but makes online password stuffing uneconomical. The same message is
+// returned for existing and non-existing usernames (both accumulate), so the
+// throttle itself leaks no account existence. In-memory is fine: single-pod
+// deployment, and a restart merely resets a soft throttle.
+const ACCOUNT_LOGIN_WINDOW_MS = 15 * 60_000;
+const ACCOUNT_LOGIN_MAX_FAILURES = 20;
+const accountLoginFailures = new Map<string, { count: number; resetAt: number }>();
+
+function recordAccountLoginFailure(username: string): void {
+  const key = username.trim().toLowerCase().slice(0, 120);
+  if (!key) return;
+  const now = Date.now();
+  const entry = accountLoginFailures.get(key);
+  if (!entry || now > entry.resetAt) {
+    accountLoginFailures.set(key, { count: 1, resetAt: now + ACCOUNT_LOGIN_WINDOW_MS });
+    return;
+  }
+  entry.count++;
+}
+
+function isAccountLoginThrottled(username: string): boolean {
+  const key = username.trim().toLowerCase().slice(0, 120);
+  if (!key) return false;
+  const entry = accountLoginFailures.get(key);
+  if (!entry) return false;
+  if (Date.now() > entry.resetAt) {
+    accountLoginFailures.delete(key);
+    return false;
+  }
+  return entry.count >= ACCOUNT_LOGIN_MAX_FAILURES;
+}
+
+function clearAccountLoginFailures(username: string): void {
+  const key = username.trim().toLowerCase().slice(0, 120);
+  if (key) accountLoginFailures.delete(key);
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of accountLoginFailures) {
+    if (now > entry.resetAt) accountLoginFailures.delete(key);
+  }
+}, 5 * 60_000).unref();
 
 // ─── 2FA backup-code consumption (audit run-1) ───────────────────────────────
 // Single-use redemption of an 8-hex backup code during login. Mirrors the
@@ -121,9 +173,9 @@ async function sendVerificationEmailIfEligible(userId: number, safeEmail: string
   try {
     const result = await initiateEmailVerification(userId, safeEmail, headers);
     if (result.success) {
-      logger.info("Verification email sent", { userId, email: safeEmail });
+      logger.info("Verification email sent", { userId, email: maskEmail(safeEmail) });
     } else {
-      logger.warn("Verification email not sent", { userId, email: safeEmail, reason: result.message });
+      logger.warn("Verification email not sent", { userId, email: maskEmail(safeEmail), reason: result.message });
     }
   } catch (emailErr) {
     logger.error("Failed to send verification email", { userId, error: (emailErr as Error).message });
@@ -235,7 +287,7 @@ export const localAuthRouter = createRouter({
           await sendVerificationEmailIfEligible(userId, safeEmail, ctx.req.headers);
         }
 
-        logger.info("Registration successful", { userId, username: input.username, email: safeEmail });
+        logger.info("Registration successful", { userId, username: input.username, email: maskEmail(safeEmail) });
         return responseData;
       } catch (err) {
 
@@ -280,6 +332,16 @@ export const localAuthRouter = createRouter({
 
       const db = getDb();
 
+      // ✅ SECURITY FIX (pre-launch audit run-2): per-account throttle — see
+      // recordAccountLoginFailure above. Runs BEFORE the lookup so a throttled
+      // account burns zero DB/bcrypt work.
+      if (isAccountLoginThrottled(input.username)) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "Too many failed attempts. Please try again later.",
+        });
+      }
+
       let user: (typeof users.$inferSelect) | undefined;
       try {
         const results = await db
@@ -316,6 +378,7 @@ export const localAuthRouter = createRouter({
       }
 
       if (!user || !valid) {
+        recordAccountLoginFailure(input.username);
         throw new TRPCError({
           code: "UNAUTHORIZED",
           message: "Invalid username or password",
@@ -333,6 +396,7 @@ export const localAuthRouter = createRouter({
         const totpOk = code.length > 0 && !!user.totpSecret && verifyTotp(user.totpSecret, code);
         const backupOk = totpOk ? false : await consumeTotpBackupCode(user.id, user.totpBackupCodes, code);
         if (!totpOk && !backupOk) {
+          recordAccountLoginFailure(input.username);
           throw new TRPCError({
             code: "UNAUTHORIZED",
             message: "Invalid username or password",
@@ -365,6 +429,7 @@ export const localAuthRouter = createRouter({
       const loginIp = getClientIpFromHeaders(ctx.req.headers);
       // clearRateLimit() is synchronous; no `await` needed (SonarCloud S4123).
       clearRateLimit(loginIp, "login");
+      clearAccountLoginFailures(input.username);
 
       // ✅ SECURITY FIX: Set JWT in httpOnly cookie instead of returning only in body
       const remember = input.remember !== false; // default true
@@ -474,6 +539,8 @@ export const localAuthRouter = createRouter({
           updatedAt: new Date(),
         })
         .where(eq(users.id, ctx.user.id));
+      // ✅ SECURITY FIX (pre-launch audit run-2): drop the 30s cache window.
+      evictUserAuthCache(ctx.user.id);
 
       return { success: true };
     }),
@@ -568,6 +635,8 @@ export const localAuthRouter = createRouter({
       .update(users)
       .set({ tokenVersion: sql`${users.tokenVersion} + 1` })
       .where(eq(users.id, ctx.user.id));
+    // ✅ SECURITY FIX (pre-launch audit run-2): drop the 30s cache window.
+    evictUserAuthCache(ctx.user.id);
     const clearedCookies = clearAuthCookies(ctx.req.headers);
     for (const c of clearedCookies) {
       ctx.resHeaders.append("set-cookie", c);

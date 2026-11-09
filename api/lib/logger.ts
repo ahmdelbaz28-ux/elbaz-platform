@@ -19,6 +19,21 @@ function sanitizeForLog(value: string): string {
   return value.replace(/[\x00-\x1F\x7F]/g, " ").slice(0, 2000); // eslint-disable-line no-control-regex
 }
 
+/**
+ * ✅ SECURITY FIX (pre-launch audit run-2, logs.pii-emails): mask user email
+ * addresses before they reach the log stream — logs ship to the hosting
+ * platform and are readable by anyone with runtime access. Keeps the first
+ * character of the local part and the full domain (enough for the operator
+ * to correlate an incident) e.g. `a***@domain.com`.
+ */
+export function maskEmail(email: string | null | undefined): string {
+  if (!email) return "(no-email)";
+  const trimmed = email.trim();
+  const at = trimmed.lastIndexOf("@");
+  if (at <= 0 || at === trimmed.length - 1) return "(malformed-email)";
+  return `${trimmed[0]}***@${trimmed.slice(at + 1)}`;
+}
+
 function sanitizeMeta(meta?: Record<string, unknown>): Record<string, unknown> | undefined {
   if (!meta) return meta;
   const out: Record<string, unknown> = {};

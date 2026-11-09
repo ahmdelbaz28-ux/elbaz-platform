@@ -1068,7 +1068,13 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     // Build API messages — history stays plain text; ONLY the new message may
     // carry image parts (OpenAI-compatible multimodal format). The server
     // re-validates and flattens anything that is not the last user message.
-    const historyMessages = messages.slice(-20).filter((m) => m.id !== "welcome");
+    // ✅ FIX (pre-launch audit run-2): error / soft-busy assistant bubbles are
+    // UI-only notifications, not real answers — replaying them into provider
+    // history made the next reply see fake "assistant" turns (and occasionally
+    // echo the busy copy back).
+    const historyMessages = messages
+      .slice(-20)
+      .filter((m) => m.id !== "welcome" && !m.isError);
     type ApiContent = string | Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }>;
     const apiMessages: { role: "user" | "assistant"; content: ApiContent }[] = [];
     for (const m of historyMessages) {

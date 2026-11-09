@@ -150,6 +150,20 @@ export const shieldMiddleware = createMiddleware(async (c, next) => {
           path: c.req.path,
           host: effective || "(none)",
         });
+        // ✅ UX FIX (pre-launch audit run-2, shield.redirect-legacy-host): a
+        // human opening the legacy *.hf.space URL in a browser used to hit a
+        // bare `404 {"error":"Not Found"}` and read it as "the site is down"
+        // (it is live on the canonical domain). Browser NAVIGATIONS
+        // (GET/HEAD, non-API) are now 302-redirected to the canonical domain,
+        // preserving path + query. Everything else (API calls, POSTs —
+        // redirecting those would replay bodies into GETs) keeps the
+        // fail-closed 404 JSON.
+        const method = c.req.method.toUpperCase();
+        const isApiPath = c.req.path.startsWith("/api/");
+        if (!isApiPath && (method === "GET" || method === "HEAD")) {
+          const qs = new URL(c.req.raw.url).search || "";
+          return c.redirect(`https://ahmedelbaz.qzz.io${c.req.path}${qs}`, 302);
+        }
         return c.json({ error: "Not Found" }, 404);
       }
     }

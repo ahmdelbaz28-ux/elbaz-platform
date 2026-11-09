@@ -92,9 +92,13 @@ export const referencesRouter = createRouter({
 
       // Generate unique object key: references/<timestamp>-<random>.<ext>
       // Use crypto.randomBytes (CSPRNG) instead of Math.random() — S2245.
-      const ext = input.fileName.includes(".")
-        ? input.fileName.split(".").pop()!.toLowerCase()
-        : "bin";
+      // ✅ SECURITY FIX (pre-launch audit run-2, upload.ext-sanitize): the
+      // extension came straight from the client filename ("x..../..".split
+      // → "/" or ".." inside the object key). The fixed `references/` prefix
+      // and flat S3 keyspace already contained the impact, but the key must
+      // never embed path-ish junk: keep [a-z0-9] only, ≤10 chars, else "bin".
+      const rawExt = input.fileName.includes(".") ? input.fileName.split(".").pop()! : "";
+      const ext = /^[a-z0-9]{1,10}$/.test(rawExt.toLowerCase()) ? rawExt.toLowerCase() : "bin";
       const timestamp = Date.now();
       const random = randomBytes(6).toString("hex");
       const objectKey = `references/${timestamp}-${random}.${ext}`;
