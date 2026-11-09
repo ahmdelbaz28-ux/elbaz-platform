@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
 import { Clock, Star, Users, Zap, ChevronRight, ImageOff } from "lucide-react";
 import { TiltCard } from "@/components/ui/motion";
+import { youTubeThumbnailFallback } from "@/lib/youtube-url";
 
 interface CourseCardProps {
   readonly course: {
@@ -98,7 +99,25 @@ export default function CourseCard({ course }: CourseCardProps) {
     ? Math.round(((originalPrice - coursePrice) / originalPrice) * 100)
     : 0;
   const lvl = levelColors[course.level] || levelColors.beginner;
+  const [thumbSrc, setThumbSrc] = useState(course.thumbnail);
   const [thumbError, setThumbError] = useState(false);
+  // Adjust state during render when the prop changes (React docs pattern) —
+  // the playlist sync updates the cover server-side while the card is mounted.
+  const [prevThumbnail, setPrevThumbnail] = useState(course.thumbnail);
+  if (prevThumbnail !== course.thumbnail) {
+    setPrevThumbnail(course.thumbnail);
+    setThumbSrc(course.thumbnail);
+    setThumbError(false);
+  }
+
+  const onThumbError = () => {
+    const next = youTubeThumbnailFallback(thumbSrc);
+    if (next) {
+      setThumbSrc(next);
+      return;
+    }
+    setThumbError(true);
+  };
 
   return (
     <TiltCard className="h-full">
@@ -114,13 +133,13 @@ export default function CourseCard({ course }: CourseCardProps) {
               <ThumbnailFallback title={title} />
             ) : (
               <img
-                src={course.thumbnail || "/hero-main.svg"}
+                src={thumbSrc || "/hero-main.svg"}
                 alt={title}
                 loading="lazy"
                 width="384"
                 height="192"
                 decoding="async"
-                onError={() => setThumbError(true)}
+                onError={onThumbError}
                 className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
               />
             )}

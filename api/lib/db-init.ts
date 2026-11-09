@@ -906,6 +906,57 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         logger.warn("[DB] v13 chatbotFeedback migration warning", { error: (err as Error).message });
       }
 
+      // ── v14: purge legacy DEMO courses (old 4-course seed) ──
+      // The platform is a single-course platform now: the real ETAP course is
+      // mirrored from the YouTube playlist. The pre-launch seed inserted three
+      // demo courses that still show on the live site — they are removed on
+      // boot, idempotently. Financial safety: if a payments row references a
+      // demo course (someone actually paid), the course is unpublished and
+      // KEPT instead of deleted — payment records are never destroyed.
+      // lessons/enrollments/wishlists/reviews/progress cascade or are pruned
+      // first (payments FK is RESTRICT — hence the guard).
+      try {
+        const [demoRows] = await conn.execute(
+          `SELECT c.id, c.slug, (SELECT COUNT(*) FROM payments p WHERE p.courseId = c.id) AS paymentCount
+             FROM courses c
+            WHERE c.slug IN ('power-systems-basics', 'protection-relay-coordination', 'renewable-energy-design')`
+        );
+        const demoCourses = demoRows as unknown as { id: number; slug: string; paymentCount: number }[];
+        for (const dc of demoCourses) {
+          if (dc.paymentCount > 0) {
+            await conn.execute(`UPDATE courses SET isPublished = 0 WHERE id = ?`, [dc.id]);
+            logger.info("[DB] v14 demo course kept but unpublished (has payments)", { slug: dc.slug });
+            continue;
+          }
+          await conn.execute(
+            `DELETE FROM lessonProgress WHERE lessonId IN (SELECT id FROM lessons WHERE courseId = ?)`,
+            [dc.id]
+          );
+          await conn.execute(
+            `DELETE FROM quizQuestions WHERE lessonId IN (SELECT id FROM lessons WHERE courseId = ?)`,
+            [dc.id]
+          );
+          await conn.execute(
+            `DELETE FROM userNotes WHERE lessonId IN (SELECT id FROM lessons WHERE courseId = ?)`,
+            [dc.id]
+          );
+          await conn.execute(`DELETE FROM lessons WHERE courseId = ?`, [dc.id]);
+          await conn.execute(`DELETE FROM enrollments WHERE courseId = ?`, [dc.id]);
+          await conn.execute(`DELETE FROM wishlists WHERE courseId = ?`, [dc.id]);
+          await conn.execute(`DELETE FROM reviews WHERE courseId = ?`, [dc.id]);
+          await conn.execute(`DELETE FROM courses WHERE id = ?`, [dc.id]);
+          logger.info("[DB] v14 legacy demo course deleted", { slug: dc.slug });
+        }
+        // Orphan demo categories (old seed categories with no courses left)
+        await conn.execute(
+          `DELETE c FROM categories c
+            WHERE c.slug NOT IN ('etap')
+              AND NOT EXISTS (SELECT 1 FROM courses co WHERE co.categoryId = c.id)`
+        );
+      } catch (err) {
+        logger.warn("[DB] v14 demo-course purge warning", { error: (err as Error).message });
+      }
+
       // ── Admin password sync (existing deployments) ──
       // ✅ SECURITY FIX (audit run-1, db-init.admin-password-env-sync):
       // ADMIN_PASSWORD is SEED-ONLY. Previously every boot re-synced the admin

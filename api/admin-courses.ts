@@ -6,13 +6,18 @@
  */
 
 import { z } from "zod";
-import { asc, desc, eq, count, max } from "drizzle-orm";
+import { asc, desc, eq, count } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { adminQuery, adminMutation } from "./middleware";
 import { getDb } from "./queries/connection";
-import { courses, lessons, enrollments, payments, wishlists, reviews } from "@db/schema";
+import { courses, lessons, enrollments, payments, wishlists, reviews, siteSettings } from "@db/schema";
 import { pushNotification } from "./lib/notification-broadcast.js";
-import { fetchOembedVerdict, fetchPlaylistVideosForImport, getPlaylistId } from "./lib/youtube-watcher.js";
+import {
+  applyPlaylistSync,
+  getDashboardSyncInfo,
+  saveSyncSettings,
+} from "./lib/playlist-sync.js";
+import { fetchPlaylistVideos } from "./lib/youtube-watcher.js";
 
 export const adminCoursesProcedures = {
   listCourses: adminQuery
@@ -194,10 +199,8 @@ export const adminCoursesProcedures = {
       const [course] = await db.select({ id: courses.id, slug: courses.slug, titleAr: courses.titleAr, titleEn: courses.titleEn }).from(courses).where(eq(courses.id, input.courseId)).limit(1);
       if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Course not found" });
 
-      // Append at the end of the course. MAX(sortOrder), NOT count() — count
-      // drifts after deletions (3 lessons, delete #2 → count=2 but max=3) and
-      // produced duplicate sort orders that shuffled the lesson order.
-      const [{ maxSort }] = await db.select({ maxSort: max(lessons.sortOrder) }).from(lessons).where(eq(lessons.courseId, input.courseId));
+      // Append at the end of the course
+      const [{ maxSort }] = await db.select({ maxSort: count() }).from(lessons).where(eq(lessons.courseId, input.courseId));
 
       const [created] = await db.insert(lessons).values({
         courseId: input.courseId,
@@ -266,162 +269,44 @@ export const adminCoursesProcedures = {
       return { success: true };
     }),
 
-  // ─── Lesson ordering (full playlist control) ───
-  // Swap a lesson with its neighbour in the course order. The rows are
-  // renormalized to 1..N first, so historical duplicate/collapsed sortOrder
-  // values (the old count()-based append bug) heal on the first move.
-  moveLesson: adminMutation
+  // ─── YouTube playlist sync (course mirrors the channel playlist) ───
+
+  /** Status panel data: sync state + policy toggles + course/lesson counters. */
+  youtubeSyncStatus: adminQuery.query(async () => {
+    const db = getDb();
+    const info = await getDashboardSyncInfo();
+    // The playlist the owner linked to the site (contact settings) — shown so
+    // the admin can verify the sync is pointed at the right playlist.
+    const contactRows = await db
+      .select({ key: siteSettings.key, value: siteSettings.value })
+      .from(siteSettings)
+      .where(eq(siteSettings.section, "contact"));
+    const playlistUrl = contactRows.find((r) => r.key === "youtubeUrl")?.value ?? null;
+    return { ...info, playlistUrl };
+  }),
+
+  /**
+   * Manual sync. `replace: true` = FULL sync — also removes any lesson of the
+   * course that is not a real playlist video (the "only real videos" cleanup).
+   * Fetches the playlist fresh (multi-source, throttling-resistant).
+   */
+  syncPlaylistNow: adminMutation
+    .input(z.object({ replace: z.boolean().default(false) }))
+    .mutation(async ({ input }) => {
+      const videos = await fetchPlaylistVideos();
+      const summary = await applyPlaylistSync(videos, { replace: input.replace, reason: "admin-manual" });
+      return summary;
+    }),
+
+  /** Policy toggles for the sync engine (auto-import / free previews / cover). */
+  updateYoutubeSyncSettings: adminMutation
     .input(z.object({
-      id: z.number().int().positive(),
-      direction: z.enum(["up", "down"]),
+      autoImport: z.boolean().optional(),
+      autoImportFree: z.boolean().optional(),
+      autoCover: z.boolean().optional(),
     }))
     .mutation(async ({ input }) => {
-      const db = getDb();
-      const [lesson] = await db
-        .select({ id: lessons.id, courseId: lessons.courseId })
-        .from(lessons)
-        .where(eq(lessons.id, input.id))
-        .limit(1);
-      if (!lesson) throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
-
-      const siblings = await db
-        .select({ id: lessons.id, sortOrder: lessons.sortOrder })
-        .from(lessons)
-        .where(eq(lessons.courseId, lesson.courseId))
-        .orderBy(asc(lessons.sortOrder), asc(lessons.id));
-
-      const idx = siblings.findIndex((s) => s.id === input.id);
-      const swapIdx = input.direction === "up" ? idx - 1 : idx + 1;
-      if (idx < 0 || swapIdx < 0 || swapIdx >= siblings.length) {
-        return { success: true, moved: false };
-      }
-
-      const normalized = siblings.map((s, i) => ({ id: s.id, sortOrder: i + 1 }));
-      const a = normalized[idx];
-      const b = normalized[swapIdx];
-      const before = new Map(siblings.map((s) => [s.id, s.sortOrder]));
-      for (const row of normalized) {
-        const target = row.id === a.id ? b.sortOrder : row.id === b.id ? a.sortOrder : row.sortOrder;
-        if (target !== before.get(row.id)) {
-          await db.update(lessons).set({ sortOrder: target }).where(eq(lessons.id, row.id));
-        }
-      }
-      return { success: true, moved: true };
-    }),
-
-  // ─── Bulk playlist import (one click = whole playlist as lessons) ───
-  // OWNER RULE kept intact: lessons are created ONLY from videos that really
-  // exist on YouTube, and ONLY with YouTube's exact titles (verbatim, both
-  // language fields — the title is one string on YouTube, not translated).
-  // Videos already linked to a lesson of this course (matched by videoId)
-  // are skipped, so re-running is always safe/idempotent.
-  importPlaylistVideos: adminMutation
-    .input(z.object({ courseId: z.number().int().positive() }))
-    .mutation(async ({ input }) => {
-      const db = getDb();
-      const [course] = await db
-        .select({ id: courses.id, slug: courses.slug, titleAr: courses.titleAr, titleEn: courses.titleEn })
-        .from(courses)
-        .where(eq(courses.id, input.courseId))
-        .limit(1);
-      if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Course not found" });
-
-      const { items, verified } = await fetchPlaylistVideosForImport();
-
-      const existing = await db
-        .select({ videoUrl: lessons.videoUrl })
-        .from(lessons)
-        .where(eq(lessons.courseId, input.courseId));
-      const { extractYouTubeId } = await import("../src/lib/youtube-url");
-      const linkedIds = new Set(
-        existing
-          .map((row) => extractYouTubeId(row.videoUrl ?? ""))
-          .filter((id): id is string => !!id),
-      );
-
-      const fresh = items.filter((item) => !linkedIds.has(item.videoId));
-      if (fresh.length === 0) {
-        return { created: 0, skipped: items.length, total: items.length, verified, titles: [] };
-      }
-
-      const [{ maxSort }] = await db
-        .select({ maxSort: max(lessons.sortOrder) })
-        .from(lessons)
-        .where(eq(lessons.courseId, input.courseId));
-      let sortOrder = (maxSort ?? 0);
-
-      await db.insert(lessons).values(
-        fresh.map((item) => {
-          sortOrder += 1;
-          return {
-            courseId: input.courseId,
-            titleEn: item.title,
-            titleAr: item.title, // verbatim YouTube title in both fields — never invented
-            videoUrl: item.watchUrl,
-            durationMinutes: null,
-            sortOrder,
-            isFree: false,
-            isPublished: true,
-          };
-        }),
-      );
-
-      // ONE summary broadcast for the batch (per-lesson pushes would spam).
-      const courseTitle = course.titleAr || course.titleEn || "الكورس";
-      void pushNotification({
-        type: "lesson",
-        title: "📚 حلقات جديدة على المنصة",
-        message: `تمت إضافة ${fresh.length} ${fresh.length === 1 ? "حلقة" : "حلقات"} جديدة إلى كورس «${courseTitle}». افتح الكورس وكمل مشوارك — واشترك في قناة اليوتيوب وفعّل الجرس 🔔 عشان ميفوتك أي حلقة جديدة.`,
-        url: course.slug ? `/courses/${course.slug}` : "/courses",
-      });
-
-      return {
-        created: fresh.length,
-        skipped: items.length - fresh.length,
-        total: items.length,
-        verified,
-        titles: fresh.map((item) => ({ videoId: item.videoId, title: item.title })),
-      };
-    }),
-
-  // ─── YouTube playlist import (lesson videos stream from the playlist) ───
-  // The creator uploads lessons to the channel's YouTube playlist; the site
-  // embeds them instead of hosting video files. This admin-only query lists
-  // the playlist for the one-click "import into lesson" dialog. Playlist
-  // fetches are throttled-prone (the watcher polls the same sources every
-  // 15 min), so a failure surfaces as an honest empty result + error flag
-  // instead of a hanging dialog.
-  youtubePlaylistVideos: adminQuery
-    .query(async () => {
-      try {
-        const { items, verified } = await fetchPlaylistVideosForImport();
-        return { playlistId: getPlaylistId(), items, verified, error: null as string | null };
-      } catch (err) {
-        return {
-          playlistId: getPlaylistId(),
-          items: [],
-          verified: false,
-          error: err instanceof Error ? err.message : "Playlist fetch failed",
-        };
-      }
-    }),
-
-  // The authoritative YouTube title for any pasted link — the backend of the
-  // "use the official YouTube title" button in the lesson form. OWNER RULE:
-  // lesson titles for YouTube videos are NEVER hand-invented; this returns
-  // the live oEmbed title (exact, as written on YouTube) or null when the
-  // link isn't YouTube / the video is gone — the UI surfaces that honestly.
-  youtubeVideoTitle: adminQuery
-    .input(z.object({ url: z.string().min(1).max(1000) }))
-    .mutation(async ({ input }) => {
-      try {
-        const { extractYouTubeId } = await import("../src/lib/youtube-url");
-        const videoId = extractYouTubeId(input.url);
-        if (!videoId) return { videoId: null, title: null };
-        const verdict = await fetchOembedVerdict(videoId);
-        return { videoId, title: verdict.status === "ok" ? verdict.title : null };
-      } catch {
-        return { videoId: null, title: null };
-      }
+      const settings = await saveSyncSettings(input);
+      return { success: true, settings };
     }),
 };

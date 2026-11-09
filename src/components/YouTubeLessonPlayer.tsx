@@ -1,319 +1,243 @@
 /**
- * YouTubeLessonPlayer — embedded YouTube playback inside the site's player
- * screen. ═══════════════════════════════════════════════════════════════════
+ * YouTubeLessonPlayer — embedded nocookie YouTube player for playlist-synced lessons.
  *
- * The lesson's video streams from the channel's YouTube playlist; NOTHING is
- * hosted on (or proxied through) our server. The viewer never leaves the
- * site: the iframe fills the same aspect-video slot the self-hosted player
- * used, with YouTube's own controls inside the frame.
+ * WHY an iframe: the lessons ARE the channel's public YouTube videos; embedding
+ * keeps the viewer inside the platform (tracking, certificates, credibility)
+ * while YouTube serves the bytes — zero storage cost, zero bandwidth cost.
  *
- * Watch-tracking parity with the R2 player (useWatchTracker contract):
- *   PLAYING  → heartbeat timer every 60s → course.heartbeat(watchedSeconds, lastPosition)
- *   PAUSED   → stop + final heartbeat
- *   ENDED    → stop + course.markWatched (once) → lesson completed → certificate
- *   tab hide → pause the video + final heartbeat (integrity + bandwidth)
- *   onReady  → auto-resume from the saved position (same >5s rule)
+ * Tracking contract (same as the R2 player):
+ *  - heartbeat every 60s while playing (watchedSeconds + lastPosition)
+ *  - flush on pause / tab-hidden / unmount (partial seconds, never double-counted)
+ *  - ENDED → markWatched → parent refetches enrollment/certificate state
+ *  - resume: cue to the saved position (>5s) when the API player is ready
+ *
+ * Degradation: if the IFrame API never loads (network shim / blocked script),
+ * the iframe keeps playing with NO tracking — playback never breaks.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
-import { trpc } from "@/providers/trpc";
-import { trackEvent } from "@/lib/clarity";
-import { buildYouTubeWatchUrl } from "@/lib/youtube-url";
-import {
-  loadYouTubeIframeApi,
-  YT_STATE,
-  type YTPlayer,
-} from "@/lib/youtube-player-api";
 
-interface YouTubeLessonPlayerProps {
-  readonly videoId: string;
-  readonly lessonId?: number;
-  readonly courseId?: number;
+import { useEffect, useRef, useState } from "react";
+import { trpc } from "@/providers/trpc";
+
+interface YTPlayerLike {
+  getCurrentTime: () => number;
+  seekTo: (seconds: number, allowSeekAhead: boolean) => void;
+  getPlayerState: () => number;
+}
+
+interface YTNamespace {
+  Player: new (
+    element: HTMLElement | string,
+    config: {
+      videoId?: string;
+      events?: {
+        onReady?: () => void;
+        onStateChange?: (event: { data: number }) => void;
+      };
+    },
+  ) => YTPlayerLike;
+  PlayerState: { ENDED: number; PLAYING: number; PAUSED: number };
+}
+
+declare global {
+  interface Window {
+    YT?: YTNamespace;
+    onYouTubeIframeAPIReady?: () => void;
+  }
+}
+
+/** States from the IFrame API (numeric contract is stable for a decade+). */
+const YT_STATE = { ENDED: 0, PLAYING: 1, PAUSED: 2 } as const;
+
+/** Heartbeat cadence — mirrors the R2 player's watch-time accounting. */
+const HEARTBEAT_INTERVAL_SECONDS = 60;
+
+/** Load the IFrame API exactly once per document (singleton + 8s timeout). */
+function loadYouTubeIframeApi(): Promise<YTNamespace | null> {
+  if (typeof window === "undefined") return Promise.resolve(null);
+  if (window.YT?.Player) return Promise.resolve(window.YT);
+
+  return new Promise((resolve) => {
+    const settled = (ns: YTNamespace | null) => {
+      if (timer) window.clearTimeout(timer);
+      resolve(ns);
+    };
+    const existing = document.querySelector<HTMLScriptElement>("script[data-yt-iframe-api]");
+    const timer = window.setTimeout(() => settled(window.YT ?? null), 8000);
+
+    if (existing) return; // another loader in flight — its callback settles us
+    const script = document.createElement("script");
+    script.src = "https://www.youtube.com/iframe_api";
+    script.async = true;
+    script.dataset.ytIframeApi = "1";
+    const prev = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      prev?.();
+      settled(window.YT ?? null);
+    };
+    document.head.appendChild(script);
+  });
+}
+
+export interface YouTubeLessonPlayerProps {
+  /** Embed URL built server-side (nocookie + enablejsapi + hl=ar + origin). */
+  readonly videoUrl: string;
+  readonly lessonId: number;
   readonly lessonTitle: string;
   readonly lang: "en" | "ar";
-  readonly isTrackingEnabled?: boolean;
-  readonly heartbeatIntervalMs?: number;
-  /** Fired when the video ends and the server marks the lesson complete. */
+  readonly username?: string;
+  /** Fired after the video reaches ENDED and the server marked it watched. */
   readonly onLessonCompleted?: () => void;
 }
 
 export default function YouTubeLessonPlayer({
-  videoId,
+  videoUrl,
   lessonId,
-  courseId,
   lessonTitle,
   lang,
-  isTrackingEnabled,
-  heartbeatIntervalMs = 60_000,
   onLessonCompleted,
 }: YouTubeLessonPlayerProps) {
-  const mountRef = useRef<HTMLDivElement>(null);
-  const playerRef = useRef<YTPlayer | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Same pattern as useWatchTracker: lazy-set inside effects/handlers (React
-  // Compiler purity rule — no Date.now() in ref initializers).
-  const lastTickRef = useRef(0);
-  const lastPositionRef = useRef(0);
-  const isPlayingRef = useRef(false);
-  const lessonIdRef = useRef<number | undefined>(lessonId);
-  const completedLessonRef = useRef<number | null>(null);
-  const [ready, setReady] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const hostRef = useRef<HTMLDivElement>(null);
+  const playerRef = useRef<YTPlayerLike | null>(null);
+  const startedAtRef = useRef<number | null>(null); // timestamp when current play segment began
+  const apiReadyRef = useRef(false);
+  const completedRef = useRef(false);
+  const savedRef = useRef<{ lastPosition: number | null } | undefined>(undefined);
+  const [isPlaying, setIsPlaying] = useState(false);
 
-  useEffect(() => {
-    lessonIdRef.current = lessonId;
-  }, [lessonId]);
-
-  const onLessonCompletedRef = useRef(onLessonCompleted);
-  useEffect(() => {
-    onLessonCompletedRef.current = onLessonCompleted;
-  }, [onLessonCompleted]);
-
-  // ── Heartbeat mutations (silent-fail, same contract as useWatchTracker) ──
-  const heartbeatMutation = trpc.course.heartbeat.useMutation({
-    onError: (err) => console.warn("[YTPlayer] heartbeat failed:", err.message),
-  });
-  const markWatchedMutation = trpc.course.markWatched.useMutation({
-    onSuccess: () => onLessonCompletedRef.current?.(),
-    onError: (err) => console.warn("[YTPlayer] markWatched failed:", err.message),
-  });
-
-  const { data: savedProgress } = trpc.course.getSavedPosition.useQuery(
-    { lessonId: lessonId || 0 },
-    { enabled: !!isTrackingEnabled && !!lessonId && lessonId > 0, staleTime: 5 * 60 * 1000 },
+  const heartbeat = trpc.course.heartbeat.useMutation();
+  const markWatched = trpc.course.markWatched.useMutation();
+  const { data: saved } = trpc.course.getSavedPosition.useQuery(
+    { lessonId },
+    { enabled: Number.isFinite(lessonId) && lessonId > 0, staleTime: Infinity },
   );
 
-  const sendHeartbeat = useCallback(() => {
-    if (!lessonIdRef.current) return;
-    const player = playerRef.current;
-    const currentPosition = Math.floor(player?.getCurrentTime() || 0);
-    const now = Date.now();
-    const watchedSeconds = Math.floor((now - lastTickRef.current) / 1000);
-    if (watchedSeconds < 1 && currentPosition === lastPositionRef.current) return;
-
-    lastPositionRef.current = currentPosition;
-    lastTickRef.current = now;
-    heartbeatMutation.mutate({
-      lessonId: lessonIdRef.current,
-      watchedSeconds: Math.min(watchedSeconds, 300), // server caps at 5 min/beat
-      lastPosition: currentPosition,
-    });
-  }, [heartbeatMutation]);
-
-  const startTracking = useCallback(() => {
-    if (timerRef.current || !lessonIdRef.current) return;
-    isPlayingRef.current = true;
-    lastTickRef.current = Date.now();
-    lastPositionRef.current = Math.floor(playerRef.current?.getCurrentTime() || 0);
-    timerRef.current = setInterval(sendHeartbeat, heartbeatIntervalMs);
-  }, [heartbeatIntervalMs, sendHeartbeat]);
-
-  const stopTracking = useCallback(() => {
-    isPlayingRef.current = false;
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
+  /** Send the partial watch seconds accumulated since the last flush. */
+  const flushPartial = () => {
+    if (startedAtRef.current == null) return;
+    const seconds = Math.min(300, Math.round((Date.now() - startedAtRef.current) / 1000));
+    startedAtRef.current = null;
+    if (seconds < 1) return;
+    let position = 0;
+    try {
+      position = Math.round(playerRef.current?.getCurrentTime() ?? 0);
+    } catch {
+      position = 0;
     }
-    sendHeartbeat();
-  }, [sendHeartbeat]);
+    heartbeat.mutate({ lessonId, watchedSeconds: seconds, lastPosition: Math.max(0, position) });
+  };
 
-  // ── Player lifecycle: create once on mount, destroy on unmount ──
-  // The parent mounts this component with key={videoId} — a new video always
-  // remounts fresh (React's endorsed pattern), so no in-effect state resets.
+  const handleStateChange = (state: number) => {
+    if (state === YT_STATE.PLAYING) {
+      startedAtRef.current = Date.now();
+      setIsPlaying(true);
+    } else if (state === YT_STATE.PAUSED) {
+      flushPartial();
+      setIsPlaying(false);
+    } else if (state === YT_STATE.ENDED) {
+      flushPartial();
+      setIsPlaying(false);
+      if (!completedRef.current) {
+        completedRef.current = true;
+        markWatched.mutate(
+          { lessonId },
+          { onSuccess: () => onLessonCompleted?.() },
+        );
+      }
+    }
+  };
+
+  // Bind the IFrame API to the rendered iframe. The iframe itself is plain
+  // markup (works with JS blocked); the API layer only ADDS tracking.
   useEffect(() => {
     let cancelled = false;
+    completedRef.current = false;
+    apiReadyRef.current = false;
 
-    void loadYouTubeIframeApi()
-      .then((YT) => {
-        if (cancelled || !mountRef.current) return;
-        playerRef.current = new YT.Player(mountRef.current, {
-          videoId,
-          host: "https://www.youtube-nocookie.com",
-          // MOBILE FIX: the widget replaces the mount div with an <iframe>
-          // carrying its attributes. Without these it defaults to 640×360,
-          // overflowing (and getting cropped by) the 16:9 screen on phones.
-          // The CSS rule on [data-youtube-player] iframe enforces the same
-          // fit independently of the API's behaviour.
-          width: "100%",
-          height: "100%",
-          playerVars: {
-            rel: 0,
-            playsinline: 1,
-            modestbranding: 1,
-            cc_load_policy: 1,
-            hl: "ar",
-            // enablejsapi/origin are set automatically by the widget API
-            // from this host config — no need to pass them here.
-          },
+    void loadYouTubeIframeApi().then((YT) => {
+      if (cancelled || !YT || !hostRef.current) return;
+      // Attach to the EXISTING iframe (never recreate): passing the div would
+      // make YT build a fresh default 640×360 iframe that ignores our CSS and
+      // overflows narrow screens. An existing iframe with enablejsapi=1 is
+      // adopted in place — classes, size and src all stay ours.
+      const iframeEl = hostRef.current.querySelector<HTMLIFrameElement>("iframe[data-yt-embed]");
+      if (!iframeEl) return;
+      try {
+        playerRef.current = new YT.Player(iframeEl, {
           events: {
             onReady: () => {
-              if (cancelled) return;
-              setReady(true);
-            },
-            onStateChange: (event) => {
-              if (cancelled) return;
-              switch (event.data) {
-                case YT_STATE.PLAYING:
-                  trackEvent("video_play", {
-                    lessonId: lessonIdRef.current || 0,
-                    courseId: courseId || 0,
-                    lessonTitle,
-                    source: "youtube",
-                  });
-                  startTracking();
-                  break;
-                case YT_STATE.PAUSED:
-                case YT_STATE.BUFFERING:
-                  if (event.data === YT_STATE.PAUSED) stopTracking();
-                  break;
-                case YT_STATE.ENDED: {
-                  stopTracking();
-                  const id = lessonIdRef.current;
-                  if (id && completedLessonRef.current !== id) {
-                    completedLessonRef.current = id;
-                    markWatchedMutation.mutate({ lessonId: id });
-                  }
-                  break;
+              apiReadyRef.current = true;
+              const pos = savedRef.current?.lastPosition ?? 0;
+              if (pos > 5) {
+                try {
+                  playerRef.current?.seekTo(pos, true);
+                } catch {
+                  // player not cueable yet — resume silently skipped
                 }
-                default:
-                  break;
               }
             },
-            onError: () => {
-              if (!cancelled) setFailed(true);
-            },
+            onStateChange: (event) => handleStateChange(event.data),
           },
         });
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          console.warn("[YTPlayer] API unavailable:", err instanceof Error ? err.message : err);
-          setFailed(true);
-        }
-      });
+      } catch {
+        // API binding failed — the bare iframe keeps playing untracked.
+      }
+    });
+
     return () => {
       cancelled = true;
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-      try {
-        playerRef.current?.destroy();
-      } catch {
-        // already destroyed by a re-render race — nothing to do
-      }
+      flushPartial();
       playerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoId]);
+  }, [videoUrl, lessonId]);
 
-  // Auto-resume from the saved position (same >5s rule as the R2 player).
+  // Keep the saved position readable from the onReady closure without
+  // re-binding the player on every query update.
   useEffect(() => {
-    if (!ready || !savedProgress?.lastPosition) return;
-    const resume = savedProgress.lastPosition;
-    if (resume > 5) {
-      playerRef.current?.seekTo(Math.max(0, resume - 3), true);
-    }
-    // Only on first ready per lesson — resumePosition is stable afterwards.
+    savedRef.current = saved;
+  }, [saved]);
+
+  // Flush partial watch time when the tab is hidden mid-play.
+  useEffect(() => {
+    const onHidden = () => {
+      if (document.hidden) flushPartial();
+    };
+    document.addEventListener("visibilitychange", onHidden);
+    return () => document.removeEventListener("visibilitychange", onHidden);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, lessonId]);
+  }, [lessonId]);
 
-  // Tab hidden → pause + final heartbeat (same integrity rule as R2 path).
+  // Heartbeat ticker — only while actually playing.
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden && isPlayingRef.current) {
-        try {
-          playerRef.current?.pauseVideo();
-        } catch {
-          // player already gone — heartbeat below still runs
-        }
-        sendHeartbeat();
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [sendHeartbeat]);
-
-  // Page unload → sendBeacon final save (mirrors the R2 player path).
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      if (!isPlayingRef.current || !lessonIdRef.current) return;
-      const currentPosition = Math.floor(playerRef.current?.getCurrentTime() || 0);
-      const watchedSeconds = Math.floor((Date.now() - lastTickRef.current) / 1000);
-      if (watchedSeconds >= 1 || currentPosition !== lastPositionRef.current) {
-        const blob = new Blob(
-          [JSON.stringify({
-            lessonId: lessonIdRef.current,
-            watchedSeconds: Math.min(watchedSeconds, 120),
-            lastPosition: currentPosition,
-          })],
-          { type: "application/json" },
-        );
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const baseUrl = (globalThis as any).Capacitor?.isNativePlatform?.()
-          ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io")
-          : "";
-        navigator.sendBeacon?.(`${baseUrl}/api/trpc/course.heartbeat`, blob);
-      }
-    };
-    globalThis.addEventListener("beforeunload", handleBeforeUnload);
-    return () => globalThis.removeEventListener("beforeunload", handleBeforeUnload);
-  }, []);
-
-  const watchLink = buildYouTubeWatchUrl(videoId);
+    if (!isPlaying) return;
+    const timer = window.setInterval(() => {
+      if (startedAtRef.current != null) flushPartial();
+    }, HEARTBEAT_INTERVAL_SECONDS * 1000);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying, lessonId]);
 
   return (
-    <div
-      className="relative bg-black"
-      role="application"
-      aria-label={lang === "en" ? "Embedded YouTube lesson player" : "مشغل درس مدمج من يوتيوب"}
-      data-youtube-player={videoId}
-    >
-      {/* Screen zone (16:9) — mount + overlays live INSIDE this relative box
-          so a fallback never covers the provenance strip below. */}
-      <div className="relative aspect-video w-full overflow-hidden">
-        {/* Mount target — the widget API replaces this div with the iframe. */}
-        <div ref={mountRef} className="h-full w-full" />
-
-        {!ready && !failed && (
-          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#0f172a] to-[#1e293b]">
-            <p className="text-sm text-[#94a3b8]">
-              {lang === "en" ? "Preparing the video..." : "بتجهّز الشاشة..."}
-            </p>
-          </div>
-        )}
-
-        {failed && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-[#0f172a] to-[#1e293b] px-6 text-center">
-            <p className="text-sm text-[#94a3b8]">
-              {lang === "en"
-                ? "The embedded player couldn't load here."
-                : "مشغل يوتيوب ماتحمّلش هنا — افتح الفيديو مباشرة:"}
-            </p>
-            <a
-              href={watchLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-lg bg-[rgba(6,182,212,0.15)] px-4 py-2 text-sm font-semibold text-[#22d3ee] transition-colors hover:bg-[rgba(6,182,212,0.25)]"
-            >
-              {lang === "en" ? "Open on YouTube" : "افتح الفيديو على يوتيوب"}
-            </a>
-          </div>
-        )}
+    <div className="relative w-full overflow-hidden rounded-xl bg-black sm:rounded-2xl">
+      <div className="relative aspect-video w-full">
+        <div ref={hostRef} className="absolute inset-0">
+          <iframe
+            data-yt-embed="1"
+            key={videoUrl}
+            src={videoUrl}
+            title={lessonTitle}
+            className="absolute inset-0 h-full w-full"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+            referrerPolicy="strict-origin-when-cross-origin"
+          />
+        </div>
       </div>
-
-      {/* Honest provenance chip — the video plays from the channel's YouTube
-          playlist inside the site; keeps the open-internet contract clear. */}
-      <div className="flex items-center justify-between gap-2 bg-[rgba(13,20,32,0.85)] px-3 py-1.5">
-        <span className="truncate text-[11px] text-[#64748b]">{lessonTitle}</span>
-        <a
-          href={watchLink}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="shrink-0 text-[10px] font-medium text-[#64748b] transition-colors hover:text-[#22d3ee]"
-        >
-          {lang === "en" ? "▶ YouTube" : "▶ يوتيوب"}
-        </a>
-      </div>
+      <p className="border-t border-[#1e2d3d] px-3 py-2 text-[11px] text-[#94a3b8] sm:px-4">
+        {lang === "ar"
+          ? "▶ تشغيل داخل المنصة — التقدم محفوظ تلقائياً. الفيديو من قناة AhmedEtap على يوتيوب."
+          : "▶ Playing inside the platform — progress is saved automatically. Video from the AhmedEtap YouTube channel."}
+      </p>
     </div>
   );
 }

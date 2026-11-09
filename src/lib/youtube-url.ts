@@ -1,122 +1,51 @@
 /**
- * YouTube URL — pure parsing & builders, shared by SERVER and CLIENT.
- * ═══════════════════════════════════════════════════════════════════════════
+ * YouTube URL helpers — client side, pure functions.
  *
- * The platform plays lesson videos from the channel's YouTube playlist inside
- * its own player screen (no video files hosted on our server). This module is
- * the single source of truth for "is this value a YouTube video reference and
- * which video" — used by:
- *   - api/lib/video-protection.ts  (server: branch R2 presign vs YouTube pass-through)
- *   - src/pages/Admin.tsx          (client: live hint + playlist import)
- *   - src/components/YouTubeLessonPlayer.tsx (client: embed playback)
- *
- * Kept dependency-free (no Node APIs, no DOM) so tsx/Vite/vitest can all load it.
+ * Mirrors `api/lib/youtube-url.ts` (the two package roots have disjoint
+ * tsconfig paths — logic identical, both unit-tested).
  */
 
-/** YouTube video IDs are exactly 11 chars of [A-Za-z0-9_-]. */
-const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
+const VIDEO_ID_RE = /^[\w-]{11}$/;
 
-/** Hosts that can carry a video id in their path or query. */
-const YT_HOST_RE = /(^|\.)(youtube\.com|youtube-nocookie\.com|youtu\.be)$/i;
+const ID_PATTERNS: RegExp[] = [
+  /^[A-Za-z0-9_-]{11}$/, // bare id
+  /[?&]v=([A-Za-z0-9_-]{11})/, // youtube.com/watch?v=ID
+  /youtu\.be\/([A-Za-z0-9_-]{11})/, // youtu.be/ID
+  /\/embed\/([A-Za-z0-9_-]{11})/, // youtube.com/embed/ID (incl. nocookie)
+  /\/shorts\/([A-Za-z0-9_-]{11})/, // youtube.com/shorts/ID
+  /\/live\/([A-Za-z0-9_-]{11})/, // youtube.com/live/ID
+];
 
-/**
- * Extract an 11-char YouTube video id from ANY common shape:
- *   https://www.youtube.com/watch?v=ID          (watch page)
- *   https://youtu.be/ID                         (share shortlink)
- *   https://www.youtube.com/shorts/ID           (Shorts)
- *   https://www.youtube.com/embed/ID            (embed path)
- *   https://www.youtube.com/live/ID             (live premiere replay)
- *   https://www.youtube.com/v/ID                (legacy /v/ player)
- *   https://www.youtube.com/oembed?url=...      (oEmbed endpoint)
- *   bare "dQw4w9WgXcQ"                          (raw id, as admins paste it)
- * Returns null for playlist-only links, R2 keys, and anything else.
- */
-export function extractYouTubeId(value: string | null | undefined): string | null {
-  if (typeof value !== "string") return null;
-  const raw = value.trim();
+/** Extract the 11-char video id from any YouTube URL shape (or a bare id). */
+export function extractYouTubeId(raw: string | null | undefined): string | null {
   if (!raw) return null;
-
-  // Bare id (what an admin pastes after copying the ?v= value).
-  if (VIDEO_ID_RE.test(raw)) return raw;
-
-  let url: URL;
-  try {
-    // youtu.be links may be pasted without a scheme.
-    url = new URL(raw.startsWith("http") ? raw : `https://${raw}`);
-  } catch {
-    return null;
+  const value = raw.trim();
+  if (!value) return null;
+  for (const re of ID_PATTERNS) {
+    const m = re.exec(value);
+    if (m) return m[1] ?? (re.source.startsWith("^") ? value : null);
   }
-
-  if (!YT_HOST_RE.test(url.hostname)) return null;
-
-  // Query forms first: watch?v=, /embed?v=, oembed?url=<encoded watch link>.
-  const v = url.searchParams.get("v");
-  if (v && VIDEO_ID_RE.test(v)) return v;
-  const oembedTarget = url.searchParams.get("url");
-  if (oembedTarget && extractYouTubeId(oembedTarget)) {
-    return extractYouTubeId(oembedTarget);
-  }
-
-  // Path forms: /shorts/ID, /embed/ID, /live/ID, /v/ID, youtu.be/ID.
-  const parts = url.pathname.split("/").filter(Boolean);
-  if (parts.length === 0) return null;
-
-  if (url.hostname === "youtu.be") {
-    const id = parts[0] ?? "";
-    return VIDEO_ID_RE.test(id) ? id : null;
-  }
-
-  const pathPrefixes = ["shorts", "embed", "live", "v"];
-  const [head, tail] = parts;
-  if (head && tail && pathPrefixes.includes(head) && VIDEO_ID_RE.test(tail)) {
-    return tail;
-  }
-
-  // /watch/ID (rare legacy form) — pathname /watch/ID
-  if (head === "watch" && tail && VIDEO_ID_RE.test(tail)) return tail;
-
   return null;
 }
 
-/** True when the value resolves to a playable YouTube video (not an R2 key). */
-export function isYouTubeVideoRef(value: string | null | undefined): boolean {
-  return extractYouTubeId(value) !== null;
+/** Is this lesson videoUrl a YouTube video (vs an R2 key / direct file / HLS)? */
+export function isYouTubeVideoUrl(raw: string | null | undefined): boolean {
+  if (!raw) return false;
+  const v = raw.trim().toLowerCase();
+  if (VIDEO_ID_RE.test(v)) return true;
+  return v.includes("youtube.com") || v.includes("youtu.be") || v.includes("youtube-nocookie.com");
 }
 
-/**
- * Build the privacy-enhanced embed URL for a video. `origin` is REQUIRED so
- * the widget API can scope its postMessage channel to our site (YouTube
- * rejects enablejsapi frames without a matching origin).
- * Params: rel=0 (same-channel suggestions only), playsinline (iOS), modest
- * branding, captions default on, no cookie tracking unless the user plays.
- */
-export function buildYouTubeEmbedUrl(videoId: string, origin: string): string {
-  if (!VIDEO_ID_RE.test(videoId)) {
-    throw new Error(`Invalid YouTube video id: ${JSON.stringify(videoId)}`);
-  }
-  const params = new URLSearchParams({
-    enablejsapi: "1",
-    origin,
-    rel: "0",
-    playsinline: "1",
-    modestbranding: "1",
-    cc_load_policy: "1",
-    hl: "ar",
-  });
-  return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
+/** Poster thumbnail for cards/lists — maxres is crisp, hq always exists. */
+export function buildYouTubeThumbnailUrl(videoId: string, quality: "maxres" | "hq" | "mq" = "mq"): string {
+  const file = quality === "maxres" ? "maxresdefault" : quality === "hq" ? "hqdefault" : "mqdefault";
+  return `https://i.ytimg.com/vi/${videoId}/${file}.jpg`;
 }
 
-/** Human-facing watch URL (used by the admin import dialog to store a link). */
-export function buildYouTubeWatchUrl(videoId: string, playlistId?: string): string {
-  const params = new URLSearchParams({ v: videoId });
-  if (playlistId) params.set("list", playlistId);
-  return `https://www.youtube.com/watch?${params.toString()}`;
-}
-
-/** Thumbnail URL (no API key needed — public i.ytimg.com path). */
-export function buildYouTubeThumbnailUrl(videoId: string, quality: "mq" | "hq" = "mq"): string {
-  if (!VIDEO_ID_RE.test(videoId)) {
-    throw new Error(`Invalid YouTube video id: ${JSON.stringify(videoId)}`);
-  }
-  return `https://i.ytimg.com/vi/${videoId}/${quality}default.jpg`;
+/** Small chain used by <img> onError: maxres → hq → give up. */
+export function youTubeThumbnailFallback(src: string | null | undefined): string | null {
+  if (!src) return null;
+  if (src.includes("maxresdefault.jpg")) return src.replace("maxresdefault.jpg", "hqdefault.jpg");
+  if (src.includes("hqdefault.jpg")) return src.replace("hqdefault.jpg", "mqdefault.jpg");
+  return null;
 }

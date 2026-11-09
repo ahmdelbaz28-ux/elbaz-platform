@@ -2,9 +2,6 @@ import { useParams, useNavigate, useSearchParams, Link } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useAuth } from "@/hooks/useAuth";
 import { trpc } from "@/providers/trpc";
-import YouTubeLessonPlayer from "@/components/YouTubeLessonPlayer";
-import SubscribeGate from "@/components/SubscribeGate";
-import { isSubscribeUnlocked, unlockSubscribe } from "@/lib/subscribe-gate";
 import { useState, useRef, useEffect, useCallback, forwardRef, lazy, Suspense } from 'react';
 import { useWatchTracker } from "@/hooks/useWatchTracker";
 import { trackLearning, trackPlatform, trackEvent } from "@/lib/clarity";
@@ -44,11 +41,36 @@ import Seo from "@/components/SEO";
 import { toast } from "sonner";
 
 const QuizComponent = lazy(() => import("@/components/QuizComponent"));
+const YouTubeLessonPlayer = lazy(() => import("@/components/YouTubeLessonPlayer"));
 
 // ─── Course Thumbnail with Graceful Fallback ────────────────────────────────
 
 function CourseThumbnailWithFallback({ thumbnail, title }: { readonly thumbnail: string | null; readonly title: string }) {
   const [err, setErr] = useState(false);
+  const [src, setSrc] = useState(thumbnail);
+  // Adjust state during render when the prop changes (React docs: "you might
+  // not need an effect") — the playlist sync updates covers server-side.
+  const [prevThumbnail, setPrevThumbnail] = useState(thumbnail);
+  if (prevThumbnail !== thumbnail) {
+    setPrevThumbnail(thumbnail);
+    setSrc(thumbnail);
+    setErr(false);
+  }
+
+  // YouTube covers use maxresdefault; if a video lacks a maxres poster
+  // (rare), step down to hqdefault before the placeholder — the "real
+  // video thumbnail" cover stays alive on every video.
+  const onImgError = () => {
+    if (src && src.includes("maxresdefault.jpg")) {
+      setSrc(src.replace("maxresdefault.jpg", "hqdefault.jpg"));
+      return;
+    }
+    if (src && src.includes("hqdefault.jpg")) {
+      setSrc(src.replace("hqdefault.jpg", "mqdefault.jpg"));
+      return;
+    }
+    setErr(true);
+  };
 
   if (err) {
     return (
@@ -63,9 +85,9 @@ function CourseThumbnailWithFallback({ thumbnail, title }: { readonly thumbnail:
 
   return (
     <img
-      src={thumbnail || "/hero-main.svg"}
+      src={src || "/hero-main.svg"}
       alt={title}
-      onError={() => setErr(true)}
+      onError={onImgError}
       className="aspect-video w-full object-cover opacity-100"
     />
   );
@@ -584,26 +606,6 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
     { enabled: !!activeLesson && isAuthenticated }
   );
 
-  // ── Subscribe-to-the-channel gate (support prompt before playback) ───────
-  // Config lives in siteSettings section "subscribeGate" (admin-editable):
-  //   enabled: "true"|"false" · channelUrl · days (unlock window).
-  // Defaults keep the gate ON with the channel's known handle so the feature
-  // works even before the owner opens the settings panel.
-  const { data: subGateCfg } = trpc.settings.getSection.useQuery(
-    { section: "subscribeGate" },
-    { staleTime: 5 * 60_000 },
-  );
-  const gateEnabled = subGateCfg?.enabled !== "false"; // default ON
-  const gateDaysRaw = Number.parseInt(subGateCfg?.days ?? "", 10);
-  const gateDays = Number.isFinite(gateDaysRaw) && gateDaysRaw >= 1 ? gateDaysRaw : 30;
-  const gateChannel = subGateCfg?.channelUrl?.trim() || "https://www.youtube.com/@AhmedElbazEng";
-  const [gateUnlocked, setGateUnlocked] = useState(() => isSubscribeUnlocked());
-  const subscribeGateActive = gateEnabled && !gateUnlocked;
-  const handleGateUnlocked = useCallback(() => {
-    unlockSubscribe(gateDays);
-    setGateUnlocked(true);
-  }, [gateDays]);
-
   // ✅ Derive values from course data (must be declared before use in hooks)
   const price = Number.parseFloat(course?.price || "0");
   const title = (lang === "ar" && course?.titleAr) ? course.titleAr : (course?.titleEn ?? "");
@@ -966,11 +968,6 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
     return isEnrolled;
   };
 
-  // 🎬 YOUTUBE-HYBRID PLAYBACK: when the lesson's videoUrl is a YouTube link,
-  // the API returns kind="youtube" + the 11-char id, and the video streams
-  // from the channel's playlist INSIDE the site's player screen — zero bytes
-  // from our server. Legacy R2 lessons keep the self-hosted player unchanged.
-  const isYouTubeLesson = videoData?.kind === "youtube" && !!videoData?.youtubeId;
   const isVideoReady = activeLesson && !!activeLessonData && canAccessLesson(activeLessonData) && videoData?.videoUrl;
 
   // Payment method icons
@@ -1022,7 +1019,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
     : fixedDiscountText;
 
   return (
-    <div className="min-h-screen bg-[#0a0e17] pt-[calc(6rem+env(safe-area-inset-top,0px))]">
+    <div className="min-h-screen bg-[#0a0e17] pt-24">
       <Seo
         title={title}
         description={description || ""}
@@ -1040,11 +1037,13 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
           {t("courses")}
         </button>
 
-        <div className="grid gap-8 lg:grid-cols-3">
+        <div className="grid min-w-0 gap-8 lg:grid-cols-3">
           {/* Main Content */}
-          {/* min-w-0: a grid item's auto min-size is its content's min-content —
-              without it, one unbreakable child (e.g. a nowrap lesson title)
-              stretches the whole track and the video gets clipped on phones. */}
+          {/* ✅ MOBILE FIX (cut-off edges): grid items default to min-width:auto,
+              so the nowrap lesson titles (truncate) and the player force both
+              columns to ~645px on a 375px screen — everything sticks out of the
+              viewport and gets clipped in RTL. min-w-0 lets the columns shrink
+              to the real viewport and truncate/wrap properly. */}
           <div className="min-w-0 lg:col-span-2">
             {/* Video Player Area */}
             <div className="relative mb-8 overflow-hidden rounded-xl border border-[#1f2d44] bg-black">
@@ -1114,23 +1113,26 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                     </div>
                   )}
 
-                  {isVideoReady && subscribeGateActive && (
-                    /* NOT aspect-video: combined with min-height, the ratio
-                       transfers 400px→711px width on phones (panel wider than
-                       the screen). The gate is a panel, not a screen — plain
-                       width + min-height keeps it inside the card on every
-                       viewport; wide screens get the same comfortable panel. */
-                    <div className="w-full min-h-[400px]">
-                      <SubscribeGate
+                  {isVideoReady && videoData?.kind === "youtube" && (
+                    <Suspense
+                      fallback={
+                        <div className="flex aspect-video items-center justify-center bg-gradient-to-br from-[#0f172a] to-[#1e293b]">
+                          <Loader2 className="h-10 w-10 animate-spin text-[#06b6d4]" />
+                        </div>
+                      }
+                    >
+                      <YouTubeLessonPlayer
+                        videoUrl={videoData.videoUrl}
+                        lessonId={activeLesson}
+                        lessonTitle={activeLessonTitle}
                         lang={lang}
-                        channelUrl={gateChannel}
-                        days={gateDays}
-                        onUnlocked={handleGateUnlocked}
+                        username={user?.username || "guest"}
+                        onLessonCompleted={() => { void refetchEnrollment(); }}
                       />
-                    </div>
+                    </Suspense>
                   )}
 
-                  {isVideoReady && !subscribeGateActive && !isYouTubeLesson && (
+                  {isVideoReady && videoData?.kind !== "youtube" && (
                     <ProtectedVideoPlayer
                       videoUrl={videoData.videoUrl}
                       hlsUrl={videoData.hlsUrl}
@@ -1140,19 +1142,6 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                       courseId={course?.id}
                       isTrackingEnabled={isAuthenticated}
                       lang={lang}
-                      onLessonCompleted={() => { void refetchEnrollment(); }}
-                    />
-                  )}
-
-                  {isVideoReady && !subscribeGateActive && isYouTubeLesson && (
-                    <YouTubeLessonPlayer
-                      key={videoData.youtubeId!}
-                      videoId={videoData.youtubeId!}
-                      lessonId={activeLesson || undefined}
-                      courseId={course?.id}
-                      lessonTitle={activeLessonTitle}
-                      lang={lang}
-                      isTrackingEnabled={isAuthenticated}
                       onLessonCompleted={() => { void refetchEnrollment(); }}
                     />
                   )}
@@ -1276,9 +1265,11 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
           </div>
 
           {/* Sidebar */}
+          {/* ✅ MOBILE FIX: min-w-0 — the truncate lesson titles must be allowed
+              to shrink on narrow screens (same cut-edge bug as the main column). */}
           <div className="min-w-0 space-y-6">
             {/* Enrollment Card */}
-            <div className="sticky top-24 min-w-0 rounded-xl border border-[#1f2d44] bg-[#111827] p-6">
+            <div className="sticky top-24 rounded-xl border border-[#1f2d44] bg-[#111827] p-6">
               {isEnrolled ? (
                 <>
                   <div className="flex items-center gap-2 text-[#10b981]">
@@ -1390,12 +1381,10 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
               </div>
             </div>
 
-            {/* Lesson List — overflow-hidden + min-w-0 keep the verbatim
-                (long!) YouTube titles from stretching the grid on phones;
-                the row's truncate does the visual clipping. */}
-            <div className="min-w-0 overflow-hidden rounded-xl border border-[#1f2d44] bg-[#111827] p-6">
+            {/* Lesson List */}
+            <div className="rounded-xl border border-[#1f2d44] bg-[#111827] p-6">
               <h2 className="mb-4 text-lg font-semibold text-[#f0f4f8]">{t("courseContent")}</h2>
-              <div className="min-w-0 space-y-1">
+              <div className="space-y-1">
                 {course.lessons?.map((lesson, i) => {
                   const canAccess = canAccessLesson(lesson);
                   const isActive = activeLesson === lesson.id;
@@ -1414,7 +1403,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                           setShowQuiz(false);
                         }
                       }}
-                      className={`flex w-full min-w-0 items-center gap-3 rounded-lg px-3 py-2.5 text-start transition-colors ${lessonRowClass}`}
+                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-start transition-colors ${lessonRowClass}`}
                     >
                       {canAccess ? (
                         <PlayCircle className={`h-4 w-4 shrink-0 ${isActive ? "text-[#06b6d4]" : "text-[#94a3b8]"}`} />

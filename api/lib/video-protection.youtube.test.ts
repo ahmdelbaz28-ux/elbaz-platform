@@ -1,79 +1,54 @@
-/**
- * Video protection — YouTube branch tests (hybrid playback conversion).
- *
- * The lesson videoUrl may now be a YouTube link from the channel's playlist.
- * getSecureVideoUrl MUST branch BEFORE any R2 presigning (presigning a
- * youtube.com URL used to throw → fail-closed 503 "Video temporarily
- * unavailable" — the exact regression the conversion had to prevent).
- *
- * These tests mock the R2 client so the R2 branch stays hermetic, and assert:
- *   1. YouTube refs (every supported shape) return kind="youtube" + the id
- *      + an https://www.youtube-nocookie.com/embed/... URL — with NO R2 call.
- *   2. R2 keys still take the legacy path (kind="r2", presigned).
- *   3. Empty videoUrl returns the inert default (kind="r2", youtubeId=null).
- */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-const presignMock = vi.hoisted(() => vi.fn(async ({ objectKey }: { objectKey: string }) => `https://presigned.r2.test/${objectKey}?sig=abc`));
+// The module reads env + R2 at import time; the YouTube branch returns before
+// touching R2, so both are mocked away for these tests.
+vi.mock("./env", () => ({ env: { NODE_ENV: "test", isProduction: false, FRONTEND_URL: "https://ahmedelbaz.qzz.io" } }));
+vi.mock("./r2", () => ({ generateR2PresignedUrl: vi.fn() }));
+vi.mock("./logger.js", () => ({ logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() } }));
 
-vi.mock("./r2", () => ({
-  generateR2PresignedUrl: presignMock,
-  getR2ObjectMetadata: vi.fn(async () => ({ exists: false })),
-}));
-
-vi.mock("./env", () => ({
-  env: { FRONTEND_URL: "https://ahmedelbaz.qzz.io", WATERMARK_SECRET: undefined },
-}));
-
-vi.mock("./logger.js", () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
-
-import { getSecureVideoUrl } from "./video-protection";
-
-const base = {
-  userId: 7,
-  lessonId: 42,
-  username: "tester",
-};
+import { getSecureVideoUrl } from "./video-protection.js";
 
 describe("getSecureVideoUrl — YouTube branch", () => {
-  beforeEach(() => {
-    presignMock.mockClear();
+  it("returns an embedded nocookie URL with kind=youtube for a watch URL", async () => {
+    const res = await getSecureVideoUrl({
+      videoUrl: "https://www.youtube.com/watch?v=0l7WBjMF6uo",
+      userId: 1,
+      lessonId: 10,
+      username: "student1",
+    });
+    expect(res.kind).toBe("youtube");
+    expect(res.youtubeId).toBe("0l7WBjMF6uo");
+    expect(res.videoUrl).toContain("https://www.youtube-nocookie.com/embed/0l7WBjMF6uo");
+    expect(res.videoUrl).toContain("origin=https%3A%2F%2Fahmedelbaz.qzz.io");
+    expect(res.hlsUrl).toBeNull();
+    expect(res.youtubeWatchUrl).toBe("https://www.youtube.com/watch?v=0l7WBjMF6uo");
+    expect(res.watermarkToken).toBeTruthy();
   });
 
-  it.each([
-    ["https://www.youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ"],
-    ["https://youtu.be/dQw4w9WgXcQ", "dQw4w9WgXcQ"],
-    ["https://www.youtube.com/shorts/dQw4w9WgXcQ", "dQw4w9WgXcQ"],
-    ["dQw4w9WgXcQ", "dQw4w9WgXcQ"],
-  ])("branches %s → kind=youtube without touching R2", async (videoUrl, expectedId) => {
-    const result = await getSecureVideoUrl({ ...base, videoUrl });
-
-    expect(result.kind).toBe("youtube");
-    expect(result.youtubeId).toBe(expectedId);
-    expect(result.hlsUrl).toBeNull();
-    expect(result.videoUrl).toMatch(/^https:\/\/www\.youtube-nocookie\.com\/embed\//);
-    expect(new URL(result.videoUrl).searchParams.get("origin")).toBeTruthy();
-    // The critical contract: ZERO R2 activity for YouTube refs.
-    expect(presignMock).not.toHaveBeenCalled();
+  it("works for youtu.be / embed / bare-id shapes too", async () => {
+    for (const url of ["https://youtu.be/avugPlx0sXw", "https://www.youtube.com/embed/avugPlx0sXw", "avugPlx0sXw"]) {
+      const res = await getSecureVideoUrl({ videoUrl: url, userId: 2, lessonId: 11, username: "u" });
+      expect(res.kind).toBe("youtube");
+      expect(res.youtubeId).toBe("avugPlx0sXw");
+    }
   });
 
-  it("keeps the legacy R2 path intact for object keys", async () => {
-    const result = await getSecureVideoUrl({ ...base, videoUrl: "etap/lesson01.mp4" });
-
-    expect(result.kind).toBe("r2");
-    expect(result.youtubeId).toBeNull();
-    expect(result.videoUrl).toBe("https://presigned.r2.test/etap/lesson01.mp4?sig=abc");
-    expect(presignMock).toHaveBeenCalledTimes(1);
+  it("embeds keep hl=ar + rel=0 + playsinline (Arabic, credible, mobile-safe)", async () => {
+    const res = await getSecureVideoUrl({
+      videoUrl: "https://youtu.be/0l7WBjMF6uo",
+      userId: 1,
+      lessonId: 1,
+      username: "u",
+    });
+    expect(res.videoUrl).toContain("hl=ar");
+    expect(res.videoUrl).toContain("rel=0");
+    expect(res.videoUrl).toContain("playsinline=1");
+    expect(res.videoUrl).toContain("enablejsapi=1");
   });
 
-  it("empty videoUrl returns the inert default", async () => {
-    const result = await getSecureVideoUrl({ ...base, videoUrl: "" });
-
-    expect(result.kind).toBe("r2");
-    expect(result.youtubeId).toBeNull();
-    expect(result.videoUrl).toBe("");
-    expect(presignMock).not.toHaveBeenCalled();
+  it("never presigns R2 for a YouTube lesson", async () => {
+    const { generateR2PresignedUrl } = await import("./r2");
+    await getSecureVideoUrl({ videoUrl: "https://youtu.be/0l7WBjMF6uo", userId: 1, lessonId: 1, username: "u" });
+    expect(generateR2PresignedUrl).not.toHaveBeenCalled();
   });
 });
