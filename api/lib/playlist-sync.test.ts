@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-// The sync module imports the DB connection chain, which validates env at
-// import time. Planning tests are pure — mock the connection + env away.
+// The sync module imports the DB connection chain + the watcher pipeline,
+// which validate env at import time. Planning tests are pure — mock the
+// heavy dependencies away.
 vi.mock("../queries/connection.js", () => ({ getDb: vi.fn() }));
 vi.mock("./env.js", () => ({ env: { NODE_ENV: "test", isProduction: false } }));
+vi.mock("./youtube-watcher.js", () => ({ fetchPlaylistVideosForImport: vi.fn(async () => ({ items: [], verified: true })) }));
+vi.mock("./cache.js", () => ({ invalidateCourseDetailCache: vi.fn() }));
 
 import { planPlaylistSync, type ExistingLesson } from "./playlist-sync.js";
 import type { ParsedVideo } from "./notification-utils.js";

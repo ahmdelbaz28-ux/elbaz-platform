@@ -3,8 +3,10 @@ import {
   buildYouTubeEmbedUrl,
   buildYouTubeThumbnailUrl,
   buildYouTubeWatchUrl,
+  extractPlaylistId,
   extractYouTubeId,
   isYouTubeVideoRef,
+  youTubeThumbnailFallback,
 } from "./youtube-url";
 
 describe("extractYouTubeId", () => {
@@ -104,5 +106,31 @@ describe("buildYouTubeThumbnailUrl", () => {
     expect(buildYouTubeThumbnailUrl("dQw4w9WgXcQ")).toBe("https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg");
     expect(buildYouTubeThumbnailUrl("dQw4w9WgXcQ", "hq")).toBe("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg");
     expect(() => buildYouTubeThumbnailUrl("bad")).toThrow();
+  });
+
+  it("builds the crisp maxres poster (course cover quality)", () => {
+    expect(buildYouTubeThumbnailUrl("dQw4w9WgXcQ", "maxres")).toBe("https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg");
+  });
+});
+
+describe("extractPlaylistId", () => {
+  it("parses playlist URLs and bare ids, rejects video-only links", () => {
+    expect(extractPlaylistId("https://www.youtube.com/playlist?list=PLeeb5_Qjhcgc")).toBe("PLeeb5_Qjhcgc");
+    expect(extractPlaylistId("https://youtube.com/playlist?list=PLeeb5_Qjhcgc&hl=ar")).toBe("PLeeb5_Qjhcgc");
+    expect(extractPlaylistId("https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLeeb5_Qjhcgc")).toBe("PLeeb5_Qjhcgc");
+    expect(extractPlaylistId("PLeeb5_Qjhcgc")).toBe("PLeeb5_Qjhcgc");
+    expect(extractPlaylistId("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).toBeNull();
+    expect(extractPlaylistId(null)).toBeNull();
+    expect(extractPlaylistId("")).toBeNull();
+  });
+});
+
+describe("youTubeThumbnailFallback", () => {
+  it("steps down maxres → hq → mq → null", () => {
+    expect(youTubeThumbnailFallback("https://i.ytimg.com/vi/X/maxresdefault.jpg")).toContain("hqdefault.jpg");
+    expect(youTubeThumbnailFallback("https://i.ytimg.com/vi/X/hqdefault.jpg")).toContain("mqdefault.jpg");
+    expect(youTubeThumbnailFallback("https://i.ytimg.com/vi/X/mqdefault.jpg")).toBeNull();
+    expect(youTubeThumbnailFallback("/course-etap.jpg")).toBeNull();
+    expect(youTubeThumbnailFallback(null)).toBeNull();
   });
 });

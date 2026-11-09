@@ -23,11 +23,8 @@ import { getDb } from "../queries/connection.js";
 import { courses, lessons, siteSettings } from "@db/schema";
 import { logger } from "./logger.js";
 import { invalidateCourseDetailCache } from "./cache.js";
-import {
-  buildYouTubeThumbnailUrl,
-  buildYouTubeWatchUrl,
-  extractYouTubeId,
-} from "./youtube-url.js";
+import { buildYouTubeThumbnailUrl, buildYouTubeWatchUrl, extractYouTubeId } from "../../src/lib/youtube-url";
+import { fetchPlaylistVideosForImport } from "./youtube-watcher.js";
 import type { ParsedVideo } from "./notification-utils.js";
 
 // ─── Configuration ─────────────────────────────────────────────────────────────
@@ -386,13 +383,24 @@ export async function applyPlaylistSync(
 
 /**
  * Watcher-tick entry point: applies the auto sync only when the policy
- * allows it (autoImport ON). Uses the SAME videos the tick already fetched —
- * no second YouTube download.
+ * allows it (autoImport ON). Fetches the playlist through the SAME
+ * oEmbed-verified pipeline the admin import dialog uses — placeholders
+ * ("Private video") dropped, titles replaced verbatim by YouTube's own
+ * oEmbed answer — so an auto-imported lesson can never carry a wrong name.
  */
-export async function runAutoPlaylistSync(videos: ParsedVideo[]): Promise<SyncSummary | null> {
+export async function runAutoPlaylistSync(): Promise<SyncSummary | null> {
   const settings = await getSyncSettings();
   if (!settings.autoImport) return null;
-  return applyPlaylistSync(videos, { reason: "watcher-tick" });
+  try {
+    const { items } = await fetchPlaylistVideosForImport();
+    const videos: ParsedVideo[] = items.map((i) => ({ videoId: i.videoId, title: i.title }));
+    return applyPlaylistSync(videos, { reason: "watcher-tick" });
+  } catch (err) {
+    logger.warn("[PlaylistSync] auto tick fetch failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
 }
 
 // ─── Dashboard introspection ───────────────────────────────────────────────────

@@ -333,10 +333,13 @@ def check(name, cond, detail=""):
 def make_context(browser, width, height):
     ctx = browser.new_context(viewport={"width": width, "height": height})
     # Arabic-first (the owner's audience) + pre-consented cookies so the consent
-    # banner never covers the lesson list and intercepts clicks.
+    # banner never covers the lesson list and intercepts clicks + subscribe-gate
+    # already unlocked (the gate panel is tested separately; playback must render).
+    far_future = 4_000_000_000_000  # year ~2096 epoch-ms
     ctx.add_init_script(
         "localStorage.setItem('language', 'ar');"
         "localStorage.setItem('elbaz_cookie_consent', JSON.stringify({necessary: true, analytics: true, marketing: true}));"
+        f"localStorage.setItem('elbaz-sub-gate-unlock', JSON.stringify({{ until: {far_future} }}));"
     )
     ctx.add_cookies([
         {"name": "elbaz_auth_flag", "value": "1", "url": BASE},
