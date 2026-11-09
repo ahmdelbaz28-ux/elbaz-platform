@@ -118,6 +118,13 @@ app.route("/api", healthRouter);
 app.route("/api", diagramsRouter);
 app.route("/api/promo", promoRouter);
 app.route("/api/paymob", paymobWebhook);
+
+// ── YouTube playlist ingest at /api/yt-sync/* — GitHub Actions (clean
+// egress) pushes verbatim playlist rows; HMAC-gated, fail-closed without
+// SYNC_INGEST_SECRET. Feeds the SAME applyPlaylistSync engine as the
+// watcher tick (see yt-sync-ingest.ts for the why). ──
+import { ytSyncIngestRoute } from "./yt-sync-ingest.js";
+app.route("/api/yt-sync", ytSyncIngestRoute);
 // Legacy account-level callback URLs registered in the Paymob dashboard
 // (Transaction Processed + browser Response callbacks) — same HMAC-verified
 // handler; required by the mobile-wallet classic checkout flow.

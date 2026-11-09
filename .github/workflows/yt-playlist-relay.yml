@@ -1,0 +1,44 @@
+# ════════════════════════════════════════════════════════════════════════════
+# YT PLAYLIST RELAY — GitHub Actions as the Space's clean YouTube egress
+# ════════════════════════════════════════════════════════════════════════════
+# WHY: the HF Space's datacenter egress is throttled by YouTube (incidents
+# 2026-10-28 / 2026-11-05) so the in-Space sync engine sees zero videos and
+# the course can never mirror the playlist. GitHub runners reach YouTube
+# fine. This workflow fetches the playlist VERBATIM and pushes it to the
+# Space's HMAC-gated ingest endpoint (/api/yt-sync/ingest), which feeds the
+# SAME applyPlaylistSync engine: verbatim titles, first-video cover,
+# fake-lesson purge. The CF-worker relay stays wired but Access-gated; this
+# path needs zero Cloudflare configuration.
+#
+# SECRETS (repo-level):
+#   SYNC_INGEST_SECRET — same value as the Space's secret (≥16 chars).
+# Everything else is derived in code (playlist id default, ingest URL default).
+#
+# Manual run: Actions → YT playlist relay → Run workflow.
+# ════════════════════════════════════════════════════════════════════════════
+name: YT playlist relay
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yt-playlist-relay
+  cancel-in-progress: false
+
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch playlist + push verbatim rows to the Space
+        env:
+          SYNC_INGEST_SECRET: ${{ secrets.SYNC_INGEST_SECRET }}
+        run: |
+          python3 scripts/yt_playlist_relay.py
