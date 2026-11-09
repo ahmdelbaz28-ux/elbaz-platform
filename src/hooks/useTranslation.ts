@@ -169,6 +169,10 @@ const translations: Translations = {
     loginSuccess: "Welcome back! Login successful.",
     registerSuccess: "Account created successfully! Welcome aboard.",
     searchCourses: "Search courses...",
+    // ✅ i18n FIX (pre-launch audit): these keys were referenced but missing —
+    // the fallback rendered the raw key ("skipToContent") to real users.
+    skipToContent: "Skip to main content",
+    loadingError: "Something went wrong while loading this page.",
     myCourses: "My Courses",
     noEnrolledCourses: "No courses enrolled yet",
     noEnrolledCoursesDesc: "Browse our catalog and start learning today",
@@ -392,6 +396,8 @@ const translations: Translations = {
     loginSuccess: "مرحباً بعودتك! تم تسجيل الدخول بنجاح.",
     registerSuccess: "تم إنشاء الحساب بنجاح! مرحباً بك.",
     searchCourses: "ابحث عن كورسات...",
+    skipToContent: "تخطَّ إلى المحتوى الرئيسي",
+    loadingError: "حدث خطأ أثناء تحميل هذه الصفحة.",
     myCourses: "كورساتي",
     noEnrolledCourses: "لا توجد كورسات مسجل بها",
     noEnrolledCoursesDesc: "تصفح الكتالوج وابدأ التعلم اليوم",

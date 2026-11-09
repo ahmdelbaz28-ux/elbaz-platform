@@ -14,8 +14,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
 
-function TicketThread({ ticketId, initialMessage }: { readonly ticketId: number, readonly initialMessage: string }) {
+function TicketThread({ ticketId, initialMessage, lang }: { readonly ticketId: number, readonly initialMessage: string, readonly lang: "en" | "ar" }) {
   const { t } = useTranslation();
   const utils = trpc.useUtils();
   const [replyText, setReplyText] = useState("");
@@ -26,6 +27,13 @@ function TicketThread({ ticketId, initialMessage }: { readonly ticketId: number,
       setReplyText("");
       utils.support.getById.invalidate({ id: ticketId });
       utils.support.list.invalidate();
+    },
+    // ✅ UX FIX (pre-launch audit): mutations had no onError — submit failures
+    // (network drop, rate limit, validation) were completely silent, leaving
+    // the user's typed text stuck with zero feedback.
+    onError: (err) => {
+      toast.error(lang === "ar" ? "فشل إرسال الرد، حاول مرة أخرى" : "Failed to send reply, please try again");
+      if (import.meta.env.DEV) console.error("support.reply failed", err);
     },
   });
 
@@ -38,7 +46,7 @@ function TicketThread({ ticketId, initialMessage }: { readonly ticketId: number,
 
   return (
     <div className="mt-4 border-t border-border pt-4">
-      <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2">
+      <div className="space-y-4 max-h-[300px] overflow-y-auto pe-2">
         <div className="flex flex-col items-start">
           <div className="rounded-lg bg-primary px-4 py-2 text-sm text-foreground">
             {initialMessage}
@@ -108,6 +116,11 @@ export default function Support() {
       setMessage("");
       utils.support.list.invalidate();
     },
+    // ✅ UX FIX (pre-launch audit): silent-failure guard — see TicketThread.
+    onError: (err) => {
+      toast.error(lang === "ar" ? "فشل إنشاء التذكرة، حاول مرة أخرى" : "Failed to create ticket, please try again");
+      if (import.meta.env.DEV) console.error("support.create failed", err);
+    },
   });
 
   if (!isAuthenticated) {
@@ -145,10 +158,10 @@ export default function Support() {
                 <h3 className="mt-2 font-medium text-foreground">{ticket.subject}</h3>
                 <p className="mt-1 text-sm text-text-muted line-clamp-2">{ticket.message}</p>
               </div>
-              {expandedTicket === ticket.id ? <ChevronUp className="ml-3 h-5 w-5 text-text-muted" /> : <ChevronDown className="ml-3 h-5 w-5 text-text-muted" />}
+              {expandedTicket === ticket.id ? <ChevronUp className="ms-3 h-5 w-5 text-text-muted" /> : <ChevronDown className="ms-3 h-5 w-5 text-text-muted" />}
             </button>
 
-            {expandedTicket === ticket.id && <TicketThread ticketId={ticket.id} initialMessage={ticket.message} />}
+            {expandedTicket === ticket.id && <TicketThread ticketId={ticket.id} initialMessage={ticket.message} lang={lang} />}
           </div>
         );
       })}
@@ -170,7 +183,7 @@ export default function Support() {
             <p className="mt-1 text-sm text-text-muted">{lang === "en" ? "Get help with your courses and account" : "احصل على مساعدة بخصوص كورساتك وحسابك"}</p>
           </div>
           <Button onClick={() => setShowCreate(!showCreate)} className="bg-accent-secondary text-background hover:bg-accent-secondary/80">
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="me-2 h-4 w-4" />
             {t("createTicket")}
           </Button>
         </div>

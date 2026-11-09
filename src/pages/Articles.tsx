@@ -136,16 +136,16 @@ export default function Articles() {
         <div className="sticky top-16 z-20 border-b border-border bg-background/95 backdrop-blur-md">
           <div className="mx-auto max-w-7xl space-y-3 px-4 py-4 sm:px-6 lg:px-8">
             <div className="relative max-w-md">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-faint" />
+              <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-faint" />
               <Input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={isRTL ? "ابحث في المقالات..." : "Search articles..."}
-                className="border-border bg-primary pl-10 text-foreground placeholder:text-text-faint focus:border-accent-secondary focus:ring-accent-secondary"
+                className="border-border bg-primary ps-10 text-foreground placeholder:text-text-faint focus:border-accent-secondary focus:ring-accent-secondary"
               />
               {search && (
-                <button onClick={() => setSearch("")} aria-label={isRTL ? "مسح البحث" : "Clear search"} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-faint hover:text-foreground transition-colors">
+                <button onClick={() => setSearch("")} aria-label={isRTL ? "مسح البحث" : "Clear search"} className="absolute end-3 top-1/2 -translate-y-1/2 text-text-faint hover:text-foreground transition-colors">
                   <X className="h-4 w-4" />
                 </button>
               )}

@@ -246,8 +246,8 @@ export default function Register() {
               <div>
                 <Label htmlFor="register-password" className="text-sm text-text-muted">{t("password")} *</Label>
                 <div className="relative mt-1">
-                  <Input id="register-password" name="password" type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t("enterPassword")} className="border-border bg-background pr-10 text-foreground placeholder:text-text-faint focus:border-accent-secondary focus:ring-accent-secondary" autoComplete="new-password" required />
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary" aria-label={showPassword ? bilingualByLang("إخفاء كلمة المرور", "Hide password", lang) : bilingualByLang("إظهار كلمة المرور", "Show password", lang)}>
+                  <Input id="register-password" name="password" type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t("enterPassword")} className="border-border bg-background pe-10 text-foreground placeholder:text-text-faint focus:border-accent-secondary focus:ring-accent-secondary" autoComplete="new-password" required />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute end-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary" aria-label={showPassword ? bilingualByLang("إخفاء كلمة المرور", "Hide password", lang) : bilingualByLang("إظهار كلمة المرور", "Show password", lang)}>
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
@@ -255,8 +255,8 @@ export default function Register() {
               <div>
                 <Label htmlFor="register-confirm-password" className="text-sm text-text-muted">{t("confirmPassword")} *</Label>
                 <div className="relative mt-1">
-                  <Input id="register-confirm-password" name="confirmPassword" type={showPassword ? "text" : "password"} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder={t("enterPassword")} className="border-border bg-background pr-10 text-foreground placeholder:text-text-faint focus:border-accent-secondary focus:ring-accent-secondary" autoComplete="new-password" required />
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary" aria-label={showPassword ? bilingualByLang("إخفاء كلمة المرور", "Hide password", lang) : bilingualByLang("إظهار كلمة المرور", "Show password", lang)}>
+                  <Input id="register-confirm-password" name="confirmPassword" type={showPassword ? "text" : "password"} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder={t("enterPassword")} className="border-border bg-background pe-10 text-foreground placeholder:text-text-faint focus:border-accent-secondary focus:ring-accent-secondary" autoComplete="new-password" required />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute end-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary" aria-label={showPassword ? bilingualByLang("إخفاء كلمة المرور", "Hide password", lang) : bilingualByLang("إظهار كلمة المرور", "Show password", lang)}>
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>

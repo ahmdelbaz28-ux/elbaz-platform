@@ -94,6 +94,10 @@ function FaqResultList({ isLoading, filtered, openId, lang, toggleOpen }: {
         >
           <button
             onClick={() => toggleOpen(item.id)}
+            // ✅ a11y FIX (pre-launch audit): accordion headers announced no
+            // expanded/collapsed state to assistive technology.
+            aria-expanded={openId === item.id}
+            aria-controls={`faq-answer-${item.id}`}
             className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left hover:bg-primary transition-colors"
           >
             <div className="flex items-center gap-3">
@@ -111,7 +115,7 @@ function FaqResultList({ isLoading, filtered, openId, lang, toggleOpen }: {
             />
           </button>
           {openId === item.id && (
-            <div className="px-5 pb-4 text-sm text-text-muted leading-relaxed border-t border-border/50 pt-3">
+            <div id={`faq-answer-${item.id}`} className="px-5 pb-4 text-sm text-text-muted leading-relaxed border-t border-border/50 pt-3">
               {lang === "ar" ? item.answerAr : item.answerEn}
             </div>
           )}
@@ -185,13 +189,13 @@ export default function Faq() {
         <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
           <div className="mb-6 space-y-3">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-faint" />
+              <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-faint" />
               <Input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={lang === "ar" ? "ابحث في الأسئلة..." : "Search questions..."}
-                className="pl-10 bg-primary border-border text-foreground placeholder:text-text-faint"
+                className="ps-10 bg-primary border-border text-foreground placeholder:text-text-faint"
               />
             </div>
             <div className="flex flex-wrap gap-2">

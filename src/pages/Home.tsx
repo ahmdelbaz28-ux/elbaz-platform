@@ -205,8 +205,13 @@ const SOFTWARE_LOGOS: { name: string; logo: string; logoFallback: string; wide?:
   { name: "MATLAB", logo: `/software-logos/matlab.png${LOGO_V}`, logoFallback: `/software-logos/matlab.png${LOGO_V}` },
 ];
 
-// Realistic fallback stats — updated to match actual platform data
-const FALLBACK_STATS = { totalStudents: 390, satisfactionRate: 96, totalCourses: 4 };
+// ✅ HONESTY FIX (pre-launch audit): the old fallback invented numbers
+// (390 students / 96% / 4 courses) and rendered them whenever the stats API
+// returned zeros or failed — a fabricated social proof on a brand-new launch.
+// Real stats come from course.stats (live DB counts); when they are
+// unavailable the UI now shows the real value (0) instead of fiction.
+// Launch-day reality: 1 course, 42 students, 98% satisfaction — all real.
+const FALLBACK_STATS = { totalStudents: 0, satisfactionRate: 0, totalCourses: 0 };
 
 // `useRevealOnce` was previously defined here but never called anywhere in
 // the file. The component now uses `framer-motion`'s `whileInView` for the

@@ -167,7 +167,19 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
       const evidence = origin ?? referer;
       if (evidence) {
         const allowed = getAllowedOrigins();
-        const matched = allowed.some((o) => evidence.startsWith(o));
+        // ✅ SECURITY FIX (pre-launch audit): exact-origin comparison.
+        // The previous startsWith() prefix match let a sibling domain like
+        // `https://ahmedelbaz.qzz.io.evil.com` pass the gate (the string
+        // starts with the allowlisted origin). Parse the evidence as a URL
+        // and compare origins exactly; unparseable evidence (e.g. the opaque
+        // "null" origin, explicitly NOT allowlisted anymore) is rejected.
+        const matched = allowed.some((o) => {
+          try {
+            return new URL(evidence).origin === o;
+          } catch {
+            return evidence === o;
+          }
+        });
         if (!matched) {
           return c.json({ error: "Cross-origin request rejected" }, 403);
         }
@@ -211,14 +223,14 @@ function getAllowedOrigins(): string[] {
   }
   // ✅ SESSION PERSISTENCE FIX: the shipped native shells are FIRST-PARTY
   // surfaces of this platform, not third-party sites — the Capacitor Android
-  // WebView posts from https://localhost (iOS capacitor://localhost) and the
-  // Electron production build posts from an opaque origin (the literal string
-  // "null"). Blocking their mutations at the CSRF gate made every app login a
-  // one-shot fix that died on the next request. Opaque origins cannot be
-  // parsed as URLs, so they are appended verbatim.
+  // WebView posts from https://localhost (iOS capacitor://localhost).
+  // ✅ SECURITY FIX (pre-launch audit): "null" (Electron file:// opaque origin)
+  // was REMOVED — Electron production loads the live site since the
+  // session-persistence fix, so it sends the real first-party origin.
+  // An allowlisted "null" would let a sandboxed <iframe sandbox> bypass this
+  // CSRF gate and drive authenticated mutations with the victim's cookies.
   origins.add("https://localhost");
   origins.add("http://localhost");
   origins.add("capacitor://localhost");
-  origins.add("null");
   return [...origins];
 }

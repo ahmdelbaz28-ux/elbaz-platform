@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { trpc } from "@/providers/trpc";
 import YouTubeLessonPlayer from "@/components/YouTubeLessonPlayer";
 import SubscribeGate from "@/components/SubscribeGate";
+import CourseReviews from "@/components/CourseReviews";
 import { isSubscribeUnlocked, unlockSubscribe } from "@/lib/subscribe-gate";
 import { useState, useRef, useEffect, useCallback, forwardRef, lazy, Suspense } from 'react';
 import { useWatchTracker } from "@/hooks/useWatchTracker";
@@ -1217,7 +1218,9 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
             <div className="mb-8">
               <div className="flex flex-wrap items-center gap-3">
                 <span className="rounded bg-[rgba(6,182,212,0.15)] px-2 py-0.5 text-xs font-medium text-[#06b6d4]">
-                  {course.category?.nameEn || "Engineering"}
+                  {/* ✅ i18n FIX (pre-launch audit): badge was English-only
+                  (nameEn) even in Arabic UI. */}
+                  {lang === "ar" ? (course.category?.nameAr || "هندسة") : (course.category?.nameEn || "Engineering")}
                 </span>
                 <span
                   className={`rounded px-2 py-0.5 text-xs font-medium ${
@@ -1414,7 +1417,11 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                           setShowQuiz(false);
                         }
                       }}
-                      className={`flex w-full min-w-0 items-center gap-3 rounded-lg px-3 py-2.5 text-start transition-colors ${lessonRowClass}`}
+                      // ✅ a11y FIX (pre-launch audit): locked lessons were plain
+                      // buttons without disabled/aria state — screen readers
+                      // announced them as clickable actions.
+                      aria-disabled={!canAccess}
+                      className={`flex w-full min-w-0 items-center gap-3 rounded-lg px-3 py-2.5 text-start transition-colors ${lessonRowClass} ${canAccess ? "cursor-pointer" : "cursor-not-allowed"}`}
                     >
                       {canAccess ? (
                         <PlayCircle className={`h-4 w-4 shrink-0 ${isActive ? "text-[#06b6d4]" : "text-[#94a3b8]"}`} />
@@ -1437,6 +1444,12 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
           </div>
         </div>
       </div>
+
+      {/* ✅ Student reviews — competitor-standard social proof (Udemy/Coursera
+          pattern). The backend review system existed with no UI until now. */}
+      {!isLoading && course && (
+        <CourseReviews courseId={course.id} averageRating={Number(course.rating) || 0} />
+      )}
 
       {/* ✅ Payment Modal with Phone Number */}
       {showPayment && (

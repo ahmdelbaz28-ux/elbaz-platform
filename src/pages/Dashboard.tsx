@@ -54,22 +54,27 @@ export default function Dashboard() {
 
         <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[
-            { icon: <GraduationCap className="h-5 w-5" />, label: lang === "en" ? "Enrolled Courses" : "الكورسات المسجل بها", value: enrolledCoursesCount },
-            { icon: <Clock className="h-5 w-5" />, label: lang === "en" ? "Total Watch Time" : "إجمالي وقت المشاهدة", value: watchTime?.formatted || "0m" },
-            { icon: <Award className="h-5 w-5" />, label: t("myCertificates"), value: certificatesCount },
-            { icon: <TrendingUp className="h-5 w-5" />, label: lang === "en" ? "Total Spent" : "إجمالي المدفوع", value: `${totalSpent.toLocaleString()} ${lang === "ar" ? "ج.م" : "EGP"}` },
+            // ✅ UX FIX (pre-launch audit): stat cards had cursor-pointer + hover
+            // motion but were not clickable (false affordance). Now each card
+            // navigates to the section it summarizes.
+            { icon: <GraduationCap className="h-5 w-5" />, label: lang === "en" ? "Enrolled Courses" : "الكورسات المسجل بها", value: enrolledCoursesCount, to: "/dashboard#my-courses" },
+            { icon: <Clock className="h-5 w-5" />, label: lang === "en" ? "Total Watch Time" : "إجمالي وقت المشاهدة", value: watchTime?.formatted || "0m", to: "/journey" },
+            { icon: <Award className="h-5 w-5" />, label: t("myCertificates"), value: certificatesCount, to: "/dashboard#certificates" },
+            { icon: <TrendingUp className="h-5 w-5" />, label: lang === "en" ? "Total Spent" : "إجمالي المدفوع", value: `${totalSpent.toLocaleString()} ${lang === "ar" ? "ج.م" : "EGP"}`, to: "/dashboard#payments" },
           ].map((stat, i) => (
-            <motion.div key={stat.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1, type: "spring", stiffness: 200, damping: 20 }} whileHover={{ y: -4, scale: 1.02, boxShadow: "0 8px 30px rgba(6,182,212,0.12)" }} whileTap={{ scale: 0.98 }} className="rounded-xl border border-border bg-primary p-5 cursor-pointer">
-              <motion.div whileHover={{ rotate: [0, -8, 8, -4, 4, 0], scale: 1.1 }} transition={{ duration: 0.4 }} className="text-accent-secondary">
-                {stat.icon}
-              </motion.div>
-              <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-2 text-2xl font-bold text-foreground">{stat.value}</motion.p>
-              <p className="mt-1 text-xs text-text-muted">{stat.label}</p>
+            <motion.div key={stat.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1, type: "spring", stiffness: 200, damping: 20 }} whileHover={{ y: -4, scale: 1.02, boxShadow: "0 8px 30px rgba(6,182,212,0.12)" }} whileTap={{ scale: 0.98 }}>
+              <Link to={stat.to} className="block rounded-xl border border-border bg-primary p-5 cursor-pointer">
+                <motion.div whileHover={{ rotate: [0, -8, 8, -4, 4, 0], scale: 1.1 }} transition={{ duration: 0.4 }} className="text-accent-secondary">
+                  {stat.icon}
+                </motion.div>
+                <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-2 text-2xl font-bold text-foreground">{stat.value}</motion.p>
+                <p className="mt-1 text-xs text-text-muted">{stat.label}</p>
+              </Link>
             </motion.div>
           ))}
         </div>
 
-        <div className="mb-8">
+        <div className="mb-8" id="my-courses">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-lg font-semibold text-foreground">{t("myCourses")}</h2>
             <BookOpen className="h-5 w-5 text-accent-secondary" />
@@ -148,7 +153,7 @@ export default function Dashboard() {
         </div>
 
         <div className="grid gap-8 lg:grid-cols-2">
-          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3, type: "spring", stiffness: 150 }} className="min-w-0 overflow-hidden rounded-xl border border-border bg-primary p-6">
+          <motion.div id="certificates" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3, type: "spring", stiffness: 150 }} className="min-w-0 overflow-hidden rounded-xl border border-border bg-primary p-6">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-foreground">{t("myCertificates")}</h2>
               <motion.div whileHover={{ rotate: [0, -10, 10, 0], scale: 1.1 }} transition={{ duration: 0.3 }} className="text-accent-secondary">
@@ -195,9 +200,10 @@ export default function Dashboard() {
             )}
           </motion.div>
 
-          <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4, type: "spring", stiffness: 150 }} className="rounded-xl border border-border bg-primary p-6">
+          <motion.div id="payments" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4, type: "spring", stiffness: 150 }} className="rounded-xl border border-border bg-primary p-6">
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-foreground">{lang === "en" ? "Recent Enrollments" : "التسجيلات الأخيرة"}</h2>
+              {/* ✅ UX FIX: this panel renders PAYMENTS, not enrollments — label now matches content. */}
+              <h2 className="text-lg font-semibold text-foreground">{lang === "en" ? "Recent Payments" : "المدفوعات الأخيرة"}</h2>
               <motion.div animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 1.5, repeat: Infinity }}>
                 <Zap className="h-5 w-5 text-accent-secondary" />
               </motion.div>
@@ -217,7 +223,7 @@ export default function Dashboard() {
             ) : (
               <div className="py-8 text-center">
                 <GraduationCap className="mx-auto h-10 w-10 text-border" />
-                <p className="mt-3 text-sm text-text-muted">{lang === "en" ? "No enrollments yet" : "لا توجد تسجيلات بعد"}</p>
+                <p className="mt-3 text-sm text-text-muted">{lang === "en" ? "No payments yet" : "لا توجد مدفوعات بعد"}</p>
               </div>
             )}
           </motion.div>
@@ -225,9 +231,12 @@ export default function Dashboard() {
 
         <div className="mt-8 grid gap-4 sm:grid-cols-3">
           {[
+            // ✅ UX FIX (pre-launch audit): the "Certificates" card linked to
+            // /courses — a dead end (no certificates there). It now anchors to
+            // the certificates panel on this same dashboard.
             { to: "/courses", icon: <GraduationCap className="h-6 w-6" />, title: t("exploreCourses"), desc: lang === "en" ? "Browse the catalog" : "تصفح القائمة" },
             { to: "/support", icon: <Zap className="h-6 w-6" />, title: t("support"), desc: lang === "en" ? "Get help" : "احصل على مساعدة" },
-            { to: "/courses", icon: <Award className="h-6 w-6" />, title: t("certificates"), desc: lang === "en" ? "View your achievements" : "عرض إنجازاتك" },
+            { to: "/dashboard#certificates", icon: <Award className="h-6 w-6" />, title: t("certificates"), desc: lang === "en" ? "View your achievements" : "عرض إنجازاتك" },
           ].map((item, i) => (
             <motion.div key={item.title} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 + i * 0.1, type: "spring", stiffness: 200 }} whileHover={{ y: -4, scale: 1.02, borderColor: "rgba(6,182,212,0.4)" }} whileTap={{ scale: 0.98 }}>
               <Link to={item.to} className="flex items-center gap-3 rounded-xl border border-border bg-primary p-5 transition-colors hover:border-accent-secondary">

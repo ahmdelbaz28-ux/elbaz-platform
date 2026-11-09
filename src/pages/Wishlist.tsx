@@ -72,6 +72,9 @@ function WishlistContent({ items, lang, onRemove }: {
                 className="border-destructive/30 text-rose-400 hover:bg-rose-500/10"
               >
                 <Trash2 className="h-3.5 w-3.5" />
+                {/* ✅ a11y FIX (pre-launch audit): icon-only button had no
+                accessible name — screen readers announced it as blank. */}
+                <span className="sr-only">{lang === "ar" ? "إزالة من المفضلة" : "Remove from wishlist"}</span>
               </Button>
             </div>
           </div>

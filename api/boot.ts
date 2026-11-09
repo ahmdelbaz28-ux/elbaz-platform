@@ -88,7 +88,15 @@ const NATIVE_APP_ORIGINS = [
   "https://localhost", // Capacitor Android WebView
   "http://localhost", // Capacitor Android cleartext (capacitor.config server.cleartext)
   "capacitor://localhost", // Capacitor iOS
-  "null", // Electron production loads file:// (opaque origin)
+  // ✅ SECURITY FIX (pre-launch audit): "null" (Electron file:// opaque origin)
+  // was REMOVED from the CORS allowlist. Since the session-persistence fix,
+  // Electron production loads the LIVE site (first-party origin, allowlisted
+  // via FRONTEND_URL) — file:// is only an offline fallback where no API calls
+  // are possible anyway. Keeping "null" allowed any website to embed a
+  // sandboxed <iframe sandbox> whose fetches send Origin: null and read
+  // authenticated responses (cookie SameSite=None + credentials:true).
+  // Desktop/native shells use the x-auth-token Bearer path (context.ts), so
+  // they never relied on ambient cookies for API access.
 ];
 for (const o of NATIVE_APP_ORIGINS) {
   if (!corsOrigins.includes(o)) corsOrigins.push(o);

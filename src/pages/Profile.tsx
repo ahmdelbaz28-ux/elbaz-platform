@@ -305,8 +305,8 @@ export default function Profile() {
               <div>
                 <Label className="text-sm text-text-muted">{lang === "en" ? "Current Password" : "كلمة المرور الحالية"}</Label>
                 <div className="relative mt-1">
-                  <Input type={showCurrentPassword ? "text" : "password"} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder={lang === "en" ? "Enter current password" : "أدخل كلمة المرور الحالية"} className="border-border bg-background pr-10 text-foreground placeholder:text-text-faint focus:border-accent-secondary" />
-                  <button type="button" onClick={() => setShowCurrentPassword(!showCurrentPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary">
+                  <Input type={showCurrentPassword ? "text" : "password"} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder={lang === "en" ? "Enter current password" : "أدخل كلمة المرور الحالية"} className="border-border bg-background pe-10 text-foreground placeholder:text-text-faint focus:border-accent-secondary" />
+                  <button type="button" onClick={() => setShowCurrentPassword(!showCurrentPassword)} className="absolute end-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary" aria-label={showCurrentPassword ? (lang === "en" ? "Hide current password" : "إخفاء كلمة المرور الحالية") : (lang === "en" ? "Show current password" : "إظهار كلمة المرور الحالية")}>
                     {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
@@ -314,8 +314,8 @@ export default function Profile() {
               <div>
                 <Label className="text-sm text-text-muted">{lang === "en" ? "New Password" : "كلمة المرور الجديدة"}</Label>
                 <div className="relative mt-1">
-                  <Input type={showNewPassword ? "text" : "password"} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder={lang === "en" ? "Enter new password (min 8 chars)" : "أدخل كلمة المرور الجديدة (8 أحرف على الأقل)"} className="border-border bg-background pr-10 text-foreground placeholder:text-text-faint focus:border-accent-secondary" />
-                  <button type="button" onClick={() => setShowNewPassword(!showNewPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary">
+                  <Input type={showNewPassword ? "text" : "password"} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder={lang === "en" ? "Enter new password (min 8 chars)" : "أدخل كلمة المرور الجديدة (8 أحرف على الأقل)"} className="border-border bg-background pe-10 text-foreground placeholder:text-text-faint focus:border-accent-secondary" />
+                  <button type="button" onClick={() => setShowNewPassword(!showNewPassword)} className="absolute end-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary" aria-label={showNewPassword ? (lang === "en" ? "Hide new password" : "إخفاء كلمة المرور الجديدة") : (lang === "en" ? "Show new password" : "إظهار كلمة المرور الجديدة")}>
                     {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>

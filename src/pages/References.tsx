@@ -148,7 +148,7 @@ function FileCard({ item, lang, isAdmin, isDownloading, onDownload, onDelete }: 
 
       {/* Category badge */}
       {item.category && item.category !== "general" && (
-        <span className="absolute top-3 right-3 rounded-full bg-accent-secondary/10 px-2 py-0.5 text-[10px] font-medium text-accent-secondary">
+        <span className="absolute top-3 end-3 rounded-full bg-accent-secondary/10 px-2 py-0.5 text-[10px] font-medium text-accent-secondary">
           {item.category}
         </span>
       )}
@@ -342,18 +342,18 @@ export default function References() {
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               {/* Search */}
               <div className="relative flex-1 md:max-w-md">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-faint" />
+                <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-faint" />
                 <Input
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder={lang === "ar" ? "ابحث في المراجع..." : "Search references..."}
-                  className="pl-10 bg-primary border-border text-foreground placeholder:text-text-faint"
+                  className="ps-10 bg-primary border-border text-foreground placeholder:text-text-faint"
                 />
                 {search && (
                   <button
                     onClick={() => setSearch("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-faint hover:text-slate-300"
+                    className="absolute end-3 top-1/2 -translate-y-1/2 text-text-faint hover:text-slate-300"
                   >
                     <X className="h-4 w-4" />
                   </button>

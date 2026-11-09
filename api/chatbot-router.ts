@@ -422,7 +422,16 @@ chatbotRouter.post("/stream", async (c) => {
   if (!checkChatbotRateLimit(ip)) {
     return errorResponse(c, "RATE_LIMITED");
   }
-  const body = await c.req.json<{ messages: unknown; language?: string; chatId?: string; mode?: "thinking" | "instant" }>();
+  // ✅ FIX (pre-launch audit): the JSON parse ran outside try/catch, so a
+  // malformed request body produced an unhandled 500 (and an AI-diagnosis
+  // spend) instead of a clean 400. Malformed JSON is a client bug — respond
+  // as such.
+  let body: { messages?: unknown; language?: string; chatId?: string; mode?: "thinking" | "instant" };
+  try {
+    body = await c.req.json<{ messages: unknown; language?: string; chatId?: string; mode?: "thinking" | "instant" }>();
+  } catch {
+    return c.json({ error: "INVALID_JSON", message: "Request body must be valid JSON." }, 400);
+  }
 
   const normalized = normalizeChatInput(body.messages);
   if (!normalized.ok) {

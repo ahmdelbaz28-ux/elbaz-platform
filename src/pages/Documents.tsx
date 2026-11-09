@@ -310,18 +310,18 @@ export default function Documents() {
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               {/* Search */}
               <div className="relative flex-1 md:max-w-md">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-faint" />
+                <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-faint" />
                 <Input
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder={lang === "ar" ? "ابحث في المستندات..." : "Search documents..."}
-                  className="pl-10 bg-primary border-border text-foreground placeholder:text-text-faint focus:border-accent-secondary focus:ring-accent-secondary"
+                  className="ps-10 bg-primary border-border text-foreground placeholder:text-text-faint focus:border-accent-secondary focus:ring-accent-secondary"
                 />
                 {search && (
                   <button
                     onClick={() => setSearch("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-faint hover:text-foreground transition-colors"
+                    className="absolute end-3 top-1/2 -translate-y-1/2 text-text-faint hover:text-foreground transition-colors"
                   >
                     <X className="h-4 w-4" />
                   </button>

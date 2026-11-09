@@ -4,7 +4,7 @@ import { verifyToken, verifyExpiredToken, createToken, getTokenRemainingSeconds,
 import { getDb } from "./queries/connection";
 import { users } from "@db/schema";
 import { eq } from "drizzle-orm";
-import { AUTH_COOKIE_NAME, AUTH_COOKIE_MAX_AGE, serializeAuthCookie, serializeAuthFlagCookie } from './lib/cookies';
+import { AUTH_COOKIE_NAME, serializeAuthCookie, serializeAuthFlagCookie } from './lib/cookies';
 import { parse } from "cookie";
 
 import { logger } from "./lib/logger";
@@ -51,15 +51,20 @@ setInterval(() => {
 const SLIDING_REFRESH_THRESHOLD_S = 2 * 60 * 60; // 2 hours
 
 // ✅ SESSION PERSISTENCE FIX: Grace window for EXPIRED-but-cryptographically
-// valid tokens. The access token TTL is short (15m default), while the auth
+// valid tokens. The access token TTL is 7d (env default), while the auth
 // cookie persists 30 days. A user who returns after the TTL used to hit a hard
 // 401 on their next page load → the client cleared the session → the chatbot
 // FAB sent them to /login ("refresh → asks me to log in again"). Now a request
 // carrying a signature-valid token that expired within this window is treated
 // like the sliding refresh: DB user + tokenVersion are re-verified (revocation
 // still enforced) and a fresh 30-day cookie pair is minted transparently.
-// The window matches the cookie maxAge so "logged in" == "cookie alive".
-const EXPIRED_TOKEN_GRACE_S = AUTH_COOKIE_MAX_AGE; // 30 days, matches the cookie
+// ✅ SECURITY FIX (pre-launch audit): the window was AUTH_COOKIE_MAX_AGE
+// (30 days), giving a stolen-but-signature-valid token an effective lifetime
+// of TTL + 30d ≈ 37 days with no device binding. 24h keeps the legitimate
+// "returned after a short break" flow seamless (total tolerance ≈ 8 days)
+// while cutting the attacker window by ~80%. Logout/password-reset still
+// revoke instantly via tokenVersion.
+const EXPIRED_TOKEN_GRACE_S = 24 * 60 * 60; // 24 hours
 
 /**
  * ✅ SESSION PERSISTENCE FIX: renew a session carried by a token that failed
