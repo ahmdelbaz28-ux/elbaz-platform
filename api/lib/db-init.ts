@@ -962,18 +962,15 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
       try {
         // Lesson notes gain a video timestamp (click a note → seek back).
         if (!(await columnExists("userNotes", "timestampSeconds"))) {
-          await conn.query("ALTER TABLE `userNotes` ADD COLUMN `timestampSeconds` INT NULL AFTER `tags`");
-          logger.info("[DB]   + userNotes.timestampSeconds");
+          try { await conn.query("ALTER TABLE `userNotes` ADD COLUMN `timestampSeconds` INT NULL AFTER `tags`"); logger.info("[DB]   + userNotes.timestampSeconds"); } catch (e) { logger.warn("[DB] userNotes.timestampSeconds", { error: (e as Error).message }); }
         }
         // Testimonials gain a verifiable certificate link (home page badge).
         if (!(await columnExists("testimonials", "certificateNumber"))) {
-          await conn.query("ALTER TABLE `testimonials` ADD COLUMN `certificateNumber` VARCHAR(64) NULL AFTER `rating`");
-          logger.info("[DB]   + testimonials.certificateNumber");
+          try { await conn.query("ALTER TABLE `testimonials` ADD COLUMN `certificateNumber` VARCHAR(64) NULL AFTER `rating`"); logger.info("[DB]   + testimonials.certificateNumber"); } catch (e) { logger.warn("[DB] testimonials.certificateNumber", { error: (e as Error).message }); }
         }
         // Referral program columns on users.
         if (!(await columnExists("users", "referralCode"))) {
-          await conn.query("ALTER TABLE `users` ADD COLUMN `referralCode` VARCHAR(24) NULL AFTER `deviceFingerprint`");
-          logger.info("[DB]   + users.referralCode");
+          try { await conn.query("ALTER TABLE `users` ADD COLUMN `referralCode` VARCHAR(24) NULL AFTER `deviceFingerprint`"); logger.info("[DB]   + users.referralCode"); } catch (e) { logger.warn("[DB] users.referralCode", { error: (e as Error).message }); }
         }
         if (!(await indexExists("users", "users_referral_code_unique"))) {
           try {
@@ -984,8 +981,7 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
           }
         }
         if (!(await columnExists("users", "referredByUserId"))) {
-          await conn.query("ALTER TABLE `users` ADD COLUMN `referredByUserId` BIGINT UNSIGNED NULL AFTER `referralCode`");
-          logger.info("[DB]   + users.referredByUserId");
+          try { await conn.query("ALTER TABLE `users` ADD COLUMN `referredByUserId` BIGINT UNSIGNED NULL AFTER `referralCode`"); logger.info("[DB]   + users.referredByUserId"); } catch (e) { logger.warn("[DB] users.referredByUserId", { error: (e as Error).message }); }
         }
         // Referrals table — one row per invited friend + both coupon codes.
         await conn.query(`
