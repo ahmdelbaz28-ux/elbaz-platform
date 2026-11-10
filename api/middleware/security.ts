@@ -11,7 +11,7 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
 
   const path = c.req.path;
   const isApi = path.startsWith("/api/");
-  const isAsset = path.match(/\.(js|css|png|jpg|svg|ico|woff2?|ttf|eot|webmanifest|webp|avif)$/);
+  const isAsset = path.match(/\.(js|css|png|jpg|svg|ico|woff2?|ttf|eot|webmanifest|webp|avif|mp4|webm|m4v|ogg|mp3)$/);
   const accept = c.req.header("accept") ?? "";
   const wantsHtml = accept.includes("text/html");
 

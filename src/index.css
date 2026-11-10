@@ -1943,3 +1943,17 @@ body {
   padding-right: env(safe-area-inset-right, 0px);
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   LOGIN — cinematic background video (power-grid sunrise)
+   The <video> sits above a poster-image fallback. Users who prefer
+   reduced motion see ONLY the static poster (video hidden), and the
+   video fades in via an opacity transition once it can actually play
+   (see Login.tsx bgVideoReady), so there is never a flash of empty
+   background on slow connections.
+   ════════════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  .login-bg-video {
+    display: none !important;
+  }
+}

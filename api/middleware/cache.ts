@@ -36,6 +36,8 @@ const LONG_CACHE_EXTENSIONS = new Set([
   "woff", "woff2", "ttf", "eot", "otf",
   // Other static
   "json", "xml", "txt", "webmanifest", "map",
+  // Media (background video/audio in /public/)
+  "mp4", "webm", "m4v", "ogg", "mp3",
 ]);
 
 /**

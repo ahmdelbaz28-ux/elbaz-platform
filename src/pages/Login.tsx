@@ -62,6 +62,10 @@ export default function Login() {
   const [showTotpInput, setShowTotpInput] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleClientId, setGoogleClientId] = useState("");
+  // ✨ Cinematic login background: the video fades in only once it can play,
+  // so users on slow connections see the poster image immediately (no flash).
+  const [bgVideoReady, setBgVideoReady] = useState(false);
+  const [bgVideoFailed, setBgVideoFailed] = useState(false);
 
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -221,17 +225,59 @@ export default function Login() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="w-full max-w-md">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-8">
+      {/* ══ Cinematic background — power-grid sunrise video (muted, looped) ══
+          Layer order (bottom → top):
+            1. Poster image  — instant paint, also the fallback for
+               reduced-motion users and when the video fails to load.
+            2. <video>       — fades in over the poster once it can play.
+            3. Contrast gradient + vignette — keeps the glass card text WCAG
+               readable no matter how bright the current frame is.        */}
+      <div className="fixed inset-0 z-0" aria-hidden="true">
+        <div
+          className="absolute inset-0 bg-cover bg-center"
+          style={{ backgroundImage: "url('/videos/login-bg-poster.jpg')" }}
+        />
+        {!bgVideoFailed && (
+          <video
+            className={`login-bg-video absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ${bgVideoReady ? "opacity-100" : "opacity-0"}`}
+            src="/videos/login-bg.mp4"
+            poster="/videos/login-bg-poster.jpg"
+            autoPlay
+            loop
+            muted
+            playsInline
+            preload="auto"
+            disablePictureInPicture
+            controlsList="nodownload noplaybackrate"
+            tabIndex={-1}
+            onCanPlay={() => setBgVideoReady(true)}
+            onError={() => setBgVideoFailed(true)}
+          />
+        )}
+        {/* Contrast overlay: darker at top/bottom, lighter at the horizon so
+            the sunrise stays visible behind the card. */}
+        <div className="absolute inset-0 bg-gradient-to-b from-[#0B0F19]/80 via-[#0B0F19]/40 to-[#0B0F19]/85" />
+        {/* Soft vignette for a premium, focused look. */}
+        <div
+          className="absolute inset-0"
+          style={{ background: "radial-gradient(ellipse at center, transparent 45%, rgba(11, 15, 25, 0.55) 100%)" }}
+        />
+      </div>
+
+      <div className="relative z-10 w-full max-w-md">
         {/* Logo */}
-        <div className="mb-8 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-accent-secondary/10">
+        <div className="mb-6 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl border border-accent-secondary/30 bg-[#111827]/70 shadow-lg backdrop-blur-md">
             <Zap className="h-6 w-6 text-accent-secondary" />
           </div>
-          <h1 className="mt-4 text-2xl font-bold text-foreground">{t("welcomeBack")}</h1>
-          <p className="mt-1 text-sm text-text-muted">{t("loginToContinue")}</p>
+          <h1 className="mt-4 text-2xl font-bold text-foreground drop-shadow-lg">{t("welcomeBack")}</h1>
+          <p className="mt-1 text-sm text-text-secondary drop-shadow-md">{t("loginToContinue")}</p>
         </div>
 
+        {/* Glass card — everything (Google + form) lives in one premium
+            frosted panel so the video stays visible around the edges. */}
+        <div className="rounded-2xl border border-white/10 bg-[#111827]/75 p-6 shadow-2xl backdrop-blur-xl">
         {/* Google Sign-In Button */}
         {googleClientId && (
           <div className="mb-4">
@@ -239,7 +285,7 @@ export default function Login() {
               type="button"
               onClick={handleGoogleSignIn}
               disabled={googleLoading || loginMutation.isPending}
-              className="flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-primary px-4 py-3 text-sm font-medium text-foreground transition-all duration-200 hover:border-accent-secondary/60 hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-primary/80 px-4 py-3 text-sm font-medium text-foreground transition-all duration-200 hover:border-accent-secondary/60 hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
             >
               {googleLoading ? (
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-accent-secondary border-t-transparent" />
@@ -258,21 +304,16 @@ export default function Login() {
 
         {/* Divider */}
         {googleClientId && (
-          <div className="relative my-4">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-border" />
-            </div>
-            <div className="relative flex justify-center text-xs">
-              <span className="bg-background px-3 text-text-muted">
-                {lang === "ar" ? "أو" : "or"}
-              </span>
-            </div>
+          <div className="my-4 flex items-center gap-3">
+            <span className="h-px flex-1 bg-border/50" />
+            <span className="text-xs text-text-muted">{lang === "ar" ? "أو" : "or"}</span>
+            <span className="h-px flex-1 bg-border/50" />
           </div>
         )}
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="rounded-xl border border-border bg-primary p-6">
+          <div className="rounded-xl">
             {error && (
               <div className="mb-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive" role="alert">
                 {error}
@@ -371,12 +412,21 @@ export default function Login() {
             </Button>
           </div>
         </form>
+        </div>
 
-        <p className="mt-6 text-center text-sm text-text-muted">
+        <p className="mt-6 text-center text-sm text-text-secondary drop-shadow-md">
           {t("dontHaveAccount")}{" "}
           <Link to="/register" className="font-medium text-accent-secondary hover:underline">
             {t("register")}
           </Link>
+        </p>
+
+        {/* Brand impression strip — ties the cinematic power-grid scene to the
+            platform identity (mirrors the og:site_name branding). */}
+        <p className="mt-4 text-center text-xs text-text-muted/80 drop-shadow">
+          {lang === "ar"
+            ? "منصة م. أحمد الباز — كورسات هندسة القوى الكهربية"
+            : "Eng. Ahmed Elbaz Platform — Electrical Power Engineering Courses"}
         </p>
 
         {/* Demo credentials only shown in development */}
