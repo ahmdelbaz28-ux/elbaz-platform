@@ -93,6 +93,10 @@ eslint-report.json
 *.webm
 *.wav
 *.mp3
+
+# Platform-owned static media served from public/ (e.g. login background
+# video) — *.mp4 above only blocks user/bulk uploads, not these assets.
+!public/videos/*.mp4
 *.flac
 *.aac
 *.psd
