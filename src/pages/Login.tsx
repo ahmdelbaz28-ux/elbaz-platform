@@ -292,7 +292,7 @@ export default function Login() {
           <video
             ref={bgVideoRef}
             className={`login-bg-video absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ${bgVideoReady ? "opacity-100" : "opacity-0"}`}
-            src="/videos/login-bg.mp4?v=2"
+            src="/videos/login-bg.mp4?v=3"
             poster="/videos/login-bg-poster.jpg?v=2"
             autoPlay
             loop

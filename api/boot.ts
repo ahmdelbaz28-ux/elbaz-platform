@@ -5,6 +5,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { env } from "./lib/env.js";
 import { initRedis } from "./lib/rate-limiter.js";
 import { healthRouter } from "./health-router.js";
+import { maintenanceRouter } from "./maintenance-router.js";
 import { promoRouter } from "./promo-router.js";
 import { diagramsRouter } from "./diagrams-router.js";
 import { paymobWebhook, paymobWebhookAlias } from "./paymob-webhook.js";
@@ -139,6 +140,7 @@ app.use(
 
 // ── Health endpoints at /api/health, /api/ready, /api/live ──
 app.route("/api", healthRouter);
+app.route("/api", maintenanceRouter);
 app.route("/api", diagramsRouter);
 app.route("/api/promo", promoRouter);
 app.route("/api/paymob", paymobWebhook);

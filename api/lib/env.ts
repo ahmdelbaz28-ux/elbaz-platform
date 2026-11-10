@@ -112,6 +112,11 @@ const envSchema = z.object({
   // rejects any request that does not carry a fresh HMAC edge signature —
   // closing the public direct-to-origin bypass of the edge security pipeline.
   EDGE_ORIGIN_SECRET: z.string().min(32, "EDGE_ORIGIN_SECRET must be at least 32 characters").optional(),
+  // 🗄️ DB backup gate (api/maintenance-router.ts): shared secret for the daily
+  // GitHub Action that pulls a full SQL dump via GET /api/maintenance/backup.
+  // Timing-safe compared like EDGE_ORIGIN_SECRET; unset or wrong token →
+  // disguised 404, so the endpoint is invisible to scanners.
+  BACKUP_TOKEN: z.string().min(32, "BACKUP_TOKEN must be at least 32 characters").optional(),
   // Legitimate Space hostname (e.g. ahmdelbaz28-ahmdrtap.hf.space) allowed for
   // request-derived frontend URLs alongside FRONTEND_URL/CORS_ORIGINS.
   HF_SPACE_HOST: z.string().optional(),

@@ -1,0 +1,96 @@
+# 🗄️ Daily database backup — pulls a full SQL dump from the platform's
+# operator-gated endpoint and stores it as a private GitHub Release asset.
+#
+# How it works:
+#   1. GET /api/maintenance/backup with Authorization: Bearer BACKUP_TOKEN
+#      (the app reads DATABASE_URL from its own env — credentials never
+#      travel to GitHub; this repo only ever sees the finished dump).
+#   2. Integrity gate: HTTP 200 + size sanity + gzip validity + a real
+#      "CREATE TABLE" in the head of the stream — a broken dump fails loudly.
+#   3. Stored as a dated release `db-backup-YYYYMMDD` (private repo → private
+#      asset), auto-pruned to the newest 7 (one week of rollback points).
+#   4. Telegram alert on failure AND a short confirmation on success.
+#
+# Restore (one line):
+#   gh release download db-backup-YYYYMMDD -p "*.sql.gz" \
+#     && gunzip -c elbaz-db-*.sql.gz | mysql -h <host> -u <user> -p <dbname>
+
+name: Daily DB Backup
+
+on:
+  schedule:
+    - cron: "30 1 * * *" # 01:30 UTC = 03:30 Cairo — before the day starts
+  workflow_dispatch: {} # manual run for tests/restore drills
+
+permissions:
+  contents: write
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Pull SQL dump from platform
+        env:
+          BACKUP_TOKEN: ${{ secrets.BACKUP_TOKEN }}
+          BACKUP_URL: https://ahmedelbaz.qzz.io/api/maintenance/backup
+        run: |
+          set -euo pipefail
+          STAMP=$(date -u +%Y%m%d-%H%M%S)
+          OUT="elbaz-db-${STAMP}.sql.gz"
+          CODE=$(curl -sS --max-time 120 -w '%{http_code}' -o "$OUT" \
+            -H "Authorization: Bearer ${BACKUP_TOKEN}" "$BACKUP_URL")
+          echo "HTTP $CODE"
+          [ "$CODE" = "200" ] || { echo "::error::backup endpoint returned HTTP $CODE"; exit 1; }
+          SIZE=$(stat -c%s "$OUT")
+          echo "dump size: ${SIZE} bytes"
+          [ "$SIZE" -gt 500 ] || { echo "::error::dump suspiciously small (${SIZE}B)"; exit 1; }
+          gunzip -t "$OUT"
+          zcat "$OUT" | head -c 400000 | grep -q "CREATE TABLE" \
+            || { echo "::error::no CREATE TABLE in dump head"; exit 1; }
+          TABLES=$(curl -sS -H "Authorization: Bearer ${BACKUP_TOKEN}" \
+            "${BACKUP_URL}/manifest" | grep -o '"name"' | wc -l || true)
+          echo "tables in manifest: ${TABLES:-?}"
+          echo "dump_file=${OUT}" >> "$GITHUB_ENV"
+
+      - name: Store as release (keep last 7 days)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="db-backup-$(date -u +%Y%m%d)"
+          gh release view "$TAG" >/dev/null 2>&1 && gh release delete "$TAG" --yes --cleanup-tag || true
+          gh release create "$TAG" "${{ env.dump_file }}" \
+            --title "DB backup $(date -u +%Y-%m-%d %H:%M UTC)" \
+            --notes "Automated daily backup (auto-pruned after 7). Restore: see workflow header."
+          gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --paginate -q '.[].tag_name' \
+            | grep '^db-backup-' | sort | head -n -7 | while read -r OLD; do
+              gh release delete "$OLD" --yes --cleanup-tag || true
+            done
+
+      - name: Telegram alert on failure
+        if: failure()
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          curl -s --max-time 15 -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            -d chat_id="${TG_CHAT}" \
+            -d text="🚨 فشل النسخ الاحتياطي لقاعدة البيانات! راجع: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            >/dev/null 2>&1 || true
+
+      - name: Telegram confirmation on success
+        if: success()
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          SIZE_MB=$(du -m "${{ env.dump_file }}" | cut -f1)
+          curl -s --max-time 15 -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            -d chat_id="${TG_CHAT}" \
+            -d text="✅ تم النسخ الاحتياطي اليومي لقاعدة البيانات (${SIZE_MB} MB) — متاح في Releases" \
+            >/dev/null 2>&1 || true
