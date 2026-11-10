@@ -409,6 +409,12 @@ app.use(
   serveStatic({
     root: "./dist/public",
     rewriteRequestPath: (path) => path,
+    // ⚡ PERF (site-light pass): serve the pre-generated .br/.gz siblings
+    // (vite-plugin-compression emits brotli level 11 + gzip at build time).
+    // Cloudflare otherwise re-compresses on the fly at a lower level —
+    // measured 176KB vs 146KB for the main bundle. This cuts transfer size
+    // AND origin/edge CPU on every asset request.
+    precompressed: true,
   })
 );
 

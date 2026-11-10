@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { initiateGoogleOAuth } from "@/lib/google-auth";
 import { Link, useNavigate } from "react-router";
@@ -66,6 +66,10 @@ export default function Login() {
   // so users on slow connections see the poster image immediately (no flash).
   const [bgVideoReady, setBgVideoReady] = useState(false);
   const [bgVideoFailed, setBgVideoFailed] = useState(false);
+  // ⚡ PERF (site-light pass): the video element is not even CREATED until
+  // the page has finished loading — see effect below.
+  const [bgVideoAllowed, setBgVideoAllowed] = useState(false);
+  const bgVideoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -111,6 +115,52 @@ export default function Login() {
       globalThis.history.replaceState({}, "", globalThis.location.pathname);
     }
   }, [lang]);
+
+  // ⚡ PERF (site-light pass): the background video must never compete with
+  // the critical render path (fonts, JS, API). It only starts downloading
+  // AFTER the page load event (+ 300ms idle buffer), and is skipped
+  // entirely for data-saver users and very slow connections — they get
+  // the static poster, which looks nearly identical.
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const conn = (navigator as any).connection ?? (navigator as any).mozConnection ?? (navigator as any).webkitConnection;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (conn && (conn.saveData || /^(slow-2g|2g)$/i.test(conn.effectiveType ?? ""))) return;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    let decided = false;
+    const allow = () => {
+      if (decided) return;
+      decided = true;
+      timers.push(setTimeout(() => setBgVideoAllowed(true), 300));
+    };
+    if (document.readyState === "complete") allow();
+    else {
+      window.addEventListener("load", allow, { once: true });
+      // Safety net: if load stalls on a slow third-party script, start anyway.
+      timers.push(setTimeout(allow, 1200));
+    }
+    return () => {
+      window.removeEventListener("load", allow);
+      timers.forEach(clearTimeout);
+    };
+  }, []);
+
+  // ⚡ PERF: some browsers keep decoding muted videos while the tab is in
+  // the background — pause on hide, resume on show. Saves CPU/battery and
+  // keeps the rest of the app snappy on low-end devices.
+  useEffect(() => {
+    const onVisibility = () => {
+      const v = bgVideoRef.current;
+      if (!v) return;
+      if (document.hidden) {
+        v.pause();
+      } else {
+        void v.play().catch(() => { /* autoplay policy — poster remains visible */ });
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
 
   const handleGoogleCallback = useCallback(async (response: GoogleCredentialResponse) => {
     if (!response.credential) return;
@@ -238,8 +288,9 @@ export default function Login() {
           className="absolute inset-0 bg-cover bg-center"
           style={{ backgroundImage: "url('/videos/login-bg-poster.jpg')" }}
         />
-        {!bgVideoFailed && (
+        {bgVideoAllowed && !bgVideoFailed && (
           <video
+            ref={bgVideoRef}
             className={`login-bg-video absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ${bgVideoReady ? "opacity-100" : "opacity-0"}`}
             src="/videos/login-bg.mp4"
             poster="/videos/login-bg-poster.jpg"
@@ -268,16 +319,19 @@ export default function Login() {
       <div className="relative z-10 w-full max-w-md">
         {/* Logo */}
         <div className="mb-6 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl border border-accent-secondary/30 bg-[#111827]/70 shadow-lg backdrop-blur-md">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl border border-accent-secondary/30 bg-[#111827]/85 shadow-lg">
             <Zap className="h-6 w-6 text-accent-secondary" />
           </div>
           <h1 className="mt-4 text-2xl font-bold text-foreground drop-shadow-lg">{t("welcomeBack")}</h1>
           <p className="mt-1 text-sm text-text-secondary drop-shadow-md">{t("loginToContinue")}</p>
         </div>
 
-        {/* Glass card — everything (Google + form) lives in one premium
-            frosted panel so the video stays visible around the edges. */}
-        <div className="rounded-2xl border border-white/10 bg-[#111827]/75 p-6 shadow-2xl backdrop-blur-xl">
+        {/* Premium panel — everything (Google + form) lives in one dark
+            panel so the video stays visible around the edges. Note: NO
+            backdrop-blur here — blur over a full-screen moving video forces
+            per-frame GPU re-compositing and is the #1 cause of the video
+            "stuttering" on mid-range phones. A solid panel composites once. */}
+        <div className="rounded-2xl border border-white/10 bg-[#111827]/90 p-6 shadow-2xl">
         {/* Google Sign-In Button */}
         {googleClientId && (
           <div className="mb-4">
