@@ -16,7 +16,7 @@
  */
 
 import crypto from "node:crypto";
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { getDb } from "../queries/connection";
 import { users, referrals, promoCodes } from "@db/schema";
 import { logger } from "./logger.js";
@@ -195,8 +195,10 @@ export async function getReferralOverview(userId: number, username: string): Pro
     .where(eq(referrals.referrerUserId, userId));
 
   const rewardCodes = invitedRows.map((r) => r.rewardPromoCode).filter((c): c is string => !!c);
-  const rewardCoupons = rewardCodes.length > 0
-    ? await db
+  let rewardCoupons: ReferralOverview["rewardCoupons"] = [];
+  if (rewardCodes.length > 0) {
+    try {
+      rewardCoupons = await db
         .select({
           code: promoCodes.code,
           discountValue: promoCodes.discountValue,
@@ -204,8 +206,15 @@ export async function getReferralOverview(userId: number, username: string): Pro
           isActive: promoCodes.isActive,
         })
         .from(promoCodes)
-        .where(sql`${promoCodes.code} IN (${sql.join(rewardCodes.map((c) => sql`${c}`), sql`, `)})`)
-    : [];
+        .where(inArray(promoCodes.code, rewardCodes));
+    } catch (err) {
+      logger.warn("[Referral] reward coupon lookup failed (overview degrades gracefully)", {
+        userId,
+        message: err instanceof Error ? err.message : String(err),
+        cause: err instanceof Error && err.cause instanceof Error ? err.cause.message : String((err as { cause?: unknown })?.cause ?? ""),
+      });
+    }
+  }
 
   const [invitedRow] = await db
     .select({ friendPromoCode: referrals.friendPromoCode })
@@ -215,17 +224,24 @@ export async function getReferralOverview(userId: number, username: string): Pro
 
   let welcomeCoupon: ReferralOverview["welcomeCoupon"] = null;
   if (invitedRow?.friendPromoCode) {
-    const [coupon] = await db
-      .select({
-        code: promoCodes.code,
-        discountValue: promoCodes.discountValue,
-        validUntil: promoCodes.validUntil,
-        isActive: promoCodes.isActive,
-      })
-      .from(promoCodes)
-      .where(eq(promoCodes.code, invitedRow.friendPromoCode))
-      .limit(1);
-    if (coupon) welcomeCoupon = coupon;
+    try {
+      const [coupon] = await db
+        .select({
+          code: promoCodes.code,
+          discountValue: promoCodes.discountValue,
+          validUntil: promoCodes.validUntil,
+          isActive: promoCodes.isActive,
+        })
+        .from(promoCodes)
+        .where(eq(promoCodes.code, invitedRow.friendPromoCode))
+        .limit(1);
+      if (coupon) welcomeCoupon = coupon;
+    } catch (err) {
+      logger.warn("[Referral] welcome coupon lookup failed (overview degrades gracefully)", {
+        userId,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   return {

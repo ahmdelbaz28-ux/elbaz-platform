@@ -172,6 +172,18 @@ app.all("/api/trpc/*", async (c) => {
     req: c.req.raw,
     endpoint: "/api/trpc",
     createContext: createContext as never,
+    // Without onError, tRPC 500s are masked by the errorFormatter and the
+    // logs show only "status 500" with NO cause — undiagnosable. Every
+    // internal error now lands in the log stream with its stack.
+    onError: ({ error, path, type }) => {
+      appLogger.error("[tRPC] request failed", {
+        path,
+        type,
+        message: error.message,
+        stack: error.stack?.slice(0, 800),
+        cause: error.cause instanceof Error ? error.cause.message : String(error.cause ?? ""),
+      });
+    },
   });
 });
 
