@@ -1033,6 +1033,12 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         if (!(await columnExists("promoCodes", "isValidForAllCourses"))) {
           try { await conn.query("ALTER TABLE `promoCodes` ADD COLUMN `isValidForAllCourses` BOOLEAN NOT NULL DEFAULT TRUE AFTER `courseIds`"); logger.info("[DB]   + promoCodes.isValidForAllCourses"); } catch (e) { logger.warn("[DB] promoCodes.isValidForAllCourses", { error: (e as Error).message }); }
         }
+        if (!(await columnExists("promoCodes", "validFrom"))) {
+          try { await conn.query("ALTER TABLE `promoCodes` ADD COLUMN `validFrom` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP AFTER `isValidForAllCourses`"); logger.info("[DB]   + promoCodes.validFrom"); } catch (e) { logger.warn("[DB] promoCodes.validFrom", { error: (e as Error).message }); }
+        }
+        if (!(await columnExists("promoCodes", "validUntil"))) {
+          try { await conn.query("ALTER TABLE `promoCodes` ADD COLUMN `validUntil` TIMESTAMP NULL AFTER `validFrom`"); logger.info("[DB]   + promoCodes.validUntil"); } catch (e) { logger.warn("[DB] promoCodes.validUntil", { error: (e as Error).message }); }
+        }
 
         // Default guest preview: the free ETAP course gets its FIRST published
         // lesson flagged isFree so visitors can watch-before-register. Only
