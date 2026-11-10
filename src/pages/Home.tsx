@@ -38,6 +38,7 @@ import {
   Rocket,
   Eye,
   PenLine,
+  BadgeCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect, useRef } from "react";
@@ -62,6 +63,10 @@ type Testimonial = {
   company: string | null;
   content: string;
   rating: number;
+  /** Public certificate number — when set, a "verified" badge links to the
+   *  official /verify/:number page so visitors can prove the review belongs
+   *  to a real certificate holder. */
+  certificateNumber?: string | null;
   isPublished: boolean;
   createdAt: Date;
 };
@@ -817,7 +822,19 @@ export default function Home() { // NOSONAR — landing page with hero + feature
                         {testimonial.name.charAt(0)}
                       </motion.div>
                       <div>
-                        <p className="text-sm font-semibold text-foreground">{testimonial.name}</p>
+                        <p className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+                          {testimonial.name}
+                          {testimonial.certificateNumber && (
+                            <Link
+                              to={`/verify/${testimonial.certificateNumber}`}
+                              title={lang === "ar" ? "رأي موثّق بشهادة قابلة للتحقق" : "Verified against a real certificate"}
+                              className="inline-flex items-center gap-1 rounded-full border border-[#10b981]/40 bg-[rgba(16,185,129,0.12)] px-2 py-0.5 text-[10px] font-semibold text-[#10b981] transition-colors hover:bg-[rgba(16,185,129,0.22)]"
+                            >
+                              <BadgeCheck className="h-3 w-3" />
+                              {lang === "ar" ? "شهادة موثّقة" : "Verified"}
+                            </Link>
+                          )}
+                        </p>
                         <p className="text-xs text-text-muted">{testimonial.title} {testimonial.company ? `at ${testimonial.company}` : ""}</p>
                       </div>
                     </motion.div>

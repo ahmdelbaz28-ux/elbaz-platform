@@ -11,8 +11,22 @@
  * Plus: the legit first-party origin still passes (no regression for the
  * production site or the Capacitor WebView shells).
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
+
+// security.ts imports ./lib/env.js whose Zod validation requires real env
+// vars — unit tests must not depend on machine configuration.
+vi.mock("../lib/env.js", () => ({
+  env: {
+    NODE_ENV: "test",
+    isProduction: false,
+    FRONTEND_URL: "https://ahmedelbaz.qzz.io",
+    CORS_ORIGINS: "",
+    GOOGLE_CLIENT_ID: "test-client-id",
+  },
+  getActiveFrontendUrl: (fallback: string) => fallback,
+}));
+
 import { securityMiddleware } from "./security.js";
 
 function buildApp() {

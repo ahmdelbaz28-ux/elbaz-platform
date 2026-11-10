@@ -6,7 +6,7 @@ import YouTubeLessonPlayer from "@/components/YouTubeLessonPlayer";
 import SubscribeGate from "@/components/SubscribeGate";
 import CourseReviews from "@/components/CourseReviews";
 import { isSubscribeUnlocked, unlockSubscribe } from "@/lib/subscribe-gate";
-import { useState, useRef, useEffect, useCallback, forwardRef, lazy, Suspense } from 'react';
+import { useState, useRef, useEffect, useCallback, useImperativeHandle, forwardRef, lazy, Suspense } from 'react';
 import { useWatchTracker } from "@/hooks/useWatchTracker";
 import { trackLearning, trackPlatform, trackEvent } from "@/lib/clarity";
 import {
@@ -38,6 +38,8 @@ import {
   Landmark,
   Copy,
   Hourglass,
+  StickyNote,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Seo from "@/components/SEO";
@@ -86,14 +88,20 @@ interface ProtectedVideoPlayerProps {
   /** Fired when a video plays to the end and the server marks the lesson
    *  complete — lets the parent refetch enrollment/certificate state. */
   readonly onLessonCompleted?: () => void;
+  /** Fired on play/pause transitions — drives the floating mini-player. */
+  readonly onPlayStateChange?: (playing: boolean) => void;
 }
 
 interface ProtectedVideoPlayerHandle {
   getVideoRef: () => HTMLVideoElement | null;
+  /** Current playback position in seconds (0 when unavailable). */
+  getCurrentTime: () => number;
+  /** Jump to a position in seconds — used by the timestamped notes panel. */
+  seekTo: (seconds: number) => void;
 }
 
 const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVideoPlayerProps>(
-  function ProtectedVideoPlayerInner({ videoUrl, hlsUrl, username, lessonTitle, lessonId, courseId, isTrackingEnabled, lang, onLessonCompleted }) {
+  function ProtectedVideoPlayerInner({ videoUrl, hlsUrl, username, lessonTitle, lessonId, courseId, isTrackingEnabled, lang, onLessonCompleted, onPlayStateChange }, ref) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -127,8 +135,12 @@ const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVid
     setIsPlaying(true);
     // Track video play in Clarity (fire once per play action)
     trackEvent("video_play", { lessonId: lessonId || 0, courseId: courseId || 0, lessonTitle });
-  }, [lessonId, courseId, lessonTitle]);
-  const handlePause = useCallback(() => setIsPlaying(false), []);
+    onPlayStateChange?.(true);
+  }, [lessonId, courseId, lessonTitle, onPlayStateChange]);
+  const handlePause = useCallback(() => {
+    setIsPlaying(false);
+    onPlayStateChange?.(false);
+  }, [onPlayStateChange]);
 
   const handleTogglePlay = useCallback(() => {
     if (!videoRef.current) return;
@@ -316,6 +328,19 @@ const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVid
     }
   }, [resumePosition]);
 
+  // Expose the playback surface to the parent: notes capture/seek + any
+  // parent-driven seek control. The handle stays stable across renders.
+  useImperativeHandle(ref, () => ({
+    getVideoRef: () => videoRef.current,
+    getCurrentTime: () => videoRef.current?.currentTime ?? 0,
+    seekTo: (seconds: number) => {
+      const video = videoRef.current;
+      if (!video) return;
+      video.currentTime = Math.max(0, seconds);
+      video.play().catch(() => undefined); // autoplay-safe: user already interacted
+    },
+  }), []);
+
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
   const bufferedProgress = duration > 0 ? (buffered / duration) * 100 : 0;
 
@@ -482,6 +507,183 @@ const ProtectedVideoPlayer = forwardRef<ProtectedVideoPlayerHandle, ProtectedVid
   );
 });
 
+// ─── Lesson Notes Panel — the personal engineering notebook ──────────────────
+// Notes are stamped with the exact video second they were written at; tapping
+// a note seeks the player straight back to that moment.
+
+interface NoteItem {
+  id: number;
+  content: string;
+  timestampSeconds: number | null;
+  isPinned: boolean;
+}
+
+function formatNoteTimestamp(seconds: number | null): string {
+  if (seconds == null || !Number.isFinite(seconds)) return "";
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+interface LessonNotesPanelProps {
+  readonly lessonId: number;
+  readonly courseId: number;
+  readonly playerRef: React.RefObject<ProtectedVideoPlayerHandle | null>;
+  readonly lang: "en" | "ar";
+  /** Called when a note seek happens (lets the parent expand the mini-player). */
+  readonly onSeek?: () => void;
+}
+
+function LessonNotesPanel({ lessonId, courseId, playerRef, lang, onSeek }: LessonNotesPanelProps) {
+  const [draft, setDraft] = useState("");
+  const [capturedSeconds, setCapturedSeconds] = useState<number | null>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const notesQuery = trpc.notes.list.useQuery(
+    { lessonId, courseId, page: 1, limit: 50 },
+    { enabled: true }
+  );
+  const notes = (notesQuery.data?.items ?? []) as NoteItem[];
+
+  const createNote = trpc.notes.create.useMutation({
+    onSuccess: () => {
+      setDraft("");
+      setCapturedSeconds(null);
+      void notesQuery.refetch();
+      toast.success(lang === "ar" ? "الملحوظة اتحفظت ✍️" : "Note saved ✍️");
+    },
+    onError: () => {
+      toast.error(lang === "ar" ? "تعذر حفظ الملحوظة — حاول تاني" : "Failed to save note — try again");
+    },
+  });
+
+  const deleteNote = trpc.notes.delete.useMutation({
+    onSuccess: () => {
+      void notesQuery.refetch();
+    },
+  });
+
+  const capturePosition = useCallback(() => {
+    const current = playerRef.current?.getCurrentTime() ?? null;
+    setCapturedSeconds(
+      typeof current === "number" && Number.isFinite(current) && current > 0.5 ? Math.floor(current) : null,
+    );
+    setIsExpanded(true);
+  }, [playerRef]);
+
+  const handleAddNote = () => {
+    const content = draft.trim();
+    if (!content) return;
+    createNote.mutate({
+      courseId,
+      lessonId,
+      content,
+      ...(capturedSeconds != null ? { timestampSeconds: capturedSeconds } : {}),
+      isPinned: false,
+    });
+  };
+
+  const handleSeekTo = (seconds: number) => {
+    playerRef.current?.seekTo(seconds);
+    onSeek?.();
+  };
+
+  const ar = lang === "ar";
+
+  return (
+    <div className="mb-8 rounded-xl border border-[#1f2d44] bg-[#111827] p-6">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-[#f0f4f8]">
+          <StickyNote className="h-4 w-4 text-[#06b6d4]" />
+          {ar ? "ملحوظاتي على الدرس" : "My Lesson Notes"}
+        </h2>
+        <button
+          onClick={capturePosition}
+          className="rounded-lg border border-[#06b6d4]/50 px-3 py-1.5 text-xs font-semibold text-[#06b6d4] transition-colors hover:bg-[rgba(6,182,212,0.1)]"
+        >
+          {ar ? "+ ملحوظة عند هذه الثانية" : "+ Note at this moment"}
+        </button>
+      </div>
+
+      {isExpanded && (
+        <div className="mt-4 rounded-lg border border-[#1f2d44] bg-[#0d1420] p-3">
+          {capturedSeconds != null && (
+            <div className="mb-2 flex items-center gap-2">
+              <span className="rounded bg-[rgba(6,182,212,0.15)] px-2 py-0.5 text-xs font-bold text-[#06b6d4]">
+                ⏱ {formatNoteTimestamp(capturedSeconds)}
+              </span>
+              <span className="text-xs text-[#64748b]">
+                {ar ? "هتتخزن مع الملحوظة — اضغط عليها بعدين يرجعك للثانية دي" : "stored with the note — tap it later to seek back"}
+              </span>
+            </div>
+          )}
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder={ar ? "اكتب ملحوظتك الهندسية هنا..." : "Write your engineering note here..."}
+            rows={2}
+            className="w-full resize-none rounded-lg border border-[#1f2d44] bg-[#111827] p-2.5 text-sm text-[#f0f4f8] placeholder-[#64748b] outline-none focus:border-[#06b6d4]"
+          />
+          <div className="mt-2 flex items-center justify-end gap-2">
+            <button
+              onClick={() => { setIsExpanded(false); setDraft(""); setCapturedSeconds(null); }}
+              className="rounded-lg px-3 py-1.5 text-xs text-[#94a3b8] transition-colors hover:text-[#f0f4f8]"
+            >
+              {ar ? "إلغاء" : "Cancel"}
+            </button>
+            <button
+              onClick={handleAddNote}
+              disabled={!draft.trim() || createNote.isPending}
+              className="rounded-lg bg-[#06b6d4] px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#0891b2] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {createNote.isPending ? (ar ? "جاري الحفظ..." : "Saving...") : (ar ? "حفظ الملحوظة" : "Save note")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {notes.length > 0 ? (
+        <ul className="mt-4 space-y-2">
+          {notes.map((note) => (
+            <li
+              key={note.id}
+              className="group flex items-start gap-3 rounded-lg border border-[#1f2d44] bg-[#0d1420] px-3 py-2.5"
+            >
+              {note.timestampSeconds != null ? (
+                <button
+                  onClick={() => handleSeekTo(note.timestampSeconds as number)}
+                  title={ar ? "اضغط للرجوع لهذه اللحظة" : "Click to seek to this moment"}
+                  className="shrink-0 rounded bg-[rgba(6,182,212,0.15)] px-2 py-1 font-mono text-xs font-bold text-[#06b6d4] transition-colors hover:bg-[#06b6d4] hover:text-white"
+                >
+                  {formatNoteTimestamp(note.timestampSeconds)}
+                </button>
+              ) : (
+                <StickyNote className="mt-1 h-3.5 w-3.5 shrink-0 text-[#64748b]" />
+              )}
+              <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-sm text-[#f0f4f8]">{note.content}</p>
+              <button
+                onClick={() => deleteNote.mutate({ id: note.id })}
+                aria-label={ar ? "حذف الملحوظة" : "Delete note"}
+                className="shrink-0 text-[#64748b] opacity-0 transition-all hover:text-[#ef4444] group-hover:opacity-100"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        !isExpanded && (
+          <p className="mt-3 text-sm text-[#64748b]">
+            {ar
+              ? "لسه مفيش ملحوظات — اضغط «ملحوظة عند هذه الثانية» وأنت بتتفرج وسجل أي معلومة مهمة."
+              : "No notes yet — tap “Note at this moment” while watching to capture key ideas."}
+          </p>
+        )
+      )}
+    </div>
+  );
+}
+
 // ─── Main Course Detail Page ─────────────────────────────────────────────────
 
 export default function CourseDetail() { // NOSONAR — large course-detail page with curriculum accordion, payment flow, video player, lessons, certificate; extraction would require prop-drilling 20+ hooks/refs
@@ -503,6 +705,13 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
   }, []);
 
   const [activeLesson, setActiveLesson] = useState<number | null>(null);
+  // Floating mini-player (YouTube-style): when the student scrolls past the
+  // player while the video is playing, the SAME video element docks into a
+  // fixed corner box — no remount, playback never stops.
+  const playerRef = useRef<ProtectedVideoPlayerHandle>(null);
+  const playerShellRef = useRef<HTMLDivElement>(null);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const [isMiniPlayer, setIsMiniPlayer] = useState(false);
   const [showQuiz, setShowQuiz] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -580,7 +789,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
   const isEnrolled = enrollmentStatus?.enrolled ?? false;
   const isCourseCompleted = enrollmentStatus?.isCompleted ?? false;
 
-  const { data: videoData, isLoading: videoLoading } = trpc.course.lessonVideo.useQuery(
+  const { data: authedVideoData, isLoading: authedVideoLoading } = trpc.course.lessonVideo.useQuery(
     { lessonId: activeLesson || 0 },
     { enabled: !!activeLesson && isAuthenticated }
   );
@@ -604,6 +813,56 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
     unlockSubscribe(gateDays);
     setGateUnlocked(true);
   }, [gateDays]);
+
+  // Guest preview: first-lesson sample for visitors (server serves ONLY
+  // lessons explicitly flagged isFree). Zero auth — the watch-before-you-pay
+  // funnel for any future paid course.
+  const activeLessonIsFree = !!course?.lessons?.some((l) => l.id === activeLesson && l.isFree);
+  const { data: previewData, isLoading: previewLoading } = trpc.course.previewVideo.useQuery(
+    { lessonId: activeLesson || 0 },
+    { enabled: !!activeLesson && !isAuthenticated && activeLessonIsFree, retry: false }
+  );
+
+  const videoData = isAuthenticated ? authedVideoData : previewData;
+  const videoLoading = isAuthenticated ? authedVideoLoading : previewLoading;
+
+  // ─── Floating mini-player (YouTube-style dock-while-scrolling) ───
+  // One IntersectionObserver on the player shell. Scrolling past a PLAYING
+  // video docks it; scrolling back expands it. The video element itself
+  // never leaves the React tree — only its container classes change — so
+  // playback never restarts and the presigned URL is never re-fetched.
+  useEffect(() => {
+    const shell = playerShellRef.current;
+    if (!shell || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      if (!entry.isIntersecting && isVideoPlaying) {
+        setIsMiniPlayer(true);
+      } else if (entry.isIntersecting) {
+        setIsMiniPlayer(false);
+      }
+    }, { threshold: 0.3 });
+    observer.observe(shell);
+    return () => observer.disconnect();
+  }, [isVideoPlaying]);
+
+  const expandMiniPlayer = useCallback(() => {
+    setIsMiniPlayer(false);
+    // Bring the in-flow player back into view.
+    playerShellRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, []);
+
+  const closeMiniPlayer = useCallback(() => {
+    setIsMiniPlayer(false);
+    try { playerRef.current?.getVideoRef()?.pause(); } catch { /* already paused */ }
+    playerShellRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, []);
+
+  const handlePlayStateChange = useCallback((playing: boolean) => {
+    setIsVideoPlaying(playing);
+    if (!playing) setIsMiniPlayer(false);
+  }, []);
 
   // ✅ Derive values from course data (must be declared before use in hooks)
   const price = Number.parseFloat(course?.price || "0");
@@ -1047,8 +1306,31 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
               without it, one unbreakable child (e.g. a nowrap lesson title)
               stretches the whole track and the video gets clipped on phones. */}
           <div className="min-w-0 lg:col-span-2">
-            {/* Video Player Area */}
-            <div className="relative mb-8 overflow-hidden rounded-xl border border-[#1f2d44] bg-black">
+            {/* Layout placeholder while the player docks as a mini-window —
+                same size as the real player so the page below never jumps. */}
+            {isMiniPlayer && (
+              <div className="relative mb-8 aspect-video overflow-hidden rounded-xl border border-[#1f2d44] bg-gradient-to-br from-[#0a1628] to-[#1e2d3d]">
+                <div className="absolute inset-0 opacity-40">
+                  <CourseThumbnailWithFallback thumbnail={course.thumbnail} title={title} />
+                </div>
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center">
+                  <PlayCircle className="h-8 w-8 text-[#06b6d4]" />
+                  <p className="px-4 text-sm text-[#94a3b8]">
+                    {lang === "ar" ? "الفيديو شغال في النافذة العائمة" : "Video is playing in the floating mini-player"}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Video Player Area — the SAME element switches between the
+                in-flow player and the fixed mini-player (className only,
+                never remounted, playback continues). */}
+            <div
+              ref={playerShellRef}
+              className={isMiniPlayer
+                ? "fixed bottom-24 start-4 z-[70] w-[300px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-[#06b6d4]/50 bg-black shadow-[0_8px_40px_rgba(6,182,212,0.35)]"
+                : "relative mb-8 overflow-hidden rounded-xl border border-[#1f2d44] bg-black"}
+            >
 
               {/* Payment Processing Overlay */}
               {(paymentStep === "processing" || paymentStep === "redirecting") && (
@@ -1133,6 +1415,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
 
                   {isVideoReady && !subscribeGateActive && !isYouTubeLesson && (
                     <ProtectedVideoPlayer
+                      ref={playerRef}
                       videoUrl={videoData.videoUrl}
                       hlsUrl={videoData.hlsUrl}
                       username={user?.username || "guest"}
@@ -1142,6 +1425,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                       isTrackingEnabled={isAuthenticated}
                       lang={lang}
                       onLessonCompleted={() => { void refetchEnrollment(); }}
+                      onPlayStateChange={handlePlayStateChange}
                     />
                   )}
 
@@ -1156,6 +1440,28 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                       isTrackingEnabled={isAuthenticated}
                       onLessonCompleted={() => { void refetchEnrollment(); }}
                     />
+                  )}
+
+                  {/* Mini-player controls — visible only while docked. */}
+                  {isMiniPlayer && (
+                    <div className="absolute end-2 top-2 z-30 flex gap-1.5">
+                      <button
+                        onClick={expandMiniPlayer}
+                        aria-label={lang === "ar" ? "توسيع الفيديو" : "Expand player"}
+                        title={lang === "ar" ? "توسيع" : "Expand"}
+                        className="rounded-lg bg-black/70 p-1.5 text-white transition-colors hover:bg-[#06b6d4]"
+                      >
+                        <Maximize className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={closeMiniPlayer}
+                        aria-label={lang === "ar" ? "إيقاف وإغلاق النافذة العائمة" : "Pause and close mini-player"}
+                        title={lang === "ar" ? "إيقاف" : "Pause"}
+                        className="rounded-lg bg-black/70 p-1.5 text-white transition-colors hover:bg-[#ef4444]"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   )}
 
                   {activeLesson && !!activeLessonData && canAccessLesson(activeLessonData) && !videoLoading && !videoData?.videoUrl && (
@@ -1173,14 +1479,24 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                         <div className="text-center">
                           <PlayCircle className="mx-auto h-12 w-12 text-[#06b6d4]" />
                           <p className="mt-3 text-sm text-[#94a3b8]">
-                            {lang === "en" ? "Sign in to watch this free preview" : "سجّل الدخول لمشاهدة المعاينة المجانية"}
+                            {lang === "en"
+                              ? "Create a free account to watch this lesson"
+                              : "اعمل حساب مجاني لمشاهدة هذا الدرس"}
                           </p>
-                          <Link
-                            to="/login"
-                            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#06b6d4] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#0891b2]"
-                          >
-                            {lang === "en" ? "Sign In to Watch" : "سجّل الدخول للمشاهدة"}
-                          </Link>
+                          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                            <Link
+                              to="/register"
+                              className="inline-flex items-center gap-2 rounded-lg bg-[#06b6d4] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#0891b2]"
+                            >
+                              {lang === "en" ? "Sign Up Free" : "سجّل مجاناً"}
+                            </Link>
+                            <Link
+                              to="/login"
+                              className="inline-flex items-center gap-2 rounded-lg border border-[#1f2d44] px-5 py-2.5 text-sm font-semibold text-[#94a3b8] transition-colors hover:border-[#06b6d4] hover:text-[#06b6d4]"
+                            >
+                              {lang === "en" ? "Sign In" : "تسجيل الدخول"}
+                            </Link>
+                          </div>
                         </div>
                       </div>
                     )
@@ -1213,6 +1529,47 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                 </>
               )}
             </div>
+
+            {/* Guest preview funnel — "watch the style before you commit". */}
+            {!isAuthenticated && activeLesson && !!activeLessonData && canAccessLesson(activeLessonData) && (
+              <div className="mb-8 flex flex-col items-start justify-between gap-3 rounded-xl border border-[#f59e0b]/40 bg-[rgba(245,158,11,0.08)] p-4 sm:flex-row sm:items-center">
+                <div className="flex items-start gap-3">
+                  <PlayCircle className="mt-0.5 h-5 w-5 shrink-0 text-[#f59e0b]" />
+                  <div>
+                    <p className="text-sm font-semibold text-[#f0f4f8]">
+                      {lang === "ar"
+                        ? "شوف أسلوب الشرح قبل ما تدفع — الدرس بيشتغل من غير حساب"
+                        : "Watch the teaching style before you pay — this lesson plays without an account"}
+                    </p>
+                    <p className="mt-0.5 text-xs text-[#94a3b8]">
+                      {lang === "ar"
+                        ? "حساب مجاني = كل الدروس + ملاحظات بالثواني + شهادة موثقة بعد الإكمال"
+                        : "A free account unlocks all lessons, timestamped notes, and a verifiable certificate"}
+                    </p>
+                  </div>
+                </div>
+                <Link
+                  to="/register"
+                  className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-[#06b6d4] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#0891b2]"
+                >
+                  {lang === "en" ? "Create Free Account" : "اعمل حسابك المجاني"}
+                </Link>
+              </div>
+            )}
+
+            {/* Lesson Notes — the personal engineering notebook. A note is
+                stamped with the exact video second it was written at. */}
+            {isAuthenticated && activeLesson && !!activeLessonData && canAccessLesson(activeLessonData) && (
+              <LessonNotesPanel
+                lessonId={activeLesson}
+                courseId={course.id}
+                playerRef={playerRef}
+                lang={lang}
+                onSeek={() => {
+                  if (isMiniPlayer) expandMiniPlayer();
+                }}
+              />
+            )}
 
             {/* Course Info */}
             <div className="mb-8">
@@ -1433,6 +1790,11 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                           {i + 1}. {lang === "ar" ? lesson.titleAr : lesson.titleEn}
                         </p>
                       </div>
+                      {lesson.isFree && course.isPremium && (
+                        <span className="shrink-0 rounded bg-[rgba(245,158,11,0.15)] px-1.5 py-0.5 text-[10px] font-semibold text-[#f59e0b]">
+                          {lang === "ar" ? "معاينة" : "Preview"}
+                        </span>
+                      )}
                       <span className="shrink-0 text-xs text-[#64748b]">
                         {lesson.durationMinutes == null ? "" : `${lesson.durationMinutes}m`}
                       </span>

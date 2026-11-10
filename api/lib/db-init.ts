@@ -957,6 +957,94 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         logger.warn("[DB] v14 demo-course purge warning", { error: (err as Error).message });
       }
 
+      // ── v15 growth features: lesson-note timestamps, verifiable testimonials,
+      //    referral program, email drip log ──. All idempotent.
+      try {
+        // Lesson notes gain a video timestamp (click a note → seek back).
+        if (!(await columnExists("userNotes", "timestampSeconds"))) {
+          await conn.query("ALTER TABLE `userNotes` ADD COLUMN `timestampSeconds` INT NULL AFTER `tags`");
+          logger.info("[DB]   + userNotes.timestampSeconds");
+        }
+        // Testimonials gain a verifiable certificate link (home page badge).
+        if (!(await columnExists("testimonials", "certificateNumber"))) {
+          await conn.query("ALTER TABLE `testimonials` ADD COLUMN `certificateNumber` VARCHAR(64) NULL AFTER `rating`");
+          logger.info("[DB]   + testimonials.certificateNumber");
+        }
+        // Referral program columns on users.
+        if (!(await columnExists("users", "referralCode"))) {
+          await conn.query("ALTER TABLE `users` ADD COLUMN `referralCode` VARCHAR(24) NULL AFTER `deviceFingerprint`");
+          logger.info("[DB]   + users.referralCode");
+        }
+        if (!(await indexExists("users", "users_referral_code_unique"))) {
+          try {
+            await conn.query("ALTER TABLE `users` ADD UNIQUE INDEX `users_referral_code_unique` (`referralCode`)");
+            logger.info("[DB]   + users_referral_code_unique");
+          } catch (e) {
+            logger.warn("[DB] users_referral_code_unique", { error: (e as Error).message });
+          }
+        }
+        if (!(await columnExists("users", "referredByUserId"))) {
+          await conn.query("ALTER TABLE `users` ADD COLUMN `referredByUserId` BIGINT UNSIGNED NULL AFTER `referralCode`");
+          logger.info("[DB]   + users.referredByUserId");
+        }
+        // Referrals table — one row per invited friend + both coupon codes.
+        await conn.query(`
+          CREATE TABLE IF NOT EXISTS \`referrals\` (
+            \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            \`referrerUserId\` BIGINT UNSIGNED NOT NULL,
+            \`referredUserId\` BIGINT UNSIGNED NOT NULL,
+            \`rewardPromoCode\` VARCHAR(50) NULL,
+            \`friendPromoCode\` VARCHAR(50) NULL,
+            \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (\`id\`),
+            UNIQUE INDEX \`referrals_referred_unique\` (\`referredUserId\`),
+            INDEX \`referrals_referrer_idx\` (\`referrerUserId\`),
+            CONSTRAINT \`fk_referrals_referrer\` FOREIGN KEY (\`referrerUserId\`) REFERENCES \`users\` (\`id\`)
+              ON DELETE CASCADE ON UPDATE CASCADE,
+            CONSTRAINT \`fk_referrals_referred\` FOREIGN KEY (\`referredUserId\`) REFERENCES \`users\` (\`id\`)
+              ON DELETE CASCADE ON UPDATE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        // Email drip log — idempotent dedup guard for the educational sequence.
+        await conn.query(`
+          CREATE TABLE IF NOT EXISTS \`emailDripLog\` (
+            \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            \`userId\` BIGINT UNSIGNED NOT NULL,
+            \`kind\` VARCHAR(50) NOT NULL,
+            \`sentAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (\`id\`),
+            UNIQUE INDEX \`email_drip_user_kind_unique\` (\`userId\`, \`kind\`),
+            INDEX \`email_drip_kind_idx\` (\`kind\`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        logger.info("[DB] v15 growth tables verified (referrals, emailDripLog)");
+
+        // Default guest preview: the free ETAP course gets its FIRST published
+        // lesson flagged isFree so visitors can watch-before-register. Only
+        // fires when the instructor has NOT already picked a preview lesson
+        // (any existing isFree lesson in the course wins).
+        try {
+          const [freeRows] = await conn.execute(
+            `SELECT COUNT(*) AS cnt FROM lessons WHERE courseId = (SELECT id FROM courses WHERE slug='etap-complete-course' LIMIT 1) AND isFree = 1`
+          );
+          const freeCount = Number((freeRows as unknown as { cnt: number }[])[0]?.cnt ?? 0);
+          if (freeCount === 0) {
+            const [firstRows] = await conn.execute(
+              `SELECT id FROM lessons WHERE courseId = (SELECT id FROM courses WHERE slug='etap-complete-course' LIMIT 1) AND isPublished = 1 ORDER BY sortOrder ASC LIMIT 1`
+            );
+            const firstId = (firstRows as unknown as { id: number }[])[0]?.id;
+            if (firstId) {
+              await conn.execute(`UPDATE lessons SET isFree = 1 WHERE id = ${Number(firstId)}`);
+              logger.info(`[DB]   + default guest preview: lesson ${firstId} flagged isFree (ETAP course)`);
+            }
+          }
+        } catch (e) {
+          logger.warn("[DB] default preview lesson warning", { error: (e as Error).message });
+        }
+      } catch (err) {
+        logger.warn("[DB] v15 growth migration warning", { error: (err as Error).message });
+      }
+
       // ── Admin password sync (existing deployments) ──
       // ✅ SECURITY FIX (audit run-1, db-init.admin-password-env-sync):
       // ADMIN_PASSWORD is SEED-ONLY. Previously every boot re-synced the admin

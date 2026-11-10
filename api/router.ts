@@ -24,6 +24,7 @@ import { commentsRouter } from "./comments-router";
 import { searchRouter } from "./search-router";
 import { notificationPrefsRouter } from "./notification-prefs-router";
 import { journeyRouter } from "./journey-router";
+import { referralRouter } from "./referral-router";
 import { createRouter, publicQuery } from "./middleware";
 
 export const appRouter = createRouter({
@@ -54,6 +55,7 @@ export const appRouter = createRouter({
   search: searchRouter,
   notificationPrefs: notificationPrefsRouter,
   journey: journeyRouter,
+  referral: referralRouter,
 });
 
 export type AppRouter = typeof appRouter;

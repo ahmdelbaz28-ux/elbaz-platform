@@ -62,6 +62,12 @@ export async function recalcEnrollmentProgress(
   const isCompleted = completedLessons >= totalLessons;
 
   // 3. Update the enrollment record
+  const [previous] = await db
+    .select({ isCompleted: enrollments.isCompleted })
+    .from(enrollments)
+    .where(and(eq(enrollments.userId, userId), eq(enrollments.courseId, courseId)))
+    .limit(1);
+
   await db
     .update(enrollments)
     .set({
@@ -73,6 +79,15 @@ export async function recalcEnrollmentProgress(
     .where(
       and(eq(enrollments.userId, userId), eq(enrollments.courseId, courseId)),
     );
+
+  // 🎓 Educational drip: fire the completion congratulation exactly once —
+  // only on the false→true transition. Fire-and-forget: an email failure
+  // must never fail the watch/quiz request that triggered completion.
+  if (isCompleted && !previous?.isCompleted) {
+    void import("./email-drip.js")
+      .then(({ maybeSendCompletionCongrats }) => maybeSendCompletionCongrats(userId, courseId))
+      .catch(() => undefined);
+  }
 
   return { progress, isCompleted, completedLessons, totalLessons };
 }

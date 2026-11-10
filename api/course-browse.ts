@@ -1,16 +1,18 @@
 /**
  * COURSE BROWSING — Public read-only endpoints
  *
- * Procedures: categories, list, bySlug, testimonials, stats
+ * Procedures: categories, list, bySlug, testimonials, previewVideo, stats
  * All are publicQuery (no authentication required).
  */
 
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { eq, and, desc, asc, sql, like, or } from "drizzle-orm";
 import { publicQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { courses, categories, lessons, testimonials } from "@db/schema";
 import { getCache, CACHE_TTL, cacheKeys } from "./lib/cache";
+import { getSecureVideoUrl } from "./lib/video-protection";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -228,6 +230,45 @@ export const courseBrowseProcedures = {
     await cache.set(cacheKeys.testimonials(), result, CACHE_TTL.TESTIMONIALS);
     return result;
   }),
+
+  // ─── Guest preview — the "watch a sample before you pay" funnel ───
+  // Serves ONLY lessons explicitly flagged isFree=true by the instructor on a
+  // PUBLISHED course, to UNAUTHENTICATED visitors (the authed path uses
+  // course.lessonVideo). Generic: works today for the free ETAP course's
+  // first lesson, and tomorrow for any paid course where the instructor marks
+  // a lesson isFree as its public trailer. Watermarked as "guest-preview".
+  previewVideo: publicQuery
+    .input(z.object({ lessonId: z.number().int().positive() }))
+    .query(async ({ input }) => {
+      const db = getDb();
+      const [lesson] = await db
+        .select({
+          id: lessons.id,
+          videoUrl: lessons.videoUrl,
+          isFree: lessons.isFree,
+          isPublished: lessons.isPublished,
+          courseIsPublished: courses.isPublished,
+        })
+        .from(lessons)
+        .innerJoin(courses, eq(lessons.courseId, courses.id))
+        .where(eq(lessons.id, input.lessonId))
+        .limit(1);
+
+      if (!lesson || !lesson.isPublished || !lesson.courseIsPublished) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+      }
+      if (!lesson.isFree) {
+        // Never leak premium content through the guest path — fail closed.
+        throw new TRPCError({ code: "FORBIDDEN", message: "This lesson is not a free preview" });
+      }
+
+      return await getSecureVideoUrl({
+        videoUrl: lesson.videoUrl || "",
+        userId: 0,
+        lessonId: lesson.id,
+        username: "guest-preview",
+      });
+    }),
 
   stats: publicQuery.query(async () => {
     const cache = getCache();

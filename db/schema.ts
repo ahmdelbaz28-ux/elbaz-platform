@@ -20,6 +20,7 @@ export {
   passwordResetTokens,
   userSessions,
   notificationPreferences,
+  referrals,
   // Auth types
   type User,
   type InsertUser,
@@ -69,6 +70,7 @@ export {
   articles,
   notifications,
   pushSubscriptions,
+  emailDripLog,
   // Shared types
   type FaqEntry,
   type ReferenceFile,
@@ -77,6 +79,7 @@ export {
   type InsertArticle,
   type NotificationRow,
   type PushSubscriptionRow,
+  type EmailDripLogRow,
 } from "./schema/shared.js";
 
 export {

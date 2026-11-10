@@ -31,10 +31,17 @@ CREATE TABLE IF NOT EXISTS `users` (
   `emailVerificationToken` VARCHAR(255)    NULL,
   `emailVerificationExpiry` TIMESTAMP      NULL,
   `emailVerifiedAt`     TIMESTAMP           NULL,
+  `totpSecret`          VARCHAR(255)        NULL,
+  `totpEnabled`         BOOLEAN             NOT NULL DEFAULT FALSE,
+  `totpBackupCodes`     JSON                NULL,
+  `deviceFingerprint`   VARCHAR(255)        NULL,
+  `referralCode`        VARCHAR(24)         NULL,
+  `referredByUserId`    BIGINT UNSIGNED     NULL,
   PRIMARY KEY (`id`),
   UNIQUE INDEX `users_email_unique` (`email`),
   UNIQUE INDEX `users_username_unique` (`username`),
   UNIQUE INDEX `users_google_id_unique` (`googleId`),
+  UNIQUE INDEX `users_referral_code_unique` (`referralCode`),
   INDEX `users_role_idx` (`role`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -381,6 +388,7 @@ CREATE TABLE IF NOT EXISTS `testimonials` (
   `company`     VARCHAR(255)           NULL,
   `content`     TEXT                   NOT NULL,
   `rating`      INT                    NOT NULL DEFAULT 5,
+  `certificateNumber` VARCHAR(64)      NULL,
   `isPublished` BOOLEAN                NOT NULL DEFAULT TRUE,
   `createdAt`   TIMESTAMP              NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -530,6 +538,7 @@ CREATE TABLE IF NOT EXISTS `userNotes` (
   `title`      VARCHAR(500)     NULL,
   `content`    TEXT             NOT NULL,
   `tags`       JSON             NULL,
+  `timestampSeconds` INT        NULL,
   `isPinned`   BOOLEAN          NOT NULL DEFAULT FALSE,
   `createdAt`  TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updatedAt`  TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -566,7 +575,37 @@ CREATE TABLE IF NOT EXISTS `licenses` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
--- 27. referenceFiles  (uploaded reference files: PDF/DOCX/XLSX/JPG/PNG/etc)
+-- 27. referrals  (student-to-student invitation rewards)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS `referrals` (
+  `id`               BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `referrerUserId`   BIGINT UNSIGNED  NOT NULL,
+  `referredUserId`   BIGINT UNSIGNED  NOT NULL,
+  `rewardPromoCode`  VARCHAR(50)      NULL,
+  `friendPromoCode`  VARCHAR(50)      NULL,
+  `createdAt`        TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `referrals_referred_unique` (`referredUserId`),
+  INDEX `referrals_referrer_idx` (`referrerUserId`),
+  CONSTRAINT `fk_referrals_referrer` FOREIGN KEY (`referrerUserId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_referrals_referred` FOREIGN KEY (`referredUserId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
+-- 28. emailDripLog  (idempotent dedup guard for the educational email sequence)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS `emailDripLog` (
+  `id`         BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `userId`     BIGINT UNSIGNED  NOT NULL,
+  `kind`       VARCHAR(50)      NOT NULL,
+  `sentAt`     TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `email_drip_user_kind_unique` (`userId`, `kind`),
+  INDEX `email_drip_kind_idx` (`kind`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
+-- 29. referenceFiles  (uploaded reference files: PDF/DOCX/XLSX/JPG/PNG/etc)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS `referenceFiles` (
   `id`            BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,

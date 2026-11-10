@@ -315,6 +315,9 @@ export const userNotes = mysqlTable(
     title: varchar("title", { length: 500 }),
     content: text("content").notNull(),
     tags: json("tags"),
+    /** Video position (seconds) the note was taken at — click a note to seek
+     *  straight back to that moment. NULL for notes not tied to a video. */
+    timestampSeconds: int("timestampSeconds"),
     isPinned: boolean("isPinned").notNull().default(false),
     createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow().$onUpdate(() => new Date()),

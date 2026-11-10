@@ -24,6 +24,9 @@ import {
   MailCheck,
   MailWarning,
   Send,
+  Gift,
+  Users,
+  Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -78,6 +81,28 @@ export default function Profile() {
 
   const { data: myEnrollments } = trpc.course.enrollments.useQuery(undefined, { enabled: isAuthenticated });
   const { data: myCertificates } = trpc.certificate.myCertificates.useQuery(undefined, { enabled: isAuthenticated });
+
+  // Referral program — one code per user, coupons for both sides.
+  const { data: referral } = trpc.referral.myReferral.useQuery(undefined, { enabled: isAuthenticated });
+  const referralUrl = referral?.referralCode
+    ? `${globalThis.location.origin}/register?ref=${referral.referralCode}`
+    : "";
+  const copyReferralLink = async () => {
+    try {
+      await navigator.clipboard.writeText(referralUrl);
+      toast.success(lang === "ar" ? "اتنسخ رابط الدعوة 🎁" : "Invite link copied 🎁");
+    } catch {
+      toast.error(lang === "ar" ? "تعذر النسخ — انسخه يدوياً" : "Copy failed — copy manually");
+    }
+  };
+  const copyCouponCode = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      toast.success(lang === "ar" ? "اتنسخ كود الخصم" : "Coupon code copied");
+    } catch {
+      toast.error(lang === "ar" ? "تعذر النسخ" : "Copy failed");
+    }
+  };
 
   const sendVerificationMutation = trpc.auth.sendVerificationEmail.useMutation({
     onSuccess: (data) => {
@@ -266,6 +291,75 @@ export default function Profile() {
             <p className="mt-1 text-xs text-text-muted">{lang === "en" ? "Account Level" : "مستوى الحساب"}</p>
           </div>
         </div>
+
+        {/* ─── Referral program — invite a friend, both win ─── */}
+        {referral && (
+          <div className="mb-6 rounded-xl border border-accent-secondary/30 bg-primary p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 className="flex items-center gap-2 text-lg font-semibold text-foreground">
+                <Gift className="h-5 w-5 text-accent-secondary" />
+                {lang === "ar" ? "ادعُ صديقاً — الاثنين يكسبون" : "Invite a friend — you both win"}
+              </h3>
+              <span className="flex items-center gap-1.5 rounded-full bg-accent-secondary/10 px-3 py-1 text-xs font-medium text-accent-secondary">
+                <Users className="h-3 w-3" />
+                {lang === "ar"
+                  ? `${referral.invitedCount} ${referral.invitedCount === 1 ? "صديق انضم" : "أصدقاء انضموا"}`
+                  : `${referral.invitedCount} ${referral.invitedCount === 1 ? "friend joined" : "friends joined"}`}
+              </span>
+            </div>
+            <p className="mt-2 text-sm text-text-muted">
+              {lang === "ar"
+                ? "ابعت رابط الدعوة لزمايلك — صاحب الرابط يجيب خصم 10% لما يجي شخص جديد، وصديقك ياخد خصم ترحيبي 5%."
+                : "Share your invite link — for every friend who joins you earn a 10% coupon and they get a 5% welcome coupon."}
+            </p>
+
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <Input
+                readOnly
+                value={referralUrl}
+                onFocus={(e) => e.currentTarget.select()}
+                className="flex-1 border-border bg-background font-mono text-xs text-foreground"
+                aria-label={lang === "ar" ? "رابط الدعوة" : "Invite link"}
+              />
+              <Button onClick={copyReferralLink} className="gap-2 shrink-0 bg-gradient-to-r from-accent-secondary to-accent-secondary/80 font-semibold text-background">
+                <Copy className="h-4 w-4" />
+                {lang === "ar" ? "نسخ الرابط" : "Copy link"}
+              </Button>
+            </div>
+
+            {(referral.rewardCoupons.length > 0 || referral.welcomeCoupon) && (
+              <div className="mt-4 space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                  {lang === "ar" ? "كوبونات الخصم بتاعتك" : "Your discount coupons"}
+                </p>
+                {referral.rewardCoupons.map((coupon) => (
+                  <button
+                    key={coupon.code}
+                    onClick={() => copyCouponCode(coupon.code)}
+                    className="flex w-full flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5 text-start transition-colors hover:bg-emerald-500/10"
+                  >
+                    <span className="font-mono text-sm font-bold text-emerald-500">{coupon.code}</span>
+                    <span className="text-xs text-text-muted">
+                      {lang === "ar" ? `خصم ${Number(coupon.discountValue)}% — مكافأة دعوة` : `${Number(coupon.discountValue)}% off — referral reward`}
+                      {coupon.isActive === false ? (lang === "ar" ? " (منتهي)" : " (inactive)") : ""}
+                    </span>
+                  </button>
+                ))}
+                {referral.welcomeCoupon && (
+                  <button
+                    onClick={() => copyCouponCode(referral.welcomeCoupon!.code)}
+                    className="flex w-full flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-start transition-colors hover:bg-amber-500/10"
+                  >
+                    <span className="font-mono text-sm font-bold text-amber-500">{referral.welcomeCoupon.code}</span>
+                    <span className="text-xs text-text-muted">
+                      {lang === "ar" ? `خصم ${Number(referral.welcomeCoupon.discountValue)}% — الترحيبي بتاعك` : `${Number(referral.welcomeCoupon.discountValue)}% off — your welcome coupon`}
+                    </span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="mb-6 rounded-xl border border-border bg-primary p-6">
           <div className="flex items-center justify-between mb-4">

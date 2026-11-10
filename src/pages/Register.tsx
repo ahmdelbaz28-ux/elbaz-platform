@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { initiateGoogleOAuth } from "@/lib/google-auth";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
 import { isValidEmail, hasPasswordStrengthChars } from "@/lib/validation";
 import { trpc } from "@/providers/trpc";
 import { toast } from "sonner";
-import { Zap, Eye, EyeOff } from "lucide-react";
+import { Zap, Eye, EyeOff, Gift } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -72,6 +72,7 @@ function describeRegistrationError(err: any, lang: "ar" | "en"): string {
 export default function Register() {
   const { t, lang } = useTranslation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -81,6 +82,17 @@ export default function Register() {
   const [error, setError] = useState("");
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleClientId, setGoogleClientId] = useState("");
+
+  // ── Referral capture: /register?ref=CODE ──
+  // Persisted to localStorage so the code survives the Google-OAuth round
+  // trip and any intra-page navigation, then consumed on submit.
+  const refCodeFromUrl = searchParams.get("ref")?.trim().slice(0, 24) || "";
+  useEffect(() => {
+    if (refCodeFromUrl) {
+      try { localStorage.setItem("elbaz_ref", refCodeFromUrl); } catch { /* private mode */ }
+    }
+  }, [refCodeFromUrl]);
+  const refCode = refCodeFromUrl || (() => { try { return localStorage.getItem("elbaz_ref") || ""; } catch { return ""; } })();
 
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -165,9 +177,12 @@ export default function Register() {
   const registerMutation = trpc.auth.register.useMutation({
     onSuccess: (data) => {
       trackPlatform("register_success");
+      try { localStorage.removeItem("elbaz_ref"); } catch { /* ignore */ }
       if (data?.user?.id && data?.user?.username) identifyUser(data.user.id, data.user.username, { role: "user", isNewUser: true });
       if (isNativePlatform() && data?.token) setStoredToken(data.token);
-      toast.success(t("registerSuccess"));
+      toast.success(refCode
+        ? (lang === "ar" ? "تم إنشاء الحساب — خصم الترحيب بتاعك مستنيك في ملفك الشخصي 🎁" : "Account created — your welcome coupon is waiting in your profile 🎁")
+        : t("registerSuccess"));
       navigate("/", { replace: true });
     },
     onError: (err) => {
@@ -194,7 +209,7 @@ export default function Register() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault(); setError("");
     if (!validateRegistrationForm()) return;
-    registerMutation.mutate({ username: username.trim(), password, name: name.trim() || undefined, email: email.trim() || undefined });
+    registerMutation.mutate({ username: username.trim(), password, name: name.trim() || undefined, email: email.trim() || undefined, refCode: refCode || undefined });
   };
 
   return (
@@ -228,6 +243,18 @@ export default function Register() {
           <div className="relative my-4">
             <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border" /></div>
             <div className="relative flex justify-center text-xs"><span className="bg-background px-3 text-text-muted">{lang === "ar" ? "أو" : "or"}</span></div>
+          </div>
+        )}
+
+        {/* Referral welcome — the invited friend sees this before signing up. */}
+        {refCode && (
+          <div className="mb-4 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
+            <Gift className="h-4 w-4 shrink-0 text-emerald-500" />
+            <p className="text-xs text-emerald-500">
+              {lang === "ar"
+                ? `أنت مدعوم من صديق لك 🎁 خصم ترحيبي ${5}% مستنيك بعد إنشاء الحساب في صفحة ملفك الشخصي.`
+                : `You were invited by a friend 🎁 a ${5}% welcome coupon awaits in your profile after signing up.`}
+            </p>
           </div>
         )}
 

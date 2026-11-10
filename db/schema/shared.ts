@@ -90,6 +90,10 @@ export const testimonials = mysqlTable(
     company: varchar("company", { length: 255 }),
     content: text("content").notNull(),
     rating: int("rating").notNull().default(5),
+    /** Public certificate number — when set, the home page renders a
+     *  "verified" badge linking to /verify/:certificateNumber so visitors can
+     *  prove the review belongs to a real certificate holder. NULL = unlinked. */
+    certificateNumber: varchar("certificateNumber", { length: 64 }),
     isPublished: boolean("isPublished").notNull().default(true),
     createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
   },
@@ -381,3 +385,26 @@ export const pushSubscriptions = mysqlTable(
 
 export type NotificationRow = typeof notifications.$inferSelect;
 export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Email Drip Log — one row per (user, email-kind) actually sent
+// ─────────────────────────────────────────────────────────────────────────────
+// Deduplication guard for the educational email sequence (welcome, 48h
+// nudge, completion congratulation). The UNIQUE (userId, kind) key makes
+// sending idempotent: re-running a sweep or re-triggering an event can never
+// double-send. kind may embed an entity id, e.g. "congrats:12" per course.
+export const emailDripLog = mysqlTable(
+  "emailDripLog",
+  {
+    id: bigint("id", { mode: "number", unsigned: true }).primaryKey().autoincrement(),
+    userId: bigint("userId", { mode: "number", unsigned: true }).notNull(),
+    kind: varchar("kind", { length: 50 }).notNull(),
+    sentAt: timestamp("sentAt", { mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("email_drip_user_kind_unique").on(table.userId, table.kind),
+    index("email_drip_kind_idx").on(table.kind),
+  ]
+);
+
+export type EmailDripLogRow = typeof emailDripLog.$inferSelect;

@@ -12,6 +12,7 @@ function buildNewNoteValues(userId: number, note: {
   title?: string;
   content: string;
   tags?: string[];
+  timestampSeconds?: number;
   isPinned: boolean;
 }) {
   return {
@@ -21,6 +22,9 @@ function buildNewNoteValues(userId: number, note: {
     title: note.title || null,
     content: note.content,
     tags: note.tags ? JSON.stringify(note.tags) : null,
+    timestampSeconds: typeof note.timestampSeconds === "number" && Number.isFinite(note.timestampSeconds)
+      ? Math.max(0, Math.floor(note.timestampSeconds))
+      : null,
     isPinned: note.isPinned,
   };
 }
@@ -32,6 +36,7 @@ function buildNoteUpdates(note: {
   title?: string;
   content: string;
   tags?: string[];
+  timestampSeconds?: number;
   isPinned: boolean;
 }) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -39,6 +44,9 @@ function buildNoteUpdates(note: {
     title: note.title || null,
     content: note.content,
     tags: note.tags ? JSON.stringify(note.tags) : null,
+    timestampSeconds: typeof note.timestampSeconds === "number" && Number.isFinite(note.timestampSeconds)
+      ? Math.max(0, Math.floor(note.timestampSeconds))
+      : null,
     isPinned: note.isPinned,
   };
   if (note.courseId !== undefined) updates.courseId = note.courseId;
@@ -96,6 +104,9 @@ export const notesRouter = createRouter({
       title: z.string().max(500).optional(),
       content: z.string().min(1).max(10000),
       tags: z.array(z.string()).optional(),
+      /** Video position (seconds) captured while the note was written —
+       *  the lesson notes panel uses it to offer one-click seek-back. */
+      timestampSeconds: z.number().int().min(0).max(86400).optional(),
       isPinned: z.boolean().default(false),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -107,6 +118,7 @@ export const notesRouter = createRouter({
         title: input.title || null,
         content: input.content,
         tags: input.tags ? JSON.stringify(input.tags) : null,
+        timestampSeconds: typeof input.timestampSeconds === "number" ? Math.max(0, Math.floor(input.timestampSeconds)) : null,
         isPinned: input.isPinned,
       });
       return { success: true, id: Number(note.insertId) };
@@ -118,6 +130,7 @@ export const notesRouter = createRouter({
       title: z.string().max(500).optional(),
       content: z.string().min(1).max(10000).optional(),
       tags: z.array(z.string()).optional(),
+      timestampSeconds: z.number().int().min(0).max(86400).nullable().optional(),
       isPinned: z.boolean().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -163,6 +176,7 @@ export const notesRouter = createRouter({
         title: z.string().max(500).optional(),
         content: z.string().min(1).max(10000),
         tags: z.array(z.string()).optional(),
+        timestampSeconds: z.number().int().min(0).max(86400).optional(),
         isPinned: z.boolean().default(false),
         updatedAt: z.string().optional(),
       })).max(100),

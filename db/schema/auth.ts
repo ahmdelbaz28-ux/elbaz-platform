@@ -47,11 +47,17 @@ export const users = mysqlTable(
     totpEnabled: boolean("totpEnabled").notNull().default(false),
     totpBackupCodes: json("totpBackupCodes"),
     deviceFingerprint: varchar("deviceFingerprint", { length: 255 }),
+    /** Public referral code — lazily generated on first profile view; shared
+     *  as ?ref= on /register links. Unique across users. */
+    referralCode: varchar("referralCode", { length: 24 }),
+    /** The user who invited this account (set once at registration). */
+    referredByUserId: bigint("referredByUserId", { mode: "number", unsigned: true }),
   },
   (table) => [
     uniqueIndex("users_email_unique").on(table.email),
     uniqueIndex("users_username_unique").on(table.username),
     uniqueIndex("users_google_id_unique").on(table.googleId),
+    uniqueIndex("users_referral_code_unique").on(table.referralCode),
     index("users_role_idx").on(table.role),
   ]
 );
@@ -134,6 +140,40 @@ export const notificationPreferences = mysqlTable(
       columns: [table.userId],
       foreignColumns: [users.id],
       name: "fk_notif_prefs_user",
+    }).onDelete("cascade").onUpdate("cascade"),
+  ]
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Referrals — student-to-student invitation rewards
+// ─────────────────────────────────────────────────────────────────────────────
+// One row per invited friend. When a new user registers with ?ref=CODE,
+// both parties get a discount coupon: the referrer earns a reward coupon,
+// the friend receives a welcome coupon. Codes live in promoCodes (payments).
+export const referrals = mysqlTable(
+  "referrals",
+  {
+    id: bigint("id", { mode: "number", unsigned: true }).primaryKey().autoincrement(),
+    referrerUserId: bigint("referrerUserId", { mode: "number", unsigned: true }).notNull(),
+    referredUserId: bigint("referredUserId", { mode: "number", unsigned: true }).notNull(),
+    /** Reward coupon granted to the referrer (promoCodes.code). */
+    rewardPromoCode: varchar("rewardPromoCode", { length: 50 }),
+    /** Welcome coupon granted to the invited friend (promoCodes.code). */
+    friendPromoCode: varchar("friendPromoCode", { length: 50 }),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("referrals_referred_unique").on(table.referredUserId),
+    index("referrals_referrer_idx").on(table.referrerUserId),
+    foreignKey({
+      columns: [table.referrerUserId],
+      foreignColumns: [users.id],
+      name: "fk_referrals_referrer",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [table.referredUserId],
+      foreignColumns: [users.id],
+      name: "fk_referrals_referred",
     }).onDelete("cascade").onUpdate("cascade"),
   ]
 );

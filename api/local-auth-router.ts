@@ -17,6 +17,9 @@ import { getClientIpFromHeaders } from "./lib/client-ip";
 import { evictUserAuthCache } from "./context.js";
 // ✅ SECURITY FIX (audit run-1): enforce the enrolled second factor at login.
 import { verifyTotp, hashToken } from "./twofa-router";
+// Growth features: referral rewards + educational email drip.
+import { applyReferral } from "./lib/referral";
+import { maybeSendWelcomeEmail } from "./lib/email-drip";
 
 // ─── Dummy hash for constant-time login ───────────────────────────────────────
 // To prevent username enumeration via response timing, when a login attempt
@@ -202,6 +205,8 @@ export const localAuthRouter = createRouter({
            ),
          name: z.string().min(1).max(255).optional(),
          email: z.string().email("Invalid email format").optional().or(z.literal("")),
+         /** Referral code from /register?ref=CODE — grants both parties coupons. */
+         refCode: z.string().max(24).optional(),
        })
      )
      .mutation(async ({ ctx, input }): Promise<AuthResponse> => {
@@ -285,6 +290,26 @@ export const localAuthRouter = createRouter({
         // profile page. We just log the failure for the operator.
         if (safeEmail) {
           await sendVerificationEmailIfEligible(userId, safeEmail, ctx.req.headers);
+        }
+
+        // ── Referral attribution + reward coupons ───────────────────────────
+        // MUST NOT block registration: any referral failure only costs the
+        // reward, never the account.
+        if (input.refCode && input.refCode.trim()) {
+          try {
+            await applyReferral(input.refCode, userId, input.username);
+          } catch (refErr) {
+            logger.warn("[Auth] referral attribution failed (registration continues)", {
+              userId,
+              error: refErr instanceof Error ? refErr.message : String(refErr),
+            });
+          }
+        }
+
+        // ── Educational drip: welcome email ─────────────────────────────────
+        // Fire-and-forget; only users WITH an email address receive it.
+        if (safeEmail) {
+          void maybeSendWelcomeEmail(userId, input.username, safeEmail, input.name || input.username);
         }
 
         logger.info("Registration successful", { userId, username: input.username, email: maskEmail(safeEmail) });

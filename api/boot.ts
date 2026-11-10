@@ -549,6 +549,14 @@ async function start() {
   // channel playlist and broadcast an in-app notification to all users.
   startYoutubeWatcher();
 
+  // ── Educational email drip scheduler: welcome-on-register is event-driven;
+  // this scheduler only owns the 48h no-start nudge sweep (every 6h).
+  // Production only — tests/dev must never send real emails.
+  if (env.isProduction) {
+    const { startEmailDripScheduler } = await import("./lib/email-drip.js");
+    startEmailDripScheduler();
+  }
+
   // ── Last-resort process guards (availability-first) ──
   // The platform's never-throw contract is enforced per-feature, but ONE
   // escaping rejection anywhere (a background worker, a fire-and-forget

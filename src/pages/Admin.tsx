@@ -6,7 +6,7 @@ import { trpc } from "@/providers/trpc";
 import { motion, AnimatePresence } from "framer-motion";
 import "@/elite-animations.css";
 import {
-  LayoutDashboard, Users, BookOpen, Headphones, DollarSign, Phone, FileText, Palette, Tag, Megaphone, Bot, Bell,
+  LayoutDashboard, Users, BookOpen, Headphones, DollarSign, Phone, FileText, Palette, Tag, Megaphone, Bot, Bell, Quote,
   Plus, Pencil, Trash2, Save, Eye, Zap, TrendingUp, CheckCircle, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   LogOut, ArrowUpRight, Shield, PlayCircle, Newspaper, X, Menu, MessageSquareText, ThumbsUp, ThumbsDown, Download,
   Youtube, Loader2, ListVideo,
@@ -143,6 +143,7 @@ const SIDEBAR_ITEMS = [
   { id: "themes", icon: Palette, labelEn: "Themes", labelAr: "الثيمات" },
   { id: "promos", icon: Tag, labelEn: "Promo Codes", labelAr: "أكواد الخصم" },
   { id: "promotions", icon: Megaphone, labelEn: "Promotions", labelAr: "العروض" },
+  { id: "testimonials", icon: Quote, labelEn: "Testimonials", labelAr: "آراء الطلاب" },
   { id: "notifications", icon: Bell, labelEn: "Notifications", labelAr: "الإشعارات" },
 ];
 
@@ -556,6 +557,23 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
 
   /* Promos */
   const { data: promoCodes } = trpc.promo.list.useQuery(undefined, { enabled: !!isAdmin && activeTab === "promos" });
+
+  /* Testimonials — home-page reviews with certificate verification links */
+  const { data: testimonialsAdmin, refetch: refetchTestimonials } = trpc.admin.listTestimonials.useQuery(undefined, { enabled: !!isAdmin && activeTab === "testimonials" });
+  const [testimonialForm, setTestimonialForm] = useState<{ id?: number; name: string; title: string; company: string; content: string; rating: number; certificateNumber: string; isPublished: boolean }>({ name: "", title: "", company: "", content: "", rating: 5, certificateNumber: "", isPublished: true });
+  const [showTestimonialForm, setShowTestimonialForm] = useState(false);
+  const saveTestimonial = trpc.admin.upsertTestimonial.useMutation({
+    onSuccess: (res) => {
+      if (res?.success === false) { toast.error(isRTL ? "الرأي مش موجود" : "Testimonial not found"); return; }
+      void refetchTestimonials(); setShowTestimonialForm(false);
+      toast.success(isRTL ? "تم حفظ الرأي ✅" : "Testimonial saved ✅");
+    },
+    onError: (err) => toast.error(err.message),
+  });
+  const deleteTestimonial = trpc.admin.deleteTestimonial.useMutation({
+    onSuccess: () => { void refetchTestimonials(); toast.success(isRTL ? "تم الحذف" : "Deleted"); },
+    onError: (err) => toast.error(err.message),
+  });
 
   // 🔔 Manual broadcast — fires a real notification to every registered user.
   const sendBroadcast = trpc.admin.sendBroadcast.useMutation({
@@ -1643,6 +1661,127 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                       ))}
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* ═══════════════════ TESTIMONIALS (certificate-verified reviews) ═══════════════════ */}
+              {activeTab === "testimonials" && (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h1 className="text-2xl font-bold text-foreground">{isRTL ? "آراء الطلاب" : "Testimonials"}</h1>
+                      <p className="mt-1 text-sm text-text-muted">
+                        {isRTL
+                          ? "تظهر على الصفحة الرئيسية — لصق رقم الشهادة يجعل الرأي «موثّق» بضغطة تحقق رسمية."
+                          : "Shown on the home page — attaching a certificate number marks the review as verified."}
+                      </p>
+                    </div>
+                    <Button
+                      onClick={() => { setTestimonialForm({ name: "", title: "", company: "", content: "", rating: 5, certificateNumber: "", isPublished: true }); setShowTestimonialForm(true); }}
+                      className="gap-2 bg-gradient-to-r from-[#06b6d4] to-[#0891b2] font-semibold text-[#0a0e17]"
+                    >
+                      <Plus className="h-4 w-4" />
+                      {isRTL ? "رأي جديد" : "Add testimonial"}
+                    </Button>
+                  </div>
+
+                  {showTestimonialForm && (
+                    <div className="rounded-xl border border-accent-secondary/30 bg-primary p-5">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="text-xs text-text-muted">{isRTL ? "الاسم *" : "Name *"}</label>
+                          <input value={testimonialForm.name} onChange={(e) => setTestimonialForm({ ...testimonialForm, name: e.target.value })} className="mt-1 w-full rounded-lg border border-[#1f2d44] bg-background p-2.5 text-sm text-foreground outline-none focus:border-accent-secondary" />
+                        </div>
+                        <div>
+                          <label className="text-xs text-text-muted">{isRTL ? "رقم الشهادة (للتحقق)" : "Certificate number (for verification)"}</label>
+                          <input value={testimonialForm.certificateNumber} onChange={(e) => setTestimonialForm({ ...testimonialForm, certificateNumber: e.target.value })} placeholder="ELB-2026-..." className="mt-1 w-full rounded-lg border border-[#1f2d44] bg-background p-2.5 font-mono text-sm text-foreground outline-none focus:border-accent-secondary" />
+                        </div>
+                        <div>
+                          <label className="text-xs text-text-muted">{isRTL ? "الوظيفة" : "Title"}</label>
+                          <input value={testimonialForm.title} onChange={(e) => setTestimonialForm({ ...testimonialForm, title: e.target.value })} className="mt-1 w-full rounded-lg border border-[#1f2d44] bg-background p-2.5 text-sm text-foreground outline-none focus:border-accent-secondary" />
+                        </div>
+                        <div>
+                          <label className="text-xs text-text-muted">{isRTL ? "جهة العمل" : "Company"}</label>
+                          <input value={testimonialForm.company} onChange={(e) => setTestimonialForm({ ...testimonialForm, company: e.target.value })} className="mt-1 w-full rounded-lg border border-[#1f2d44] bg-background p-2.5 text-sm text-foreground outline-none focus:border-accent-secondary" />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="text-xs text-text-muted">{isRTL ? "نص الرأي *" : "Content *"}</label>
+                          <textarea value={testimonialForm.content} onChange={(e) => setTestimonialForm({ ...testimonialForm, content: e.target.value })} rows={3} className="mt-1 w-full resize-none rounded-lg border border-[#1f2d44] bg-background p-2.5 text-sm text-foreground outline-none focus:border-accent-secondary" />
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <div>
+                            <label className="text-xs text-text-muted">{isRTL ? "التقييم" : "Rating"}</label>
+                            <select value={testimonialForm.rating} onChange={(e) => setTestimonialForm({ ...testimonialForm, rating: Number(e.target.value) })} className="mt-1 rounded-lg border border-[#1f2d44] bg-background p-2.5 text-sm text-foreground outline-none focus:border-accent-secondary">
+                              {[5, 4, 3, 2, 1].map((r) => <option key={r} value={r}>{r} ★</option>)}
+                            </select>
+                          </div>
+                          <label className="mt-4 flex items-center gap-2 text-sm text-foreground">
+                            <input type="checkbox" checked={testimonialForm.isPublished} onChange={(e) => setTestimonialForm({ ...testimonialForm, isPublished: e.target.checked })} className="h-4 w-4 accent-[#06b6d4]" />
+                            {isRTL ? "منشور" : "Published"}
+                          </label>
+                        </div>
+                      </div>
+                      <div className="mt-4 flex gap-2">
+                        <Button
+                          onClick={() => saveTestimonial.mutate({
+                            ...(testimonialForm.id ? { id: testimonialForm.id } : {}),
+                            name: testimonialForm.name,
+                            ...(testimonialForm.title ? { title: testimonialForm.title } : {}),
+                            ...(testimonialForm.company ? { company: testimonialForm.company } : {}),
+                            content: testimonialForm.content,
+                            rating: testimonialForm.rating,
+                            ...(testimonialForm.certificateNumber ? { certificateNumber: testimonialForm.certificateNumber } : {}),
+                            isPublished: testimonialForm.isPublished,
+                          })}
+                          disabled={!testimonialForm.name.trim() || !testimonialForm.content.trim() || saveTestimonial.isPending}
+                          className="gap-2 bg-gradient-to-r from-[#06b6d4] to-[#0891b2] font-semibold text-[#0a0e17]"
+                        >
+                          <Save className="h-4 w-4" />
+                          {saveTestimonial.isPending ? (isRTL ? "جاري الحفظ..." : "Saving...") : (isRTL ? "حفظ" : "Save")}
+                        </Button>
+                        <Button variant="ghost" onClick={() => setShowTestimonialForm(false)} className="text-text-muted hover:text-foreground">
+                          {isRTL ? "إلغاء" : "Cancel"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-3">
+                    {(testimonialsAdmin?.items ?? []).map((item: { id: number; name: string; title: string | null; company: string | null; content: string; rating: number; certificateNumber: string | null; isPublished: boolean }) => (
+                      <motion.div key={item.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-xl border border-border bg-primary p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold text-foreground">{item.name}</span>
+                              <span className="text-xs text-amber-500">{"★".repeat(item.rating)}</span>
+                              {item.certificateNumber ? (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-[#10b981]/40 bg-[rgba(16,185,129,0.12)] px-2 py-0.5 text-[10px] font-semibold text-[#10b981]">
+                                  {isRTL ? "شهادة موثّقة" : "Verified"} · {item.certificateNumber}
+                                </span>
+                              ) : (
+                                <span className="rounded-full border border-border px-2 py-0.5 text-[10px] text-text-muted">{isRTL ? "بدون شهادة" : "No certificate"}</span>
+                              )}
+                              {!item.isPublished && <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-500">{isRTL ? "مخفي" : "Hidden"}</span>}
+                            </div>
+                            <p className="mt-1.5 line-clamp-2 text-sm text-text-muted">{item.content}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="outline" onClick={() => { setTestimonialForm({ id: item.id, name: item.name, title: item.title ?? "", company: item.company ?? "", content: item.content, rating: item.rating, certificateNumber: item.certificateNumber ?? "", isPublished: item.isPublished }); setShowTestimonialForm(true); }} className="border-border text-text-muted hover:border-accent-secondary hover:text-accent-secondary">
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => { if (globalThis.confirm(isRTL ? "تأكيد الحذف؟" : "Delete this testimonial?")) deleteTestimonial.mutate({ id: item.id }); }} className="text-destructive hover:bg-destructive/10">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
+                    {(testimonialsAdmin?.items ?? []).length === 0 && (
+                      <div className="rounded-xl border border-border bg-primary p-8 text-center text-sm text-text-muted">
+                        {isRTL ? "لا توجد آراء بعد — أضف أول رأي موثّق." : "No testimonials yet — add the first verified one."}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 

@@ -1,5 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from "react";
+import { FlaskConical } from "lucide-react";
 
 interface EngineeringModeContextType {
   isActive: boolean;
@@ -47,31 +48,21 @@ export function EngineeringModeToggle() {
     <button
       onClick={toggle}
       aria-label="Toggle Engineering Vision Mode"
-      title={isActive ? "Disable Engineering Mode" : "Enable Engineering Vision"}
-      className={`relative flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-all duration-300 ${
+      aria-pressed={isActive}
+      title={isActive
+        ? "إيقاف الوضع الهندسي — Turn OFF Engineering Mode"
+        : "الوضع الهندسي — Turn ON Engineering Mode"}
+      className={`relative flex h-8 w-8 items-center justify-center rounded-full transition-all duration-300 ${
         isActive
-          ? "border-[#10b981] bg-[rgba(16,185,129,0.12)] text-[#10b981] shadow-[0_0_12px_rgba(16,185,129,0.3)]"
-          : "border-[#1e2d3d] bg-[#0d1420] text-[#475569] hover:border-[#06b6d4] hover:text-[#06b6d4]"
+          ? "bg-[rgba(16,185,129,0.15)] text-[#10b981] shadow-[0_0_12px_rgba(16,185,129,0.35)] ring-1 ring-[#10b981]"
+          : "bg-transparent text-[#475569] hover:bg-white/5 hover:text-[#06b6d4]"
       }`}
     >
-      {/* Waveform icon */}
-      <svg width="16" height="10" viewBox="0 0 16 10" fill="none" className="shrink-0" role="img" aria-hidden="true">
-        <path
-          d="M0 5 L2 5 L3 1 L4 9 L5 2 L6 8 L7 5 L9 5 L10 3 L11 7 L12 4 L13 6 L14 5 L16 5"
-          stroke="currentColor"
-          strokeWidth="1.2"
-          fill="none"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          style={{
-            strokeDasharray: isActive ? "none" : "4 2",
-            animation: isActive ? "waveform-dash 0.8s linear infinite" : "none",
-          }}
-        />
-      </svg>
-      <span className="hidden sm:inline">{isActive ? "EXIT" : "ENG"}</span>
+      {/* Flask icon — deliberately a ROUND icon button so it can never be
+          mistaken for the language pill (a rounded-rectangle with text). */}
+      <FlaskConical className="h-4 w-4" aria-hidden="true" />
       {isActive && (
-        <span className="flex h-1.5 w-1.5 rounded-full bg-[#10b981] shadow-[0_0_6px_#10b981]" />
+        <span className="absolute -end-0.5 -top-0.5 flex h-2 w-2 rounded-full bg-[#10b981] shadow-[0_0_6px_#10b981]" />
       )}
     </button>
   );
