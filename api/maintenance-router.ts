@@ -13,8 +13,8 @@ import { pool } from "./queries/connection.js";
  * Unset secret or wrong token → disguised 404, identical to the shield's
  * rejection, so the endpoints are invisible to scanners and recon probes.
  *
- * GET /api/maintenance/backup          → full SQL dump, gzipped attachment
- * GET /api/maintenance/backup/manifest → table/row counts only (cheap verify)
+ * GET /api/maintenance/dump          → full SQL dump, gzipped attachment
+ * GET /api/maintenance/dump/manifest → table/row counts only (cheap verify)
  *
  * The daily GitHub Action (db-backup.yml) authenticates with BACKUP_TOKEN,
  * validates the dump (gzip integrity + CREATE TABLE present) and stores it as
@@ -45,7 +45,7 @@ async function listBaseTables(conn: Awaited<ReturnType<typeof pool.getConnection
   return rows.map((r) => String(Object.values(r)[0]));
 }
 
-maintenanceRouter.get("/maintenance/backup/manifest", async (c) => {
+maintenanceRouter.get("/maintenance/dump/manifest", async (c) => {
   if (!guard(c)) return c.json({ error: "Not Found" }, 404);
   const conn = await pool.getConnection();
   try {
@@ -66,7 +66,7 @@ maintenanceRouter.get("/maintenance/backup/manifest", async (c) => {
   }
 });
 
-maintenanceRouter.get("/maintenance/backup", async (c) => {
+maintenanceRouter.get("/maintenance/dump", async (c) => {
   if (!guard(c)) return c.json({ error: "Not Found" }, 404);
   const started = Date.now();
   const conn = await pool.getConnection();

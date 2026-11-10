@@ -37,7 +37,7 @@ jobs:
       - name: Pull SQL dump from platform
         env:
           BACKUP_TOKEN: ${{ secrets.BACKUP_TOKEN }}
-          BACKUP_URL: https://ahmedelbaz.qzz.io/api/maintenance/backup
+          BACKUP_URL: https://ahmedelbaz.qzz.io/api/maintenance/dump
         run: |
           set -euo pipefail
           STAMP=$(date -u +%Y%m%d-%H%M%S)
