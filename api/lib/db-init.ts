@@ -1061,6 +1061,34 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
           try { await conn.query("ALTER TABLE `promoCodes` ADD COLUMN `discountValue` DECIMAL(5,2) NOT NULL DEFAULT 0 AFTER `discountType`"); logger.info("[DB]   + promoCodes.discountValue"); } catch (e) { logger.warn("[DB] promoCodes.discountValue", { error: (e as Error).message }); }
         }
 
+        // ── Relax legacy NOT NULL columns that have no default ──
+        // The live table came from an ANCIENT schema with columns like
+        // startsAt NOT NULL (no default) that don't exist in the current
+        // schema — drizzle INSERTs fail on them ("Field 'startsAt' doesn't
+        // have a default value"). Converting such columns to NULLable keeps
+        // legacy data readable while making every insert succeed. Identity
+        // and business keys (id, code) stay strict.
+        try {
+          const [legacyCols] = await conn.execute(
+            `SELECT COLUMN_NAME, COLUMN_TYPE
+               FROM INFORMATION_SCHEMA.COLUMNS
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'promoCodes'
+                AND IS_NULLABLE = 'NO' AND COLUMN_DEFAULT IS NULL`
+          );
+          for (const col of (legacyCols as unknown as { COLUMN_NAME: string; COLUMN_TYPE: string }[])) {
+            const name = col.COLUMN_NAME;
+            if (name === "id" || name === "code") continue;
+            try {
+              await conn.query(`ALTER TABLE \`promoCodes\` MODIFY COLUMN \`${name}\` ${col.COLUMN_TYPE} NULL`);
+              logger.info(`[DB]   ~ promoCodes.${name} relaxed to NULL (legacy NOT NULL, no default)`);
+            } catch (e) {
+              logger.warn(`[DB] promoCodes.${name} relax warning`, { error: (e as Error).message });
+            }
+          }
+        } catch (e) {
+          logger.warn("[DB] promoCodes legacy relax warning", { error: (e as Error).message });
+        }
+
         // Default guest preview: the free ETAP course gets its FIRST published
         // lesson flagged isFree so visitors can watch-before-register. Only
         // fires when the instructor has NOT already picked a preview lesson
