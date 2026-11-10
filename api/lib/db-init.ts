@@ -1089,6 +1089,42 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
           logger.warn("[DB] promoCodes legacy relax warning", { error: (e as Error).message });
         }
 
+        // ── lessons column guard (production incident 2026-11-10) ──
+        // The YouTube playlist sync (and admin lesson creation) INSERTs list
+        // EVERY column of the drizzle schema — one missing legacy column
+        // makes every insert fail ("Unknown column … in 'field list'") and
+        // silently freezes the playlist mirror while SELECTs keep working.
+        // Reconcile the live table with the current insert surface. Idempotent.
+        {
+          const lessonColumns: [string, string][] = [
+            ["attachments", "JSON NULL AFTER `isPublished`"],
+            ["durationMinutes", "INT NULL AFTER `videoUrl`"],
+            ["sortOrder", "INT NOT NULL DEFAULT 0 AFTER `durationMinutes`"],
+            ["isFree", "BOOLEAN NOT NULL DEFAULT FALSE AFTER `sortOrder`"],
+            ["isPublished", "BOOLEAN NOT NULL DEFAULT FALSE AFTER `isFree`"],
+          ];
+          for (const [name, ddl] of lessonColumns) {
+            if (!(await columnExists("lessons", name))) {
+              try {
+                await conn.query(`ALTER TABLE \`lessons\` ADD COLUMN \`${name}\` ${ddl}`);
+                logger.info(`[DB]   + lessons.${name}`);
+              } catch (e) {
+                logger.warn(`[DB] lessons.${name}`, { error: (e as Error).message });
+              }
+            }
+          }
+          // One-time structure proof in the logs — makes any future drift
+          // diagnosable from the Space logs alone, without DB credentials.
+          try {
+            const [lessonCols] = await conn.execute(`SHOW COLUMNS FROM \`lessons\``);
+            logger.info("[DB] lessons columns", {
+              names: (lessonCols as unknown as { Field: string }[]).map((c) => c.Field).join(","),
+            });
+          } catch (e) {
+            logger.warn("[DB] lessons columns probe failed", { error: (e as Error).message });
+          }
+        }
+
         // Default guest preview: the free ETAP course gets its FIRST published
         // lesson flagged isFree so visitors can watch-before-register. Only
         // fires when the instructor has NOT already picked a preview lesson

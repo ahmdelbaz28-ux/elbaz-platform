@@ -99,7 +99,14 @@ async function relayGet(path: string): Promise<Response | null> {
       logger.warn("[YouTubeRelay] relay answered non-ok", { path, status: res.status });
     }
     return res;
-  } catch {
+  } catch (err) {
+    // Transport failure — visible instead of silent. From HF egress this has
+    // meant throttling or a blocked hop; without this log a dead relay is
+    // indistinguishable from an unconfigured one.
+    logger.warn("[YouTubeRelay] relay transport failed", {
+      path,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }
@@ -129,7 +136,12 @@ export async function fetchRelayPlaylist(playlistId: string): Promise<ParsedVide
       cache: res.headers.get("X-Yt-Cache") ?? "?",
     });
     return items;
-  } catch {
+  } catch (err) {
+    // A 2xx whose body is not the expected JSON usually means a Cloudflare
+    // Access wall answered instead of the worker (302 → followed → HTML).
+    logger.warn("[YouTubeRelay] relay response unparsable — Access wall or layout change?", {
+      error: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }

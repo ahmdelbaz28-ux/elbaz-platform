@@ -18,13 +18,14 @@
  *   settings — { autoImport, autoImportFree, autoCover }
  */
 
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../queries/connection.js";
-import { courses, lessons, siteSettings } from "@db/schema";
+import { courses, lessons, notifications, siteSettings } from "@db/schema";
 import { logger } from "./logger.js";
 import { invalidateCourseDetailCache } from "./cache.js";
 import { buildYouTubeThumbnailUrl, buildYouTubeWatchUrl, extractYouTubeId } from "../../src/lib/youtube-url";
-import { fetchPlaylistVideosForImport } from "./youtube-watcher.js";
+import { fetchPlaylistVideosForImport, getChannelUrl, getPlaylistId } from "./youtube-watcher.js";
+import { pushNotification } from "./notification-broadcast.js";
 import type { ParsedVideo } from "./notification-utils.js";
 
 // ─── Configuration ─────────────────────────────────────────────────────────────
@@ -205,6 +206,59 @@ export function planPlaylistSync(
   return plan;
 }
 
+// ─── New-lesson announcements ───────────────────────────────────────
+
+/**
+ * A brand-new playlist video was just inserted as a lesson → announce it.
+ * This is the notification path that CANNOT go blind: it rides the sync
+ * itself (GitHub Actions ingest relay with clean YouTube egress), not the
+ * Space watcher whose direct YouTube egress is fully blocked (667+
+ * consecutive failed ticks — production incident 2026-11-10).
+ *
+ * Dedupe by the videoId inside the notification `data` JSON — the watcher
+ * diff and this path can never double-announce the same video. Capped per
+ * sync exactly like the watcher's MAX_PER_TICK: a burst import of N videos
+ * never spams N notifications.
+ */
+const NOTIFY_MAX_PER_SYNC = 3;
+
+async function alreadyAnnounced(videoId: string): Promise<boolean> {
+  try {
+    const db = getDb();
+    const [row] = await db
+      .select({ id: notifications.id })
+      .from(notifications)
+      .where(sql`JSON_UNQUOTE(JSON_EXTRACT(${notifications.data}, '$.videoId')) = ${videoId}`)
+      .limit(1);
+    return Boolean(row);
+  } catch {
+    return false;
+  }
+}
+
+async function announceNewLessons(added: { videoId: string; title: string }[]): Promise<number> {
+  let announced = 0;
+  for (const item of added) {
+    if (announced >= NOTIFY_MAX_PER_SYNC) break;
+    if (await alreadyAnnounced(item.videoId)) continue;
+    const eventId = await pushNotification({
+      type: "youtube",
+      title: "🎬 حلقة جديدة على قناة اليوتيوب",
+      message:
+        `«${item.title || "حلقة جديدة"}» نزلت الآن على قناة AhmedEtap — كورس ETAP كامل بالعربي. ` +
+        `شوفها الأول وخليك دايمًا متقدم: فعّل الجرس 🔔 على القناة عشان يوصلك كل شرح جديد أول بأول وانت في الأولين.`,
+      url: buildYouTubeWatchUrl(item.videoId),
+      channelUrl: getChannelUrl(),
+      data: { videoId: item.videoId, playlistId: getPlaylistId() },
+    });
+    if (eventId) {
+      announced++;
+      logger.info("[PlaylistSync] new lesson announced", { videoId: item.videoId, title: item.title });
+    }
+  }
+  return announced;
+}
+
 // ─── Apply ─────────────────────────────────────────────────────────────────────
 
 export interface SyncSummary {
@@ -215,6 +269,8 @@ export interface SyncSummary {
   updated: number;
   removed: number;
   coverUpdated: boolean;
+  /** Notifications pushed for brand-new lessons (deduped, capped). */
+  announced?: number;
   prunedOnce?: boolean;
   message?: string;
 }
@@ -351,7 +407,21 @@ export async function applyPlaylistSync(
       }
     }
 
-    // ── 5. Persist state + invalidate the public course cache ──
+    // ── 5. Announce brand-new lessons (bell + web push + Telegram mirror) ──
+    // Fired ONLY for inserts — re-titles, re-orders and removals are silent.
+    if (plan.inserts.length > 0) {
+      try {
+        summary.announced = await announceNewLessons(
+          plan.inserts.map((i) => ({ videoId: i.videoId, title: i.title })),
+        );
+      } catch (announceErr) {
+        logger.warn("[PlaylistSync] announcement pass failed", {
+          error: announceErr instanceof Error ? announceErr.message : String(announceErr),
+        });
+      }
+    }
+
+    // ── 6. Persist state + invalidate the public course cache ──
     const nowIso = new Date().toISOString();
     await writeState({
       lastSyncAt: nowIso,
@@ -369,14 +439,25 @@ export async function applyPlaylistSync(
     return summary;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    // Drizzle wraps the REAL driver error in `cause` (DrizzleQueryError) —
+    // without unwrapping it the actual MySQL reason ("Unknown column …",
+    // "Data too long …") is invisible and DB-shape failures stay unfixable.
+    const causeText = errCauseText(err);
+    if (causeText) {
+      logger.error("[PlaylistSync] sync failed — driver cause", { cause: causeText.slice(0, 500) });
+    }
     logger.error("[PlaylistSync] sync failed", { error: message, reason: options.reason });
     try {
       const prevState = await getSyncState();
-      await writeState({ ...prevState, lastSyncAt: new Date().toISOString(), lastError: message.slice(0, 200) });
+      await writeState({
+        ...prevState,
+        lastSyncAt: new Date().toISOString(),
+        lastError: (causeText || message).slice(0, 200),
+      });
     } catch {
       // state write is best-effort
     }
-    summary.message = message;
+    summary.message = causeText || message;
     return summary;
   }
 }
@@ -401,6 +482,14 @@ export async function runAutoPlaylistSync(): Promise<SyncSummary | null> {
     });
     return null;
   }
+}
+
+/** Unwrap DrizzleQueryError.cause — the real MySQL error text. */
+function errCauseText(err: unknown): string {
+  const cause = (err as { cause?: unknown } | null)?.cause;
+  if (!cause) return "";
+  if (cause instanceof Error) return cause.message;
+  return typeof cause === "string" ? cause : String(cause);
 }
 
 // ─── Dashboard introspection ───────────────────────────────────────────────────

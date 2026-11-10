@@ -20,7 +20,11 @@ name: YT playlist relay
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    # Off-boundary minute offsets (7,22,37,52) — GitHub's scheduler is
+    # congested exactly at the round */15 boundaries (0,15,30,45) and delays
+    # or skips runs there; these offsets land far closer to the intended
+    # 15-minute cadence (observed gaps of 4-8 h on the old schedule).
+    - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
 
 permissions:

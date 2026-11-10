@@ -315,6 +315,11 @@ export function getPlaylistId(): string {
   return PLAYLIST_ID;
 }
 
+/** The channel home used as the subscribe CTA (exposed for the sync announcer). */
+export function getChannelUrl(): string {
+  return CHANNEL_URL;
+}
+
 export interface PlaylistImportItem {
   videoId: string;
   title: string;
