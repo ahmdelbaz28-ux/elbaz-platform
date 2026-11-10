@@ -1123,6 +1123,33 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
           } catch (e) {
             logger.warn("[DB] lessons columns probe failed", { error: (e as Error).message });
           }
+          // ── Relax legacy NOT NULL columns that the CURRENT schema makes
+          //    nullable (production incident 2026-11-10, root cause): the live
+          //    table predates the schema — durationMinutes was NOT NULL with
+          //    no default, so EVERY sync/admin insert that passes null failed
+          //    ("Column 'durationMinutes' cannot be null") and the playlist
+          //    mirror froze at its first two videos. Idempotent + strict-safe:
+          //    identity/business keys (id, courseId, titles, sortOrder) stay
+          //    strict; only schema-nullable content columns are relaxed.
+          try {
+            const [strictCols] = await conn.execute(
+              `SELECT COLUMN_NAME, COLUMN_TYPE
+                 FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lessons'
+                  AND IS_NULLABLE = 'NO' AND COLUMN_DEFAULT IS NULL
+                  AND COLUMN_NAME IN ('descriptionEn', 'descriptionAr', 'videoUrl', 'durationMinutes', 'attachments')`
+            );
+            for (const col of (strictCols as unknown as { COLUMN_NAME: string; COLUMN_TYPE: string }[])) {
+              try {
+                await conn.query(`ALTER TABLE \`lessons\` MODIFY COLUMN \`${col.COLUMN_NAME}\` ${col.COLUMN_TYPE} NULL`);
+                logger.info(`[DB]   ~ lessons.${col.COLUMN_NAME} relaxed to NULL (legacy NOT NULL, sync blocker)`);
+              } catch (e) {
+                logger.warn(`[DB] lessons.${col.COLUMN_NAME} relax warning`, { error: (e as Error).message });
+              }
+            }
+          } catch (e) {
+            logger.warn("[DB] lessons legacy relax probe failed", { error: (e as Error).message });
+          }
         }
 
         // Default guest preview: the free ETAP course gets its FIRST published
