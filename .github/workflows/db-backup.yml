@@ -57,9 +57,10 @@ jobs:
           SIZE=$(stat -c%s "$OUT")
           echo "dump size: ${SIZE} bytes"
           [ "$SIZE" -gt 500 ] || { echo "::error::dump suspiciously small (${SIZE}B)"; exit 1; }
-          gunzip -t "$OUT"
-          zcat "$OUT" | head -c 400000 | grep -q "CREATE TABLE" \
-            || { echo "::error::no CREATE TABLE in dump head"; exit 1; }
+          gunzip -c "$OUT" > /tmp/dump.sql
+          grep -q "CREATE TABLE" /tmp/dump.sql \
+            || { echo "::error::no CREATE TABLE in dump"; exit 1; }
+          rm -f /tmp/dump.sql
           TABLES=$(curl -sS -A "$UA" -H "sec-fetch-dest: iframe" \
             -H "Authorization: Bearer ${BACKUP_TOKEN}" \
             "${BACKUP_URL}/manifest" | grep -o '"name"' | wc -l || true)
