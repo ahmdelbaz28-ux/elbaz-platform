@@ -297,7 +297,7 @@ export const localAuthRouter = createRouter({
         // reward, never the account.
         if (input.refCode && input.refCode.trim()) {
           try {
-            await applyReferral(input.refCode, userId, input.username);
+            await applyReferral(input.refCode, userId);
           } catch (refErr) {
             logger.warn("[Auth] referral attribution failed (registration continues)", {
               userId,

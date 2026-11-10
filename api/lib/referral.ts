@@ -98,7 +98,6 @@ export async function ensureReferralCode(userId: number, username: string): Prom
 export async function applyReferral(
   refCode: string,
   newUserId: number,
-  newUsername: string,
 ): Promise<{ rewardCode: string; friendCode: string; referrerUsername: string } | null> {
   const db = getDb();
   const code = (refCode || "").trim().toUpperCase();
@@ -123,50 +122,56 @@ export async function applyReferral(
   const rewardCode = generateCouponCode(`REF-${referrer.username}`);
   const friendCode = generateCouponCode("WELCOME");
 
-  // The referrer's reward coupon — 10% off, single use, any course.
-  await db.insert(promoCodes).values({
-    code: rewardCode,
-    description: `مكافأة دعوة صديق — دعوت ${newUsername} للمنصة`,
-    discountType: "percentage",
-    discountValue: String(REFERRAL_REWARD_PERCENT),
-    maxUses: 1,
-    maxUsesPerUser: 1,
-    isValidForAllCourses: true,
-    validUntil,
-    isActive: true,
-    createdBy: referrer.id,
-  });
-
-  // The friend's welcome coupon — 5% off their first course.
-  await db.insert(promoCodes).values({
-    code: friendCode,
-    description: `خصم ترحيبي — انضممت بدعوة ${referrer.username}`,
-    discountType: "percentage",
-    discountValue: String(REFERRAL_WELCOME_PERCENT),
-    maxUses: 1,
-    maxUsesPerUser: 1,
-    isValidForAllCourses: true,
-    validUntil,
-    isActive: true,
-    createdBy: referrer.id,
-  });
-
-  // Link the two accounts. referrals.referredUserId is UNIQUE so an account
-  // can be attributed to at most one inviter even under double-submit races.
+  // ── 1. Attribution FIRST (the core link) ──
+  // referrals.referredUserId is UNIQUE so an account can be attributed to at
+  // most one inviter even under double-submit races.
   await db.insert(referrals).values({
     referrerUserId: referrer.id,
     referredUserId: newUserId,
     rewardPromoCode: rewardCode,
     friendPromoCode: friendCode,
   });
-
   await db.update(users).set({ referredByUserId: referrer.id }).where(eq(users.id, newUserId));
+
+  // ── 2. Coupons SECOND (best-effort rewards) ──
+  // Uses the SAME minimal column set as the proven working admin promo
+  // create — older live databases may predate optional columns like
+  // description/maxUsesPerUser/isValidForAllCourses, and rewards must never
+  // fail registration (or the attribution above).
+  const grantCoupon = async (couponCode: string, discountPercent: number) => {
+    try {
+      await db.insert(promoCodes).values({
+        code: couponCode,
+        discountType: "percentage",
+        discountValue: String(discountPercent),
+        maxUses: 1,
+        validUntil,
+        createdBy: referrer.id,
+        isActive: true,
+      });
+      return true;
+    } catch (err) {
+      logger.warn("[Referral] coupon grant failed (attribution kept)", {
+        couponCode,
+        newUserId,
+        referrer: referrer.id,
+        message: err instanceof Error ? err.message : String(err),
+        cause: err instanceof Error && err.cause instanceof Error ? err.cause.message : String((err as { cause?: unknown })?.cause ?? ""),
+      });
+      return false;
+    }
+  };
+
+  const rewardOk = await grantCoupon(rewardCode, REFERRAL_REWARD_PERCENT);
+  const friendOk = await grantCoupon(friendCode, REFERRAL_WELCOME_PERCENT);
 
   logger.info("[Referral] applied", {
     referrer: referrer.id,
     newUser: newUserId,
     rewardCode,
     friendCode,
+    rewardOk,
+    friendOk,
   });
 
   return { rewardCode, friendCode, referrerUsername: referrer.username };
