@@ -465,9 +465,31 @@ async function main(): Promise<void> {
     log(`chat ${key} "${rep.title}" type=${info.type} bot status=${before?.status ?? (memRes.description ?? "?").slice(0, 60)}`);
 
     if (info.type === "channel") {
-      rep.notes.push("channel — inspect/report only (owner directive covers groups; channel auto-post is already a permanent code-level no-op)");
-      if (before?.status === "administrator" && before.can_post_messages) {
-        rep.notes.push(`bot still holds can_post_messages=${true} in the channel — recommend removing manually if the owner wants zero Telegram publishing surface`);
+      // OWNER DIRECTIVE (2026-11-11): a channel post AUTO-MIRRORS into the
+      // linked discussion group — that mirroring is exactly how bot content
+      // surfaced "inside the group". The bot therefore must hold NO publishing
+      // surface in the channel. It cannot strip its own admin rights (that
+      // needs can_promote_members, which it does not hold), but it CAN leave.
+      rep.notes.push("channel — linked-discussion-group policy: bot must have zero publishing surface here");
+      const isMember = before && ["administrator", "member", "restricted"].includes(before.status);
+      if (isMember) {
+        const leave = await tg("leaveChat", { chat_id: cand.id });
+        if (leave.ok) {
+          rep.actions.push("leaveChat → bot left the channel (channel posts can never mirror into the group again; re-add manually ONLY if the owner ever wants broadcasts back)");
+          const after = await tg<MemberInfo>("getChatMember", { chat_id: cand.id, user_id: botId });
+          rep.bot_status_after = after.ok ? after.result?.status : "unknown";
+          // Proof: with the bot out of the channel, sending MUST fail.
+          const proof = await probeSend(cand.id);
+          rep.proof_test = proof.ok ? "FAILED-COULD-POST(probe deleted)" : "blocked-as-expected";
+          if (!proof.ok) rep.notes.push(`channel sendMessage rejected after leave: ${(proof.description ?? "").slice(0, 100)}`);
+        } else {
+          rep.notes.push(`leaveChat failed: ${(leave.description ?? "").slice(0, 120)} — owner must remove the bot from the channel admins manually (no probe sent — it would have posted)`);
+        }
+      } else {
+        rep.notes.push(`bot status "${before?.status}" in the channel — no publishing surface; proof probe runs`);
+        const proof = await probeSend(cand.id);
+        rep.proof_test = proof.ok ? "FAILED-COULD-POST(probe deleted)" : "blocked-as-expected";
+        if (!proof.ok) rep.notes.push(`channel sendMessage rejected: ${(proof.description ?? "").slice(0, 100)}`);
       }
       continue;
     }
