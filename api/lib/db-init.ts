@@ -1019,6 +1019,25 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         `);
         logger.info("[DB] v15 growth tables verified (referrals, emailDripLog)");
 
+        // ── Legacy promoCodes column backfill (live DB predates the schema) ──
+        // Root-caused from live logs: "Unknown column 'maxUsesPerUser' in
+        // 'field list'" — drizzle INSERTs carry the FULL column list from the
+        // schema object even when values omit them, so ANY promo insert
+        // (referral coupons AND admin promo-create) fails on the old table.
+        // Backfill the optional columns, guarded, idempotent.
+        if (!(await columnExists("promoCodes", "description"))) {
+          try { await conn.query("ALTER TABLE `promoCodes` ADD COLUMN `description` TEXT NULL AFTER `code`"); logger.info("[DB]   + promoCodes.description"); } catch (e) { logger.warn("[DB] promoCodes.description", { error: (e as Error).message }); }
+        }
+        if (!(await columnExists("promoCodes", "maxUsesPerUser"))) {
+          try { await conn.query("ALTER TABLE `promoCodes` ADD COLUMN `maxUsesPerUser` INT NULL DEFAULT 1 AFTER `maxUses`"); logger.info("[DB]   + promoCodes.maxUsesPerUser"); } catch (e) { logger.warn("[DB] promoCodes.maxUsesPerUser", { error: (e as Error).message }); }
+        }
+        if (!(await columnExists("promoCodes", "courseIds"))) {
+          try { await conn.query("ALTER TABLE `promoCodes` ADD COLUMN `courseIds` JSON NULL AFTER `usedCount`"); logger.info("[DB]   + promoCodes.courseIds"); } catch (e) { logger.warn("[DB] promoCodes.courseIds", { error: (e as Error).message }); }
+        }
+        if (!(await columnExists("promoCodes", "isValidForAllCourses"))) {
+          try { await conn.query("ALTER TABLE `promoCodes` ADD COLUMN `isValidForAllCourses` BOOLEAN NOT NULL DEFAULT TRUE AFTER `courseIds`"); logger.info("[DB]   + promoCodes.isValidForAllCourses"); } catch (e) { logger.warn("[DB] promoCodes.isValidForAllCourses", { error: (e as Error).message }); }
+        }
+
         // Default guest preview: the free ETAP course gets its FIRST published
         // lesson flagged isFree so visitors can watch-before-register. Only
         // fires when the instructor has NOT already picked a preview lesson
