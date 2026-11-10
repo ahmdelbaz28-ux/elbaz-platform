@@ -211,7 +211,8 @@ export const adminCoursesProcedures = {
         descriptionEn: input.descriptionEn ?? null,
         descriptionAr: input.descriptionAr ?? null,
         videoUrl: input.videoUrl?.trim() ? input.videoUrl.trim() : null,
-        durationMinutes: input.durationMinutes,
+        // 0 fallback — the legacy production table rejects a NULL duration.
+        durationMinutes: input.durationMinutes ?? 0,
         sortOrder: (maxSort ?? 0) + 1,
         isFree: input.isFree,
         isPublished: input.isPublished,
@@ -363,7 +364,9 @@ export const adminCoursesProcedures = {
             titleEn: item.title,
             titleAr: item.title, // verbatim YouTube title in both fields — never invented
             videoUrl: item.watchUrl,
-            durationMinutes: null,
+            // 0, NEVER null — the legacy production table rejects NULL here
+            // ("Column 'durationMinutes' cannot be null", 2026-11-10 incident).
+            durationMinutes: 0,
             sortOrder,
             isFree: false,
             isPublished: true,

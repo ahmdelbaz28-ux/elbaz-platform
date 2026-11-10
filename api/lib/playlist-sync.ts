@@ -364,7 +364,11 @@ export async function applyPlaylistSync(
         descriptionEn: null,
         descriptionAr: `حلقة من كورس ETAP على قناة AhmedEtap — المشاهدة داخل المنصة مع تتبع التقدم. العنوان كما هو على يوتيوب.`,
         videoUrl: buildYouTubeWatchUrl(item.videoId),
-        durationMinutes: null,
+        // 0, NEVER null — the legacy production table rejects NULL here
+        // ("Column 'durationMinutes' cannot be null", root cause of the
+        // 2026-11-10 freeze) regardless of what INFORMATION_SCHEMA reports.
+        // 0 renders as an empty duration in the UI (hidden by the falsy check).
+        durationMinutes: 0,
         sortOrder: item.sortOrder,
         isFree: item.isFree,
         isPublished: true,

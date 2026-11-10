@@ -1150,6 +1150,30 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
           } catch (e) {
             logger.warn("[DB] lessons legacy relax probe failed", { error: (e as Error).message });
           }
+          // ── Definitive structure + trigger proof (2026-11-10 mystery): the
+          //    driver reported "Column 'durationMinutes' cannot be null" while
+          //    INFORMATION_SCHEMA reported the column nullable — log the full
+          //    DDL and any DB-side triggers on lessons once per boot so the
+          //    discrepancy (hidden trigger, view, generated column, …) is
+          //    visible in the Space logs without DB credentials.
+          try {
+            const [ddlRows] = await conn.execute(`SHOW CREATE TABLE \`lessons\``);
+            const ddl = (ddlRows as unknown as { "Create Table"?: string }[])[0]?.["Create Table"] ?? "";
+            logger.info("[DB] lessons DDL", { ddl: ddl.replace(/\s+/g, " ").slice(0, 1400) });
+          } catch (e) {
+            logger.warn("[DB] lessons DDL probe failed", { error: (e as Error).message });
+          }
+          try {
+            const [triggers] = await conn.execute(
+              `SELECT TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND EVENT_OBJECT_TABLE = 'lessons'`
+            );
+            logger.info("[DB] lessons triggers", {
+              count: (triggers as unknown as unknown[]).length,
+              names: (triggers as unknown as { TRIGGER_NAME: string }[]).map((t) => t.TRIGGER_NAME).join(",") || "(none)",
+            });
+          } catch (e) {
+            logger.warn("[DB] lessons triggers probe failed", { error: (e as Error).message });
+          }
         }
 
         // Default guest preview: the free ETAP course gets its FIRST published

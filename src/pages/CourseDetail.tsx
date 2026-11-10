@@ -1796,7 +1796,8 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                         </span>
                       )}
                       <span className="shrink-0 text-xs text-[#64748b]">
-                        {lesson.durationMinutes == null ? "" : `${lesson.durationMinutes}m`}
+                        {/* 0 = unknown duration (playlist-synced lessons) — hidden like null */}
+                        {lesson.durationMinutes ? `${lesson.durationMinutes}m` : ""}
                       </span>
                     </button>
                   );
