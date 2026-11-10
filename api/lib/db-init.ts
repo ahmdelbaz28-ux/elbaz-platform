@@ -1039,6 +1039,27 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         if (!(await columnExists("promoCodes", "validUntil"))) {
           try { await conn.query("ALTER TABLE `promoCodes` ADD COLUMN `validUntil` TIMESTAMP NULL AFTER `validFrom`"); logger.info("[DB]   + promoCodes.validUntil"); } catch (e) { logger.warn("[DB] promoCodes.validUntil", { error: (e as Error).message }); }
         }
+        if (!(await columnExists("promoCodes", "usedCount"))) {
+          try { await conn.query("ALTER TABLE `promoCodes` ADD COLUMN `usedCount` INT NOT NULL DEFAULT 0 AFTER `maxUses`"); logger.info("[DB]   + promoCodes.usedCount"); } catch (e) { logger.warn("[DB] promoCodes.usedCount", { error: (e as Error).message }); }
+        }
+        if (!(await columnExists("promoCodes", "maxUses"))) {
+          try { await conn.query("ALTER TABLE `promoCodes` ADD COLUMN `maxUses` INT NULL AFTER `discountValue`"); logger.info("[DB]   + promoCodes.maxUses"); } catch (e) { logger.warn("[DB] promoCodes.maxUses", { error: (e as Error).message }); }
+        }
+        if (!(await columnExists("promoCodes", "createdBy"))) {
+          try { await conn.query("ALTER TABLE `promoCodes` ADD COLUMN `createdBy` BIGINT UNSIGNED NULL AFTER `isActive`"); logger.info("[DB]   + promoCodes.createdBy"); } catch (e) { logger.warn("[DB] promoCodes.createdBy", { error: (e as Error).message }); }
+        }
+        if (!(await columnExists("promoCodes", "createdAt"))) {
+          try { await conn.query("ALTER TABLE `promoCodes` ADD COLUMN `createdAt` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP AFTER `createdBy`"); logger.info("[DB]   + promoCodes.createdAt"); } catch (e) { logger.warn("[DB] promoCodes.createdAt", { error: (e as Error).message }); }
+        }
+        if (!(await columnExists("promoCodes", "updatedAt"))) {
+          try { await conn.query("ALTER TABLE `promoCodes` ADD COLUMN `updatedAt` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP AFTER `createdAt`"); logger.info("[DB]   + promoCodes.updatedAt"); } catch (e) { logger.warn("[DB] promoCodes.updatedAt", { error: (e as Error).message }); }
+        }
+        if (!(await columnExists("promoCodes", "discountType"))) {
+          try { await conn.query("ALTER TABLE `promoCodes` ADD COLUMN `discountType` VARCHAR(20) NOT NULL DEFAULT 'percentage' AFTER `description`"); logger.info("[DB]   + promoCodes.discountType"); } catch (e) { logger.warn("[DB] promoCodes.discountType", { error: (e as Error).message }); }
+        }
+        if (!(await columnExists("promoCodes", "discountValue"))) {
+          try { await conn.query("ALTER TABLE `promoCodes` ADD COLUMN `discountValue` DECIMAL(5,2) NOT NULL DEFAULT 0 AFTER `discountType`"); logger.info("[DB]   + promoCodes.discountValue"); } catch (e) { logger.warn("[DB] promoCodes.discountValue", { error: (e as Error).message }); }
+        }
 
         // Default guest preview: the free ETAP course gets its FIRST published
         // lesson flagged isFree so visitors can watch-before-register. Only
