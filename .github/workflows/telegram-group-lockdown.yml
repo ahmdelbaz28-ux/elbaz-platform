@@ -1,0 +1,65 @@
+# ═════════════════════════════════════════════════════════════════════════════
+# Telegram group lockdown — OWNER DIRECTIVE (2026-11-11)
+# ═════════════════════════════════════════════════════════════════════════════
+# "The chatbot must NEVER post anything inside the Telegram group — delete
+#  what it posted, lock its rights, verify."
+#
+# Manual dispatch ONLY (never scheduled). The job:
+#   • discovers the owner's group (update-buffer peek + TELEGRAM_* candidates
+#     + channel linked-chat expansion),
+#   • strips every admin right except can_invite_users (join-request
+#     auto-approval gate stays alive, posting dies),
+#   • sweeps recent message ids deleting ONLY the bot's own posts (safe by
+#     construction — runs only after can_delete_messages is verified false),
+#   • proves the block with a sendMessage probe that must fail,
+#   • prints a JSON report (no token, no message texts, no member identities),
+#   • re-arms the poller chain at the end (always()).
+#
+# The token never leaves the runner and is never printed.
+# ═════════════════════════════════════════════════════════════════════════════
+name: Telegram group lockdown
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write # re-arm the poller chain when done
+
+concurrency:
+  group: telegram-lockdown
+  cancel-in-progress: false
+
+jobs:
+  lockdown:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Lockdown + report
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+        run: npx tsx scripts/telegram-group-lockdown.ts
+
+      # The lockdown's update-peek fights the poller by design (409 dance) —
+      # hand the token back to the production chain immediately afterwards.
+      - name: Re-arm poller chain
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X POST "repos/${{ github.repository }}/actions/workflows/telegram-bot-worker.yml/dispatches" \
+            -f ref="main" && echo "→ poller chain re-armed" || echo "⚠️ re-arm failed (cron fallback covers)"

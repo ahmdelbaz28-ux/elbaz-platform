@@ -1,0 +1,79 @@
+# ═════════════════════════════════════════════════════════════════════════════
+# Telegram worker watchdog — root-cure for the 2026-11-10 zombie outage
+# ═════════════════════════════════════════════════════════════════════════════
+# INCIDENT: run #1496 hung "in_progress" on a lost runner for 24h. Because the
+# worker's concurrency group holds ONE running run, every cron trigger during
+# the zombie's lifetime was DROPPED (scheduled events never queue behind a
+# running run) and the re-arm chain died with it → the bot went deaf (no DMs,
+# no join approvals) with zero external signal.
+#
+# This watchdog runs every 30 min and does exactly two things:
+#   1. ZOMBIE   — a worker run in_progress for > 20 min (healthy shifts die at
+#                 ~12–16 min) is cancelled, then a fresh run is dispatched.
+#   2. STALL    — no in-progress run AND the newest run is older than 10 min
+#                 (the */5 cron + re-arm chain guarantee a run every ≤13 min)
+#                 → a fresh run is dispatched.
+# The chain then re-perpetuates itself exactly as designed.
+# ═════════════════════════════════════════════════════════════════════════════
+name: Telegram worker watchdog
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write # cancel zombies + dispatch fresh shifts
+
+concurrency:
+  group: telegram-worker-watchdog
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Zombie / stall recovery
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          REPO="${{ github.repository }}"
+          WF="telegram-bot-worker.yml"
+
+          # Newest run of the worker (any state).
+          LATEST=$(gh api "repos/$REPO/actions/workflows/$WF/runs?per_page=1" \
+            --jq '.workflow_runs[0] | {id, status, created_at}')
+          RUN_ID=$(echo "$LATEST" | jq -r '.id // empty')
+          STATUS=$(echo "$LATEST" | jq -r '.status // "none"')
+          CREATED=$(echo "$LATEST" | jq -r '.created_at // empty')
+          NOW=$(date -u +%s)
+          AGE_MIN=$(( (NOW - $(date -u -d "$CREATED" +%s)) / 60 ))
+
+          echo "latest worker run: id=$RUN_ID status=$STATUS age=${AGE_MIN}min"
+
+          dispatch () {
+            gh api -X POST "repos/$REPO/actions/workflows/$WF/dispatches" -f ref="main" \
+              && echo "→ fresh worker shift dispatched" \
+              || echo "⚠️ dispatch failed (cron fallback covers)"
+          }
+
+          if [ "$STATUS" = "in_progress" ] || [ "$STATUS" = "queued" ] || [ "$STATUS" = "pending" ]; then
+            if [ "$STATUS" = "in_progress" ] && [ "$AGE_MIN" -gt 20 ]; then
+              echo "🧟 zombie detected (in_progress ${AGE_MIN}min > 20min) — cancelling"
+              gh api -X POST "repos/$REPO/actions/runs/$RUN_ID/cancel" || true
+              sleep 5
+              dispatch
+            else
+              echo "✅ worker chain healthy (run $STATUS, ${AGE_MIN}min old)"
+            fi
+          else
+            if [ "$AGE_MIN" -gt 10 ]; then
+              echo "🛑 stall detected (no active run, latest is ${AGE_MIN}min old) — reviving"
+              dispatch
+            else
+              echo "✅ worker chain healthy (last run finished ${AGE_MIN}min ago, next shift imminent)"
+            fi
+          fi
