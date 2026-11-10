@@ -575,7 +575,7 @@ const MessageBubble = memo(function MessageBubble({ msg, lang, copied, onCopy, o
         </div>
       ) : (
         <img
-          src="/logo-circle.png"
+          src="/logo-circle.png?v=2"
           alt=""
           aria-hidden="true"
           draggable={false}
@@ -1638,7 +1638,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                       <div className="relative">
                         {/* Site logo as the bot identity (owner request — replaces the lightning icon) */}
                         <img
-                          src="/logo-circle.png"
+                          src="/logo-circle.png?v=2"
                           alt=""
                           aria-hidden="true"
                           draggable={false}
@@ -1723,7 +1723,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                   {isLoading && streamingContent && (
                     <div className="flex gap-2.5">
                       <img
-                        src="/logo-circle.png"
+                        src="/logo-circle.png?v=2"
                         alt=""
                         aria-hidden="true"
                         draggable={false}
@@ -1745,7 +1745,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                   {typingVisible && (
                     <div className={`flex gap-2.5 ${typingExiting ? "animate-typing-exit" : "animate-typing-enter"}`}>
                       <img
-                        src="/logo-circle.png"
+                        src="/logo-circle.png?v=2"
                         alt=""
                         aria-hidden="true"
                         draggable={false}

@@ -96,7 +96,7 @@ export default function BackgroundLogoWatermark() {
         {/* The circular logo itself — no backing, no border, no additions.
             The asset is pre-cropped edge-to-edge to the logo's own circle. */}
         <img
-          src="/logo-circle.png"
+          src="/logo-circle.png?v=2"
           alt=""
           draggable={false}
           loading="lazy"

@@ -8,7 +8,7 @@ import { useState } from 'react';
 /*  Design intent (owner directive — applies to EVERY logo on the site):        */
 /*    • Only the logo's own circular outline — NO white rectangle, NO badge     */
 /*      backing, NO border, NO halo or rings.                                   */
-/*    • The asset (/logo-circle.png) is pre-cropped edge-to-edge to the logo's  */
+/*    • The asset (/logo-circle.png?v=2) is pre-cropped edge-to-edge to the logo's  */
 /*      own circle with a transparent background, so its edge IS the logo edge. */
 /*    • Size map keeps proportions harmonious on mobile and desktop.            */
 /*    • Subtle hover glow on the image only (no added shapes).                  */
@@ -60,7 +60,7 @@ export default function Logo3D({
       onMouseLeave={() => setIsHovered(false)}
     >
       <img
-        src="/logo-circle.png"
+        src="/logo-circle.png?v=2"
         alt=""
         draggable={false}
         loading="eager"

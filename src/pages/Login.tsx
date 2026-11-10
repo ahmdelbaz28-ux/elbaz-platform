@@ -286,14 +286,14 @@ export default function Login() {
       <div className="fixed inset-0 z-0" aria-hidden="true">
         <div
           className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: "url('/videos/login-bg-poster.jpg')" }}
+          style={{ backgroundImage: "url('/videos/login-bg-poster.jpg?v=2')" }}
         />
         {bgVideoAllowed && !bgVideoFailed && (
           <video
             ref={bgVideoRef}
             className={`login-bg-video absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ${bgVideoReady ? "opacity-100" : "opacity-0"}`}
-            src="/videos/login-bg.mp4"
-            poster="/videos/login-bg-poster.jpg"
+            src="/videos/login-bg.mp4?v=2"
+            poster="/videos/login-bg-poster.jpg?v=2"
             autoPlay
             loop
             muted
