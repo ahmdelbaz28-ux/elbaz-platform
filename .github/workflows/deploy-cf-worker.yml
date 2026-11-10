@@ -54,6 +54,7 @@ jobs:
           WORKER_FILE: infra/security-audit/worker-v7-hardened.js
           EDGE_ORIGIN_SECRET: ${{ secrets.EDGE_ORIGIN_SECRET }}
           TG_RELAY_SECRET: ${{ secrets.TG_RELAY_SECRET }}
+          SYNC_INGEST_SECRET: ${{ secrets.SYNC_INGEST_SECRET }}
         run: |
           set -euo pipefail
           echo "=== Deploying Worker '${WORKER_NAME}' to account ${CLOUDFLARE_ACCOUNT_ID} ==="
@@ -106,6 +107,20 @@ jobs:
           )
           print("  → TG_RELAY_SECRET binding present (value hidden)")
 
+          # Worker cron sync push (2026-11-10): the scheduled handler posts the
+          # playlist to the origin's HMAC-gated ingest — the DETERMINISTIC
+          # mirror driver (GitHub Actions' scheduler skips/delays runs; the
+          # origin's YouTube egress is blocked). Optional on purpose: missing
+          # secret = dormant push, the deploy itself must not fail.
+          ingest_secret = os.environ.get('SYNC_INGEST_SECRET', '').strip()
+          if ingest_secret and len(ingest_secret) >= 16:
+              metadata['bindings'].append(
+                  {"name": "SYNC_INGEST_SECRET", "type": "secret_text", "text": ingest_secret}
+              )
+              print("  → SYNC_INGEST_SECRET binding present (worker cron sync push active)")
+          else:
+              print("  ⚠️ SYNC_INGEST_SECRET missing — worker cron sync push stays dormant")
+
           files = {
               'metadata': (None, json.dumps(metadata), 'application/json'),
               'worker.js': ('worker.js', worker_code, 'application/javascript+module'),
@@ -130,6 +145,35 @@ jobs:
               print(json.dumps(data, indent=2))
               exit(1)
           PYEOF
+
+      - name: Register cron schedule for the sync push
+        if: success()
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WORKER_NAME: ahmedelbaz
+          SYNC_INGEST_SECRET: ${{ secrets.SYNC_INGEST_SECRET }}
+        run: |
+          set -euo pipefail
+          # Off-boundary minutes (13,28,43,58) — offset from the GH relay's
+          # 7,22,37,52 so the two drivers never stack on the same minute.
+          if [ -z "${SYNC_INGEST_SECRET:-}" ]; then
+            echo "  ⚠️ SYNC_INGEST_SECRET unset — cron schedule not registered (push stays dormant)"
+            exit 0
+          fi
+          REG() {
+            curl -sS -X PUT \
+              "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${WORKER_NAME}/schedules" \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "$1"
+          }
+          RES=$(REG '[{"cron":"13,28,43,58 * * * *"}]')
+          if ! echo "$RES" | python3 -c "import json,sys; sys.exit(0 if json.load(sys.stdin).get('success') else 1)" 2>/dev/null; then
+            echo "  array form rejected — retrying with wrapped schedules form"
+            RES=$(REG '{"schedules":[{"cron":"13,28,43,58 * * * *"}]}')
+          fi
+          echo "$RES" | python3 -c "import json,sys; d=json.load(sys.stdin); print('  ✅ cron schedules registered:', json.dumps(d.get('result', {}))[:200]) if d.get('success') else (print('  ❌ schedules registration failed:', json.dumps(d)[:300]), sys.exit(1))"
 
       - name: Check custom domain -> worker route (warning-only)
         env:

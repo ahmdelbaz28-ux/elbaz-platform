@@ -130,7 +130,16 @@ export const shieldMiddleware = createMiddleware(async (c, next) => {
     // /api/webhooks/paymob is the dashboard-registered legacy alias of the
     // same handler (mobile-wallet classic flow).
     const isPaymobWebhook = c.req.path.startsWith("/api/paymob") || c.req.path.startsWith("/api/webhooks/paymob");
-    if (!isEmbedFrame && !isInternal && !isPaymobWebhook) {
+    // YouTube playlist ingest (/api/yt-sync/*): pushes from the GH Actions
+    // relay AND the worker cron arrive on the raw hf.space host — exactly the
+    // host this gate blocks (measured 2026-11-10: shield-404 for the same
+    // payload that a different egress path delivered). The route is
+    // HMAC-verified fail-closed INSIDE its handler (x-sync-signature over the
+    // raw body, timing-safe compare) — the host gate adds nothing there.
+    // Exempt it like the Paymob webhook above so the playlist mirror never
+    // depends on which egress path a relay happens to use.
+    const isYtSyncIngest = c.req.path.startsWith("/api/yt-sync/");
+    if (!isEmbedFrame && !isInternal && !isPaymobWebhook && !isYtSyncIngest) {
       const xfHost = (c.req.header("x-forwarded-host") ?? "").split(",")[0].trim().toLowerCase();
       const effective = xfHost || host0;
       // EXPLICIT allowlist — deliberately NOT built from CORS_ORIGINS: measured

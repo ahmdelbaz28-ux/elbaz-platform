@@ -948,6 +948,62 @@ async function handleRequest(request, _env, ctx) {
   }
 }
 
+// ─── Scheduled playlist sync push (worker cron → origin ingest) ──────────────
+// DETERMINISTIC driver for the course-mirror (2026-11-10 incident): GitHub
+// Actions' scheduler skips/delays runs (4 runs in 2 days on a */15 schedule)
+// and the origin cannot fetch YouTube at all (HF datacenter egress blocked —
+// 667+ consecutive failed watcher ticks). This worker has clean YouTube
+// egress and its cron runs INSIDE Cloudflare — no Access wall applies to
+// self-invoked scheduled handlers. Every 15 min it fetches the playlist
+// VERBATIM and pushes (videoId, title) rows to the origin's HMAC-gated
+// ingest endpoint, which feeds the SAME applyPlaylistSync engine as the GH
+// relay: verbatim titles, first-video cover, capped notifications.
+//
+// Dormant when SYNC_INGEST_SECRET is absent/short (fail-closed). Zero new
+// HTTP routes: the scheduled handler is internal-only and posts to ONE fixed
+// origin URL with ONE derived HMAC header — this is never an open proxy.
+const YT_SYNC_PLAYLIST_ID = 'PLeeb5_Qjhcgc';
+const YT_SYNC_INGEST_URL = 'https://ahmdelbaz28-ahmdrtap.hf.space/api/yt-sync/ingest';
+const YT_SYNC_UNAVAILABLE_TITLES = [
+  'private video', 'deleted video', 'video unavailable',
+  'فيديو خاص', 'فيديو محذوف', 'الفيديو غير متاح', 'هذا الفيديو غير متاح',
+];
+
+async function ytSyncPushToOrigin(env) {
+  const secret = (env && env.SYNC_INGEST_SECRET) || '';
+  if (typeof secret !== 'string' || secret.length < 16) {
+    return { skipped: 'SYNC_INGEST_SECRET not configured — sync push dormant' };
+  }
+  const { items } = await ytFetchPlaylistUpstream(YT_SYNC_PLAYLIST_ID);
+  const videos = items.filter((v) => {
+    if (!YT_VIDEO_ID_RE.test(v.videoId) || !v.title) return false;
+    const norm = v.title.trim().toLowerCase().replace(/[[\]()]/g, '').replace(/\s+/g, ' ');
+    return !YT_SYNC_UNAVAILABLE_TITLES.includes(norm);
+  });
+  if (videos.length === 0) {
+    console.log('[YtSyncPush] playlist empty or throttled — nothing to push');
+    return { pushed: false, reason: 'no videos parsed' };
+  }
+  const body = JSON.stringify({
+    videos: videos.map((v) => ({ videoId: v.videoId, title: v.title })),
+    source: 'cf-worker-cron',
+  });
+  // HMAC-SHA256 hex over the RAW body — must match yt-sync-ingest.ts.
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(body));
+  const signature = [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  const res = await fetch(YT_SYNC_INGEST_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-sync-signature': signature },
+    body,
+    signal: AbortSignal.timeout(20000),
+  });
+  const text = await res.text().catch(() => '');
+  console.log(`[YtSyncPush] ingest ${res.status}: ${text.slice(0, 400)}`);
+  return { pushed: res.ok, status: res.status };
+}
+
 // ─── Export ──────────────────────────────────────────────────────────────────
 
 export default {
@@ -960,6 +1016,18 @@ export default {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
       });
+    }
+  },
+  // Cron trigger (registered by deploy-cf-worker.yml via the schedules API):
+  // fetch the YouTube playlist on Cloudflare's clean egress and push it to
+  // the origin's HMAC-gated ingest. Never throws — a failed tick is logged
+  // and the next scheduled run retries.
+  async scheduled(controller, env, _ctx) {
+    try {
+      const result = await ytSyncPushToOrigin(env);
+      console.log('[YtSyncPush] scheduled tick done:', JSON.stringify(result));
+    } catch (err) {
+      console.error('[YtSyncPush] scheduled tick failed:', err);
     }
   },
 };
