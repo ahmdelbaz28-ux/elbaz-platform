@@ -73,14 +73,14 @@ jobs:
         run: |
           set -euo pipefail
           TAG="db-backup-$(date -u +%Y%m%d)"
-          gh release view "$TAG" >/dev/null 2>&1 && gh release delete "$TAG" --yes --cleanup-tag || true
-          gh release create "$TAG" "${{ env.dump_file }}" \
-            --title "DB backup $(date -u +%Y-%m-%d %H:%M UTC)" \
+          gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 && gh release delete "$TAG" -R "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          gh release create "$TAG" "${{ env.dump_file }}" -R "$GITHUB_REPOSITORY" \
+            --title "DB backup $(date -u '+%Y-%m-%d %H:%M') UTC" \
             --notes "Automated daily backup (auto-pruned after 7). Restore: see workflow header."
-          gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --paginate -q '.[].tag_name' \
-            | grep '^db-backup-' | sort | head -n -7 | while read -r OLD; do
-              gh release delete "$OLD" --yes --cleanup-tag || true
-            done
+          TAGS=$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --paginate -q '.[].tag_name' | grep '^db-backup-' || true)
+          echo "$TAGS" | sort | head -n -7 | while read -r OLD; do
+            [ -n "$OLD" ] && gh release delete "$OLD" -R "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          done
 
       - name: Telegram alert on failure
         if: failure()
