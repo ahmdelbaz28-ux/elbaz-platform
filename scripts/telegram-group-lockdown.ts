@@ -377,6 +377,38 @@ async function probeSend(chatId: number | string): Promise<{ ok: boolean; descri
   return { ok: false, description: res.description };
 }
 
+/**
+ * NUCLEAR FALLBACK (owner directive 2026-11-11 v2 — "ممنوع مهما حصل يكتب في
+ * جروب التليجرام أبداً"): when silence cannot be guaranteed by rights alone
+ * (basic groups reject API mutes; a demote can be re-overridden; verification
+ * came back incomplete), the bot removes itself from the group. Not being a
+ * member is the ONE state Telegram itself enforces absolutely — "chat not
+ * found" on every send, forever, with no rights left to re-grant.
+ */
+async function leaveAsLastResort(
+  rep: ChatReport,
+  chatId: number | string,
+  botId: number,
+  why: string,
+): Promise<void> {
+  const leave = await tg("leaveChat", { chat_id: chatId });
+  if (leave.ok) {
+    rep.actions.push(`leaveChat — ${why} (membership removal is the only state Telegram enforces absolutely)`);
+    const after = await tg<MemberInfo>("getChatMember", { chat_id: chatId, user_id: botId });
+    rep.bot_status_after = after.ok ? after.result?.status : `error: ${(after.description ?? "?").slice(0, 60)}`;
+    const proof = await probeSend(chatId);
+    rep.proof_test = proof.ok ? "FAILED-COULD-POST(probe deleted)" : "blocked-as-expected";
+    if (!proof.ok) {
+      groupBlockedProof += 1;
+      rep.notes.push(`post-leave proof: sendMessage rejected — ${(proof.description ?? "").slice(0, 100)}`);
+    } else {
+      rep.notes.push("post-leave proof: probe WENT THROUGH despite leave — investigate manually");
+    }
+  } else {
+    rep.notes.push(`leaveChat failed: ${(leave.description ?? "").slice(0, 120)} — owner must remove the bot from the group manually`);
+  }
+}
+
 async function sweepOwnMessages(
   rep: ChatReport,
   chatId: number | string,
@@ -568,7 +600,8 @@ async function main(): Promise<void> {
           await sweepOwnMessages(rep, cand.id, cand.anchor);
         }
       } else {
-        rep.notes.push(`restrictChatMember failed: ${(mute.description ?? "").slice(0, 120)} — basic groups reject API mutes; owner must mute the bot manually in the group`);
+        rep.notes.push(`restrictChatMember failed: ${(mute.description ?? "").slice(0, 120)} — applying the nuclear fallback (a basic-group member bot can still post; only membership removal guarantees silence)`);
+        await leaveAsLastResort(rep, cand.id, botId, "mute impossible here — leaving is the only guaranteed silence");
       }
     } else {
       rep.notes.push(`bot status "${status}" — cannot post anyway; nothing to harden`);
@@ -611,7 +644,8 @@ async function main(): Promise<void> {
           groupBlockedProof += 1;
           rep.notes.push(`re-proof OK — sending now rejected: ${(reproof.description ?? "").slice(0, 100)}`);
         } else {
-          rep.notes.push("bot can STILL post after demote+mute — owner must remove the bot from the group or switch it to admins-only messaging");
+          rep.notes.push("bot can STILL post after demote+mute — applying the nuclear fallback (leave)");
+          await leaveAsLastResort(rep, cand.id, botId, "demote+mute were not effective — leaving guarantees silence no matter what");
         }
       } else {
         rep.notes.push(`demote failed: ${(demote.description ?? "").slice(0, 100)} — owner must adjust the bot's admin rights manually`);

@@ -105,6 +105,24 @@ export function detectLanguage(text: string): "ar" | "en" {
 }
 
 /**
+ * OWNER DIRECTIVE (2026-11-11, "ممنوع مهما حصل يكتب في جروب التليجرام أبداً"):
+ * the bot must NEVER post in the Telegram group — or ANY group/supergroup/
+ * channel — no matter what. Telegram hands every negative chat id to a
+ * group-like chat (private chats always carry positive ids), so the send
+ * path refuses anything that is not PROVABLY private BEFORE the API call is
+ * even constructed. No bug, no bad env value and no future refactor can turn
+ * the bot into a group publisher. NaN/0 from a bad env cast count as
+ * forbidden too — only provably-positive targets pass.
+ *
+ * The join-request approval gate (approveChatJoinRequest) is an ACTION, not
+ * a post — it is deliberately unaffected and stays available while the bot
+ * holds the invite-only admin right the group lockdown keeps.
+ */
+export function isForbiddenGroupTarget(chatId: number): boolean {
+  return !Number.isFinite(chatId) || chatId <= 0;
+}
+
+/**
  * Language for a message turn. Arabic-first platform: an Arabic text wins,
  * a non-command Latin text is English, and anything undetectable (bare
  * /start, emoji-only) falls back to the user's Telegram language_code,
@@ -347,6 +365,15 @@ async function sendChatMessage(
   text: string,
   opts: { disablePreview?: boolean; keyboard?: Array<Array<{ text: string; url: string }>> } = {},
 ): Promise<void> {
+  // OWNER DIRECTIVE (2026-11-11) — hard stop BEFORE the API layer: the bot
+  // never sends a message into a group/supergroup/channel. This guard sits on
+  // the single funnel every bot message goes through (DM replies AND the
+  // boot ping), so TELEGRAM_ADMIN_CHAT_ID pointing at a group id can no
+  // longer make the worker greet the group on every boot.
+  if (isForbiddenGroupTarget(chatId)) {
+    logger.warn("[TelegramBot] group write BLOCKED by owner directive — no API call made", { chatId: String(chatId) });
+    return;
+  }
   try {
     await deps.api.call("sendMessage", {
       chat_id: chatId,
@@ -587,6 +614,9 @@ async function supervisorBody(deps: TelegramBotDeps): Promise<void> {
 
     const adminChat = process.env.TELEGRAM_ADMIN_CHAT_ID;
     if (adminChat) {
+      // sendChatMessage itself refuses group-like targets (owner directive:
+      // the bot never posts in the group) — a group-id TELEGRAM_ADMIN_CHAT_ID
+      // lands here and is blocked at the send funnel with zero API calls.
       await sendChatMessage(deps, Number(adminChat), "🟢 البوت التليجرام شغال دلوقتي بعقل المساعد الذكي — جرب ابعتله /start", { disablePreview: true });
     }
 

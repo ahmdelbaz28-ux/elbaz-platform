@@ -8,6 +8,7 @@ import {
   handleJoinRequest,
   handlePrivateMessage,
   handleTelegramUpdate,
+  isForbiddenGroupTarget,
   resetTelegramBotStateForTests,
   startTelegramBot,
   stopTelegramBot,
@@ -304,6 +305,64 @@ describe("handleTelegramUpdate routing", () => {
     const d = deps();
     const handled = await handleTelegramUpdate(d, { update_id: 3 } as TgUpdate);
     expect(handled).toBe(false);
+  });
+});
+
+// ─── OWNER DIRECTIVE 2026-11-11 v2 — group write is impossible, no matter what ─
+// Three layers: routing ignores group updates (pinned above), the send funnel
+// refuses non-private targets (below), and the lockdown job strips/leaves on
+// the Telegram side. This describe pins the middle layer at code level.
+
+describe("isForbiddenGroupTarget — owner directive: the bot NEVER writes in groups", () => {
+  it("every group-like id (negative) is forbidden", () => {
+    expect(isForbiddenGroupTarget(-1004493259565)).toBe(true); // the owner's group
+    expect(isForbiddenGroupTarget(-100123)).toBe(true);
+    expect(isForbiddenGroupTarget(-1)).toBe(true);
+  });
+  it("zero and non-finite targets count as forbidden too — only provably-private pass", () => {
+    expect(isForbiddenGroupTarget(0)).toBe(true);
+    expect(isForbiddenGroupTarget(Number.NaN)).toBe(true); // Number("@engahmedetap")
+    expect(isForbiddenGroupTarget(Number.POSITIVE_INFINITY)).toBe(true);
+  });
+  it("private chat ids (positive) are allowed — DM support unaffected", () => {
+    expect(isForbiddenGroupTarget(555)).toBe(false);
+    expect(isForbiddenGroupTarget(1)).toBe(false);
+  });
+
+  it("boot ping to the REAL group id (-1004493259565) is blocked with ZERO api calls", async () => {
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "test-token");
+    vi.stubEnv("TELEGRAM_ADMIN_CHAT_ID", "-1004493259565");
+    setTelegramWorkerIoForTests(async () => {});
+    const calls: Array<{ method: string; payload: Record<string, unknown> }> = [];
+    const api: TelegramApi = {
+      async call(method, payload) {
+        calls.push({ method, payload: payload ?? {} });
+        if (method === "getMe") return { ok: true, result: { id: 9086631414, username: "Ahmedetap_bot" } };
+        if (method === "getUpdates") {
+          stopTelegramBot();
+          return { ok: true, result: [] };
+        }
+        return { ok: true, result: [] };
+      },
+    };
+    beginTelegramSupervision({ api, brain: fakeBrain("x"), dmMode: "instant", now: () => Date.now() });
+    const untilPingSettled = () => getTelegramBotStatus().status === "stopped";
+    await new Promise<void>((resolve, reject) => {
+      const start = Date.now();
+      const tick = () => {
+        if (untilPingSettled()) return resolve();
+        if (Date.now() - start > 5_000) return reject(new Error("timeout"));
+        setTimeout(tick, 5);
+      };
+      tick();
+    });
+    // getMe + getUpdates happened, but NOT a single sendMessage — the group
+    // can never receive the boot greeting.
+    const methods = calls.map((c) => c.method);
+    expect(methods).toContain("getMe");
+    expect(methods).not.toContain("sendMessage");
+    expect(calls.some((c) => c.payload.chat_id === -1004493259565)).toBe(false);
+    vi.unstubAllEnvs();
   });
 });
 
