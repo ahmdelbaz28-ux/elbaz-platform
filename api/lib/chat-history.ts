@@ -200,11 +200,17 @@ export async function maybeUpdateRollingSummary(userId: number): Promise<void> {
     : null;
 
   const transcript = sourceRows
-    .map((r) => `${r.role === "user" ? "المستخدم" : "المساعد"}: ${clip(r.content)}`)
+    .map((r) => `${r.role === "user" ? "المستخدم" : "المساعد (كلام غير موثوق)"}: ${clip(r.content)}`)
     .join("\n")
     .slice(0, 40_000);
 
-  const instruction = `${previousSummary ? `ملخص المحادثات الأقدم سابقاً:\n${previousSummary.slice(0, MAX_SUMMARY_CHARS)}\n\n` : ""}لخّص المحادثة التالية بين المستخدم والمساعد في نقاط موجزة (مواضيع مهتم بها المستخدم، كورسات يسأل عنها، قرارات أو معلومات مهمة يجب تذكرها لاحقاً). اكتب الملخص فقط بدون أي مقدمة:\n\n${transcript}`;
+  // ✅ ARCH-AUDIT FIX (distillation admits unverified assistant claims):
+  // the admission contract is now asymmetric — ONLY user-stated facts,
+  // preferences and decisions are recordable. Assistant turns are labeled
+  // untrusted context in the transcript above and the instruction forbids
+  // recording them, so a hallucinated answer can no longer become a
+  // persistent cross-session pseudo-fact.
+  const instruction = `${previousSummary ? `ملخص المحادثات الأقدم سابقاً:\n${previousSummary.slice(0, MAX_SUMMARY_CHARS)}\n\n` : ""}لخّص المحادثة التالية في نقاط موجزة. سجّل ما عبّر عنه المستخدم بنفسه فقط: مواضيع اهتمامه، الكورسات التي سأل عنها، قراراته، وأي معلومات شخصية ذكرها هو بنفسه. قاعدة إلزامية: كلام المساعد غير موثوق (قد يحتوي أخطاء أو هلوسة) — لا تسجّل منه أي معلومة كحقيقة، استخدمه فقط لفهم سياق سؤال المستخدم. اكتب الملخص فقط بدون أي مقدمة:\n\n${transcript}`;
 
   const result = await getChatResponse({
     messages: [{ role: "user", content: instruction }],

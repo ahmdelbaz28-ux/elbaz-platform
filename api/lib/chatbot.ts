@@ -659,7 +659,11 @@ export async function tryAllModelsAsLastResort(
     // Chat-lane gate holds even at the last resort — a garbled specialist
     // answer is WORSE than admitting busy (owner contract).
     if (!isChatLaneModel(model.id)) continue;
-    modelFailCount[model.id] = 0;
+    // ✅ ARCH-AUDIT FIX (breaker reset defeats the circuit breakers): the old
+    // line zeroed every 3-strike fail counter here, so a known-dead model was
+    // re-dialed on EVERY last-resort walk and the breakers never armed. The
+    // breaker state is now honored even at last resort; only a SUCCESSFUL
+    // answer (inside tryModel's own accounting) clears strikes.
     const result = await tryModel(model.id, messages, systemPrompt, 10000, tuning, webSearch);
     if (result) return result;
   }

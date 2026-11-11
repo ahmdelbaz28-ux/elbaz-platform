@@ -9,7 +9,8 @@ import { hashPassword, verifyPassword } from "./lib/password";
 import { createToken } from "./lib/jwt";
 import { initiatePasswordReset, completePasswordReset, initiateEmailVerification, completeEmailVerification } from "./lib/email";
 // ✅ SECURITY FIX: Import auth cookie helpers for httpOnly cookie auth
-import { serializeAuthCookie, serializeAuthFlagCookie, clearAuthCookies } from "./lib/cookies";
+import { serializeAuthCookie, serializeAuthFlagCookie, clearAuthCookies, AUTH_COOKIE_NAME } from "./lib/cookies";
+import { parse as parseCookieHeader } from "cookie";
 import { logger, maskEmail } from "./lib/logger";
 import { getClientIpFromHeaders } from "./lib/client-ip";
 // ✅ SECURITY FIX (pre-launch audit run-2): instant auth-cache eviction on
@@ -29,6 +30,21 @@ import { maybeSendWelcomeEmail } from "./lib/email-drip";
 // is process-local, never persisted, and unique per cold start, so it cannot
 // be used to authenticate even if leaked.
 let _dummyHashPromise: Promise<string> | null = null;
+
+/**
+ * ✅ SECURITY FIX (audit run-1, native-client-detection-token-disclosure):
+ * The JWT-in-body channel is reserved for genuine native shells. A web page
+ * can trivially attach an `x-capacitor-platform` header, but it ALSO
+ * automatically attaches the ambient HttpOnly auth cookie on same-origin
+ * fetches — a real native shell never has one. Gate the body token on
+ * header presence AND the absence of the auth cookie.
+ */
+function isNativeTokenRequest(req: Request): boolean {
+  if (!req.headers.get("x-capacitor-platform")) return false;
+  const cookies = parseCookieHeader(req.headers.get("cookie") || "");
+  if (cookies[AUTH_COOKIE_NAME]) return false; // web session present → never expose the JWT in the body
+  return true;
+}
 function getDummyHash(): Promise<string> {
   if (!_dummyHashPromise) {
     const nonce = randomBytes(16).toString("hex");
@@ -276,7 +292,7 @@ export const localAuthRouter = createRouter({
         ctx.resHeaders.append("set-cookie", authCookie);
         ctx.resHeaders.append("set-cookie", flagCookie);
 
-         const isMobile = ctx.req.headers.get("x-capacitor-platform") !== null;
+         const isMobile = isNativeTokenRequest(ctx.req);
          const responseData: AuthResponse = {
            user: { id: userId, username: input.username, name: input.name || input.username },
          };
@@ -464,7 +480,7 @@ export const localAuthRouter = createRouter({
       ctx.resHeaders.append("set-cookie", flagCookie);
 
        // ✅ SECURITY FIX: Only return token in body for Capacitor/mobile apps
-       const isMobile = ctx.req.headers.get("x-capacitor-platform") !== null;
+       const isMobile = isNativeTokenRequest(ctx.req);
        const loginData: AuthResponse = {
          user: {
            id: user.id,

@@ -45,7 +45,9 @@ export default function NotificationPollerBridge() {
       const isRtl = document.documentElement.dir !== "ltr";
       const openUrl = (url: string) => {
         if (url.startsWith("/")) navigate(url);
-        else window.open(url, "_blank", "noopener,noreferrer");
+        // ✅ SECURITY FIX (audit run-1): http(s) URLs only — never open a
+        // javascript:/data: destination from a notification payload.
+        else if (/^https?:\/\//i.test(url)) window.open(url, "_blank", "noopener,noreferrer");
       };
 
       const actionLabel = (() => {

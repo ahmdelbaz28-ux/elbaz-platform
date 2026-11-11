@@ -73,6 +73,20 @@ self.addEventListener('notificationclick', (event) => {
   if (target.startsWith('/')) {
     target = new URL(target, self.location.origin).href;
   }
+  // ✅ SECURITY FIX (audit run-1, notification-url.window-open
+  // .missing-scheme-policy): legacy payloads could carry any scheme — only
+  // same-origin paths and http(s) URLs are ever opened by the SW.
+  try {
+    const parsed = new URL(target, self.location.origin);
+    const sameOrigin = parsed.origin === self.location.origin;
+    if (!sameOrigin && !/^https?:$/.test(parsed.protocol)) {
+      target = self.location.origin + '/';
+    } else if (sameOrigin) {
+      target = parsed.href;
+    }
+  } catch {
+    target = self.location.origin + '/';
+  }
 
   event.waitUntil(
     (async () => {

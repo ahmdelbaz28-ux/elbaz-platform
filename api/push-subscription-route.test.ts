@@ -9,7 +9,13 @@ vi.mock("./queries/connection", () => ({ getDb }));
 
  
 const getVapidPublicKey = vi.hoisted(() => vi.fn<() => string | null>(() => "BElbazTestPublicKey__aaaaaaaaaaaaaaaaaa"));
-vi.mock("./lib/push-delivery", () => ({ getVapidPublicKey }));
+// Scheme-only pass-through in THIS file — the real push-service host
+// allowlist is covered against the actual implementation in
+// api/security-audit-run1.test.ts.
+const isAllowedPushEndpoint = vi.hoisted(() => vi.fn((endpoint: string) => {
+  try { return new URL(endpoint).protocol === "https:"; } catch { return false; }
+}));
+vi.mock("./lib/push-delivery", () => ({ getVapidPublicKey, isAllowedPushEndpoint }));
 
 const logger = vi.hoisted(() => ({
   info: vi.fn(),
@@ -26,14 +32,27 @@ const VALID_SUB = {
   keys: { p256dh: "k".repeat(87), auth: "a".repeat(24) },
 };
 
-function mockDb() {
+function mockDb(opts: { existingEndpointRows?: unknown[]; countRows?: unknown[] } = {}) {
   const onDuplicateKeyUpdate = vi.fn().mockResolvedValue(undefined);
   const values = vi.fn().mockReturnValue({ onDuplicateKeyUpdate });
   const insert = vi.fn().mockReturnValue({ values });
   const deleteWhere = vi.fn().mockResolvedValue(undefined);
   const del = vi.fn().mockReturnValue({ where: deleteWhere });
-  getDb.mockReturnValue({ insert, delete: del });
-  return { insert, values, onDuplicateKeyUpdate, del, deleteWhere };
+  // The subscribe path (audit run-1) first looks up the endpoint row, then
+  // counts the user's stored subscriptions. The projection discriminates the
+  // two select shapes: { userCount } → count query, else endpoint lookup.
+  const select = vi.fn().mockImplementation((projection: Record<string, unknown>) => {
+    const result = projection && "userCount" in projection
+      ? (opts.countRows ?? [{ userCount: 0 }])
+      : (opts.existingEndpointRows ?? []);
+    const step: Promise<unknown> & { limit: ReturnType<typeof vi.fn> } = Object.assign(
+      Promise.resolve(result),
+      { limit: vi.fn().mockResolvedValue(result) },
+    );
+    return { from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue(step) }) };
+  });
+  getDb.mockReturnValue({ insert, delete: del, select });
+  return { insert, values, onDuplicateKeyUpdate, del, deleteWhere, select };
 }
 
 beforeEach(() => {
@@ -119,7 +138,30 @@ describe("POST /subscribe", () => {
     });
     expect(res.status).toBe(500);
   });
-});
+
+  it("enforces the per-user subscription cap (audit run-1 amplification bound)", async () => {
+    resolveOptionalUser.mockResolvedValue(USER);
+    mockDb({ countRows: [{ userCount: 10 }] });
+    const res = await pushSubscriptionRoute.request("/subscribe", {
+      method: "POST",
+      body: JSON.stringify(VALID_SUB),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(429);
+  });
+
+  it("allows re-subscribing an existing endpoint beyond the cap (upsert update)", async () => {
+    resolveOptionalUser.mockResolvedValue(USER);
+    const db = mockDb({ existingEndpointRows: [{ userId: 7 }], countRows: [{ userCount: 10 }] });
+    const res = await pushSubscriptionRoute.request("/subscribe", {
+      method: "POST",
+      body: JSON.stringify(VALID_SUB),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(200);
+    expect(db.onDuplicateKeyUpdate).toHaveBeenCalled();
+  });
+})
 
 describe("POST /unsubscribe", () => {
   it("deletes the exact endpoint", async () => {

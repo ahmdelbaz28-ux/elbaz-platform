@@ -654,14 +654,23 @@ export async function startTelegramBot(): Promise<boolean> {
     // Lazy import — keeps this module (and every test importing it) free of
     // the full chatbot dependency graph until the worker actually starts.
     brain: async (messages, opts) => {
-      const [{ getChatResponse }, { getCourseCatalogText }, { sanitizeReplyOutput }] = await Promise.all([
+      const [{ getChatResponse }, { getCourseCatalogText }, { sanitizeReplyOutput, containsPromptLeak, promptLeakRefusal }] = await Promise.all([
         import("./chatbot.js"),
         import("./course-catalog.js"),
         import("./chatbot-prompts.js"),
       ]);
       const catalog = await getCourseCatalogText();
       const result = await getChatResponse({ messages, language: opts.language, mode: opts.mode, catalog });
-      if (result.success) return { reply: sanitizeReplyOutput(result.reply ?? "") };
+      if (result.success) {
+        const reply = sanitizeReplyOutput(result.reply ?? "");
+        // ✅ ARCH-AUDIT FIX (Telegram DM bypasses the prompt-leak tripwire):
+        // apply the SAME leak gate as the web endpoints — a Telegram DM must
+        // never receive verbatim system-prompt text.
+        if (containsPromptLeak(reply)) {
+          return { reply: promptLeakRefusal(opts.language) };
+        }
+        return { reply };
+      }
       return { error: result.error || "upstream exhausted" };
     },
   };

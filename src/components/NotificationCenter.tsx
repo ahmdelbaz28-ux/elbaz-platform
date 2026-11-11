@@ -1088,12 +1088,15 @@ function NotificationRow({
   const cfg = DISPLAY_CONFIG[record.displayType] ?? DISPLAY_CONFIG.system;
   const navigate = useNavigate();
 
-  /** Site paths navigate inside the SPA; absolute URLs open in a new tab. */
+  /** Site paths navigate inside the SPA; absolute URLs open in a new tab.
+   * ✅ SECURITY FIX (audit run-1, notification-url.window-open
+   * .missing-scheme-policy): legacy rows could carry any scheme — only
+   * relative paths or http(s) URLs are ever opened. */
   const openTarget = useCallback(() => {
     if (!record.url) return;
     if (record.url.startsWith("/")) {
       navigate(record.url);
-    } else {
+    } else if (/^https?:\/\//i.test(record.url)) {
       window.open(record.url, "_blank", "noopener,noreferrer");
     }
   }, [record.url, navigate]);

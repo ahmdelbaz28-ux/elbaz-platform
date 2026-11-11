@@ -38,14 +38,25 @@ jobs:
     timeout-minutes: 6
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        # ✅ SECURITY FIX (audit run-1, ci.provider-probe.unpinned-npx-tsx-with-secrets):
+        # actions pinned to immutable commit SHAs (v7 = 3d3c42e5…).
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup Node 22
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
+          cache: npm
 
-      # The probe is dependency-free (plain fetch) — no npm ci needed.
+      # ✅ SECURITY FIX (audit run-1): bind tsx to the LOCKFILE before any
+      # secret-bearing code runs. `npx -y tsx` resolved whatever latest tsx
+      # the npm registry served at run time — a compromised upstream release
+      # would execute with the provider keys in the environment. npm ci
+      # installs the reviewed, locked tsx; `npx tsx` then resolves the LOCAL
+      # binary (same pattern as telegram-bot-worker.yml).
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+
       # OWNER POLICY: nothing is posted to Telegram — a failing probe turns
       # the run red on GitHub, that's the entire alert path.
       - name: Probe all configured AI providers
@@ -58,7 +69,7 @@ jobs:
           EDGE_ORIGIN_SECRET: ${{ secrets.EDGE_ORIGIN_SECRET }}
         run: |
           set -x
-          npx -y tsx scripts/provider-probe.ts 2>&1 | tee /tmp/probe.log
+          npx tsx scripts/provider-probe.ts 2>&1 | tee /tmp/probe.log
           CODE=${PIPESTATUS[0]}
           echo "probe exit code: $CODE"
           exit "$CODE"

@@ -156,10 +156,16 @@ export async function pickWorkingModel(
   _messages: ChatApiMessage[],
   language?: string,
   mode: "thinking" | "instant" = "thinking",
-  catalog?: string
+  catalog?: string,
+  historySummary?: string,
 ): Promise<PickedProvider | null> {
   const tuning = mode === "instant" ? MODE_TUNING.instant : MODE_TUNING.thinking;
-  const systemPrompt = getSystemPrompt(language, mode, catalog);
+  // ✅ ARCH-AUDIT FIX (stream legacy path silently drops the long-term memory
+  // summary): pickWorkingModel rebuilt its own system prompt without the
+  // rolling summary, so whenever streaming fell back to the legacy chain
+  // (Groq/NVIDIA/static OpenRouter), logged-in users lost all cross-session
+  // continuity that the non-stream path kept. The summary now threads through.
+  const systemPrompt = getSystemPrompt(language, mode, catalog, false, historySummary);
 
   if (mode === "instant") {
     // ─── INSTANT: fastest first — Groq → OpenRouter (fast model) → NVIDIA ───
@@ -764,7 +770,7 @@ async function getVisionStreamResponse(request: {
 
   // Legacy streaming text cascade over the augmented (text-only) messages.
   const pass2Request = { ...request, messages: pass2Messages };
-  const picked = await pickWorkingModel(pass2Messages, request.language, mode, request.catalog);
+  const picked = await pickWorkingModel(pass2Messages, request.language, mode, request.catalog, request.historySummary);
   if (picked) {
     if (picked.provider === "nvidia") {
       return await streamNvidiaProvider(pass2Request, picked, encoder);
@@ -849,7 +855,7 @@ export async function getStreamResponse(request: {
     if (routed.ok) return { stream: routed.result.stream, model: routed.result.model };
   }
 
-  const picked = await pickWorkingModel(request.messages, request.language, request.mode || "thinking", request.catalog);
+  const picked = await pickWorkingModel(request.messages, request.language, request.mode || "thinking", request.catalog, request.historySummary);
 
   if (!picked) {
     return buildStreamErrorResponse("noProvider", request.language);

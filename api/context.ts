@@ -81,8 +81,9 @@ async function renewExpiredTokenSession(
   req: Request,
   resHeaders: Headers,
 ): Promise<SafeUser | null> {
-  const token = extractAuthToken(req);
-  if (!token) return null;
+  const extracted = extractAuthToken(req);
+  if (!extracted) return null;
+  const { token } = extracted;
 
   const stale = await verifyExpiredToken(token);
   if (!stale) return null;
@@ -105,22 +106,30 @@ async function renewExpiredTokenSession(
   resHeaders.append("set-cookie", serializeAuthFlagCookie(req.headers));
   // Native (Bearer) clients get the renewed token in a readable header so
   // their localStorage copy stops being permanently expired (see
-  // isBearerAuth above).
-  exposeRenewedToken(resHeaders, renewed, req.headers);
+  // isBearerAuth above). The channel is gated on the VERIFIED token's source
+  // (audit run-1: native-client-detection-token-disclosure) — a cookie
+  // request that carries a dummy header must never receive it.
+  exposeRenewedToken(resHeaders, renewed, extracted.source);
   logger.info("[Auth] Expired token renewed via grace window", { userId: stale.userId });
   return safeUser;
 }
 
-function extractAuthToken(req: Request): string | undefined {
+export type AuthTokenSource = "cookie" | "header";
+
+function extractAuthToken(req: Request): { token: string; source: AuthTokenSource } | undefined {
   // 1. Try httpOnly cookie (preferred — XSS cannot steal httpOnly cookies)
   const cookieHeader = req.headers.get("cookie") || "";
   const parsedCookies = parse(cookieHeader);
   if (parsedCookies[AUTH_COOKIE_NAME]) {
-    return parsedCookies[AUTH_COOKIE_NAME];
+    return { token: parsedCookies[AUTH_COOKIE_NAME], source: "cookie" };
   }
   // 2. Fallback to Authorization header (for backward compatibility during migration)
-  return req.headers.get("x-auth-token")
+  const headerToken = req.headers.get("x-auth-token")
     || req.headers.get("authorization")?.replaceAll("Bearer ", "");
+  if (headerToken) {
+    return { token: headerToken, source: "header" };
+  }
+  return undefined;
 }
 
 /**
@@ -134,13 +143,18 @@ function extractAuthToken(req: Request): string | undefined {
  * renewed token in the `x-renewed-token` RESPONSE header; the client fetch
  * wrapper updates its localStorage. Cookie (web) requests never receive the
  * header — the HttpOnly cookie remains the only web JWT channel.
+ * ✅ SECURITY FIX (audit run-1, native-client-detection-token-disclosure):
+ * the gate is the VERIFIED token's source, not header presence. A cookie
+ * authenticated request that appends a dummy authorization header must NOT
+ * flip into the header channel — the header is only a fallback when no
+ * cookie is present, so source === "header" already implies no cookie.
  */
-function isBearerAuth(reqHeaders: Headers): boolean {
-  return !!reqHeaders.get("authorization") || !!reqHeaders.get("x-auth-token");
+function isBearerAuth(source: AuthTokenSource): boolean {
+  return source === "header";
 }
 
-function exposeRenewedToken(resHeaders: Headers, token: string, reqHeaders?: Headers): void {
-  if (reqHeaders && !isBearerAuth(reqHeaders)) return;
+function exposeRenewedToken(resHeaders: Headers, token: string, source?: AuthTokenSource): void {
+  if (!source || !isBearerAuth(source)) return;
   resHeaders.set("x-renewed-token", token);
 }
 
@@ -148,6 +162,7 @@ async function maybeRefreshToken(
   payload: TokenPayload,
   reqHeaders: Headers,
   resHeaders: Headers,
+  tokenSource: AuthTokenSource,
 ): Promise<void> {
   const remaining = getTokenRemainingSeconds(payload);
   if (remaining <= 0 || remaining >= SLIDING_REFRESH_THRESHOLD_S) return;
@@ -160,7 +175,8 @@ async function maybeRefreshToken(
   resHeaders.append("set-cookie", serializeAuthCookie(reqHeaders, newToken));
   resHeaders.append("set-cookie", serializeAuthFlagCookie(reqHeaders));
   // Native (Bearer) clients: keep their localStorage token sliding too.
-  exposeRenewedToken(resHeaders, newToken, reqHeaders);
+  // Gated on the verified token's source (audit run-1 fix).
+  exposeRenewedToken(resHeaders, newToken, tokenSource);
 }
 
 function evictOldestCacheEntries(): void {
@@ -230,9 +246,9 @@ async function loadUserFromDb(
  */
 export async function resolveOptionalUser(req: Request): Promise<SafeUser | null> {
   try {
-    const token = extractAuthToken(req);
-    if (!token) return null;
-    const payload = await verifyToken(token);
+    const extracted = extractAuthToken(req);
+    if (!extracted) return null;
+    const payload = await verifyToken(extracted.token);
     if (!payload) return null;
     const cacheKey = `${payload.userId}:${payload.tokenVersion}`;
     const cached = userCache.get(cacheKey);
@@ -251,10 +267,10 @@ export async function createContext(
 
   // Try local auth token
   try {
-    const token = extractAuthToken(opts.req);
-    if (!token) return ctx;
+    const extracted = extractAuthToken(opts.req);
+    if (!extracted) return ctx;
 
-    const payload = await verifyToken(token);
+    const payload = await verifyToken(extracted.token);
     if (!payload) {
       // ✅ SESSION PERSISTENCE FIX: normal verification failed — renew the
       // session if the token merely expired within the grace window (see
@@ -275,7 +291,7 @@ export async function createContext(
     if (cached && cached.expiry > Date.now()) {
       ctx.user = cached.user;
       // ✅ SLIDING SESSION: Check if token needs refresh even for cached users
-      await maybeRefreshToken(payload, opts.req.headers, ctx.resHeaders);
+      await maybeRefreshToken(payload, opts.req.headers, ctx.resHeaders, extracted.source);
       return ctx;
     }
 
@@ -284,7 +300,7 @@ export async function createContext(
     ctx.user = safeUser;
 
     // ✅ SLIDING SESSION: Auto-refresh token if < 2h remaining
-    await maybeRefreshToken(payload, opts.req.headers, ctx.resHeaders);
+    await maybeRefreshToken(payload, opts.req.headers, ctx.resHeaders, extracted.source);
   } catch {
     // Authentication is optional
   }

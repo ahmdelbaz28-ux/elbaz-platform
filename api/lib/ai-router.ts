@@ -389,6 +389,9 @@ export async function discoverProviderModels(provider: Pick<AiProvider, "id" | "
     const resp = await fetch(url, {
       headers: { Authorization: `Bearer ${provider.apiKey}`, "Content-Type": "application/json" },
       signal: AbortSignal.timeout(20_000),
+      // ✅ SECURITY FIX (audit run-1): discovery fetches carry the provider
+      // key too — forbid redirect-following past the SSRF guard.
+      redirect: "error",
     });
 
     if (resp.status === 401 || resp.status === 403) {
@@ -954,16 +957,39 @@ export function isPublicProviderUrl(rawUrl: string): boolean {
     return false;
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
-  const host = parsed.hostname.toLowerCase().replace(/\.$/, "");
+  let host = parsed.hostname.toLowerCase().replace(/\.$/, "");
   const blockedNames = new Set([
     "localhost", "metadata", "metadata.google.internal", "169.254.169.254",
   ]);
   if (blockedNames.has(host) || host.endsWith(".internal") || host.endsWith(".local")) return false;
-  // IPv6 literal (brackets stripped by URL) — reject loopback/link-local/ULA privately used ranges conservatively.
+  // ✅ SECURITY FIX (audit run-1, ai-router.isPublicProviderUrl
+  // .ipv4-mapped-ipv6-and-redirect-bypass): WHATWG URL never emits the dotted
+  // `::ffff:127.0.0.1` serialization the old branch matched — hex mapped
+  // literals like `[::ffff:7f00:1]` (=127.0.0.1) and `[::ffff:a9fe:a9fe]`
+  // (=169.254.169.254) fell through as "public". Decode every IPv4-mapped /
+  // translated IPv6 form to a dotted quad BEFORE range classification.
   if (host.includes(":")) {
-    const h = host.replace(/^\[|\]$/g, "");
-    if (h === "::1" || h.startsWith("fe80") || h.startsWith("fc") || h.startsWith("fd") || h.startsWith("::ffff:127.")) return false;
-    return true;
+    const h0 = host.replace(/^\[|\]$/g, "");
+    const mappedDotted = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(h0);
+    const mappedHex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(h0);
+    if (mappedDotted) {
+      host = mappedDotted[1]; // fall through to the IPv4 checks below
+    } else if (mappedHex) {
+      const hi = parseInt(mappedHex[1], 16);
+      const lo = parseInt(mappedHex[2], 16);
+      host = `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+    } else {
+      // still a plain IPv6 address — reject loopback/unspecified/link-local/
+      // ULA/NAT64 and any address with an embedded IPv4 tail, allow the rest.
+      if (
+        h0 === "::1" || h0 === "::" || h0.startsWith("fe80") || h0.startsWith("fc") ||
+        h0.startsWith("fd") || h0.startsWith("::ffff:") || h0.startsWith("64:ff9b") ||
+        /(?:^|:)(?:\d{1,3}\.){3}\d{1,3}$/.test(h0)
+      ) {
+        return false;
+      }
+      return true;
+    }
   }
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
     const [a, b] = host.split(".").map(Number);
@@ -1012,6 +1038,11 @@ async function rawUpstreamFetch(p: AttemptParams): Promise<{ ok: true; response:
           },
           body: buildUpstreamBody(p, p.stream),
           signal: ctrl.signal,
+          // ✅ SECURITY FIX (audit run-1): never follow redirects on
+          // key-bearing provider fetches — a public baseUrl that 302s to an
+          // internal target would otherwise be dialed past the pre-flight
+          // guard with the Authorization header attached.
+          redirect: "error",
         });
       } finally {
         clearTimeout(headerTimer);
@@ -1027,6 +1058,8 @@ async function rawUpstreamFetch(p: AttemptParams): Promise<{ ok: true; response:
         },
         body: buildUpstreamBody(p, p.stream),
         signal: AbortSignal.timeout(attemptTimeoutMs),
+        // ✅ SECURITY FIX (audit run-1): same redirect policy as the stream path.
+        redirect: "error",
       });
     }
 

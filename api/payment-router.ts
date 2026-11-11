@@ -32,11 +32,16 @@ async function applyPromoCode(
   userId: number,
   courseId: number,
 ): Promise<{ discountAmount: number; finalAmount: string; appliedPromoCodeId: number } | null> {
+  // ✅ SECURITY FIX (audit run-1, promo.usage-cap.check-then-act-race): lock
+  // the promo row for the duration of the transaction so two concurrent
+  // checkouts cannot both pass the maxUses/maxUsesPerUser snapshot checks and
+  // both commit. The FOR UPDATE lock serializes cap checks per promo code.
   const [promo] = await tx
     .select()
     .from(promoCodes)
     .where(eq(promoCodes.id, promoCodeId))
-    .limit(1);
+    .limit(1)
+    .for("update");
 
   if (!promo?.isActive) return null;
   const now = new Date();
@@ -177,15 +182,26 @@ export const paymentRouter = createRouter({
           throw new TRPCError({ code: "NOT_FOUND", message: "Course not found" });
         }
 
-        // ✅ Idempotency: check if this payment key was already used
+        // ✅ Idempotency (audit run-1, payment-router.create
+        // .idempotency-check-dead-prefix): the old guard looked for a
+        // transactionId `IDEM-<key>` that NO writer ever produced, so every
+        // replay minted a fresh pending payment + Paymob order. The client key
+        // is now persisted in the payments.metadata JSON column and the lookup
+        // queries it, scoped to the SAME user (client keys are per-attempt
+        // UUIDs; user scoping also makes cross-user key reuse a non-issue).
         const existingPayment = await tx
-          .select({ id: payments.id, status: payments.status })
+          .select({ id: payments.id, status: payments.status, transactionId: payments.transactionId })
           .from(payments)
-          .where(eq(payments.transactionId, `IDEM-${input.idempotencyKey}`))
+          .where(
+            and(
+              eq(payments.userId, ctx.user.id),
+              sql`JSON_UNQUOTE(JSON_EXTRACT(${payments.metadata}, '$.idempotencyKey')) = ${input.idempotencyKey}`,
+            ),
+          )
           .limit(1);
 
         if (existingPayment.length > 0) {
-          return { success: true, transactionId: `IDEM-${input.idempotencyKey}`, duplicate: true };
+          return { success: true, transactionId: existingPayment[0].transactionId, duplicate: true };
         }
 
         // ✅ Check already enrolled — inside transaction to prevent race condition.
@@ -239,7 +255,9 @@ export const paymentRouter = createRouter({
           });
         }
 
-        // Create payment record with "pending" status
+        // Create payment record with "pending" status — the idempotency key
+        // is persisted (see the audit run-1 note above) so the replay lookup
+        // can actually find it.
         const [payment] = await tx.insert(payments).values({
           userId: ctx.user.id,
           courseId: input.courseId,
@@ -253,6 +271,7 @@ export const paymentRouter = createRouter({
           promoCodeId: appliedPromoCodeId,
           discountAmount: discountAmount > 0 ? discountAmount.toFixed(2) : null,
           finalAmount: discountAmount > 0 ? finalAmount : null,
+          metadata: { idempotencyKey: input.idempotencyKey },
         });
 
         // ✅ SECURITY FIX (audit run-1): record promo usage and advance the
@@ -488,14 +507,20 @@ export const paymentRouter = createRouter({
           });
         }
 
-        // ✅ Idempotency: same key pattern as the Paymob path
+        // ✅ Idempotency: same persisted-key pattern as the Paymob path
+        // (audit run-1 fix — see payment.create).
         const existingPayment = await tx
-          .select({ id: payments.id, status: payments.status })
+          .select({ id: payments.id, status: payments.status, transactionId: payments.transactionId })
           .from(payments)
-          .where(eq(payments.transactionId, `IDEM-${input.idempotencyKey}`))
+          .where(
+            and(
+              eq(payments.userId, ctx.user.id),
+              sql`JSON_UNQUOTE(JSON_EXTRACT(${payments.metadata}, '$.idempotencyKey')) = ${input.idempotencyKey}`,
+            ),
+          )
           .limit(1);
         if (existingPayment.length > 0) {
-          return { success: true, transactionId: `IDEM-${input.idempotencyKey}`, duplicate: true };
+          return { success: true, transactionId: existingPayment[0].transactionId, duplicate: true };
         }
 
         // ✅ Already enrolled guard (inside transaction like `create`).
@@ -549,7 +574,7 @@ export const paymentRouter = createRouter({
           promoCodeId: appliedPromoCodeId,
           discountAmount: discountAmount > 0 ? discountAmount.toFixed(2) : null,
           finalAmount: discountAmount > 0 ? finalAmount : null,
-          metadata: { reference: input.reference?.trim() || null },
+          metadata: { reference: input.reference?.trim() || null, idempotencyKey: input.idempotencyKey },
         });
 
         if (appliedPromoCodeId !== null) {

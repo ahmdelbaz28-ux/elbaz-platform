@@ -151,6 +151,23 @@ async function processWebhookInTransaction(
     return c.json({ ok: true, message: "Already processed" }, 200);
   }
 
+  // ✅ SECURITY FIX (audit run-1, paymob-webhook.stale-success-reactivates-
+  // refunded-enrollment): terminal states must stay terminal. A success
+  // callback for a payment that was already refunded/voided/failed (e.g. a
+  // redelivered older success notification) must NOT flip the row back to
+  // completed and re-grant the enrollment — the money was already returned.
+  // Only refund/void events may follow a completed payment.
+  if (
+    (paymentRecord.status === "refunded" || paymentRecord.status === "voided" || paymentRecord.status === "failed") &&
+    isSuccess && !isRefunded && !isVoided
+  ) {
+    logger.warn(`[Paymob Webhook] Ignoring success callback for terminal-status payment`, {
+      merchantOrderId,
+      currentStatus: paymentRecord.status,
+    });
+    return c.json({ ok: true, message: "Payment already in terminal state" }, 200);
+  }
+
   // ── Step 4: Verify amount matches what we expect ──
   if (isSuccess) {
     const amountMismatch = await verifyWebhookAmount(tx, paymentRecord, obj, merchantOrderId);

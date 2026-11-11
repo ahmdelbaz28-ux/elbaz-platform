@@ -1313,11 +1313,15 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
       if (!handled && !isStale()) {
         // Every silent attempt everywhere failed — one calm note styled as a
         // normal assistant message (never a red error screen).
+        // ✅ ARCH-AUDIT FIX (SOFT_BUSY bubble replayed into provider history):
+        // mark it isError so the history replay filter excludes it — the
+        // busy copy must never ship to the model as a real assistant turn.
         setMessages((prev) => [...prev, {
           id: crypto.randomUUID(),
           role: "assistant",
           content: SOFT_BUSY,
           timestamp: new Date(),
+          isError: true,
         }]);
       }
     } catch (error) {
@@ -1330,6 +1334,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
           role: "assistant",
           content: SOFT_BUSY,
           timestamp: new Date(),
+          isError: true, // ✅ ARCH-AUDIT FIX: never replay the busy copy into provider history
         }]);
       }
     } finally {

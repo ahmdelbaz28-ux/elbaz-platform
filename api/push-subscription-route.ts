@@ -1,10 +1,10 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { eq, count } from "drizzle-orm";
 import { resolveOptionalUser } from "./context";
 import { getDb } from "./queries/connection";
 import { pushSubscriptions } from "@db/schema";
-import { getVapidPublicKey } from "./lib/push-delivery";
+import { getVapidPublicKey, isAllowedPushEndpoint } from "./lib/push-delivery";
 import { logger } from "./lib/logger";
 
 // ─── Web Push subscription management ─────────────────────────────────────────
@@ -18,13 +18,23 @@ import { logger } from "./lib/logger";
 //                        capability, so an exact-match delete is safe).
 
 const subscribeSchema = z.object({
-  endpoint: z.string().url().startsWith("https://").max(500),
+  endpoint: z.string().url().startsWith("https://").max(500)
+    // ✅ SECURITY FIX (audit run-1, push-subscription.endpoint
+    // .unvalidated-server-side-post): the endpoint becomes a SERVER-SIDE
+    // request target on every broadcast — restrict it to real push-service
+    // hosts so a registered user cannot point the platform at loopback,
+    // link-local, metadata or arbitrary third-party https targets.
+    .refine(isAllowedPushEndpoint, { message: "endpoint must belong to a known push service" }),
   keys: z.object({
     p256dh: z.string().min(40).max(300),
     auth: z.string().min(16).max(300),
   }),
   userAgent: z.string().max(300).optional(),
 });
+
+/** Per-user subscription cap — each stored row is a permanent outbound-POST
+ *  obligation for every broadcast (audit run-1 amplification bound). */
+const MAX_SUBSCRIPTIONS_PER_USER = 10;
 
 const unsubscribeSchema = z.object({
   endpoint: z.string().url().max(500),
@@ -65,6 +75,23 @@ pushSubscriptionRoute.post("/subscribe", async (c) => {
   const { endpoint, keys, userAgent } = parsed.data;
   try {
     const db = getDb();
+    // ✅ SECURITY FIX (audit run-1): bound the number of stored endpoints per
+    // user so one account cannot register an unbounded fan-out surface.
+    // Re-subscribing an existing endpoint (upsert update) is always allowed.
+    const [existingEndpoint] = await db
+      .select({ userId: pushSubscriptions.userId })
+      .from(pushSubscriptions)
+      .where(eq(pushSubscriptions.endpoint, endpoint))
+      .limit(1);
+    if (!existingEndpoint) {
+      const [{ userCount }] = await db
+        .select({ userCount: count() })
+        .from(pushSubscriptions)
+        .where(eq(pushSubscriptions.userId, user.id));
+      if (userCount >= MAX_SUBSCRIPTIONS_PER_USER) {
+        return c.json({ error: "Too many push subscriptions for this account" }, 429);
+      }
+    }
     await db
       .insert(pushSubscriptions)
       .values({

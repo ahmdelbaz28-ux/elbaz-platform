@@ -66,6 +66,35 @@ export function isStalePushResponse(statusCode: number | undefined): boolean {
   return statusCode === 404 || statusCode === 410;
 }
 
+/**
+ * ✅ SECURITY FIX (audit run-1, push-subscription.endpoint
+ * .unvalidated-server-side-post): allowlist of real push-service hosts. The
+ * stored endpoint is dialed SERVER-SIDE on every broadcast (web-push issues
+ * https.request to its hostname/port verbatim), so anything outside the
+ * known push services must be rejected — at subscribe time AND at send time
+ * (the send-time check also heals legacy rows stored before this fix).
+ */
+const PUSH_ENDPOINT_HOST_SUFFIXES = [
+  "fcm.googleapis.com",
+  "android.googleapis.com",
+  "ios-push.services.apple.com",
+  "push.apple.com",
+  "updates.push.services.mozilla.com",
+  "web.push.microsoft.com",
+] as const;
+
+export function isAllowedPushEndpoint(endpoint: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(endpoint);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "https:") return false;
+  const host = parsed.hostname.toLowerCase();
+  return PUSH_ENDPOINT_HOST_SUFFIXES.some((suffix) => host === suffix || host.endsWith(`.${suffix}`));
+}
+
 /** Build the JSON push payload with hard truncation to respect the 4KB budget. */
 export function buildPushPayload(input: PushPayload): string {
   return JSON.stringify({
@@ -83,11 +112,27 @@ export function buildPushPayload(input: PushPayload): string {
  * service. Throws only on transport errors (caller decides stale cleanup).
  */
 async function sendToOne(sub: { endpoint: string; p256dh: string; auth: string }, payload: string): Promise<void> {
+  // ✅ SECURITY FIX (audit run-1): send-time endpoint policy — skip (and
+  // delete) any legacy row whose endpoint is not a known push service so the
+  // server never POSTs to an attacker-chosen target.
+  if (!isAllowedPushEndpoint(sub.endpoint)) {
+    logger.warn("[Push] blocking non-allowlisted endpoint", { endpointHost: safeEndpointHost(sub.endpoint) });
+    await deleteStale(sub.endpoint);
+    throw Object.assign(new Error("blocked non-allowlisted push endpoint"), { statusCode: 410 });
+  }
   await webpush.sendNotification(
     { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
     payload,
     { TTL: 7 * 24 * 60 * 60, urgency: "high" } // a week of offline catch-up
   );
+}
+
+function safeEndpointHost(endpoint: string): string | null {
+  try {
+    return new URL(endpoint).host;
+  } catch {
+    return null;
+  }
 }
 
 /** Delete dead endpoints so the table self-cleans. Never throws. */

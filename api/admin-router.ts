@@ -53,7 +53,17 @@ export const adminRouter = createRouter({
         message: z.string().min(5).max(1200),
         titleEn: z.string().max(300).optional(),
         messageEn: z.string().max(1200).optional(),
-        url: z.string().max(700).optional(),
+        // ✅ SECURITY FIX (audit run-1, notification-url.window-open
+        // .missing-scheme-policy): the broadcast url is opened client-side via
+        // window.open/openWindow — restrict it to relative app paths or
+        // http(s) URLs so a javascript:/data: destination can never be stored.
+        url: z
+          .string()
+          .max(700)
+          .optional()
+          .refine((v) => v === undefined || v.startsWith("/") || /^https?:\/\//i.test(v), {
+            message: "url must be a relative path or an http(s) URL",
+          }),
       })
     )
     .mutation(async ({ input }) => {

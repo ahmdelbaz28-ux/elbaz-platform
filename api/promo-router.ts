@@ -4,6 +4,7 @@ import { db } from "./queries/connection.js";
 import { resolveOptionalUser } from "./context.js";
 import { eq, and, sql, lte, gte, isNull, or, count } from "drizzle-orm";
 import { rateLimit } from "./lib/rate-limiter.js";
+import { getClientIpFromHono } from "./lib/client-ip.js";
 import { env } from "./lib/env.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { promoCodes, promoCodeUsage, payments } from "@db/schema";
@@ -133,7 +134,11 @@ async function applyPromoCodeInternal(params: {
 }
 
 promoRouter.post("/apply", async (c) => {
-  const clientIp = c.req.header("x-forwarded-for")?.split(",")[0] ?? "unknown";
+  // ✅ SECURITY FIX (audit run-1, promo.leftmost-xff-quota-key): key the
+  // throttle on the trust-ordered client IP (cf-connecting-ip > x-real-ip >
+  // rightmost XFF) instead of the client-chosen leftmost XFF entry, which
+  // reset the bucket on every request.
+  const clientIp = getClientIpFromHono(c);
   try {
     await rateLimit(`promo:apply:${clientIp}`, 5);
   } catch {
@@ -186,7 +191,8 @@ promoRouter.post("/apply/internal", async (c) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  const clientIp = c.req.header("x-forwarded-for")?.split(",")[0] ?? "internal";
+  // ✅ SECURITY FIX (audit run-1): same trust-ordered IP derivation as /apply.
+  const clientIp = getClientIpFromHono(c);
   try {
     await rateLimit(`promo:internal:${clientIp}`, 20);
   } catch {
@@ -211,7 +217,9 @@ promoRouter.get("/validate/:code", async (c) => {
   // ✅ SECURITY FIX (audit run-1, promo-validate-validity-oracle): throttle
   // code probing per account+IP — this endpoint was the unthrottled
   // enumeration primitive for the merchant's promo inventory.
-  const probeIp = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  // ✅ SECURITY FIX (audit run-1, promo.leftmost-xff-quota-key): the key uses
+  // the trust-ordered client IP, not the client-chosen leftmost XFF entry.
+  const probeIp = getClientIpFromHono(c);
   try {
     await rateLimit(`promo:validate:${session.userId}:${probeIp}`, 1);
   } catch {
