@@ -1202,6 +1202,49 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         logger.warn("[DB] v15 growth migration warning", { error: (err as Error).message });
       }
 
+      // ── v16 hardening (audit run-2, payment idempotency race): DB-level
+      // uniqueness for the client idempotency key. The application guard
+      // (lookup-then-insert inside the transaction) still loses concurrent
+      // replays because nothing in the storage engine enforces the pair
+      // (userId, metadata.idempotencyKey). A STORED generated column backed
+      // by a UNIQUE index closes the race at the engine: the second
+      // concurrent insert of the same key fails with ER_DUP_ENTRY instead of
+      // minting a second pending payment + gateway order. NULL keys (legacy
+      // rows, webhook/manual paths without a key) are exempt — MySQL unique
+      // indexes allow multiple NULLs. Idempotent via column/index probes.
+      try {
+        if (!(await columnExists("payments", "idempotencyKey"))) {
+          try {
+            await conn.query(
+              "ALTER TABLE `payments` ADD COLUMN `idempotencyKey` VARCHAR(80) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(`metadata`, '$.idempotencyKey'))) STORED",
+            );
+            logger.info("[DB]   + payments.idempotencyKey (generated column)");
+          } catch (e) {
+            logger.warn("[DB] payments.idempotencyKey generated column", { error: (e as Error).message });
+          }
+        }
+        if (!(await indexExists("payments", "payments_user_idempotency_unique"))) {
+          // Pre-check for existing duplicate pairs — creating the index over
+          // duplicates would fail with an opaque error; log them explicitly
+          // for the operator instead.
+          try {
+            const [dups] = await conn.execute(
+              "SELECT JSON_UNQUOTE(JSON_EXTRACT(`metadata`, '$.idempotencyKey')) AS k, `userId`, COUNT(*) AS c FROM `payments` WHERE `idempotencyKey` IS NOT NULL GROUP BY k, `userId` HAVING c > 1 LIMIT 5",
+            );
+            if (Array.isArray(dups) && dups.length > 0) {
+              logger.warn("[DB] payments idempotency duplicates detected — unique index NOT created; dedupe first", { duplicates: dups });
+            } else {
+              await conn.query("ALTER TABLE `payments` ADD UNIQUE INDEX `payments_user_idempotency_unique` (`userId`, `idempotencyKey`)");
+              logger.info("[DB]   + payments_user_idempotency_unique (engine-level replay guard)");
+            }
+          } catch (e) {
+            logger.warn("[DB] payments_user_idempotency_unique", { error: (e as Error).message });
+          }
+        }
+      } catch (err) {
+        logger.warn("[DB] v16 payments idempotency migration warning", { error: (err as Error).message });
+      }
+
       // ── Admin password sync (existing deployments) ──
       // ✅ SECURITY FIX (audit run-1, db-init.admin-password-env-sync):
       // ADMIN_PASSWORD is SEED-ONLY. Previously every boot re-synced the admin

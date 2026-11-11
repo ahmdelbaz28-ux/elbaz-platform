@@ -116,7 +116,7 @@ async function renewExpiredTokenSession(
 
 export type AuthTokenSource = "cookie" | "header";
 
-function extractAuthToken(req: Request): { token: string; source: AuthTokenSource } | undefined {
+export function extractAuthToken(req: Request): { token: string; source: AuthTokenSource } | undefined {
   // 1. Try httpOnly cookie (preferred — XSS cannot steal httpOnly cookies)
   const cookieHeader = req.headers.get("cookie") || "";
   const parsedCookies = parse(cookieHeader);

@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { users, enrollments, lessonProgress, payments, certificates, supportTickets } from "@db/schema";
 import { createRouter, publicQuery, authedQuery, checkRateLimit, clearRateLimit, authRateLimit } from "./middleware";
 import { getDb } from "./queries/connection";
@@ -39,7 +39,7 @@ let _dummyHashPromise: Promise<string> | null = null;
  * fetches — a real native shell never has one. Gate the body token on
  * header presence AND the absence of the auth cookie.
  */
-function isNativeTokenRequest(req: Request): boolean {
+export function isNativeTokenRequest(req: Request): boolean {
   if (!req.headers.get("x-capacitor-platform")) return false;
   const cookies = parseCookieHeader(req.headers.get("cookie") || "");
   if (cookies[AUTH_COOKIE_NAME]) return false; // web session present → never expose the JWT in the body
@@ -111,19 +111,23 @@ setInterval(() => {
 // ─── 2FA backup-code consumption (audit run-1) ───────────────────────────────
 // Single-use redemption of an 8-hex backup code during login. Mirrors the
 // hashing used by twofa-router (HMAC with an APP_SECRET-derived key) and
-// splices the used code so it can never be replayed.
+// removes the used code so it can never be replayed.
+// ✅ AUDIT RUN-2 FIX (backup-code race): the removal is now a conditional
+// UPDATE — the JSON_CONTAINS predicate makes concurrent redemptions of the
+// same code mutually exclusive (the loser affects 0 rows and is rejected).
 async function consumeTotpBackupCode(userId: number, stored: unknown, code: string): Promise<boolean> {
   if (!code) return false;
   const codes = Array.isArray(stored) ? (stored as string[]) : [];
   const tokenHash = hashToken(code);
-  const idx = codes.indexOf(tokenHash);
-  if (idx === -1) return false;
-  codes.splice(idx, 1);
-  await getDb()
+  if (!codes.includes(tokenHash)) return false;
+  const result = await getDb()
     .update(users)
-    .set({ totpBackupCodes: JSON.stringify(codes) })
-    .where(eq(users.id, userId));
-  return true;
+    .set({
+      totpBackupCodes: sql`JSON_REMOVE(${users.totpBackupCodes}, JSON_UNQUOTE(JSON_SEARCH(${users.totpBackupCodes}, 'one', ${tokenHash})))`,
+    })
+    .where(and(eq(users.id, userId), sql`JSON_CONTAINS(${users.totpBackupCodes}, ${JSON.stringify(tokenHash)})`));
+  const affected = Array.isArray(result) ? (result[0]?.affectedRows ?? 0) : 0;
+  return affected > 0;
 }
 
 // ─── Shared Response Types ─────────────────────────────────────────────────────

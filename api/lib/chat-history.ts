@@ -19,6 +19,7 @@ import { and, desc, eq, gt, lt, ne, sql } from "drizzle-orm";
 import { getDb } from "../queries/connection.js";
 import { chatMessages } from "@db/schema";
 import { getChatResponse } from "./chatbot.js";
+import { finalizeReply, toOpaqueWireModel } from "./finalize-reply.js";
 import { logger } from "./logger.js";
 
 export const CHAT_HISTORY_LIMIT = 50;
@@ -125,7 +126,14 @@ export async function getChatHistory(userId: number): Promise<{ messages: Histor
         role: r.role as "user" | "assistant",
         content: r.content,
         createdAt: (r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt)).toISOString(),
-        ...(typeof meta.model === "string" ? { model: meta.model } : {}),
+        ...(typeof meta.model === "string"
+          ? {
+              // ✅ AUDIT RUN-2 FIX (history echoed the raw provider tag):
+              // heal legacy rows that stored `provider.slug/modelId` — the
+              // wire contract is opaque keys only.
+              model: toOpaqueWireModel(meta.model),
+            }
+          : {}),
       };
     });
 
@@ -222,11 +230,23 @@ export async function maybeUpdateRollingSummary(userId: number): Promise<void> {
     return;
   }
 
+  // ✅ AUDIT RUN-2 FIX (distillation lane bypassed the egress contract): the
+  // summary is a model-output egress twice over — it is served to the client
+  // in GET /history AND re-injected into every future system prompt. It now
+  // passes through the SAME finalizeReply gate as every other egress, so no
+  // reasoning scaffold, prompt fragment or CJK corruption can become
+  // durable privileged context.
+  const final = finalizeReply(result.reply, "ar");
+  if (!final.reply.trim()) {
+    logger.warn("[ChatHistory] summary generation produced no post-gate content", { userId });
+    return;
+  }
+
   const lastCoveredId = sourceRows[sourceRows.length - 1]?.id ?? coveredUntilId;
   await db.insert(chatMessages).values({
     userId,
     role: SUMMARY_ROLE,
-    content: clip(result.reply.trim()),
+    content: clip(final.reply),
     metadata: {
       coveredUntilId: lastCoveredId,
       coveredUntilAt: boundary.toISOString(),

@@ -258,21 +258,44 @@ export const paymentRouter = createRouter({
         // Create payment record with "pending" status — the idempotency key
         // is persisted (see the audit run-1 note above) so the replay lookup
         // can actually find it.
-        const [payment] = await tx.insert(payments).values({
-          userId: ctx.user.id,
-          courseId: input.courseId,
-          amount: finalAmount,
-          currency: "EGP",
-          provider: "paymob",
-          paymentMethod: input.paymentMethod,
-          transactionId,
-          status: "pending",
-          phoneNumber: input.phoneNumber || null,
-          promoCodeId: appliedPromoCodeId,
-          discountAmount: discountAmount > 0 ? discountAmount.toFixed(2) : null,
-          finalAmount: discountAmount > 0 ? finalAmount : null,
-          metadata: { idempotencyKey: input.idempotencyKey },
-        });
+        // ✅ AUDIT RUN-2 FIX (engine-level replay guard): the v16 unique index
+        // on (userId, idempotencyKey) makes a CONCURRENT replay fail here with
+        // ER_DUP_ENTRY — the case the serial lookup above cannot see. The
+        // duplicate gets the exact same `duplicate: true` shape; the failed
+        // INSERT is statement-rolled-back, the transaction stays usable.
+        let payment: { insertId: number | bigint };
+        try {
+          [payment] = await tx.insert(payments).values({
+            userId: ctx.user.id,
+            courseId: input.courseId,
+            amount: finalAmount,
+            currency: "EGP",
+            provider: "paymob",
+            paymentMethod: input.paymentMethod,
+            transactionId,
+            status: "pending",
+            phoneNumber: input.phoneNumber || null,
+            promoCodeId: appliedPromoCodeId,
+            discountAmount: discountAmount > 0 ? discountAmount.toFixed(2) : null,
+            finalAmount: discountAmount > 0 ? finalAmount : null,
+            metadata: { idempotencyKey: input.idempotencyKey },
+          });
+        } catch (err) {
+          if ((err as { code?: string })?.code === "ER_DUP_ENTRY") {
+            const [dup] = await tx
+              .select({ id: payments.id, status: payments.status, transactionId: payments.transactionId })
+              .from(payments)
+              .where(
+                and(
+                  eq(payments.userId, ctx.user.id),
+                  sql`JSON_UNQUOTE(JSON_EXTRACT(${payments.metadata}, '$.idempotencyKey')) = ${input.idempotencyKey}`,
+                ),
+              )
+              .limit(1);
+            return { success: true, transactionId: dup?.transactionId, duplicate: true };
+          }
+          throw err;
+        }
 
         // ✅ SECURITY FIX (audit run-1): record promo usage and advance the
         // global counter in the SAME transaction as the discounted payment.
@@ -561,21 +584,41 @@ export const paymentRouter = createRouter({
         }
 
         // ✅ Paid course → pending manual payment awaiting admin approval
-        const [payment] = await tx.insert(payments).values({
-          userId: ctx.user.id,
-          courseId: input.courseId,
-          amount: finalAmount,
-          currency: "EGP",
-          provider: "manual",
-          paymentMethod: input.paymentMethod,
-          transactionId,
-          status: "pending",
-          phoneNumber: input.phoneNumber || null,
-          promoCodeId: appliedPromoCodeId,
-          discountAmount: discountAmount > 0 ? discountAmount.toFixed(2) : null,
-          finalAmount: discountAmount > 0 ? finalAmount : null,
-          metadata: { reference: input.reference?.trim() || null, idempotencyKey: input.idempotencyKey },
-        });
+        // ✅ AUDIT RUN-2 FIX: same engine-level replay guard as `create` —
+        // ER_DUP_ENTRY from the v16 unique index returns duplicate:true.
+        let payment: { insertId: number | bigint };
+        try {
+          [payment] = await tx.insert(payments).values({
+            userId: ctx.user.id,
+            courseId: input.courseId,
+            amount: finalAmount,
+            currency: "EGP",
+            provider: "manual",
+            paymentMethod: input.paymentMethod,
+            transactionId,
+            status: "pending",
+            phoneNumber: input.phoneNumber || null,
+            promoCodeId: appliedPromoCodeId,
+            discountAmount: discountAmount > 0 ? discountAmount.toFixed(2) : null,
+            finalAmount: discountAmount > 0 ? finalAmount : null,
+            metadata: { reference: input.reference?.trim() || null, idempotencyKey: input.idempotencyKey },
+          });
+        } catch (err) {
+          if ((err as { code?: string })?.code === "ER_DUP_ENTRY") {
+            const [dup] = await tx
+              .select({ id: payments.id, status: payments.status, transactionId: payments.transactionId })
+              .from(payments)
+              .where(
+                and(
+                  eq(payments.userId, ctx.user.id),
+                  sql`JSON_UNQUOTE(JSON_EXTRACT(${payments.metadata}, '$.idempotencyKey')) = ${input.idempotencyKey}`,
+                ),
+              )
+              .limit(1);
+            return { success: true, transactionId: dup?.transactionId, duplicate: true };
+          }
+          throw err;
+        }
 
         if (appliedPromoCodeId !== null) {
           await tx.insert(promoCodeUsage).values({

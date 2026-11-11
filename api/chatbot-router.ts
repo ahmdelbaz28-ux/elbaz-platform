@@ -430,7 +430,9 @@ chatbotRouter.post("/", async (c) => {
       if (final.leaked) logger.warn("[Chatbot] prompt-leak tripwire fired on non-stream reply — replaced with refusal");
       if (final.truncated) logger.info("[Chatbot] truncation policy trimmed a mid-sentence cutoff");
       // Persist the round for logged-in users (fails open internally).
-      if (chatUser) persistRoundSafe(chatUser.id, messages, vision, final.reply, result.model, body.mode);
+      // ✅ AUDIT RUN-2 FIX: persist the OPAQUE model key — the raw provider
+      // tag must not round-trip to the client via GET /history.
+      if (chatUser) persistRoundSafe(chatUser.id, messages, vision, final.reply, opaqueModelKey(result.model ?? "unknown"), body.mode);
       return c.json({
         success: true,
         reply: final.reply,
@@ -682,12 +684,27 @@ chatbotRouter.post("/stream", async (c) => {
     return forwardEncoder.encode(`data: ${JSON.stringify({ text: rest })}\n\n`);
   };
   const flushAccumulator = () => {
+    // ✅ AUDIT RUN-2 FIX (hardening from run-2 hunt): flush the decoder's
+    // final multibyte buffer, then route the trailing event through the leak
+    // gate BEFORE it can reach accumulatedReply — the trailing text must
+    // never bypass the gate that governs every streamed fragment.
+    try { sseCarry += decoder.decode(); } catch { /* final flush no-op */ }
     const rest = sseCarry.trim();
     sseCarry = "";
     if (rest.startsWith("data: ") && rest !== "data: [DONE]") {
       try {
         const parsed = JSON.parse(rest.slice(6)) as { text?: string };
-        if (typeof parsed.text === "string") accumulatedReply += parsed.text;
+        if (typeof parsed.text === "string" && parsed.text) {
+          if (leakDetected || containsPromptLeak(leakTail + parsed.text)) {
+            if (!leakDetected) {
+              leakDetected = true;
+              accumulatedReply = promptLeakRefusal(language);
+              logger.warn("[Chatbot] prompt-leak tripwire fired on tail flush — reply replaced with refusal");
+            }
+            return;
+          }
+          accumulatedReply += parsed.text;
+        }
       } catch { /* incomplete trailing event — drop */ }
     }
   };
@@ -804,7 +821,10 @@ chatbotRouter.post("/stream", async (c) => {
             // Quota is only consumed by SUCCESSFUL image analysis — a dud
             // stream that delivered nothing must not burn the user's quota.
             if (vision) await incrementImageQuota(ip, imageCount);
-            if (chatUser) persistRoundSafe(chatUser.id, messages, vision, reply, result.model, mode);
+            // ✅ AUDIT RUN-2 FIX: persist the OPAQUE model key (same contract
+            // as the non-stream persist — the raw provider tag never lands
+            // in chatMessages.metadata).
+            if (chatUser) persistRoundSafe(chatUser.id, messages, vision, reply, opaqueModelKey(result.model ?? "unknown"), mode);
             break;
           }
 

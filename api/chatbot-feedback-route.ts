@@ -12,7 +12,7 @@ import { logger } from "./lib/logger";
 //             the signal; snapshots are truncated server-side. Rate-limited
 //             per IP (30 votes/10 min) so a script can't flood the table.
 
-const feedbackSchema = z.object({
+export const feedbackSchema = z.object({
   chatId: z.string().min(4).max(64),
   rating: z.enum(["up", "down"]),
   question: z.string().min(1).max(8_000),
@@ -20,7 +20,14 @@ const feedbackSchema = z.object({
   comment: z.string().max(FEEDBACK_COMMENT_CAP).optional(),
   language: z.enum(["ar", "en"]).optional(),
   mode: z.enum(["thinking", "instant"]).optional(),
-  model: z.string().max(120).optional(),
+  model: z
+    .string()
+    .max(120)
+    .optional()
+    // ✅ AUDIT RUN-2 FIX (raw provider tags could re-enter persisted state
+    // through the vote path): the model field is normalized to the opaque
+    // key shape — anything else is dropped, not stored verbatim.
+    .transform((v) => (v && /^m_[0-9a-f]{10}$/.test(v) ? v : undefined)),
 });
 
 // In-memory vote limiter — same shape as the chatbot router's (single instance

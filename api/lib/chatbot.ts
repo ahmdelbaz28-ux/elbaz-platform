@@ -398,8 +398,11 @@ export async function tryNvidia(
 export async function nvidiaFallback(
   messages: ChatApiMessage[],
   systemPrompt: string,
-  tuning?: ModeTuning
+  tuning?: ModeTuning,
+  abortSignal?: AbortSignal,
 ): Promise<{ reply: string; model: string } | null> {
+  // ✅ AUDIT RUN-2 FIX: abandoned requests never dial NVIDIA.
+  if (abortSignal?.aborted) return null;
   if (!nvidiaIsAvailable()) return null;
   const t = tuning ?? MODE_TUNING.thinking;
   const result = await tryNvidia(messages, systemPrompt, Math.max(30000, Math.round(t.nvidiaStreamTimeoutMs / 2)), t);
@@ -615,15 +618,18 @@ export async function tryModelsByTier(
   globalTimeoutMs: number,
   tuning?: ModeTuning,
   webSearch = false,
+  abortSignal?: AbortSignal,
 ): Promise<{ reply: string; model: string } | null> {
   // WEB BUDGET — at most two plugin'd attempts (first + one fast-fail spare);
   // the rest of the sweep runs plugin-free so search latency never stacks.
   let webBudget = webSearch ? 2 : 0;
   for (let tier = 1; tier <= 4; tier++) {
+    if (abortSignal?.aborted) return null; // ✅ AUDIT RUN-2 FIX: stop on abort
     let tierTried = 0;
     let tierSkipped = 0;
 
     for (const model of AI_MODELS) {
+      if (abortSignal?.aborted) return null; // ✅ AUDIT RUN-2 FIX
       if (model.tier !== tier) continue;
       // Chat-lane gate — specialists (code/docs/tiny/allam/gemma) never write
       // chat answers even from the legacy static sweep.
@@ -653,6 +659,7 @@ export async function tryAllModelsAsLastResort(
   systemPrompt: string,
   tuning?: ModeTuning,
   webSearch = false,
+  abortSignal?: AbortSignal,
 ): Promise<{ reply: string; model: string } | null> {
   logger.warn("[Chatbot/OpenRouter] All tiers exhausted with skips. Trying all models as last resort...");
   // ✅ ARCH-AUDIT FIX (unbounded wall time): the last-resort sweep is now
@@ -666,6 +673,7 @@ export async function tryAllModelsAsLastResort(
       logger.warn("[Chatbot/OpenRouter] last-resort sweep hit its 45s wall — stopping (breakers stay armed)");
       break;
     }
+    if (abortSignal?.aborted) return null; // ✅ AUDIT RUN-2 FIX: stop on abort
     // Chat-lane gate holds even at the last resort — a garbled specialist
     // answer is WORSE than admitting busy (owner contract).
     if (!isChatLaneModel(model.id)) continue;
@@ -686,8 +694,11 @@ export async function openRouterFallback(
   _language?: string,
   tuning?: ModeTuning,
   webSearch = false,
+  abortSignal?: AbortSignal,
 ): Promise<{ reply: string; model: string } | null> {
   const t = tuning ?? MODE_TUNING.thinking;
+  // ✅ AUDIT RUN-2 FIX: abandoned requests never start the sweep.
+  if (abortSignal?.aborted) return null;
   if (!chatHealth.openrouterKeyValidated) {
     await validateOpenRouterKey();
   }
@@ -722,11 +733,11 @@ export async function openRouterFallback(
     }
   }
 
-  const tierResult = await tryModelsByTier(messages, systemPrompt, t.openRouterTierTimeouts, globalStartTime, t.openRouterGlobalTimeoutMs, t, webSearch);
+  const tierResult = await tryModelsByTier(messages, systemPrompt, t.openRouterTierTimeouts, globalStartTime, t.openRouterGlobalTimeoutMs, t, webSearch, abortSignal);
   if (tierResult) return tierResult;
 
   // Last resort = pure availability: never pay plugin latency here.
-  const lastResort = await tryAllModelsAsLastResort(messages, systemPrompt, t, false);
+  const lastResort = await tryAllModelsAsLastResort(messages, systemPrompt, t, false, abortSignal);
   if (lastResort) return lastResort;
 
   return null;
@@ -766,7 +777,8 @@ function buildAllTiersFailedResponse(language?: string): { success: boolean; err
 export async function tryGroqTier(
   messages: ChatApiMessage[],
   systemPrompt: string,
-  tuning: ModeTuning = MODE_TUNING.thinking
+  tuning: ModeTuning = MODE_TUNING.thinking,
+  abortSignal?: AbortSignal,
 ): Promise<{ success: boolean; reply?: string; model?: string } | null> {
   if (!groqIsAvailable()) {
     logger.info("[Chatbot] Groq not available (no key or cooldown).");
@@ -780,6 +792,7 @@ export async function tryGroqTier(
   const [firstTimeout, retryTimeout] = tuning.groqAttemptTimeouts;
   const liveModels = liveGroqModels();
   for (let i = 0; i < liveModels.length; i++) {
+    if (abortSignal?.aborted) return null; // ✅ AUDIT RUN-2 FIX: stop on abort
     chatHealth.groqCurrentModelIndex = GROQ_MODELS.indexOf(liveModels[i]);
     const modelId = liveModels[i];
 
@@ -830,6 +843,10 @@ export async function getChatResponse(request: {
   historySummary?: string;
   /** Persistence escalation (rounds ≥ 2): skip the dynamic router. */
   preferLegacy?: boolean;
+  /** ✅ AUDIT RUN-2 FIX: abort signal threaded through the LEGACY cascade —
+   *  checked between lanes and between attempts so an abandoned request
+   *  (client gone / endpoint hard cap) stops burning provider quota. */
+  abortSignal?: AbortSignal;
 }): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
   if (request.vision) return getVisionResponse(request);
 
@@ -840,6 +857,7 @@ export async function getChatResponse(request: {
     catalog: request.catalog,
     historySummary: request.historySummary,
     preferLegacy: request.preferLegacy,
+    abortSignal: request.abortSignal,
   });
 }
 
@@ -858,6 +876,8 @@ async function runTextCascade(request: {
    *  the resilient legacy backbone directly — a storming dynamic pool must
    *  never re-burn every round's walk budget before Groq/NVIDIA are tried. */
   preferLegacy?: boolean;
+  /** ✅ AUDIT RUN-2 FIX: checked between lanes — abandoned requests stop. */
+  abortSignal?: AbortSignal;
 }): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
   const mode: ChatbotMode = request.mode === "instant" ? "instant" : "thinking";
   const tuning = MODE_TUNING[mode];
@@ -884,6 +904,8 @@ async function runTextCascade(request: {
       // Instant lane hoists the general-purpose fast model (language compliance).
       preferredModelId: tuning.openRouterPreferredModel,
       webSearch,
+      // ✅ AUDIT RUN-2 FIX: the caller's abort signal reaches the walk.
+      abortSignal: request.abortSignal,
       gen: mode === "instant"
         ? { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 10_000, globalBudgetMs: 12_000 }
         : { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 20_000, globalBudgetMs: 22_000 },
@@ -891,18 +913,24 @@ async function runTextCascade(request: {
     if (routed.ok) return buildSuccessResult({ reply: routed.result.reply, model: routed.result.model });
   }
 
+  // ✅ AUDIT RUN-2 FIX: abort between legacy lanes — a disconnected request
+  // never starts the next provider's full sweep.
+  if (request.abortSignal?.aborted) return buildAllTiersFailedResponse(request.language);
+
   if (mode === "instant") {
     // INSTANT — fastest provider first: Groq → OpenRouter (fast model) → NVIDIA
-    const groqResult = await tryGroqTier(request.messages, systemPrompt, tuning);
+    const groqResult = await tryGroqTier(request.messages, systemPrompt, tuning, request.abortSignal);
     if (groqResult) return groqResult;
 
-    const orResult = await openRouterFallback(request.messages, systemPrompt, request.language, tuning, false);
+    if (request.abortSignal?.aborted) return buildAllTiersFailedResponse(request.language);
+    const orResult = await openRouterFallback(request.messages, systemPrompt, request.language, tuning, false, request.abortSignal);
     if (orResult) return buildSuccessResult(orResult);
 
+    if (request.abortSignal?.aborted) return buildAllTiersFailedResponse(request.language);
     if (nvidiaIsAvailable()) {
       if (chatHealth.nvidiaKeyValid === null) await validateNvidiaKey();
       if (nvidiaIsAvailable()) {
-        const nvidiaResult = await nvidiaFallback(request.messages, systemPrompt, tuning);
+        const nvidiaResult = await nvidiaFallback(request.messages, systemPrompt, tuning, request.abortSignal);
         if (nvidiaResult) return buildSuccessResult(nvidiaResult);
       }
     }
@@ -911,15 +939,17 @@ async function runTextCascade(request: {
     if (nvidiaIsAvailable()) {
       if (chatHealth.nvidiaKeyValid === null) await validateNvidiaKey();
       if (nvidiaIsAvailable()) {
-        const nvidiaResult = await nvidiaFallback(request.messages, systemPrompt, tuning);
+        const nvidiaResult = await nvidiaFallback(request.messages, systemPrompt, tuning, request.abortSignal);
         if (nvidiaResult) return buildSuccessResult(nvidiaResult);
       }
     }
 
-    const orResult = await openRouterFallback(request.messages, systemPrompt, request.language, tuning, true);
+    if (request.abortSignal?.aborted) return buildAllTiersFailedResponse(request.language);
+    const orResult = await openRouterFallback(request.messages, systemPrompt, request.language, tuning, true, request.abortSignal);
     if (orResult) return buildSuccessResult(orResult);
 
-    const groqResult = await tryGroqTier(request.messages, systemPrompt, tuning);
+    if (request.abortSignal?.aborted) return buildAllTiersFailedResponse(request.language);
+    const groqResult = await tryGroqTier(request.messages, systemPrompt, tuning, request.abortSignal);
     if (groqResult) return groqResult;
   }
 
@@ -983,6 +1013,8 @@ export async function getVisionResponse(request: {
   catalog?: string;
   /** Rolling summary of this user's older conversations (chat-history.ts). */
   historySummary?: string;
+  /** ✅ AUDIT RUN-2 FIX: abort signal reaches both vision passes. */
+  abortSignal?: AbortSignal;
 }): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
   // ── PASS 1 (READ): a vision-capable model extracts a factual description ──
   // The vision lane is offered ONLY the raw multimodal messages with the
@@ -1003,6 +1035,8 @@ export async function getVisionResponse(request: {
     mode: request.mode,
     catalog: request.catalog,
     historySummary: request.historySummary,
+    // ✅ AUDIT RUN-2 FIX: the vision pass-2 cascade honors the caller's abort.
+    abortSignal: request.abortSignal,
   });
 
   // POLICY (2026-10-23 live incident): no "last-resort direct vision answer".

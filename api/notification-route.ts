@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { resolveOptionalUser } from "./context";
 import { getCache } from "./lib/cache";
 import { isAfterCursor, recentBroadcasts, userNotifications } from "./lib/notification-broadcast";
@@ -48,6 +48,32 @@ async function isThrottled(userId: number): Promise<boolean> {
     return false;
   } catch {
     return false; // cache unavailable — allow through (graceful degradation)
+  }
+}
+
+/**
+ * ✅ AUDIT RUN-2 FIX (cross-site throttle starvation): the auth cookie is
+ * SameSite=None in production and the CSRF same-origin gate exempts GET, so
+ * a third-party page can loop `fetch(..., {credentials:'include'})` and keep
+ * the victim's per-user throttle bucket continuously hot — suppressing the
+ * victim's in-app notification delivery. Cross-site polls therefore get an
+ * immediate empty response WITHOUT touching the throttle bucket (and without
+ * the DB reads), so third-party noise can never consume or refresh the
+ * legitimate poller's cadence. Same-origin / same-site / native-shell polls
+ * are unaffected.
+ */
+export function isCrossSitePoll(c: Context): boolean {
+  const fetchSite = c.req.header("sec-fetch-site");
+  if (fetchSite) {
+    return fetchSite !== "same-origin" && fetchSite !== "same-site" && fetchSite !== "none";
+  }
+  // Browsers without Sec-Fetch-* still send Origin on cross-site fetches.
+  const origin = c.req.header("origin");
+  if (!origin) return false;
+  try {
+    return new URL(origin).host !== new URL(c.req.url).host;
+  } catch {
+    return true; // malformed Origin — treat as untrusted
   }
 }
 
@@ -134,6 +160,9 @@ notificationRoute.get("/poll", async (c) => {
   const after = c.req.query("after") || undefined;
 
   // ── Per-user throttle: 1 poll / 10s ──
+  // Cross-site noise serves empty WITHOUT touching the throttle bucket (see
+  // isCrossSitePoll) — the victim's legitimate poller keeps its cadence.
+  if (isCrossSitePoll(c)) return c.json({ events: [] as PollEvent[] });
   if (await isThrottled(user.id)) return c.json({ events: [] as PollEvent[] });
 
   // ── Merge both sources, then cursor-filter + dedupe + cap ──

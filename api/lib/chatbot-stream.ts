@@ -297,7 +297,7 @@ async function pumpNvidiaStream(
   decoder: TextDecoder,
   encoder: TextEncoder,
   controller: ReadableStreamDefaultController<Uint8Array>,
-  request: { messages: ChatApiMessage[]; language?: string },
+  request: { messages: ChatApiMessage[]; language?: string; abortSignal?: AbortSignal },
   picked: PickedProvider,
 ): Promise<void> {
   const reader = upstream.getReader();
@@ -362,7 +362,7 @@ async function pumpNvidiaStream(
  * On failure → OpenRouter stream → Groq stream (guaranteed-reply chain).
  */
 async function streamNvidiaProvider(
-  request: { messages: ChatApiMessage[]; language?: string },
+  request: { messages: ChatApiMessage[]; language?: string; abortSignal?: AbortSignal },
   picked: PickedProvider,
   encoder: TextEncoder,
 ): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
@@ -445,7 +445,7 @@ function buildSSEContentTransformStream(encoder: TextEncoder): TransformStream<U
  * Try a single Groq streaming fetch attempt with the given timeout.
  */
 async function tryGroqStreamFetch(
-  request: { messages: ChatApiMessage[]; language?: string },
+  request: { messages: ChatApiMessage[]; language?: string; abortSignal?: AbortSignal },
   picked: PickedProvider,
   modelId: string,
   timeout: number,
@@ -509,7 +509,7 @@ async function evaluateGroqStreamResponse(
  * thinking: 60s/90s).
  */
 async function streamGroqProvider(
-  request: { messages: ChatApiMessage[]; language?: string },
+  request: { messages: ChatApiMessage[]; language?: string; abortSignal?: AbortSignal },
   picked: PickedProvider,
   encoder: TextEncoder,
 ): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
@@ -517,11 +517,13 @@ async function streamGroqProvider(
 
   const liveModels = liveGroqModels();
   for (let i = 0; i < liveModels.length; i++) {
+    if (request.abortSignal?.aborted) return { error: "aborted" }; // ✅ AUDIT RUN-2 FIX
     const modelId = liveModels[i];
     if (!isDiscoveredModelId("groq", modelId)) continue;
     chatHealth.groqCurrentModelIndex = i;
 
     for (let attempt = 0; attempt < timeouts.length; attempt++) {
+      if (request.abortSignal?.aborted) return { error: "aborted" }; // ✅ AUDIT RUN-2 FIX
       const response = await tryGroqStreamFetch(request, picked, modelId, timeouts[attempt], attempt, timeouts.length);
       if (!response) {
         if (attempt < timeouts.length - 1) continue;
@@ -561,7 +563,7 @@ async function streamGroqProvider(
  * If the picked model fails, sweeps tier-1 then tier-2 models before giving up.
  */
 async function streamOpenRouterProvider(
-  request: { messages: ChatApiMessage[]; language?: string },
+  request: { messages: ChatApiMessage[]; language?: string; abortSignal?: AbortSignal },
   picked: PickedProvider,
   encoder: TextEncoder,
 ): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
@@ -586,6 +588,7 @@ async function streamOpenRouterProvider(
   let realAttempts = 0;
   for (const modelId of candidates) {
     if (realAttempts >= 8) break;
+    if (request.abortSignal?.aborted) return { error: "aborted" }; // ✅ AUDIT RUN-2 FIX
     // Web plugin (thinking accuracy lane): OpenRouter-only, honoring the
     // shared breaker. On 402/400 → disable + retry THIS model without it.
     const wantsWeb = picked.webSearch === true && !isWebPluginDisabled();
@@ -690,7 +693,7 @@ function singleChunkStream(reply: string, encoder: TextEncoder): ReadableStream<
  * each emitted as a single SSE text chunk so the client sees one clean reply.
  */
 async function streamOpenRouterFallback(
-  request: { messages: ChatApiMessage[]; language?: string },
+  request: { messages: ChatApiMessage[]; language?: string; abortSignal?: AbortSignal },
   systemPrompt: string,
   tuning: ModeTuning = MODE_TUNING.thinking,
 ): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
@@ -735,6 +738,8 @@ async function getVisionStreamResponse(request: {
   catalog?: string;
   /** Rolling summary of this user's older conversations (chat-history.ts). */
   historySummary?: string;
+  /** ✅ AUDIT RUN-2 FIX: the vision stream walk honors the caller's abort. */
+  abortSignal?: AbortSignal;
 }): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
   const mode: "thinking" | "instant" = request.mode === "instant" ? "instant" : "thinking";
   const tuning = MODE_TUNING[mode];
@@ -761,6 +766,9 @@ async function getVisionStreamResponse(request: {
     vision: false,
     language: request.language,
     preferredModelId: tuning.openRouterPreferredModel,
+    // ✅ AUDIT RUN-2 FIX: the vision stream walk honors the caller's abort —
+    // the signal was previously dropped on this lane entirely.
+    abortSignal: request.abortSignal,
     webSearch: mode === "thinking",
     gen: mode === "instant"
       ? { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 15_000, globalBudgetMs: 24_000 }

@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { createRouter, authQuery, authMutation } from "./middleware";
 import { getDb } from "./queries/connection";
 import { users } from "@db/schema";
-import { randomBytes, createHmac } from "node:crypto";
+import { randomBytes, createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "./lib/env";
 
 const BASE32_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
@@ -41,7 +41,7 @@ function base32Decode(base32: string): Buffer {
   return Buffer.from(bytes);
 }
 
-function generateTotpCode(secret: string, timeStep: number): string {
+export function generateTotpCode(secret: string, timeStep: number): string {
   const key = base32Decode(secret);
   const timeBuffer = Buffer.alloc(8);
   timeBuffer.writeBigUInt64BE(BigInt(timeStep), 0);
@@ -58,13 +58,54 @@ function generateTotpCode(secret: string, timeStep: number): string {
 // ✅ SECURITY FIX (audit run-1): exported so local-auth-router can enforce the
 // enrolled second factor at the login boundary (previously 2FA was enrollable
 // but never checked at login — password alone issued a full session).
+// ✅ AUDIT RUN-2 FIX: constant-time comparison (the 6-char string compare
+// with '===' was a timing side-channel on the last matching byte).
 export function verifyTotp(secret: string, token: string, window: number = 1): boolean {
   const timeStep = Math.floor(Date.now() / 30000);
   const cleanToken = token.replaceAll(/\s/g, "");
+  if (cleanToken.length !== 6) return false;
   for (let i = -window; i <= window; i++) {
-    if (generateTotpCode(secret, timeStep + i) === cleanToken) return true;
+    const generated = generateTotpCode(secret, timeStep + i);
+    try {
+      if (timingSafeEqual(Buffer.from(generated), Buffer.from(cleanToken))) return true;
+    } catch {
+      return false; // unequal lengths — cannot match
+    }
   }
   return false;
+}
+
+/**
+ * ✅ AUDIT RUN-2 FIX (second-factor takeover): proof of the CURRENT factor is
+ * required before any factor-mutating operation on an enrolled account
+ * (setup-on-enabled, regenerateBackupCodes). Accepts a valid TOTP code OR a
+ * backup code — a backup code used as proof is CONSUMED atomically via a
+ * conditional UPDATE (JSON_CONTAINS predicate), so two concurrent
+ * redemptions cannot both succeed and a stolen session alone proves nothing.
+ */
+async function assertCurrentFactorProof(
+  userId: number,
+  totpSecret: string,
+  backupCodesRaw: unknown,
+  code: string,
+): Promise<void> {
+  if (verifyTotp(totpSecret, code)) return;
+
+  const codes = Array.isArray(backupCodesRaw) ? (backupCodesRaw as string[]) : [];
+  const tokenHash = hashToken(code);
+  if (!codes.includes(tokenHash)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "رمز المصادقة الحالي غير صحيح" });
+  }
+  // Atomic single-use removal: the JSON_CONTAINS predicate fails when a
+  // concurrent request already consumed this code.
+  const result = await getDb()
+    .update(users)
+    .set({ totpBackupCodes: sql`JSON_REMOVE(${users.totpBackupCodes}, JSON_UNQUOTE(JSON_SEARCH(${users.totpBackupCodes}, 'one', ${tokenHash})))` })
+    .where(and(eq(users.id, userId), sql`JSON_CONTAINS(${users.totpBackupCodes}, ${JSON.stringify(tokenHash)})`));
+  const affected = Array.isArray(result) ? (result[0]?.affectedRows ?? 0) : 0;
+  if (!affected) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "رمز الاسترداد مستخدم بالفعل" });
+  }
 }
 
 // 🔒 SECURITY FIX (Task ID 3): Use APP_SECRET (or a dedicated WATERMARK_SECRET) as the
@@ -88,8 +129,26 @@ export function hashToken(token: string): string {
 }
 
 export const twoFaRouter = createRouter({
-  setup: authMutation.mutation(async ({ ctx }) => {
+  setup: authMutation
+    .input(z.object({ currentCode: z.string().min(6).max(8).optional() }))
+    .mutation(async ({ ctx, input }) => {
     const db = getDb();
+    // ✅ AUDIT RUN-2 FIX (second-factor takeover): re-enrolling on an
+    // ALREADY-ENABLED account now requires proof of the CURRENT factor — a
+    // bare stolen session can no longer silently replace the enrolled secret
+    // and mint 8 fresh backup codes. First-time enrollment stays friction-free.
+    const [current] = await db
+      .select({ totpSecret: users.totpSecret, totpEnabled: users.totpEnabled, totpBackupCodes: users.totpBackupCodes })
+      .from(users)
+      .where(eq(users.id, ctx.user.id))
+      .limit(1);
+    if (current?.totpEnabled && current.totpSecret) {
+      if (!input.currentCode) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "أدخل رمز المصادقة الحالي لإعادة تعيين المصادقة الثنائية" });
+      }
+      await assertCurrentFactorProof(ctx.user.id, current.totpSecret, current.totpBackupCodes, input.currentCode);
+    }
+
     const secret = generateSecret();
     const backupCodes = generateBackupCodes();
     const backupCodesHashed = backupCodes.map((code) => hashToken(code));
@@ -128,15 +187,22 @@ export const twoFaRouter = createRouter({
 
       const backupCodes = user.totpBackupCodes ? (user.totpBackupCodes as string[]) : [];
       const tokenHash = hashToken(input.token);
-      const backupIndex = backupCodes.indexOf(tokenHash);
 
-      if (backupIndex !== -1) {
-        backupCodes.splice(backupIndex, 1);
-        await db
-          .update(users)
-          .set({ totpEnabled: true, totpBackupCodes: JSON.stringify(backupCodes) })
-          .where(eq(users.id, ctx.user.id));
-        return { success: true, usedBackup: true, remaining: backupCodes.length };
+      // ✅ AUDIT RUN-2 FIX (backup-code race): the old read-splice-write let
+      // two concurrent redemptions of the same code both succeed. The
+      // conditional UPDATE removes the hash only if it is STILL present —
+      // the loser of the race affects 0 rows and is rejected.
+      const consumed = await db
+        .update(users)
+        .set({
+          totpEnabled: true,
+          totpBackupCodes: sql`JSON_REMOVE(${users.totpBackupCodes}, JSON_UNQUOTE(JSON_SEARCH(${users.totpBackupCodes}, 'one', ${tokenHash})))`,
+        })
+        .where(and(eq(users.id, ctx.user.id), sql`JSON_CONTAINS(${users.totpBackupCodes}, ${JSON.stringify(tokenHash)})`));
+      const affected = Array.isArray(consumed) ? (consumed[0]?.affectedRows ?? 0) : 0;
+      if (affected) {
+        const remaining = Math.max(0, backupCodes.length - 1);
+        return { success: true, usedBackup: true, remaining };
       }
 
       throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid 2FA code" });
@@ -173,15 +239,23 @@ export const twoFaRouter = createRouter({
     return { enabled: user?.totpEnabled ?? false };
   }),
 
-  regenerateBackupCodes: authMutation.mutation(async ({ ctx }) => {
+  regenerateBackupCodes: authMutation
+    .input(z.object({ currentCode: z.string().min(6).max(8) }))
+    .mutation(async ({ ctx, input }) => {
     const db = getDb();
     const [user] = await db
-      .select({ totpSecret: users.totpSecret })
+      .select({ totpSecret: users.totpSecret, totpBackupCodes: users.totpBackupCodes })
       .from(users)
       .where(eq(users.id, ctx.user.id))
       .limit(1);
 
     if (!user?.totpSecret) throw new TRPCError({ code: "BAD_REQUEST", message: "2FA not set up" });
+
+    // ✅ AUDIT RUN-2 FIX (second-factor takeover): minting 8 fresh login-valid
+    // backup codes now requires proof of the CURRENT factor — a stolen
+    // session token alone can no longer mint codes that survive password
+    // change and revoke-all-sessions.
+    await assertCurrentFactorProof(ctx.user.id, user.totpSecret, user.totpBackupCodes, input.currentCode);
 
     const backupCodes = generateBackupCodes();
     const backupCodesHashed = backupCodes.map((code) => hashToken(code));

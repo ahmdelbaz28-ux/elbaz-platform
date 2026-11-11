@@ -113,3 +113,13 @@ export function finalizeReply(raw: string, language?: string): FinalizedReply {
 export function opaqueModelKey(modelTag: string): string {
   return `m_${createHash("sha1").update(modelTag).digest("hex").slice(0, 10)}`;
 }
+
+/**
+ * Wire-shape guard for STORED model values read back from persistence
+ * (chat history rows may predate the opaque-key contract). Raw provider tags
+ * are converted; values already in the opaque shape pass through unchanged.
+ */
+export function toOpaqueWireModel(model?: string | null): string | undefined {
+  if (!model) return undefined;
+  return model.startsWith("m_") ? model : opaqueModelKey(model);
+}
