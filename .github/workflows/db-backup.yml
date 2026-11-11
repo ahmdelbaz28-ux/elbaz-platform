@@ -98,7 +98,11 @@ jobs:
         run: |
           set -euo pipefail
           TAG="db-backup-$(date -u +%Y%m%d)"
-          ASSET_URL=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/$TAG" -q '.assets[0].browser_download_url')
+          # Draft releases are NOT resolvable via /releases/tags/{tag} (that
+          # endpoint ignores drafts — cost us one red run to learn) — resolve
+          # from the releases LIST instead.
+          ASSET_URL=$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=30" \
+            -q --arg TAG "$TAG" '.[] | select(.tag_name == $TAG) | .assets[0].browser_download_url')
           echo "asset: $ASSET_URL"
           CODE=$(curl -sL -o /dev/null -w '%{http_code}' --max-time 30 "$ASSET_URL")
           echo "anonymous download probe: HTTP $CODE"
