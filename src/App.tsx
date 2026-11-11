@@ -1,5 +1,5 @@
 import { Routes, Route, useLocation, useNavigationType } from "react-router";
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Toaster } from "sonner";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -22,6 +22,34 @@ import "@/engineering-mode.css";
 // It's rendered on every page but only ~5% of users open it. Loading it
 // on-demand saves ~50KB from the initial bundle on every page load.
 const ChatBot = lazy(() => import("@/components/ChatBot").then(m => ({ default: m.default })));
+
+/**
+ * 🚀 PERFORMANCE (root-cause audit, F4): defer the ChatBot chunk until idle.
+ * The lazy() boundary above only makes the chunk SEPARATE — this component
+ * used to be mounted immediately, so its 41KB still downloaded on EVERY page
+ * load while ~95% of visitors never open it, competing with boot-critical
+ * requests. Now the download waits for browser idle time (or a 3s hard cap),
+ * after which the FAB appears. No functionality is lost: the widget itself
+ * lazy-loads its internals on first interaction.
+ */
+function DeferredChatBot() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    if ("requestIdleCallback" in globalThis) {
+      const id = (globalThis as {
+        requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => number;
+        cancelIdleCallback: (id: number) => void;
+      }).requestIdleCallback(() => setReady(true), { timeout: 3000 });
+      return () => {
+        (globalThis as { cancelIdleCallback: (id: number) => void }).cancelIdleCallback(id);
+      };
+    }
+    const t = setTimeout(() => setReady(true), 1500);
+    return () => clearTimeout(t);
+  }, []);
+  if (!ready) return null;
+  return <ChatBot />;
+}
 
 const Home = lazy(() => import("./pages/Home").then(m => ({ default: m.default })));
 const Courses = lazy(() => import("./pages/Courses").then(m => ({ default: m.default })));
@@ -118,8 +146,8 @@ function Layout({ children }: { readonly children: React.ReactNode }) {
       <main id="main-content" tabIndex={-1}><Suspense fallback={<PageLoader />}>{children}</Suspense></main>
       {!isAuthPage && !isAdminPage && <Footer />}
       {!isAdminPage && <WhatsAppButton />}
-      {/* 🚀 PERFORMANCE: ChatBot wrapped in Suspense — loads on first interaction */}
-      {!isAdminPage && <Suspense fallback={null}><ChatBot /></Suspense>}
+      {/* 🚀 PERFORMANCE: ChatBot wrapped in Suspense — downloaded only during idle time */}
+      {!isAdminPage && <Suspense fallback={null}><DeferredChatBot /></Suspense>}
       <CookieConsent />
     </div>
   );

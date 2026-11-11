@@ -69,8 +69,12 @@
     <link rel="dns-prefetch" href="https://accounts.google.com" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <!-- Google Fonts - Inter + Cairo -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Cairo:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <!-- Google Fonts - Inter + Cairo
+         🚀 PERF (root-cause audit, F6): Inter 300 removed — the only
+         font-light usage in the app was a single ":" separator (Home.tsx),
+         now font-normal. Every remaining weight (Inter 400/500/600/700,
+         Cairo 400/500/600/700) is genuinely used across the UI. -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cairo:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
     <!-- PWA Manifest -->
     <link rel="manifest" href="/manifest.webmanifest" />

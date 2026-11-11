@@ -124,6 +124,8 @@ export default function Footer() {
               <img
                 src="/instructor-ahmed-elbaz.jpg"
                 alt="Eng. Ahmed Elbaz — Founder"
+                loading="lazy"
+                decoding="async"
                 className="h-12 w-12 rounded-full border border-border object-cover shadow-md shadow-accent-secondary/10 transition-transform duration-300 group-hover:scale-105"
               />
               <div>

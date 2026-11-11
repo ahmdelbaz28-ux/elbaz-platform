@@ -157,6 +157,19 @@ export function createSpaHandler(getBuildId: () => string | null) {
       return next(); // → serveStatic serves the raw file (or 404 if missing)
     }
 
+    // ── CACHING (root-cause audit, F5): HTTP Cache-Control for the HTML shell ──
+    // The <meta http-equiv="Cache-Control"> tags in index.html are IGNORED by
+    // CDNs and only weakly honored by browsers — the ONLY reliable channel is
+    // the HTTP header. Without it, intermediary caches applied heuristic
+    // freshness to the bootstrap HTML, which is exactly how stale index.html
+    // (referencing dead hashed assets) served white screens after deploys.
+    // "no-cache" keeps repeat navigations fast while forcing revalidation,
+    // so a new deploy is picked up on the NEXT navigation, never masked.
+    c.header("Cache-Control", "no-cache, must-revalidate");
+    // Surrogate-Control: CDNs that cache HTML despite Cache-Control (HF Space
+    // edge) must never keep the bootstrap HTML — it changes on every deploy.
+    c.header("Surrogate-Control", "no-store");
+
     const routePath = normalizePath(path);
     const knownRoute = isKnownSpaRoute(routePath);
 

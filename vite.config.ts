@@ -76,6 +76,20 @@ const PRECACHE_EXCLUDE = [
   'manifest.webmanifest',
 ]
 
+// 🚀 PERFORMANCE (root-cause audit): on-demand chunks must NOT be precached.
+// Precaching forced EVERY first-time visitor to download all 52 build files
+// (~2.16MB raw / ~620KB compressed) — including hls-vendor (591KB, needed only
+// when actually playing an HLS lesson) and Admin (199KB, admins only). Both
+// are dynamically imported, so they load fine on demand and get stored in the
+// 'js-css-cache' runtime cache (StaleWhileRevalidate on /assets/*.js) the
+// first time they're actually fetched. Offline /admin navigation is already
+// excluded via navigateFallbackDenylist, and offline video playback was never
+// precache-guaranteed. Net effect: SW install drops ~40% with zero UX loss.
+const PRECACHE_EXCLUDE_CHUNKS = [
+  '**/hls-vendor-*.js',
+  '**/Admin-*.js',
+]
+
 // https://vite.dev/config/
 export default defineConfig({
   root: __dirname,
@@ -116,7 +130,7 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,webmanifest}'],
         // Exclude critical files from precache — they're served with no-cache headers
         // and must always come fresh from the server to detect new deploys.
-        globIgnores: PRECACHE_EXCLUDE.map(f => `**/${f}`),
+        globIgnores: [...PRECACHE_EXCLUDE.map(f => `**/${f}`), ...PRECACHE_EXCLUDE_CHUNKS],
         // Skip waiting: new SW activates immediately instead of waiting for old tabs to close
         skipWaiting: true,
         // Clients claim: new SW takes control of all open pages immediately

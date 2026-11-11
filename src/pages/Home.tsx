@@ -298,7 +298,7 @@ function PromoBanner({ promotion }: { readonly promotion: any }) {
                     {pad(timeLeft[unit])}
                   </span>
                   <span className="hidden text-[10px] uppercase tracking-wider opacity-70 sm:inline">{countdownLabels[unit]}</span>
-                  {i < 3 && <span className="mx-0.5 text-lg font-light opacity-50">:</span>}
+                  {i < 3 && <span className="mx-0.5 text-lg font-normal opacity-50">:</span>}
                 </div>
               ))}
             </div>

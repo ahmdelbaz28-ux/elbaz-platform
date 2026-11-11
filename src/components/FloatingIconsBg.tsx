@@ -85,7 +85,11 @@ export default function FloatingIconsBg() {
     <div
       ref={containerRef}
       aria-hidden="true"
-      className="floating-icons pointer-events-none fixed inset-0 z-[-1] overflow-hidden"
+      // 🚀 PERF (root-cause audit, F8): hidden below lg (1024px). 25 blurred,
+      // animated, will-change layers are free on desktop GPUs but measurably
+      // tax phone/tablet compositors — for decoration at 0.03-0.13 opacity.
+      // Desktop (lg+) is unchanged.
+      className="floating-icons pointer-events-none fixed inset-0 z-[-1] hidden overflow-hidden lg:block"
     >
       <style>{`
         .floating-icons .icon {

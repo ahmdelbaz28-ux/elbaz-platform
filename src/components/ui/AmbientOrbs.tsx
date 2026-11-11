@@ -60,7 +60,12 @@ export default function AmbientOrbs() {
     <div
       ref={containerRef}
       aria-hidden="true"
-      className="ambient-orbs pointer-events-none fixed inset-0 z-[-1] overflow-hidden"
+      // 🚀 PERF (root-cause audit, F8): hidden below lg (1024px). Four
+      // blur(80-100px) layers up to 400px wide are pure compositor cost on
+      // phones/tablets — the same class of cost that made scrolling janky —
+      // while adding near-invisible decoration (opacity 0.08-0.15) on small
+      // screens. Desktop (lg+) is unchanged.
+      className="ambient-orbs pointer-events-none fixed inset-0 z-[-1] hidden overflow-hidden lg:block"
     >
       <style>{`
         .ambient-orbs .orb {

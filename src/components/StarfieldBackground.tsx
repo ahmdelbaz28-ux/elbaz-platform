@@ -49,6 +49,9 @@ const MAX_CONNECTION_DIST = 200; // Maximum distance for connecting lines (incre
 const MIN_CONNECTION_DIST = 60;  // Minimum distance to consider connection
 const PARTICLE_SPEED = 40;        // Drift speed in pixels per second (visible movement)
 const CONNECTION_ALPHA = 0.4;    // Base alpha for connection lines (increased for visibility)
+// 🚀 PERF (root-cause audit, F3): particles drift at ~40px/s — 30fps is
+// visually indistinguishable from 60fps but HALVES canvas CPU/GPU work.
+const FRAME_INTERVAL_MS = 1000 / 30;
 // ✅ FIX: Reduced particle count from 200 to 80 to prevent O(n²) performance issues.
 // 200 particles = 20,000 distance checks per frame = 1.2M checks/sec at 60fps.
 // 80 particles = 3,160 distance checks per frame = 190K checks/sec — 6x lighter.
@@ -113,6 +116,13 @@ export default function StarfieldBackground() {
     let nextShootAt = 0;
     let rafId = 0;
     let running = true;
+    // 🚀 PERF (F3): the cosmic gradient + grid are STATIC — they never change
+    // between resizes. Previously they were re-drawn EVERY frame (a full-screen
+    // fillRect + a fresh createRadialGradient + ~60 stroke calls per frame at
+    // 60fps = constant GPU/CPU burn behind all content). They now render once
+    // into this offscreen canvas (on resize only) and are blitted per frame
+    // with a single drawImage — orders of magnitude cheaper.
+    let staticLayer: HTMLCanvasElement | null = null;
 
     // Seed particles with slow random drift
     const seedParticles = () => {
@@ -140,6 +150,57 @@ export default function StarfieldBackground() {
       });
     };
 
+    // 🚀 PERF (F3): draw the static cosmic gradient + grid ONCE into an
+    // offscreen canvas at device-pixel resolution. Redrawn on resize only.
+    const renderStaticLayer = () => {
+      staticLayer = document.createElement('canvas');
+      staticLayer.width = canvas.width;
+      staticLayer.height = canvas.height;
+      const sctx = staticLayer.getContext('2d');
+      if (!sctx) return;
+      sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      // Cosmic gradient background — cyberpunk dark mode only
+      sctx.fillStyle = 'rgba(15, 15, 35, 1)'; // Match background color
+      sctx.fillRect(0, 0, width, height);
+
+      // Subtle radial glow from top center
+      const centerX = width * 0.5;
+      const centerY = height * 0.2;
+      const radius = Math.max(width, height) * 0.6;
+
+      const gradient = sctx.createRadialGradient(
+        centerX, centerY, 0,
+        centerX, centerY, radius
+      );
+      gradient.addColorStop(0, 'rgba(249, 115, 22, 0.08)'); // orange glow
+      gradient.addColorStop(0.4, 'rgba(49, 46, 129, 0.04)'); // secondary dark blue mid
+      gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+      sctx.fillStyle = gradient;
+      sctx.fillRect(0, 0, width, height);
+
+      // Subtle grid overlay
+      const GRID_SIZE = 64;
+      sctx.lineWidth = 1;
+      for (let x = 0; x <= width; x += GRID_SIZE) {
+        const isMajor = (x / GRID_SIZE) % 4 === 0;
+        sctx.strokeStyle = isMajor ? themeColors.gridColorMajor : themeColors.gridColor;
+        sctx.beginPath();
+        sctx.moveTo(x + 0.5, 0);
+        sctx.lineTo(x + 0.5, height);
+        sctx.stroke();
+      }
+      for (let y = 0; y <= height; y += GRID_SIZE) {
+        const isMajor = (y / GRID_SIZE) % 4 === 0;
+        sctx.strokeStyle = isMajor ? themeColors.gridColorMajor : themeColors.gridColor;
+        sctx.beginPath();
+        sctx.moveTo(0, y + 0.5);
+        sctx.lineTo(width, y + 0.5);
+        sctx.stroke();
+      }
+    };
+
     const resize = () => {
       dpr = Math.min(2, globalThis.devicePixelRatio || 1);
       width = globalThis.innerWidth;
@@ -149,6 +210,7 @@ export default function StarfieldBackground() {
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      renderStaticLayer();
       seedParticles();
       paint();
     };
@@ -173,50 +235,8 @@ export default function StarfieldBackground() {
       };
     };
 
-    // Draw cosmic gradient background — cyberpunk dark mode only
-    const drawCosmicGradient = () => {
-      // Dark mode: deep cosmic background
-      ctx.fillStyle = 'rgba(15, 15, 35, 1)'; // Match background color
-      ctx.fillRect(0, 0, width, height);
-      
-      // Subtle radial glow from top center
-      const centerX = width * 0.5;
-      const centerY = height * 0.2;
-      const radius = Math.max(width, height) * 0.6;
-      
-      const gradient = ctx.createRadialGradient(
-        centerX, centerY, 0,
-        centerX, centerY, radius
-      );
-      gradient.addColorStop(0, 'rgba(249, 115, 22, 0.08)'); // orange glow
-      gradient.addColorStop(0.4, 'rgba(49, 46, 129, 0.04)'); // secondary dark blue mid
-      gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, width, height);
-    };
-
-    // Draw subtle grid overlay
-    const drawGrid = () => {
-      const GRID_SIZE = 64;
-      ctx.lineWidth = 1;
-      for (let x = 0; x <= width; x += GRID_SIZE) {
-        const isMajor = (x / GRID_SIZE) % 4 === 0;
-        ctx.strokeStyle = isMajor ? themeColors.gridColorMajor : themeColors.gridColor;
-        ctx.beginPath();
-        ctx.moveTo(x + 0.5, 0);
-        ctx.lineTo(x + 0.5, height);
-        ctx.stroke();
-      }
-      for (let y = 0; y <= height; y += GRID_SIZE) {
-        const isMajor = (y / GRID_SIZE) % 4 === 0;
-        ctx.strokeStyle = isMajor ? themeColors.gridColorMajor : themeColors.gridColor;
-        ctx.beginPath();
-        ctx.moveTo(0, y + 0.5);
-        ctx.lineTo(width, y + 0.5);
-        ctx.stroke();
-      }
-    };
+    // (F3) drawCosmicGradient + drawGrid were REMOVED — both are now drawn
+    // once into `staticLayer` by renderStaticLayer() and blitted in paint().
 
     // Update a single particle's position + twinkle alpha in place.
     // Extracted from drawParticles to keep cognitive complexity manageable.
@@ -282,12 +302,11 @@ export default function StarfieldBackground() {
             // Calculate alpha based on distance (closer = more visible)
             const connectionAlpha = CONNECTION_ALPHA * (1 - dist / MAX_CONNECTION_DIST);
 
-            // Create gradient for the connection line
-            const grad = ctx.createLinearGradient(p1.x, p1.y, p2.x, p2.y);
-            grad.addColorStop(0, `rgba(${connectionColor},${connectionAlpha.toFixed(3)})`);
-            grad.addColorStop(1, `rgba(${connectionColor},${(connectionAlpha * 0.5).toFixed(3)})`);
-
-            ctx.strokeStyle = grad;
+            // 🚀 PERF (F3): a plain rgba stroke instead of a per-line
+            // createLinearGradient — gradients here were invisible at 1px
+            // width but forced a gradient-object allocation for EVERY line
+            // on EVERY frame (up to ~1000 allocations/sec on desktop).
+            ctx.strokeStyle = `rgba(${connectionColor},${connectionAlpha.toFixed(3)})`;
             ctx.lineWidth = 1; // Increased from 0.5
             ctx.beginPath();
             ctx.moveTo(p1.x, p1.y);
@@ -369,17 +388,19 @@ export default function StarfieldBackground() {
       const dtSec = lastTs === 0 ? 0 : Math.min(0.05, (ts - lastTs) / 1000);
       lastTs = ts;
 
-      ctx.clearRect(0, 0, width, height);
-      
-      // Draw cosmic gradient background
-      drawCosmicGradient();
-      
-      // Draw subtle grid
-      drawGrid();
-      
+      // 🚀 PERF (F3): one drawImage replaces the per-frame gradient fills +
+      // ~60 grid stroke calls (static layer is drawn in device pixels —
+      // drawImage with CSS-pixel dest size under the dpr transform is exact).
+      if (staticLayer) {
+        ctx.clearRect(0, 0, width, height);
+        ctx.drawImage(staticLayer, 0, 0, width, height);
+      } else {
+        ctx.clearRect(0, 0, width, height);
+      }
+
       // Draw particles with connections
       drawParticles(prefersReduced ? 0 : dtSec);
-      
+
       // Draw shooting stars
       if (!prefersReduced) {
         drawShootings(dtSec);
@@ -394,7 +415,12 @@ export default function StarfieldBackground() {
 
     const tick = (ts: number) => {
       if (!running) return;
-      paint(ts);
+      // 🚀 PERF (F3): cap the animation to ~30fps. The drift is 40px/s — the
+      // skipped frames are imperceptible, but canvas work (and the battery
+      // drain behind it) drops by roughly half on every device.
+      if (ts - lastTs >= FRAME_INTERVAL_MS) {
+        paint(ts);
+      }
       rafId = requestAnimationFrame(tick);
     };
 
