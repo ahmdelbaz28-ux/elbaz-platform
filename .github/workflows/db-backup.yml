@@ -1,5 +1,5 @@
 # 🗄️ Daily database backup — pulls a full SQL dump from the platform's
-# operator-gated endpoint and stores it as a private GitHub Release asset.
+# operator-gated endpoint and stores it as a DRAFT GitHub Release asset.
 #
 # How it works:
 #   1. GET /api/maintenance/backup with Authorization: Bearer BACKUP_TOKEN
@@ -7,12 +7,17 @@
 #      travel to GitHub; this repo only ever sees the finished dump).
 #   2. Integrity gate: HTTP 200 + size sanity + gzip validity + a real
 #      "CREATE TABLE" in the head of the stream — a broken dump fails loudly.
-#   3. Stored as a dated release `db-backup-YYYYMMDD` (private repo → private
-#      asset), auto-pruned to the newest 7 (one week of rollback points).
+#   3. Stored as a DATED DRAFT release `db-backup-YYYYMMDD`, auto-pruned to
+#      the newest 7 (one week of rollback points).
+#      ⚠️ DRAFT, not published (security fix 2026-11-11): this repo is PUBLIC
+#      and published release assets are world-downloadable — two dumps WERE
+#      publicly downloadable before the fix (anonymous 200 confirmed). Draft
+#      assets require push access to fetch. The "anon-download must 404"
+#      self-check below turns any future regression into a red run.
 #   4. Telegram alert on failure AND a short confirmation on success.
 #
-# Restore (one line):
-#   gh release download db-backup-YYYYMMDD -p "*.sql.gz" \
+# Restore (owner, authenticated):
+#   gh release download db-backup-YYYYMMDD -R ahmdelbaz28-ux/elbaz-platform -p "*.sql.gz" \
 #     && gunzip -c elbaz-db-*.sql.gz | mysql -h <host> -u <user> -p <dbname>
 
 name: Daily DB Backup
@@ -67,20 +72,41 @@ jobs:
           echo "tables in manifest: ${TABLES:-?}"
           echo "dump_file=${OUT}" >> "$GITHUB_ENV"
 
-      - name: Store as release (keep last 7 days)
+      - name: Store as draft release (keep last 7 days)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           TAG="db-backup-$(date -u +%Y%m%d)"
           gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 && gh release delete "$TAG" -R "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
-          gh release create "$TAG" "${{ env.dump_file }}" -R "$GITHUB_REPOSITORY" \
+          # --draft is the security boundary (repo is PUBLIC): draft assets are
+          # fetchable only with push access. NEVER remove this flag.
+          gh release create "$TAG" "${{ env.dump_file }}" -R "$GITHUB_REPOSITORY" --draft \
             --title "DB backup $(date -u '+%Y-%m-%d %H:%M') UTC" \
-            --notes "Automated daily backup (auto-pruned after 7). Restore: see workflow header."
+            --notes "Automated daily backup (DRAFT — private rollback point, auto-pruned after 7). Restore: see workflow header."
           TAGS=$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --paginate -q '.[].tag_name' | grep '^db-backup-' || true)
           echo "$TAGS" | sort | head -n -7 | while read -r OLD; do
             [ -n "$OLD" ] && gh release delete "$OLD" -R "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
           done
+
+      # Self-verifying regression gate for the 2026-11-11 leak: the fresh
+      # asset MUST NOT be anonymously downloadable. A 200 here means the dump
+      # is world-readable — fail the run loudly (and the Telegram alert fires).
+      - name: Verify asset is NOT anonymously downloadable
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="db-backup-$(date -u +%Y%m%d)"
+          ASSET_URL=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/$TAG" -q '.assets[0].browser_download_url')
+          echo "asset: $ASSET_URL"
+          CODE=$(curl -sL -o /dev/null -w '%{http_code}' --max-time 30 "$ASSET_URL")
+          echo "anonymous download probe: HTTP $CODE"
+          [ "$CODE" != "200" ] || {
+            echo "::error::SECURITY: backup asset is anonymously downloadable (HTTP 200) — the repo must be private, the release a draft, or the asset removed"
+            exit 1
+          }
+          echo "✅ asset not publicly reachable (HTTP $CODE)"
 
       - name: Telegram alert on failure
         if: failure()
