@@ -405,6 +405,10 @@ chatbotRouter.post("/", async (c) => {
       catalog,
       vision,
       historySummary: historySummary ?? undefined,
+      // ✅ Review fix (2026-11-11): the client's disconnect signal reaches the
+      // whole cascade — the walk, every lane and every in-flight fetch now
+      // observe it (abort-utils composition), not just the persistence loop.
+      abortSignal: c.req.raw.signal,
     };
     let result = await getChatResponse(chatRequest);
     let persistRound = 0;

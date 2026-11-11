@@ -35,6 +35,7 @@ import { env } from "../lib/env";
 import { getSystemPrompt, MODE_TUNING, type ChatbotMode, type ModeTuning } from "./chatbot-prompts.js";
 import { logger } from "./logger.js";
 import { routeChatCompletion, isWebPluginDisabled, disableWebPluginFor, WEB_PLUGIN_BODY, isOpenRouterDailyLimited, noteOpenRouterDailyLimit, isChatLaneModel, isDiscoveredModelId } from "./ai-router.js";
+import { withCallerAbort } from "./abort-utils.js";
 import { stripThinkBlocks } from "./think-filter.js";
 import { buildAugmentedTextMessages, buildVisionFailureMessages, readImageViaVisionModels } from "./chatbot-vision.js";
 
@@ -217,6 +218,7 @@ export async function tryGroq(
   modelId: string,
   timeoutMs: number,
   tuning: ModeTuning = MODE_TUNING.thinking,
+  abortSignal?: AbortSignal,
 ): Promise<{ reply: string; model: string } | null> {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   try {
@@ -229,7 +231,8 @@ export async function tryGroq(
         "Authorization": `Bearer ${GROQ_API_KEY}`,
         "Content-Type": "application/json",
       },
-      signal: controller.signal,
+      // ✅ Review fix: caller abort cancels the in-flight Groq fetch.
+      signal: withCallerAbort(abortSignal, controller.signal),
       body: JSON.stringify({
         model: modelId,
         messages: [
@@ -322,6 +325,7 @@ export async function tryNvidia(
   systemPrompt: string,
   timeoutMs: number,
   tuning: ModeTuning = MODE_TUNING.thinking,
+  abortSignal?: AbortSignal,
 ): Promise<{ reply: string; model: string } | null> {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   try {
@@ -334,7 +338,8 @@ export async function tryNvidia(
         "Authorization": `Bearer ${NVIDIA_API_KEY}`,
         "Content-Type": "application/json",
       },
-      signal: controller.signal,
+      // ✅ Review fix: caller abort cancels the in-flight NVIDIA fetch.
+      signal: withCallerAbort(abortSignal, controller.signal),
       body: JSON.stringify({
         model: NVIDIA_MODEL,
         messages: [
@@ -405,7 +410,7 @@ export async function nvidiaFallback(
   if (abortSignal?.aborted) return null;
   if (!nvidiaIsAvailable()) return null;
   const t = tuning ?? MODE_TUNING.thinking;
-  const result = await tryNvidia(messages, systemPrompt, Math.max(30000, Math.round(t.nvidiaStreamTimeoutMs / 2)), t);
+  const result = await tryNvidia(messages, systemPrompt, Math.max(30000, Math.round(t.nvidiaStreamTimeoutMs / 2)), t, abortSignal);
   return result;
 }
 
@@ -474,6 +479,7 @@ export async function tryModel(
   timeoutMs: number,
   tuning: ModeTuning = MODE_TUNING.thinking,
   webSearch = false,
+  abortSignal?: AbortSignal,
 ): Promise<{ reply: string; model: string } | null> {
   let controller: AbortController | null = null;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -507,7 +513,8 @@ export async function tryModel(
         "HTTP-Referer": "https://ahmedelbaz.qzz.io",
         "X-Title": "Elbaz LMS Chatbot",
       },
-      signal: controller.signal,
+      // ✅ Review fix: caller abort cancels the in-flight OpenRouter fetch.
+      signal: withCallerAbort(abortSignal, controller.signal),
       body: buildBody(),
     });
 
@@ -525,7 +532,7 @@ export async function tryModel(
           "HTTP-Referer": "https://ahmedelbaz.qzz.io",
           "X-Title": "Elbaz LMS Chatbot",
         },
-        signal: controller.signal,
+        signal: withCallerAbort(abortSignal, controller.signal),
         body: JSON.stringify({
           model: modelId,
           messages: [
@@ -596,6 +603,7 @@ export async function tryLastWorkingModel(
   tierTimeouts: Record<number, number>,
   tuning?: ModeTuning,
   webSearch = false,
+  abortSignal?: AbortSignal,
 ): Promise<{ reply: string; model: string } | null> {
   // Mode-scoped shortcut: each mode only reuses a model that THIS mode
   // previously succeeded with — no cross-mode inheritance in either direction.
@@ -607,7 +615,7 @@ export async function tryLastWorkingModel(
   // Chat-lane gate — a below-bar specialist must never be re-picked because
   // it happened to be the last model that returned HTTP 200.
   if (!isChatLaneModel(entry.model)) return null;
-  return await tryModel(entry.model, messages, systemPrompt, tierTimeouts[1], tuning, webSearch);
+  return await tryModel(entry.model, messages, systemPrompt, tierTimeouts[1], tuning, webSearch, abortSignal);
 }
 
 export async function tryModelsByTier(
@@ -641,7 +649,7 @@ export async function tryModelsByTier(
       tierTried++;
       const useWeb = webBudget > 0;
       if (useWeb) webBudget--;
-      const result = await tryModel(model.id, messages, systemPrompt, tierTimeouts[tier], tuning, useWeb);
+      const result = await tryModel(model.id, messages, systemPrompt, tierTimeouts[tier], tuning, useWeb, abortSignal);
       if (result) return result;
     }
 
@@ -682,7 +690,7 @@ export async function tryAllModelsAsLastResort(
     // re-dialed on EVERY last-resort walk and the breakers never armed. The
     // breaker state is now honored even at last resort; only a SUCCESSFUL
     // answer (inside tryModel's own accounting) clears strikes.
-    const result = await tryModel(model.id, messages, systemPrompt, 10000, tuning, webSearch);
+    const result = await tryModel(model.id, messages, systemPrompt, 10000, tuning, webSearch, abortSignal);
     if (result) return result;
   }
   return null;
@@ -717,7 +725,7 @@ export async function openRouterFallback(
 
   const globalStartTime = Date.now();
 
-  const lastResult = await tryLastWorkingModel(messages, systemPrompt, t.openRouterTierTimeouts, t, webSearch);
+  const lastResult = await tryLastWorkingModel(messages, systemPrompt, t.openRouterTierTimeouts, t, webSearch, abortSignal);
   if (lastResult) return lastResult;
 
   // Mode's fast lane (instant): try every fast MoE model with a SHORT
@@ -728,7 +736,7 @@ export async function openRouterFallback(
     for (const fastModel of INSTANT_FAST_MODELS) {
       if (!isChatLaneModel(fastModel)) continue; // gate: specialists out of the instant lane
       if ((modelFailCount[fastModel] || 0) >= 3) continue;
-      const fastResult = await tryModel(fastModel, messages, systemPrompt, 8000, t, webSearch);
+      const fastResult = await tryModel(fastModel, messages, systemPrompt, 8000, t, webSearch, abortSignal);
       if (fastResult) return fastResult;
     }
   }
@@ -796,10 +804,10 @@ export async function tryGroqTier(
     chatHealth.groqCurrentModelIndex = GROQ_MODELS.indexOf(liveModels[i]);
     const modelId = liveModels[i];
 
-    let result = await tryGroq(messages, systemPrompt, modelId, firstTimeout, tuning);
+    let result = await tryGroq(messages, systemPrompt, modelId, firstTimeout, tuning, abortSignal);
     if (result) return buildSuccessResult(result);
 
-    result = await tryGroq(messages, systemPrompt, modelId, retryTimeout, tuning);
+    result = await tryGroq(messages, systemPrompt, modelId, retryTimeout, tuning, abortSignal);
     if (result) return buildSuccessResult(result);
 
     logger.warn(`[Chatbot] Groq/${modelId} failed after 2 attempts — trying next model...`);
@@ -963,13 +971,15 @@ async function runTextCascade(request: {
 export async function groqFallback(
   messages: ChatApiMessage[],
   systemPrompt: string,
-  tuning: ModeTuning = MODE_TUNING.thinking
+  tuning: ModeTuning = MODE_TUNING.thinking,
+  abortSignal?: AbortSignal,
 ): Promise<{ reply: string; model: string } | null> {
   const [firstTimeout, retryTimeout] = tuning.groqAttemptTimeouts;
   for (const modelId of liveGroqModels()) {
-    let result = await tryGroq(messages, systemPrompt, modelId, firstTimeout, tuning);
+    if (abortSignal?.aborted) return null; // ✅ Review fix: abandoned request never dials the next model
+    let result = await tryGroq(messages, systemPrompt, modelId, firstTimeout, tuning, abortSignal);
     if (result) return result;
-    result = await tryGroq(messages, systemPrompt, modelId, retryTimeout, tuning);
+    result = await tryGroq(messages, systemPrompt, modelId, retryTimeout, tuning, abortSignal);
     if (result) return result;
   }
   return null;
@@ -995,12 +1005,14 @@ export async function tryOpenRouterVision(
   systemPrompt: string,
   timeoutMs: number,
   tuning: ModeTuning = MODE_TUNING.thinking,
+  abortSignal?: AbortSignal,
 ): Promise<{ reply: string; model: string } | null> {
   for (const modelId of OPENROUTER_VISION_MODELS) {
+    if (abortSignal?.aborted) return null; // ✅ Review fix
     // Live-catalog gate — never dial VL ids the provider's current /models
     // catalog no longer lists (catalog rotation made several legacy ids 404).
     if (!isDiscoveredModelId("openrouter", modelId)) continue;
-    const result = await tryModel(modelId, messages, systemPrompt, timeoutMs, tuning);
+    const result = await tryModel(modelId, messages, systemPrompt, timeoutMs, tuning, false, abortSignal);
     if (result) return result;
   }
   return null;

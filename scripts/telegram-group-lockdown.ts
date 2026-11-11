@@ -648,7 +648,8 @@ async function main(): Promise<void> {
           await leaveAsLastResort(rep, cand.id, botId, "demote+mute were not effective — leaving guarantees silence no matter what");
         }
       } else {
-        rep.notes.push(`demote failed: ${(demote.description ?? "").slice(0, 100)} — owner must adjust the bot's admin rights manually`);
+        rep.notes.push(`demote failed: ${(demote.description ?? "").slice(0, 100)} — bot could post in the probe; applying the nuclear fallback (leave) since rights cannot be stripped from here`);
+        await leaveAsLastResort(rep, cand.id, botId, "demote impossible (no can_promote_members) while posting was proven possible — leaving is the only guaranteed silence");
       }
     }
   }

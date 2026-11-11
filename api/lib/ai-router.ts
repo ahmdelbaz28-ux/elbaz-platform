@@ -42,6 +42,7 @@ import { logger } from "./logger.js";
 import { sanitizeReplyOutput } from "./chatbot-prompts.js";
 import { stripThinkBlocks, ThinkStreamFilter } from "./think-filter.js";
 import { looksComplete } from "./finalize-reply.js";
+import { withCallerAbort, callerAwareTimeout } from "./abort-utils.js";
 
 // ✅ ARCH-AUDIT FIX: looksComplete moved to finalize-reply.ts so the rescue
 // heuristic and the deterministic truncation policy can never drift apart.
@@ -783,6 +784,9 @@ interface AttemptParams {
   stream: boolean;
   /** Web-grounding (OpenRouter web plugin) requested for this attempt. */
   webSearch?: boolean;
+  /** ✅ Review fix 2026-11-11: composed into the fetch signal — an in-flight
+   *  attempt is CANCELLED when the caller aborts, not just the next one. */
+  abortSignal?: AbortSignal;
 }
 
 interface AttemptFailure {
@@ -1043,7 +1047,9 @@ async function rawUpstreamFetch(p: AttemptParams): Promise<{ ok: true; response:
             "X-Title": "Elbaz Platform Chatbot",
           },
           body: buildUpstreamBody(p, p.stream),
-          signal: ctrl.signal,
+        // ✅ Review fix: caller abort composes with the header-timeout ctrl —
+        // a disconnected client cancels the in-flight upstream request.
+        signal: withCallerAbort(p.abortSignal, ctrl.signal),
           // ✅ SECURITY FIX (audit run-1): never follow redirects on
           // key-bearing provider fetches — a public baseUrl that 302s to an
           // internal target would otherwise be dialed past the pre-flight
@@ -1063,7 +1069,7 @@ async function rawUpstreamFetch(p: AttemptParams): Promise<{ ok: true; response:
           "X-Title": "Elbaz Platform Chatbot",
         },
         body: buildUpstreamBody(p, p.stream),
-        signal: AbortSignal.timeout(attemptTimeoutMs),
+        signal: callerAwareTimeout(p.abortSignal, attemptTimeoutMs),
         // ✅ SECURITY FIX (audit run-1): same redirect policy as the stream path.
         redirect: "error",
       });
@@ -1274,7 +1280,7 @@ export async function routeChatCompletion(req: RouteRequest): Promise<RoutingOut
 
     const useWeb = webBudget > 0 && isOpenRouterProvider(provider);
     if (useWeb) webBudget--;
-    const attempt = await attemptUpstream({ provider, model, systemPrompt: req.systemPrompt, messages: req.messages, gen: req.gen, stream: false, webSearch: useWeb });
+    const attempt = await attemptUpstream({ provider, model, systemPrompt: req.systemPrompt, messages: req.messages, gen: req.gen, stream: false, webSearch: useWeb, abortSignal: req.abortSignal });
     if (!attempt.ok) {
       recordFailure(provider, model, attempt.failure.kind, attempt.failure.detail);
       // Per-candidate failure line — the walk used to fail SILENTLY (breaker
@@ -1735,7 +1741,7 @@ export async function routeChatStream(req: RouteRequest): Promise<RoutingOutcome
 
     const useWeb = webBudget > 0 && isOpenRouterProvider(provider);
     if (useWeb) webBudget--;
-    const attempt = await attemptUpstream({ provider, model, systemPrompt: req.systemPrompt, messages: req.messages, gen: req.gen, stream: true, webSearch: useWeb });
+    const attempt = await attemptUpstream({ provider, model, systemPrompt: req.systemPrompt, messages: req.messages, gen: req.gen, stream: true, webSearch: useWeb, abortSignal: req.abortSignal });
     if (!attempt.ok) {
       recordFailure(provider, model, attempt.failure.kind, attempt.failure.detail);
       continue;

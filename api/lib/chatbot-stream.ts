@@ -59,6 +59,7 @@ import {
   validateOpenRouterKey,
 } from "./chatbot.js";
 import { routeChatStream, buildUpstreamSSETransform, isWebPluginDisabled, disableWebPluginFor, WEB_PLUGIN_BODY, noteOpenRouterDailyLimit, isChatLaneModel, isDiscoveredModelId } from "./ai-router.js";
+import { callerAwareTimeout } from "./abort-utils.js";
 
 // ════════════════════════════════════════════════════════════════════════
 // STREAMING — provider selection
@@ -337,11 +338,11 @@ async function pumpNvidiaStream(
 
   if (!state.sawContent) {
     logger.warn("[Chatbot/Stream] NVIDIA returned no visible content — trying OpenRouter then Groq...");
-    const fbOR = await openRouterFallback(request.messages, picked.systemPrompt, request.language, picked.tuning);
+    const fbOR = await openRouterFallback(request.messages, picked.systemPrompt, request.language, picked.tuning, false, request.abortSignal);
     if (fbOR) {
       try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: sanitizeReplyOutput(fbOR.reply) })}\n\n`)); } catch { /* controller already closed */ }
     } else {
-      const fbGroq = await groqFallback(request.messages, picked.systemPrompt, picked.tuning);
+      const fbGroq = await groqFallback(request.messages, picked.systemPrompt, picked.tuning, request.abortSignal);
       if (fbGroq) {
         try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: sanitizeReplyOutput(fbGroq.reply) })}\n\n`)); } catch { /* controller already closed */ }
       }
@@ -384,7 +385,8 @@ async function streamNvidiaProvider(
         max_tokens: picked.tuning.maxTokens,
         stream: true,
       }),
-      signal: AbortSignal.timeout(picked.tuning.nvidiaStreamTimeoutMs),
+      // ✅ Review fix: caller abort cancels the in-flight NVIDIA stream fetch.
+      signal: callerAwareTimeout(request.abortSignal, picked.tuning.nvidiaStreamTimeoutMs),
     });
   } catch (e) {
     chatHealth.nvidiaConsecFails++;
@@ -469,7 +471,8 @@ async function tryGroqStreamFetch(
         max_tokens: picked.tuning.maxTokens,
         stream: true,
       }),
-      signal: AbortSignal.timeout(timeout),
+      // ✅ Review fix: caller abort cancels the in-flight Groq stream fetch.
+      signal: callerAwareTimeout(request.abortSignal, timeout),
     });
   } catch (e) {
     logger.warn(`[Chatbot/Stream/Groq] ${modelId} attempt ${attempt + 1} threw`, { error: String(e) });
@@ -613,7 +616,8 @@ async function streamOpenRouterProvider(
           "X-Title": "Elbaz LMS Chatbot",
         },
         body: orBody(wantsWeb),
-        signal: AbortSignal.timeout(picked.tuning.openRouterStreamTimeoutMs),
+        // ✅ Review fix: caller abort cancels the in-flight OpenRouter fetch.
+        signal: callerAwareTimeout(request.abortSignal, picked.tuning.openRouterStreamTimeoutMs),
       });
 
       if (!response.ok && wantsWeb && (response.status === 402 || response.status === 400)) {
@@ -628,7 +632,7 @@ async function streamOpenRouterProvider(
             "X-Title": "Elbaz LMS Chatbot",
           },
           body: orBody(false),
-          signal: AbortSignal.timeout(picked.tuning.openRouterStreamTimeoutMs),
+          signal: callerAwareTimeout(request.abortSignal, picked.tuning.openRouterStreamTimeoutMs),
         });
       }
 
@@ -699,15 +703,15 @@ async function streamOpenRouterFallback(
 ): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
   const encoder = new TextEncoder();
 
-  const orResult = await openRouterFallback(request.messages, systemPrompt, request.language, tuning);
+  const orResult = await openRouterFallback(request.messages, systemPrompt, request.language, tuning, false, request.abortSignal);
   if (orResult) return { stream: singleChunkStream(orResult.reply, encoder), model: orResult.model };
 
   logger.error("[Chatbot/Stream] OpenRouter fallback failed — trying Groq non-streaming.");
-  const groqResult = await groqFallback(request.messages, systemPrompt, tuning);
+  const groqResult = await groqFallback(request.messages, systemPrompt, tuning, request.abortSignal);
   if (groqResult) return { stream: singleChunkStream(groqResult.reply, encoder), model: groqResult.model };
 
   logger.error("[Chatbot/Stream] Groq also failed — trying NVIDIA non-streaming.");
-  const nvidiaResult = await nvidiaFallback(request.messages, systemPrompt, tuning);
+  const nvidiaResult = await nvidiaFallback(request.messages, systemPrompt, tuning, request.abortSignal);
   if (nvidiaResult) return { stream: singleChunkStream(nvidiaResult.reply, encoder), model: nvidiaResult.model };
 
   return {
