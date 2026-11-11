@@ -19,11 +19,61 @@ import { hashPassword } from "./password.js";
 import { env } from "./env.js";
 import { logger } from "./logger.js";
 import { invalidateSettingsCache } from "./cache.js";
+import { columnExists as dbColumnExists, indexExists as dbIndexExists, runMigrations, type MigrationStep, type DbMigrationConn } from "./db-migrations.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 let migrationDone = false;
+
+/**
+ * v16 (audit run-2, payment idempotency race): DB-level uniqueness for the
+ * client idempotency key. The application guard (lookup-then-insert inside
+ * the transaction) still loses CONCURRENT replays because nothing in the
+ * storage engine enforces the pair (userId, metadata.idempotencyKey). A
+ * STORED generated column backed by a UNIQUE index closes the race at the
+ * engine: the second concurrent insert of the same key fails with
+ * ER_DUP_ENTRY instead of minting a second pending payment + gateway order.
+ * NULL keys (legacy rows, webhook/manual paths without a key) are exempt —
+ * MySQL unique indexes allow multiple NULLs. Idempotent via column/index
+ * probes from the db-migrations module.
+ */
+async function migratePaymentsIdempotencyUnique(conn: DbMigrationConn): Promise<void> {
+  await ensureColumnIfMissing(conn);
+  await ensureIndexIfMissing(conn);
+}
+
+async function ensureColumnIfMissing(conn: DbMigrationConn): Promise<void> {
+  if (await dbColumnExists(conn, "payments", "idempotencyKey")) return;
+  try {
+    await conn.query(
+      "ALTER TABLE `payments` ADD COLUMN `idempotencyKey` VARCHAR(80) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(`metadata`, '$.idempotencyKey'))) STORED",
+    );
+    logger.info("[DB]   + payments.idempotencyKey (generated column)");
+  } catch (e) {
+    logger.warn("[DB] payments.idempotencyKey generated column", { error: (e as Error).message });
+  }
+}
+
+async function ensureIndexIfMissing(conn: DbMigrationConn): Promise<void> {
+  if (await dbIndexExists(conn, "payments", "payments_user_idempotency_unique")) return;
+  try {
+    // Pre-check for existing duplicate pairs — creating the index over
+    // duplicates would fail with an opaque error; log them explicitly for
+    // the operator instead.
+    const dups = ((await conn.execute(
+      "SELECT JSON_UNQUOTE(JSON_EXTRACT(`metadata`, '$.idempotencyKey')) AS k, `userId`, COUNT(*) AS c FROM `payments` WHERE `idempotencyKey` IS NOT NULL GROUP BY k, `userId` HAVING c > 1 LIMIT 5",
+    )) as unknown as unknown[][])[0];
+    if (Array.isArray(dups) && dups.length > 0) {
+      logger.warn("[DB] payments idempotency duplicates detected — unique index NOT created; dedupe first", { duplicates: dups });
+      return;
+    }
+    await conn.query("ALTER TABLE `payments` ADD UNIQUE INDEX `payments_user_idempotency_unique` (`userId`, `idempotencyKey`)");
+    logger.info("[DB]   + payments_user_idempotency_unique (engine-level replay guard)");
+  } catch (e) {
+    logger.warn("[DB] payments_user_idempotency_unique", { error: (e as Error).message });
+  }
+}
 /** Set when THIS call just created a fresh schema — re-enters the incremental
  *  pass so v4–v10 land on FIRST boot too (previously they waited for a second
  *  restart, leaving e.g. aiProviders absent on a brand-new database). */
@@ -76,23 +126,25 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
 
       // ── Helper: check if a column exists before adding it ──────────────
       // MySQL does NOT support `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
-      // (that's PostgreSQL syntax). On MySQL we must check INFORMATION_SCHEMA
-      // first, otherwise every restart logs 8 syntax-error warnings.
-      const columnExists = async (table: string, column: string): Promise<boolean> => {
-        const rows = await conn.execute(
-          "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",
-          [table, column]
-        );
-        return (rows as unknown as { cnt: number }[])[0]?.cnt > 0;
-      };
+      // ✅ CODEBASE-ARCHITECTURE DEEPENING (hot spot: db-init.ts): the
+      // INFORMATION_SCHEMA probes + idempotence helpers now live in the
+      // db-migrations module (single source of truth, offline-testable).
+      // The two local bindings below keep every existing call site's
+      // signature — the module owns the implementation.
+      const columnExists = (table: string, column: string) => dbColumnExists(conn, table, column);
+      const indexExists = (table: string, indexName: string) => dbIndexExists(conn, table, indexName);
 
-      const indexExists = async (table: string, indexName: string): Promise<boolean> => {
-        const rows = await conn.execute(
-          "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?",
-          [table, indexName]
-        );
-        return (rows as unknown as { cnt: number }[])[0]?.cnt > 0;
-      };
+      // ── Migration ledger (declarative steps — runMigrations handles
+      // ordering, timing, and per-step isolation uniformly). New migrations
+      // APPEND here; no more pasted try/catch blocks.
+      const MIGRATIONS: MigrationStep[] = [
+        {
+          id: "v16-payments-idempotency-unique",
+          description: "engine-level replay guard: UNIQUE(userId, metadata.idempotencyKey)",
+          run: (c) => migratePaymentsIdempotencyUnique(c),
+        },
+      ];
+      await runMigrations(conn, MIGRATIONS);
 
       // ── Incremental migrations for existing databases ──
       // Each migration checks existence first → no syntax errors, no warnings.
@@ -1200,49 +1252,6 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         }
       } catch (err) {
         logger.warn("[DB] v15 growth migration warning", { error: (err as Error).message });
-      }
-
-      // ── v16 hardening (audit run-2, payment idempotency race): DB-level
-      // uniqueness for the client idempotency key. The application guard
-      // (lookup-then-insert inside the transaction) still loses concurrent
-      // replays because nothing in the storage engine enforces the pair
-      // (userId, metadata.idempotencyKey). A STORED generated column backed
-      // by a UNIQUE index closes the race at the engine: the second
-      // concurrent insert of the same key fails with ER_DUP_ENTRY instead of
-      // minting a second pending payment + gateway order. NULL keys (legacy
-      // rows, webhook/manual paths without a key) are exempt — MySQL unique
-      // indexes allow multiple NULLs. Idempotent via column/index probes.
-      try {
-        if (!(await columnExists("payments", "idempotencyKey"))) {
-          try {
-            await conn.query(
-              "ALTER TABLE `payments` ADD COLUMN `idempotencyKey` VARCHAR(80) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(`metadata`, '$.idempotencyKey'))) STORED",
-            );
-            logger.info("[DB]   + payments.idempotencyKey (generated column)");
-          } catch (e) {
-            logger.warn("[DB] payments.idempotencyKey generated column", { error: (e as Error).message });
-          }
-        }
-        if (!(await indexExists("payments", "payments_user_idempotency_unique"))) {
-          // Pre-check for existing duplicate pairs — creating the index over
-          // duplicates would fail with an opaque error; log them explicitly
-          // for the operator instead.
-          try {
-            const [dups] = await conn.execute(
-              "SELECT JSON_UNQUOTE(JSON_EXTRACT(`metadata`, '$.idempotencyKey')) AS k, `userId`, COUNT(*) AS c FROM `payments` WHERE `idempotencyKey` IS NOT NULL GROUP BY k, `userId` HAVING c > 1 LIMIT 5",
-            );
-            if (Array.isArray(dups) && dups.length > 0) {
-              logger.warn("[DB] payments idempotency duplicates detected — unique index NOT created; dedupe first", { duplicates: dups });
-            } else {
-              await conn.query("ALTER TABLE `payments` ADD UNIQUE INDEX `payments_user_idempotency_unique` (`userId`, `idempotencyKey`)");
-              logger.info("[DB]   + payments_user_idempotency_unique (engine-level replay guard)");
-            }
-          } catch (e) {
-            logger.warn("[DB] payments_user_idempotency_unique", { error: (e as Error).message });
-          }
-        }
-      } catch (err) {
-        logger.warn("[DB] v16 payments idempotency migration warning", { error: (err as Error).message });
       }
 
       // ── Admin password sync (existing deployments) ──
