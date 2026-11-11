@@ -895,10 +895,12 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     };
     // rAF keeps the initial measurement out of the effect body (React 19 lint)
     const raf = requestAnimationFrame(update);
-    vv.addEventListener("resize", update);
-    vv.addEventListener("scroll", update);
-    window.addEventListener("resize", update);
-    window.addEventListener("orientationchange", update);
+    // ✅ vercel-react-best-practices (client-passive-event-listeners): these
+    // handlers only READ viewport metrics — passive keeps scrolling smooth.
+    vv.addEventListener("resize", update, { passive: true });
+    vv.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update, { passive: true });
+    window.addEventListener("orientationchange", update, { passive: true });
     return () => {
       cancelAnimationFrame(raf);
       vv.removeEventListener("resize", update);

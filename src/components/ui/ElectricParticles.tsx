@@ -60,7 +60,8 @@ export default function ElectricParticles({
       }
     };
     handleResize();
-    globalThis.addEventListener("resize", handleResize);
+    // ✅ vercel-react-best-practices (client-passive-event-listeners).
+    globalThis.addEventListener("resize", handleResize, { passive: true });
     return () => globalThis.removeEventListener("resize", handleResize);
   }, []);
 
