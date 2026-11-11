@@ -78,6 +78,81 @@ const ArticleDetail = lazy(() => import("./pages/ArticleDetail").then(m => ({ de
 const CertificateView = lazy(() => import("./pages/CertificateView"));
 const CertificateVerify = lazy(() => import("./components/CertificateVerify"));
 
+/**
+ * 🚀 PERFORMANCE (round-2, F9): route-chunk prefetch on intent (hover/focus).
+ *
+ * BrowserRouter (react-router) does not support <Link prefetch>, so before
+ * this, clicking a nav link started downloading that page's chunk ONLY after
+ * the click — a 100-300ms blank PageLoader spinner on 3G/4G even though the
+ * user had been HOVERING the link for hundreds of ms before clicking.
+ *
+ * One delegated listener pair (pointerover + focusin on <document>) matches
+ * the hovered/focused anchor against PUBLIC route patterns and triggers the
+ * exact same dynamic import the lazy() route uses. Repeat imports resolve
+ * from the module registry (free), and a Set guards the regex work. The
+ * fetch happens during hover dead-time, so navigation becomes near-instant.
+ *
+ * Auth-gated routes (dashboard/profile/admin/…) are deliberately excluded:
+ * guests would prefetch chunks they can never open (Admin alone is 199KB).
+ */
+const PREFETCHABLE_ROUTES: ReadonlyArray<readonly [RegExp, () => Promise<unknown>]> = [
+  [/^\/$/, () => import("./pages/Home")],
+  [/^\/courses$/, () => import("./pages/Courses")],
+  [/^\/courses\/[^/]+$/, () => import("./pages/CourseDetail")],
+  [/^\/articles$/, () => import("./pages/Articles")],
+  [/^\/articles\/[^/]+$/, () => import("./pages/ArticleDetail")],
+  [/^\/references$/, () => import("./pages/References")],
+  [/^\/faq$/, () => import("./pages/Faq")],
+  [/^\/login$/, () => import("./pages/Login")],
+  [/^\/register$/, () => import("./pages/Register")],
+  [/^\/forgot-password$/, () => import("./pages/ForgotPassword")],
+  [/^\/reset-password$/, () => import("./pages/ResetPassword")],
+  [/^\/verify-email$/, () => import("./pages/VerifyEmail")],
+  [/^\/terms$/, () => import("./pages/TermsOfService")],
+  [/^\/privacy$/, () => import("./pages/PrivacyPolicy")],
+  [/^\/refund$/, () => import("./pages/RefundPolicy")],
+  [/^\/certificate\/[^/]+$/, () => import("./pages/CertificateView")],
+  [/^\/verify(\/[^/]+)?$/, () => import("./components/CertificateVerify")],
+];
+
+const prefetchedRoutes = new Set<string>();
+
+function prefetchRoute(rawPath: string): void {
+  // Normalize: strip query/hash + trailing slash (except root) — same rule
+  // the SPA handler uses server-side.
+  const path = rawPath.split(/[?#]/)[0].replace(/^(\/.{1,}?)\/+$/, "$1") || "/";
+  if (prefetchedRoutes.has(path)) return;
+  for (const [pattern, load] of PREFETCHABLE_ROUTES) {
+    if (pattern.test(path)) {
+      prefetchedRoutes.add(path);
+      void load().catch(() => {
+        // Offline / chunk error — navigation will surface it normally.
+        prefetchedRoutes.delete(path);
+      });
+      return;
+    }
+  }
+}
+
+function useRoutePrefetch(): void {
+  useEffect(() => {
+    const handle = (event: Event): void => {
+      const target = event.target instanceof Element ? event.target : null;
+      const anchor = target?.closest("a[href^='/']");
+      if (!anchor) return;
+      prefetchRoute(anchor.getAttribute("href") ?? "");
+    };
+    // pointerover (not mouseenter — delegation needs bubbling); focusin covers
+    // keyboard tabbing and fires for focus events that don't bubble natively.
+    document.addEventListener("pointerover", handle, { passive: true });
+    document.addEventListener("focusin", handle);
+    return () => {
+      document.removeEventListener("pointerover", handle);
+      document.removeEventListener("focusin", handle);
+    };
+  }, []);
+}
+
 function PageLoader() {
   const { t } = useTranslation();
   return (
@@ -154,6 +229,8 @@ function Layout({ children }: { readonly children: React.ReactNode }) {
 }
 
 export default function App() {
+  // 🚀 Prefetch route chunks on hover/focus (see PREFETCHABLE_ROUTES above).
+  useRoutePrefetch();
   return (
     <ErrorBoundary>
       <NotificationProvider>
