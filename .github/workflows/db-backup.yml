@@ -99,10 +99,11 @@ jobs:
           set -euo pipefail
           TAG="db-backup-$(date -u +%Y%m%d)"
           # Draft releases are NOT resolvable via /releases/tags/{tag} (that
-          # endpoint ignores drafts — cost us one red run to learn) — resolve
-          # from the releases LIST instead.
+          # endpoint ignores drafts) — resolve from the releases LIST instead.
+          # NOTE: gh api has no --arg flag (jq-only) — the tag is spliced into
+          # the template; TAG is server-generated (db-backup-YYYYMMDD), safe.
           ASSET_URL=$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=30" \
-            -q --arg TAG "$TAG" '.[] | select(.tag_name == $TAG) | .assets[0].browser_download_url')
+            -q '.[] | select(.tag_name == "'"${TAG}"'") | .assets[0].browser_download_url')
           echo "asset: $ASSET_URL"
           CODE=$(curl -sL -o /dev/null -w '%{http_code}' --max-time 30 "$ASSET_URL")
           echo "anonymous download probe: HTTP $CODE"
