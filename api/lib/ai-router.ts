@@ -1629,7 +1629,11 @@ function buildResilientUpstreamStream(params: {
               const ev = parseUpstreamSseLine(line);
               if (!ev) continue;
               if (ev.error) { streamError = ev.error; fatal = true; break; }
-              if (ev.text) { total += ev.text; emit(ev.text); }
+              // ✅ AUDIT RUN-2 FIX (hunter-2f): emit() already adds the
+              // FILTERED text to `total` — adding the RAW delta here
+              // double-counted and polluted the visible-only total with
+              // think-block content, skewing looksComplete/rescue-prefill.
+              if (ev.text) emit(ev.text);
               if (ev.finish) finish = ev.finish;
               if (ev.done) sawDone = true;
             }

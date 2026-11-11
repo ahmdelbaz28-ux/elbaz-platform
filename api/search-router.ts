@@ -15,7 +15,10 @@ export const searchRouter = createRouter({
     }))
     .query(async ({ input }) => {
       const db = getDb();
-      const term = `%${input.query}%`;
+      // ✅ AUDIT RUN-2 (hunter-2g): escape LIKE wildcards so a user query
+      // cannot broaden matching with % or _ (same normalization as
+      // course-browse.list).
+      const term = `%${input.query.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
       const limit = input.limit;
 
       // Search courses

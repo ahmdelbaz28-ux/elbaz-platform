@@ -134,7 +134,14 @@ export function chatbotError(
 const SENSITIVE_QUERY_KEYS = new Set([
   "api_key", "apikey", "access_token", "token", "auth", "password",
   "secret", "key", "signature", "session", "sessionid", "jwt",
+  // ✅ AUDIT RUN-2 (hunter-2f): hyphenated/namespaced variants — the exact
+  // match above missed them while the fragment scrubber already used
+  // containment. Redacted defensively; no current sink needed them.
+  "client_secret", "auth_token", "api-key", "access-key", "refresh_token",
+  "id_token", "api-key", "x-api-key", "api-key",
 ]);
+/** Substring forms checked with containment (hunter-2f hardening). */
+const SENSITIVE_QUERY_SUBSTRINGS = ["api-key", "api_key", "apikey", "secret", "access_token", "refresh_token", "id_token", "auth_token"];
 
 const QUERY_PARAM_RE = /([?&])([A-Za-z0-9_-]+)=([^&#\s"']+)/g;
 /** scheme:// followed by one or more `credential@` segments before the host. */
@@ -156,12 +163,17 @@ export function scrubCredentials(text: unknown): string {
   let out = String(text ?? "");
   // credential@host (with or without a password) → ***@host
   out = out.replace(USERINFO_RE, (_m, scheme: string) => `${scheme}***@`);
-  // ?key=value → ?key=*** (only for sensitive keys)
+  // ?key=value → ?key=*** (only for sensitive keys — exact match OR a
+  // sensitive substring inside the key, so client_secret=/api-key-form=/
+  // x-api-key= style namespaced keys are covered too — audit run-2).
   out = out.replace(
     QUERY_PARAM_RE,
     (m, sep: string, rawKey: string, value: string) => {
       const key = rawKey.toLowerCase();
-      if (!SENSITIVE_QUERY_KEYS.has(key)) return m;
+      const sensitive =
+        SENSITIVE_QUERY_KEYS.has(key) ||
+        SENSITIVE_QUERY_SUBSTRINGS.some((s) => key.includes(s));
+      if (!sensitive) return m;
       return `${sep}${rawKey}=${scrubQueryParamValue(value)}`;
     },
   );
