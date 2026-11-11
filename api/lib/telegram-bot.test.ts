@@ -264,7 +264,7 @@ describe("handleTelegramUpdate routing", () => {
     expect(d.calls.map((c) => c.method)).toContain("approveChatJoinRequest");
   });
 
-  it("ignores group messages (no group chat)", async () => {
+  it("ignores group messages — ZERO Telegram API calls (OWNER POLICY: the bot never posts in the group)", async () => {
     const d = deps();
     const handled = await handleTelegramUpdate(d, {
       update_id: 2,
@@ -278,6 +278,26 @@ describe("handleTelegramUpdate routing", () => {
     });
     expect(handled).toBe(false);
     expect(d.brain).not.toHaveBeenCalled();
+    // The lockdown proof (2026-11-11) strips posting rights on the Telegram
+    // side; this pin freezes the code side: not a single api.call — no
+    // sendMessage, no sendChatAction, nothing — may target the group.
+    expect(d.calls).toEqual([]);
+  });
+
+  it("ignores group COMMANDS too — even /start in the group sends nothing", async () => {
+    const d = deps();
+    const handled = await handleTelegramUpdate(d, {
+      update_id: 4,
+      message: {
+        message_id: 6,
+        chat: { id: -100999, type: "supergroup", title: "group" },
+        date: 1,
+        text: "/start",
+        from: { id: 555, is_bot: false },
+      },
+    });
+    expect(handled).toBe(false);
+    expect(d.calls).toEqual([]);
   });
 
   it("never throws on garbage updates", async () => {

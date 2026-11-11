@@ -14,7 +14,16 @@
 #   SYNC_INGEST_SECRET — same value as the Space's secret (≥16 chars).
 # Everything else is derived in code (playlist id default, ingest URL default).
 #
-# Manual run: Actions → YT playlist relay → Run workflow.
+# CADENCE (2026-11-11): schedule-only delivery proved unusable — GitHub's
+# congested scheduler turned the */15 cron into 4-8 h gaps (run history
+# 2026-11-10/11: 03:30 → 11:44 → 18:50 → 00:55 → 07:42). The workflow is now
+# SELF-CHAINING (same pattern proven by the Telegram bot worker): each run
+# paces ~14 min inside the job, then dispatches the next run unless one is
+# already queued; the concurrency group keeps the queue sane, and the cron
+# stays as the external safety net that re-seeds a broken chain. A manual or
+# chained run can override the pacing delay via the chain_delay_seconds input.
+#
+# Manual run: Actions → YT playlist relay → Run workflow (optional delay).
 # ════════════════════════════════════════════════════════════════════════════
 name: YT playlist relay
 
@@ -22,13 +31,18 @@ on:
   schedule:
     # Off-boundary minute offsets (7,22,37,52) — GitHub's scheduler is
     # congested exactly at the round */15 boundaries (0,15,30,45) and delays
-    # or skips runs there; these offsets land far closer to the intended
-    # 15-minute cadence (observed gaps of 4-8 h on the old schedule).
+    # or skips runs there. Kept as the safety net that re-seeds the chain.
     - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
+    inputs:
+      chain_delay_seconds:
+        description: "Seconds to pace before dispatching the next run (0 = chain immediately)"
+        required: false
+        default: "840"
 
 permissions:
   contents: read
+  actions: write # self-chain: dispatch the next relay run
 
 concurrency:
   group: yt-playlist-relay
@@ -37,7 +51,7 @@ concurrency:
 jobs:
   relay:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -46,3 +60,28 @@ jobs:
           SYNC_INGEST_SECRET: ${{ secrets.SYNC_INGEST_SECRET }}
         run: |
           python3 scripts/yt_playlist_relay.py
+
+      # Self-perpetuating chain: schedule delivery lags by hours, so each
+      # successful run arms the next one. Pacing happens INSIDE the job (the
+      # sleep costs runner minutes but public-repo Actions are unmetered, and
+      # workflow_dispatch has no delayed start). The queue check prevents
+      # pile-up when cron dispatches overlap with the chain.
+      - name: Re-arm the next run (self-pacing chain)
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHAIN_DELAY_SECONDS: ${{ github.event.inputs.chain_delay_seconds || '840' }}
+        run: |
+          DELAY=$((CHAIN_DELAY_SECONDS))
+          if [ "$DELAY" -gt 0 ]; then
+            echo "Pacing ${DELAY}s before arming the next run…"
+            sleep "$DELAY"
+          fi
+          QUEUED=$(gh run list --workflow yt-playlist-relay.yml --status queued --limit 5 --json databaseId --jq 'length' || echo 0)
+          if [ "${QUEUED:-0}" -gt 0 ]; then
+            echo "A relay run is already queued (${QUEUED}) — chain not needed"
+            exit 0
+          fi
+          gh api -X POST "repos/${{ github.repository }}/actions/workflows/yt-playlist-relay.yml/dispatches" \
+            -f ref="${{ github.ref_name }}" && echo "→ relay chain re-armed" \
+            || echo "⚠️ re-arm failed (cron fallback covers)"
