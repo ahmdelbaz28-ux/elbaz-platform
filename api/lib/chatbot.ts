@@ -655,7 +655,17 @@ export async function tryAllModelsAsLastResort(
   webSearch = false,
 ): Promise<{ reply: string; model: string } | null> {
   logger.warn("[Chatbot/OpenRouter] All tiers exhausted with skips. Trying all models as last resort...");
+  // ✅ ARCH-AUDIT FIX (unbounded wall time): the last-resort sweep is now
+  // wall-clock bounded — 17 models × 10s timeouts could pin a request for
+  // ~3 minutes. 45s keeps the pure-availability sweep useful without
+  // letting it outlive every caller deadline.
+  const LAST_RESORT_WALL_MS = 45_000;
+  const wallDeadline = Date.now() + LAST_RESORT_WALL_MS;
   for (const model of AI_MODELS) {
+    if (Date.now() > wallDeadline) {
+      logger.warn("[Chatbot/OpenRouter] last-resort sweep hit its 45s wall — stopping (breakers stay armed)");
+      break;
+    }
     // Chat-lane gate holds even at the last resort — a garbled specialist
     // answer is WORSE than admitting busy (owner contract).
     if (!isChatLaneModel(model.id)) continue;

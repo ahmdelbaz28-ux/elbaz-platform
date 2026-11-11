@@ -18,8 +18,10 @@ import { describe, it, expect } from "vitest";
 import { getSystemPrompt } from "./chatbot-prompts";
 
 const TABLE_BAN_GUARD = "NEVER use Markdown tables in any reply and NEVER announce that you will present a table";
-const TABLE_BAN_AR = "لا تستخدم جداول Markdown في أي رد ولا تعلن أبداً";
-const TABLE_BAN_EN = "NEVER use Markdown tables in any reply and NEVER announce";
+// ✅ ARCH-AUDIT FIX (prompt dedup): the table ban is stated ONCE in the
+// bilingual shared guard (TABLE_BAN_GUARD) — the per-language duplicates
+// (TABLE_BAN_AR/EN in the format rules) were removed. TABLE_BAN_EN is kept
+// as a second guard-phrase check below.
 
 const NAV_FULL_AR = "بروتوكول التوجيه اليدوي الدقيق";
 const NAV_FULL_EN = "GUIDED HANDS NAVIGATION PROTOCOL";
@@ -30,28 +32,28 @@ const NAV_CONDENSED_AR = "توجيه يدوي دقيق: عند شرح أي خط�
 const NAV_CONDENSED_EN = "Guided hands navigation: when explaining in-software steps";
 
 describe("chatbot prompts — table-free output enforcement", () => {
-  it("thinking/ar forbids tables in the shared guard and the Arabic format rules", () => {
+  it("thinking/ar forbids tables via the shared guard (dedup: single canonical rule)", () => {
     const p = getSystemPrompt("ar", "thinking");
     expect(p).toContain(TABLE_BAN_GUARD);
-    expect(p).toContain(TABLE_BAN_AR);
+    expect(p.match(/NEVER use Markdown tables/g)?.length).toBe(1); // exactly one occurrence
   });
 
-  it("thinking/en forbids tables in the shared guard and the English format rules", () => {
+  it("thinking/en forbids tables via the shared guard (dedup: single canonical rule)", () => {
     const p = getSystemPrompt("en", "thinking");
     expect(p).toContain(TABLE_BAN_GUARD);
-    expect(p).toContain(TABLE_BAN_EN);
+    expect(p.match(/NEVER use Markdown tables/g)?.length).toBe(1);
   });
 
-  it("instant/ar forbids tables (shared guard + condensed rules)", () => {
+  it("instant/ar forbids tables via the shared guard (dedup: single canonical rule)", () => {
     const p = getSystemPrompt("ar", "instant");
     expect(p).toContain(TABLE_BAN_GUARD);
-    expect(p).toContain(TABLE_BAN_AR);
+    expect(p.match(/NEVER use Markdown tables/g)?.length).toBe(1);
   });
 
-  it("instant/en forbids tables (shared guard + condensed rules)", () => {
+  it("instant/en forbids tables via the shared guard (dedup: single canonical rule)", () => {
     const p = getSystemPrompt("en", "instant");
     expect(p).toContain(TABLE_BAN_GUARD);
-    expect(p).toContain(TABLE_BAN_EN);
+    expect(p.match(/NEVER use Markdown tables/g)?.length).toBe(1);
   });
 });
 

@@ -654,22 +654,22 @@ export async function startTelegramBot(): Promise<boolean> {
     // Lazy import — keeps this module (and every test importing it) free of
     // the full chatbot dependency graph until the worker actually starts.
     brain: async (messages, opts) => {
-      const [{ getChatResponse }, { getCourseCatalogText }, { sanitizeReplyOutput, containsPromptLeak, promptLeakRefusal }] = await Promise.all([
+      const [{ getChatResponse }, { getCourseCatalogText }, { finalizeReply }] = await Promise.all([
         import("./chatbot.js"),
         import("./course-catalog.js"),
-        import("./chatbot-prompts.js"),
+        import("./finalize-reply.js"),
       ]);
       const catalog = await getCourseCatalogText();
       const result = await getChatResponse({ messages, language: opts.language, mode: opts.mode, catalog });
       if (result.success) {
-        const reply = sanitizeReplyOutput(result.reply ?? "");
-        // ✅ ARCH-AUDIT FIX (Telegram DM bypasses the prompt-leak tripwire):
-        // apply the SAME leak gate as the web endpoints — a Telegram DM must
-        // never receive verbatim system-prompt text.
-        if (containsPromptLeak(reply)) {
-          return { reply: promptLeakRefusal(opts.language) };
-        }
-        return { reply };
+        // ✅ ARCH-AUDIT FIX (unified egress pipeline): the Telegram DM brain
+        // runs the SAME finalizeReply contract as the web endpoints (leak
+        // gate + sanitize + think-strip + truncation policy) — no platform
+        // can serve an answer the others would have blocked. DM memory is
+        // bounded in-session (dmHistories, 12 msgs / 30-min TTL) by design;
+        // the cross-session historySummary is a web-session concept.
+        const final = finalizeReply(result.reply ?? "", opts.language);
+        return { reply: final.reply };
       }
       return { error: result.error || "upstream exhausted" };
     },

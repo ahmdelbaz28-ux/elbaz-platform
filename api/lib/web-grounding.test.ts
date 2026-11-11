@@ -185,7 +185,7 @@ describe("getSystemPrompt — accuracy contract + web grounding (v3)", () => {
     expect(p).toContain("وصول الإنترنت");
     expect(p).toContain("مخطط تدفق نصياً");
     expect(p).toContain("لا تدّعي أبداً أنك نفّذت شيئاً");
-    expect(p).toContain("لا تستخدم جداول Markdown");
+    expect(p).toContain("NEVER use Markdown tables");
     expect(p).toContain("ETAP EXPERT SYSTEM"); // expert core still present
   });
 

@@ -41,6 +41,12 @@ import { aiModels, aiProviders, type AiModel, type AiProvider } from "@db/schema
 import { logger } from "./logger.js";
 import { sanitizeReplyOutput } from "./chatbot-prompts.js";
 import { stripThinkBlocks, ThinkStreamFilter } from "./think-filter.js";
+import { looksComplete } from "./finalize-reply.js";
+
+// ✅ ARCH-AUDIT FIX: looksComplete moved to finalize-reply.ts so the rescue
+// heuristic and the deterministic truncation policy can never drift apart.
+// Re-exported here for backward compatibility (tests import it from here).
+export { looksComplete };
 
 // ── Lazy DB handle ─────────────────────────────────────────────────────────
 // ai-router is imported (transitively) by chatbot.ts, whose unit tests load
@@ -1115,11 +1121,11 @@ export async function attemptUpstream(p: AttemptParams): Promise<{ ok: true; res
   return first;
 }
 
-async function readNonStreamReply(response: Response, allowReasoningFallback = false): Promise<{ ok: true; reply: string } | { ok: false; detail: string }> {
+async function readNonStreamReply(response: Response, allowReasoningFallback = false): Promise<{ ok: true; reply: string; finish?: string } | { ok: false; detail: string }> {
   try {
     const data = (await response.json()) as {
       error?: unknown;
-      choices?: { message?: { content?: string | null; reasoning?: string | null; reasoning_content?: string | null } }[];
+      choices?: { message?: { content?: string | null; reasoning?: string | null; reasoning_content?: string | null }; finish_reason?: string | null }[];
     };
     if (data.error) {
       const detail = typeof data.error === "string" ? data.error : JSON.stringify(data.error);
@@ -1128,9 +1134,10 @@ async function readNonStreamReply(response: Response, allowReasoningFallback = f
     // stripThinkBlocks: hard zero-gap guarantee — a model that embeds
     // <think>/<reasoning> blocks in content never leaks them. An empty
     // after-strip reply counts as a failure (the walk continues).
-    const msg = data.choices?.[0]?.message;
+    const choice = data.choices?.[0];
+    const msg = choice?.message;
     const reply = stripThinkBlocks(msg?.content ?? "");
-    if (reply && reply.trim()) return { ok: true, reply: reply.trim() };
+    if (reply && reply.trim()) return { ok: true, reply: reply.trim(), finish: choice?.finish_reason ?? undefined };
     // Reasoning-fallback (vision READ pass only): a reasoning-token model can
     // burn the whole token budget inside message.reasoning and still emit a
     // valid image extraction — live-verified on the Kilo gateway
@@ -1226,14 +1233,30 @@ export interface RouteRequest {
    *  extraction inside `message.reasoning` with `content: null` when the
    *  token cap interrupts the answer. Chat quality never relies on this. */
   allowReasoningText?: boolean;
+  /** ✅ ARCH-AUDIT FIX: abort signal checked between candidates so a walk
+   *  abandoned by the caller (client disconnect / endpoint hard cap) stops
+   *  burning provider quota in the background. */
+  abortSignal?: AbortSignal;
+  /** ✅ ARCH-AUDIT FIX (hidden repair loop depth cap): set to 1 inside
+   *  rescueRound/rescueStreamRound — a rescue walk must never be rescue-
+   *  capable itself, so repair stays single-shot and explicit. */
+  rescueDepth?: number;
 }
+
+/**
+ * ✅ ARCH-AUDIT FIX (worst-case attempt arithmetic): hard numeric cap on the
+ * candidates examined per failover walk. The walk is also deadline-bounded;
+ * this makes the worst case bounded by a CONSTANT instead of by the enabled-
+ * provider pool size (which grows with every admin-added provider).
+ */
+const MAX_WALK_CANDIDATES = 12;
 
 /**
  * Non-streaming failover walk. Returns null when the dynamic pool cannot
  * serve the request — callers MUST fall back to the legacy cascade.
  */
 export async function routeChatCompletion(req: RouteRequest): Promise<RoutingOutcome<RoutedReply>> {
-  const candidates = await buildCandidates({ vision: req.vision, mode: req.mode, onlyFree: true, exclude: req.exclude, preferredModelId: req.preferredModelId });
+  const candidates = (await buildCandidates({ vision: req.vision, mode: req.mode, onlyFree: true, exclude: req.exclude, preferredModelId: req.preferredModelId })).slice(0, MAX_WALK_CANDIDATES);
   if (candidates.length === 0) return { ok: false };
 
   const deadline = Date.now() + req.gen.globalBudgetMs;
@@ -1246,6 +1269,7 @@ export async function routeChatCompletion(req: RouteRequest): Promise<RoutingOut
 
   for (const { provider, model } of candidates) {
     if (Date.now() > deadline) break;
+    if (req.abortSignal?.aborted) break; // caller gone — stop burning quota
     attempted++;
 
     const useWeb = webBudget > 0 && isOpenRouterProvider(provider);
@@ -1266,11 +1290,24 @@ export async function routeChatCompletion(req: RouteRequest): Promise<RoutingOut
       continue;
     }
 
+    let finalReply = reply.reply;
+    // ✅ ARCH-AUDIT FIX (non-stream replies had NO truncation rescue): a reply
+    // whose finish_reason is "length" was silently cut by the token cap and
+    // shipped mid-sentence. ONE explicit, bounded continuation attempt
+    // (assistant prefill + continuation instruction on the NEXT candidate —
+    // the same contract as the stream-side rescue) repairs it. The rescue
+    // itself is never rescue-capable (rescueDepth gate) and the deterministic
+    // sentence-trim in finalize-reply.ts remains the final backstop.
+    if (reply.finish === "length" && (req.rescueDepth ?? 0) === 0) {
+      const cont = await rescueRound(req, modelKey(provider.id, model.modelId), finalReply);
+      if (cont) finalReply = `${finalReply} ${cont}`.trim();
+    }
+
     recordSuccess(provider, model, attempt.latencyMs, req.mode);
     logger.info(`[AiRouter] served by ${provider.slug}/${model.modelId} (attempt ${attempted}, ${Math.round(attempt.latencyMs)}ms)`);
     return {
       ok: true,
-      result: { reply: reply.reply, model: `${provider.slug}/${model.modelId}`, providerId: provider.id, aiModelId: model.id },
+      result: { reply: finalReply, model: `${provider.slug}/${model.modelId}`, providerId: provider.id, aiModelId: model.id },
     };
   }
 
@@ -1402,14 +1439,8 @@ async function peekUpstreamLiveness(body: ReadableStream<Uint8Array>, timeoutMs:
   return { ok: false, detail: "no first SSE event before timeout" };
 }
 
-const SENTENCE_END_RE = /[.!?…:؛،"'”’）)\]】»*]\s*$/;
-
-/** Heuristic: the text ends like a finished sentence (not cut mid-thought). */
-export function looksComplete(text: string): boolean {
-  const t = text.trimEnd();
-  if (!t) return false;
-  return SENTENCE_END_RE.test(t);
-}
+// looksComplete now lives in finalize-reply.ts (re-exported above) — single
+// source of truth shared with the deterministic truncation policy.
 
 function continuationInstruction(language?: string): string {
   return language === "en"
@@ -1422,12 +1453,15 @@ function continuationInstruction(language?: string): string {
  * partial answer on the NEXT healthy candidate (assistant prefill + explicit
  * continuation instruction), or regenerate from scratch when nothing usable
  * arrived. Returns the rescue text or null.
+ * ✅ ARCH-AUDIT FIX: the rescue walk is marked rescueDepth = parent + 1 —
+ * it can never spawn another rescue (single-shot repair contract) and it
+ * honors the caller's abort signal.
  */
 async function rescueRound(req: RouteRequest, deadKey: string, partial: string): Promise<string | null> {
   const messages: RouteMessage[] = partial
     ? [...req.messages, { role: "assistant", content: partial }, { role: "user", content: continuationInstruction(req.language) }]
     : req.messages;
-  const rescued = await routeChatCompletion({ ...req, messages, exclude: new Set([deadKey]) });
+  const rescued = await routeChatCompletion({ ...req, messages, exclude: new Set([deadKey]), rescueDepth: (req.rescueDepth ?? 0) + 1, abortSignal: req.abortSignal });
   if (!rescued.ok) return null;
   const reply = rescued.result.reply?.trim();
   if (!reply) return null;
@@ -1462,12 +1496,14 @@ function parseNormalizedTextLine(line: string): string | null {
  * cancelled and false is returned so the caller falls back to the
  * non-streaming rescueRound, which has its own full-reply guard.
  * Returns true when at least some rescue text was emitted.
+ * ✅ ARCH-AUDIT FIX: rescueDepth = parent + 1 — the rescue stream is never
+ * itself rescue-capable (no nested hidden repair passes) and honors abort.
  */
 async function rescueStreamRound(req: RouteRequest, deadKey: string, partial: string, emit: (t: string) => void): Promise<boolean> {
   const messages: RouteMessage[] = partial
     ? [...req.messages, { role: "assistant", content: partial }, { role: "user", content: continuationInstruction(req.language) }]
     : req.messages;
-  const rescued = await routeChatStream({ ...req, messages, exclude: new Set([deadKey]) });
+  const rescued = await routeChatStream({ ...req, messages, exclude: new Set([deadKey]), rescueDepth: (req.rescueDepth ?? 0) + 1, abortSignal: req.abortSignal });
   if (!rescued.ok) return false;
 
   const head = partial.trim().slice(0, 40);
@@ -1626,25 +1662,34 @@ function buildResilientUpstreamStream(params: {
           // Content-then-death / stall / reasoning-only death / finished with
           // ZERO visible content (reasoning burn) — repair live.
           recordFailure(provider, model, "fail", `midstream death: ${String(streamError || "no finish marker").slice(0, 120)}`);
-          // Preferred: STREAMING rescue — the continuation types itself out
-          // live on the next candidate (never one dead block).
-          let rescuedAny = false;
-          try {
-            rescuedAny = await rescueStreamRound(params.req, key, visible, (t) => {
-              total += t;
-              emit(t);
-            });
-          } catch { /* streaming rescue failed — non-streaming rescue below */ }
-          // Fallback: the non-streaming rescue (single emit — the client's
-          // reveal queue still renders it as progressive typing).
-          if (!rescuedAny) {
+          // ✅ ARCH-AUDIT FIX (hidden repair loop depth cap): the repair pass
+          // runs only from a TOP-LEVEL stream (rescueDepth 0). A rescue walk
+          // that dies mid-way is recorded and closed — it never nests another
+          // repair pass, so one user request can never stack unbounded
+          // hidden repair loops.
+          if ((params.req.rescueDepth ?? 0) === 0) {
+            // Preferred: STREAMING rescue — the continuation types itself out
+            // live on the next candidate (never one dead block).
+            let rescuedAny = false;
             try {
-              const rescued = await rescueRound(params.req, key, visible);
-              if (rescued) {
-                total += rescued;
-                emit(rescued);
-              }
-            } catch { /* rescue failed — emit what we have (never worse than before) */ }
+              rescuedAny = await rescueStreamRound(params.req, key, visible, (t) => {
+                total += t;
+                emit(t);
+              });
+            } catch { /* streaming rescue failed — non-streaming rescue below */ }
+            // Fallback: the non-streaming rescue (single emit — the client's
+            // reveal queue still renders it as progressive typing).
+            if (!rescuedAny) {
+              try {
+                const rescued = await rescueRound(params.req, key, visible);
+                if (rescued) {
+                  total += rescued;
+                  emit(rescued);
+                }
+              } catch { /* rescue failed — emit what we have (never worse than before) */ }
+            }
+          } else {
+            logger.warn("[AiRouter] rescue-depth stream died mid-way — no nested repair (depth cap)", { depth: params.req.rescueDepth });
           }
         }
 
@@ -1667,7 +1712,7 @@ function buildResilientUpstreamStream(params: {
  * in-flight instead of surfacing truncated replies.
  */
 export async function routeChatStream(req: RouteRequest): Promise<RoutingOutcome<RoutedStream>> {
-  const candidates = await buildCandidates({ vision: req.vision, mode: req.mode, onlyFree: true, exclude: req.exclude, preferredModelId: req.preferredModelId });
+  const candidates = (await buildCandidates({ vision: req.vision, mode: req.mode, onlyFree: true, exclude: req.exclude, preferredModelId: req.preferredModelId })).slice(0, MAX_WALK_CANDIDATES);
   if (candidates.length === 0) return { ok: false };
 
   const deadline = Date.now() + req.gen.globalBudgetMs;
@@ -1681,6 +1726,7 @@ export async function routeChatStream(req: RouteRequest): Promise<RoutingOutcome
 
   for (const { provider, model } of candidates) {
     if (Date.now() > deadline) break;
+    if (req.abortSignal?.aborted) break; // caller gone — stop burning quota
     attempted++;
 
     const useWeb = webBudget > 0 && isOpenRouterProvider(provider);

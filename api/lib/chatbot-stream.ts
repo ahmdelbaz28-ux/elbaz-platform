@@ -819,6 +819,9 @@ export async function getStreamResponse(request: {
    *  go straight to the resilient legacy backbone — a storming dynamic pool
    *  must never re-burn every round's budget before Groq/NVIDIA answer. */
   preferLegacy?: boolean;
+  /** ✅ ARCH-AUDIT FIX: forwarded to the dynamic walk — a walk abandoned by
+   *  the endpoint (hard cap / client disconnect) stops burning quota. */
+  abortSignal?: AbortSignal;
 }): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
   // ── TWO-PASS VISION gate (BEFORE the dynamic router!) ──
   // Image requests follow the product policy: a vision model READS the image
@@ -846,6 +849,8 @@ export async function getStreamResponse(request: {
       // Instant lane hoists the general-purpose fast model above code/mini
       // models so Arabic/English instructions (language mirror) are followed.
       preferredModelId: routerTuning.openRouterPreferredModel,
+      // ✅ ARCH-AUDIT FIX: caller abort propagates into the candidate walk.
+      abortSignal: request.abortSignal,
       // Web grounding: thinking = documented-answer lane (OpenRouter plugin).
       webSearch: routerMode === "thinking",
       gen: routerMode === "instant"

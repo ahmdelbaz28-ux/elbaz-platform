@@ -9,7 +9,8 @@
 import { Hono, type Context } from "hono";
 import { getChatResponse, getStreamResponse, type ChatApiMessage, type ContentPart } from "./lib/chatbot.js";
 import { getCourseCatalogText } from "./lib/course-catalog.js";
-import { containsPromptLeak, promptLeakRefusal, sanitizeReplyOutput } from "./lib/chatbot-prompts.js";
+import { containsPromptLeak, promptLeakRefusal } from "./lib/chatbot-prompts.js";
+import { finalizeReply, opaqueModelKey } from "./lib/finalize-reply.js";
 import { chatbotError, logSafeError, scrubCredentials, type ChatbotErrorCode } from "./lib/chatbot-errors.js";
 import { getClientIpFromHono as getChatbotIp } from "./lib/client-ip";
 import { getImageQuotaUsed, incrementImageQuota, DAILY_IMAGE_LIMIT } from "./lib/image-quota.js";
@@ -407,7 +408,9 @@ chatbotRouter.post("/", async (c) => {
     };
     let result = await getChatResponse(chatRequest);
     let persistRound = 0;
-    while (!result.success && Date.now() < nonStreamPersistDeadline) {
+    // ✅ ARCH-AUDIT FIX: the persistence loop also honors the client's
+    // disconnect signal — a gone client never keeps burning walk rounds.
+    while (!result.success && Date.now() < nonStreamPersistDeadline && !c.req.raw.signal?.aborted) {
       persistRound += 1;
       await new Promise((r) => setTimeout(r, 4_000));
       // Persistence escalation: rounds ≥ 2 skip the dynamic router and go
@@ -418,19 +421,22 @@ chatbotRouter.post("/", async (c) => {
     if (result.success) {
       // Quota is only consumed by SUCCESSFUL image analysis.
       if (vision) await incrementImageQuota(ip, imageCount);
-      // ✅ SECURITY FIX (pre-launch audit run-2, chatbot.prompt-leak): the
-      // reply must never carry verbatim system-prompt text — deterministic
-      // backstop behind the confidentiality instruction.
-      const rawReply = result.reply ?? "";
-      const safeReply = containsPromptLeak(rawReply)
-        ? promptLeakRefusal(dailyLang)
-        : sanitizeReplyOutput(rawReply);
+      // ✅ ARCH-AUDIT FIX (unified egress pipeline): the reply now goes
+      // through the ONE shared finalizeReply contract (think-strip → sanitize
+      // → leak gate → deterministic truncation policy) — the same pipeline
+      // the stream forwarder and the Telegram brain use, so no egress can
+      // serve an answer the others would have blocked or reshaped.
+      const final = finalizeReply(result.reply ?? "", dailyLang);
+      if (final.leaked) logger.warn("[Chatbot] prompt-leak tripwire fired on non-stream reply — replaced with refusal");
+      if (final.truncated) logger.info("[Chatbot] truncation policy trimmed a mid-sentence cutoff");
       // Persist the round for logged-in users (fails open internally).
-      if (chatUser) persistRoundSafe(chatUser.id, messages, vision, safeReply, result.model, body.mode);
+      if (chatUser) persistRoundSafe(chatUser.id, messages, vision, final.reply, result.model, body.mode);
       return c.json({
         success: true,
-        reply: safeReply,
-        model: result.model,
+        reply: final.reply,
+        // ✅ ARCH-AUDIT FIX (model identity tag): the wire carries an opaque
+        // model key — the never-name-providers contract is enforced in code.
+        model: opaqueModelKey(result.model ?? "unknown"),
         chatId: body.chatId,
       });
     }
@@ -459,8 +465,9 @@ chatbotRouter.post("/", async (c) => {
 //      client's typing indicator stays alive from the first millisecond.
 //   2. While any walk is in flight, `: ping` keepalives (SSE comments —
 //      ignored by every client parser) are emitted every 4s.
-//   3. When a full walk fails, the walk is RETRIED in rounds (fresh
-//      circuit-breaker state each round) until the mode's persistence
+//   3. When a full walk fails, the walk is RETRIED in rounds (circuit-breaker
+//      state is module-level and PERSISTS across rounds — a model that failed
+//      round 1 is not re-dialed in round 2) until the mode's persistence
 //      deadline — thinking 100s, instant 55s (env-overridable for tests).
 //      Only deadline exhaustion emits a soft busy event, which the client
 //      answers with its own silent retries — an error UI is a last resort
@@ -575,6 +582,9 @@ chatbotRouter.post("/stream", async (c) => {
     vision,
     historySummary: historySummary ?? undefined,
     preferLegacy: round >= 2,
+    // ✅ ARCH-AUDIT FIX: the walk sees the endpoint's abort signal — rounds
+    // abandoned by the hard cap / client disconnect stop burning quota.
+    abortSignal: timeoutController.signal,
   });
 
   // Server-side accumulation of the assistant text — the normalized SSE
@@ -585,14 +595,17 @@ chatbotRouter.post("/stream", async (c) => {
   let sseCarry = "";
   const decoder = new TextDecoder();
   const forwardEncoder = new TextEncoder();
-  // ✅ SECURITY FIX (pre-launch audit run-2, chatbot.prompt-leak): streaming
-  // leak gate. A short rolling tail (markers are ≤ ~50 chars; the window is
-  // 160) is checked against verbatim system-prompt fragments BEFORE each
-  // piece is re-emitted. On a hit the client immediately receives the
-  // bilingual refusal, nothing further is forwarded, and accumulatedReply is
-  // REPLACED by the refusal so the persisted history contains no prompt text
-  // either. A marker split across chunk boundaries is caught once the tail
-  // reassembles it — at most a harmless fragment slips out first.
+  // ✅ SECURITY FIX (pre-launch audit run-2, chatbot.prompt-leak) + ✅
+  // ARCH-AUDIT FIX (stream leak gate could not retract streamed fragments):
+  // the forwarder now holds back the last LEAK_TAIL_CHARS chars and only
+  // re-emits text that has EXITED the window. A verbatim system-prompt
+  // fragment (markers are ≤ ~50 chars; the window is 160) is therefore
+  // caught BEFORE any of its bytes reach the client — no fragment can slip
+  // out first, so the historical "stream-then-retroactively-fix" weakness
+  // is gone. On a hit the client immediately receives the bilingual
+  // refusal, nothing further is forwarded, and accumulatedReply is
+  // REPLACED by the refusal so the persisted history contains no prompt
+  // text either.
   let leakDetected = false;
   let leakTail = "";
   const LEAK_TAIL_CHARS = 160;
@@ -620,17 +633,24 @@ chatbotRouter.post("/stream", async (c) => {
           const parsed = JSON.parse(trimmed.slice(6)) as { text?: string; error?: string };
           if (typeof parsed.text === "string") {
             if (leakDetected) continue; // swallow everything after a leak hit
-            leakTail = (leakTail + parsed.text).slice(-LEAK_TAIL_CHARS);
+            leakTail += parsed.text;
             if (containsPromptLeak(leakTail)) {
               leakDetected = true;
               const refusal = promptLeakRefusal(language);
               accumulatedReply = refusal;
+              leakTail = "";
               out += `data: ${JSON.stringify({ text: refusal })}\n\n`;
-              logger.warn("[Chatbot] prompt-leak tripwire fired on stream — reply replaced with refusal");
+              logger.warn("[Chatbot] prompt-leak tripwire fired on stream — reply replaced with refusal (no fragment had been emitted)");
               continue;
             }
-            accumulatedReply += parsed.text;
-            out += `data: ${JSON.stringify({ text: parsed.text })}\n\n`;
+            // Emit only what has left the hold-back window.
+            const emitLen = leakTail.length - LEAK_TAIL_CHARS;
+            if (emitLen > 0) {
+              const part = leakTail.slice(0, emitLen);
+              leakTail = leakTail.slice(emitLen);
+              accumulatedReply += part;
+              out += `data: ${JSON.stringify({ text: part })}\n\n`;
+            }
           }
           // parsed.error events are NOT forwarded: the endpoint decides when
           // (and whether) to surface a soft-busy note after its own retries.
@@ -638,6 +658,28 @@ chatbotRouter.post("/stream", async (c) => {
       }
       return out ? forwardEncoder.encode(out) : null;
     } catch { /* decode error — skip chunk */ return null; }
+  };
+  /**
+   * ✅ ARCH-AUDIT FIX: release the hold-back tail when the winner stream
+   * ends — it already passed the leak gate, so it belongs to the
+   * client-visible reply (and to the persisted copy).
+   */
+  const flushLeakTail = (): Uint8Array | null => {
+    if (leakDetected || !leakTail) { leakTail = ""; return null; }
+    if (containsPromptLeak(leakTail)) {
+      // Defensive final check — every delta was already checked, but a hit
+      // here must behave identically: refusal replaces the accumulated copy.
+      leakDetected = true;
+      const refusal = promptLeakRefusal(language);
+      accumulatedReply = refusal;
+      leakTail = "";
+      logger.warn("[Chatbot] prompt-leak tripwire fired on tail flush — reply replaced with refusal");
+      return forwardEncoder.encode(`data: ${JSON.stringify({ text: refusal })}\n\n`);
+    }
+    const rest = leakTail;
+    leakTail = "";
+    accumulatedReply += rest;
+    return forwardEncoder.encode(`data: ${JSON.stringify({ text: rest })}\n\n`);
   };
   const flushAccumulator = () => {
     const rest = sseCarry.trim();
@@ -724,7 +766,11 @@ chatbotRouter.post("/stream", async (c) => {
           }
 
           // ── Winner — model event first, then pump the content stream ──
-          safeEnqueue(encoder.encode(`data: ${JSON.stringify({ model: result.model })}\n\n`));
+          // ✅ ARCH-AUDIT FIX: the wire model field is an opaque key — the
+          // never-name-providers contract is enforced in code, not just in
+          // the prompt.
+          safeEnqueue(encoder.encode(`data: ${JSON.stringify({ model: opaqueModelKey(result.model) })}\n\n`));
+          leakTail = ""; // per-round hold-back state (defensive reset)
 
           const reader = result.stream.getReader();
           try {
@@ -745,6 +791,11 @@ chatbotRouter.post("/stream", async (c) => {
           } finally {
             try { await reader.cancel(); } catch { /* already dead */ }
           }
+
+          // ✅ ARCH-AUDIT FIX: release the hold-back tail — it passed the
+          // leak gate and belongs to the client-visible + persisted reply.
+          const tailBytes = flushLeakTail();
+          if (tailBytes) safeEnqueue(tailBytes);
 
           flushAccumulator();
           const reply = accumulatedReply.trim();
