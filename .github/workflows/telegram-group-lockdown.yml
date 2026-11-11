@@ -21,6 +21,11 @@ name: Telegram group lockdown
 
 on:
   workflow_dispatch:
+    inputs:
+      suspect_group_id:
+        description: "Direct group/supergroup id to inspect (numeric, e.g. -100…) — robust when the channel lookup flakes or the group is quiet"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -52,6 +57,9 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+          LOCKDOWN_SUSPECT_CHAT_ID: ${{ inputs.suspect_group_id }}
+          # A direct suspect makes the update-peek pointless — trim its window.
+          LOCKDOWN_DISCOVERY_SECONDS: ${{ inputs.suspect_group_id != '' && '60' || '420' }}
         run: npx tsx scripts/telegram-group-lockdown.ts
 
       # The lockdown's update-peek fights the poller by design (409 dance) —

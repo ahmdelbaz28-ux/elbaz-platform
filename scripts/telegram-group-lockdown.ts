@@ -46,7 +46,10 @@
  *                  no message texts, no member identities) + human lines.
  *
  *  Env: TELEGRAM_BOT_TOKEN (required), TELEGRAM_CHAT_ID / TELEGRAM_ADMIN_CHAT_ID
- *  (optional suspects), TELEGRAM_API_BASE (optional relay override),
+ *  (optional suspects), LOCKDOWN_SUSPECT_CHAT_ID (optional direct group id —
+ *  the robust path when the channel lookup flakes or the group is quiet;
+ *  DELIBERATELY a separate name so the broadcast target TELEGRAM_CHAT_ID is
+ *  never repointed at the group), TELEGRAM_API_BASE (optional relay override),
  *  LOCKDOWN_DISCOVERY_SECONDS (default 420), LOCKDOWN_SWEEP_BACK (600),
  *  LOCKDOWN_SWEEP_FWD (80).
  * ═══════════════════════════════════════════════════════════════════════════
@@ -234,6 +237,7 @@ function envCandidates(): void {
   for (const [name, via] of [
     ["TELEGRAM_CHAT_ID", "env:TELEGRAM_CHAT_ID"],
     ["TELEGRAM_ADMIN_CHAT_ID", "env:TELEGRAM_ADMIN_CHAT_ID"],
+    ["LOCKDOWN_SUSPECT_CHAT_ID", "env:LOCKDOWN_SUSPECT_CHAT_ID"],
   ] as const) {
     const raw = process.env[name]?.trim();
     if (!raw) continue;
