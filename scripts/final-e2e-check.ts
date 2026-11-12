@@ -41,9 +41,12 @@ const body = (await poll.json()) as {
 // Event titles/messages originate from user-visible content — strip control
 // characters before logging so a "\n" in a title cannot forge log lines (S5145).
 const cleanLog = (s: string): string => String(s).replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ");
-console.log("\npoll:", poll.status, "events:", body.events?.length);
+// S5145: EVERY remote-derived value reaches the console only through cleanLog —
+// including numbers (status/length), which Sonar's taint analysis treats as
+// attacker-shaped because the whole response body originates off-host.
+console.log("\npoll:", cleanLog(String(poll.status)), "events:", cleanLog(String(body.events?.length ?? 0)));
 for (const ev of body.events ?? []) {
-  console.log(`  [${cleanLog(ev.type)}] ${ev.createdAt}`);
+  console.log(`  [${cleanLog(ev.type)}] ${cleanLog(ev.createdAt)}`);
   console.log(`   title: ${cleanLog(ev.title)}`);
   console.log(`   url:   ${cleanLog(ev.url ?? "-")}`);
   console.log(`   msg:   ${cleanLog(ev.message.slice(0, 80))}...`);
