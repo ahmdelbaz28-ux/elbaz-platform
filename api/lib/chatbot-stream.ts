@@ -21,6 +21,7 @@
  */
 
 import { getSystemPrompt, MODE_TUNING, sanitizeReplyOutput, type ModeTuning } from "./chatbot-prompts.js";
+import type { ParsedScreenContext } from "./chatbot-screen.js";
 import { logger } from "./logger.js";
 import { ThinkStreamFilter } from "./think-filter.js";
 import { buildAugmentedTextMessages, buildVisionFailureMessages, readImageViaVisionModels } from "./chatbot-vision.js";
@@ -159,6 +160,7 @@ export async function pickWorkingModel(
   mode: "thinking" | "instant" = "thinking",
   catalog?: string,
   historySummary?: string,
+  screen?: ParsedScreenContext,
 ): Promise<PickedProvider | null> {
   const tuning = mode === "instant" ? MODE_TUNING.instant : MODE_TUNING.thinking;
   // ✅ ARCH-AUDIT FIX (stream legacy path silently drops the long-term memory
@@ -166,7 +168,9 @@ export async function pickWorkingModel(
   // rolling summary, so whenever streaming fell back to the legacy chain
   // (Groq/NVIDIA/static OpenRouter), logged-in users lost all cross-session
   // continuity that the non-stream path kept. The summary now threads through.
-  const systemPrompt = getSystemPrompt(language, mode, catalog, false, historySummary);
+  // ✅ SCREEN CONTEXT: the screen snapshot threads through the same way — the
+  // legacy backbone must see the user's current screen too.
+  const systemPrompt = getSystemPrompt(language, mode, catalog, false, historySummary, screen);
 
   if (mode === "instant") {
     // ─── INSTANT: fastest first — Groq → OpenRouter (fast model) → NVIDIA ───
@@ -742,6 +746,8 @@ async function getVisionStreamResponse(request: {
   catalog?: string;
   /** Rolling summary of this user's older conversations (chat-history.ts). */
   historySummary?: string;
+  /** ✅ SCREEN CONTEXT: validated user-screen snapshot (chatbot-screen.ts). */
+  screen?: ParsedScreenContext;
   /** ✅ AUDIT RUN-2 FIX: the vision stream walk honors the caller's abort. */
   abortSignal?: AbortSignal;
 }): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
@@ -755,7 +761,7 @@ async function getVisionStreamResponse(request: {
   const pass2Messages = read.ok && read.description
     ? buildAugmentedTextMessages(request.messages, read.description, request.language)
     : buildVisionFailureMessages(request.messages, request.language);
-  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, false, request.historySummary);
+  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, false, request.historySummary, request.screen);
 
   // ── PASS 2 (ANSWER): streaming reasoning-first cascade over the TEXT
   // description — the strongest available model writes the answer.
@@ -782,7 +788,7 @@ async function getVisionStreamResponse(request: {
 
   // Legacy streaming text cascade over the augmented (text-only) messages.
   const pass2Request = { ...request, messages: pass2Messages };
-  const picked = await pickWorkingModel(pass2Messages, request.language, mode, request.catalog, request.historySummary);
+  const picked = await pickWorkingModel(pass2Messages, request.language, mode, request.catalog, request.historySummary, request.screen);
   if (picked) {
     if (picked.provider === "nvidia") {
       return await streamNvidiaProvider(pass2Request, picked, encoder);
@@ -827,6 +833,9 @@ export async function getStreamResponse(request: {
   vision?: boolean;
   /** Rolling summary of this user's older conversations (chat-history.ts). */
   historySummary?: string;
+  /** ✅ SCREEN CONTEXT: validated user-screen snapshot (chatbot-screen.ts) —
+   *  grounds every answer in the user's CURRENT open screen. */
+  screen?: ParsedScreenContext;
   /** Persistence escalation (walk rounds ≥ 2): skip the dynamic router and
    *  go straight to the resilient legacy backbone — a storming dynamic pool
    *  must never re-burn every round's budget before Groq/NVIDIA answer. */
@@ -854,7 +863,7 @@ export async function getStreamResponse(request: {
     const routerTuning = MODE_TUNING[routerMode];
     const routed = await routeChatStream({
       messages: request.messages,
-      systemPrompt: getSystemPrompt(request.language, routerMode, request.catalog, false, request.historySummary),
+      systemPrompt: getSystemPrompt(request.language, routerMode, request.catalog, false, request.historySummary, request.screen),
       mode: routerMode,
       vision: false,
       language: request.language,
@@ -872,7 +881,7 @@ export async function getStreamResponse(request: {
     if (routed.ok) return { stream: routed.result.stream, model: routed.result.model };
   }
 
-  const picked = await pickWorkingModel(request.messages, request.language, request.mode || "thinking", request.catalog, request.historySummary);
+  const picked = await pickWorkingModel(request.messages, request.language, request.mode || "thinking", request.catalog, request.historySummary, request.screen);
 
   if (!picked) {
     return buildStreamErrorResponse("noProvider", request.language);

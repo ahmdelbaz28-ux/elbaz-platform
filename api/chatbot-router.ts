@@ -8,6 +8,7 @@
 
 import { Hono, type Context } from "hono";
 import { getChatResponse, getStreamResponse, type ChatApiMessage, type ContentPart } from "./lib/chatbot.js";
+import { parseScreenContext } from "./lib/chatbot-screen.js";
 import { getCourseCatalogText } from "./lib/course-catalog.js";
 import { containsPromptLeak, promptLeakRefusal } from "./lib/chatbot-prompts.js";
 import { finalizeReply, opaqueModelKey } from "./lib/finalize-reply.js";
@@ -350,7 +351,7 @@ chatbotRouter.post("/", async (c) => {
     if (!checkChatbotRateLimit(ip)) {
       return errorResponse(c, "RATE_LIMITED");
     }
-    const body = await c.req.json<{ messages: unknown; language?: string; chatId?: string; mode?: "thinking" | "instant" }>();
+    const body = await c.req.json<{ messages: unknown; language?: string; chatId?: string; mode?: "thinking" | "instant"; pageContext?: unknown }>();
 
     const normalized = normalizeChatInput(body.messages);
     if (!normalized.ok) {
@@ -408,6 +409,10 @@ chatbotRouter.post("/", async (c) => {
       catalog,
       vision,
       historySummary: historySummary ?? undefined,
+      // ✅ SCREEN CONTEXT: the client's live screen snapshot (open page,
+      // displayed entity, nav trail) — strictly validated before it may reach
+      // the system prompt; an invalid/absent payload just omits the block.
+      screen: parseScreenContext(body.pageContext) ?? undefined,
       // ✅ Review fix (2026-11-11): the client's disconnect signal reaches the
       // whole cascade — the walk, every lane and every in-flight fetch now
       // observe it (abort-utils composition), not just the persistence loop.
@@ -520,9 +525,9 @@ chatbotRouter.post("/stream", async (c) => {
   // malformed request body produced an unhandled 500 (and an AI-diagnosis
   // spend) instead of a clean 400. Malformed JSON is a client bug — respond
   // as such.
-  let body: { messages?: unknown; language?: string; chatId?: string; mode?: "thinking" | "instant" };
+  let body: { messages?: unknown; language?: string; chatId?: string; mode?: "thinking" | "instant"; pageContext?: unknown };
   try {
-    body = await c.req.json<{ messages: unknown; language?: string; chatId?: string; mode?: "thinking" | "instant" }>();
+    body = await c.req.json<{ messages: unknown; language?: string; chatId?: string; mode?: "thinking" | "instant"; pageContext?: unknown }>();
   } catch {
     return c.json({ error: "INVALID_JSON", message: "Request body must be valid JSON." }, 400);
   }
@@ -594,6 +599,9 @@ chatbotRouter.post("/stream", async (c) => {
     catalog,
     vision,
     historySummary: historySummary ?? undefined,
+    // ✅ SCREEN CONTEXT: the client's live screen snapshot — validated above
+    // the walk so every round sees the same grounded screen state.
+    screen: parseScreenContext(body.pageContext) ?? undefined,
     preferLegacy: round >= 2,
     // ✅ ARCH-AUDIT FIX: the walk sees the endpoint's abort signal — rounds
     // abandoned by the hard cap / client disconnect stop burning quota.

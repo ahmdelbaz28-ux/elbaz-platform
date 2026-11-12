@@ -6,6 +6,7 @@ import YouTubeLessonPlayer from "@/components/YouTubeLessonPlayer";
 import SubscribeGate from "@/components/SubscribeGate";
 import CourseReviews from "@/components/CourseReviews";
 import { isSubscribeUnlocked, unlockSubscribe } from "@/lib/subscribe-gate";
+import { useScreenDetails } from "@/lib/screen-context";
 import { useState, useRef, useEffect, useCallback, useImperativeHandle, forwardRef, lazy, Suspense } from 'react';
 import { useWatchTracker } from "@/hooks/useWatchTracker";
 import { trackLearning, trackPlatform, trackEvent } from "@/lib/clarity";
@@ -869,6 +870,28 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
   // ✅ Derive values from course data (must be declared before use in hooks)
   const price = Number.parseFloat(course?.price || "0");
   const title = (lang === "ar" && course?.titleAr) ? course.titleAr : (course?.titleEn ?? "");
+
+  // 🖥️ SCREEN CONTEXT: register the displayed course — plus the open lesson
+  // or quiz meta — so the chatbot answers from the user's CURRENT screen.
+  // Declared BEFORE the !course early-return (rules of hooks); everything is
+  // optional-chained, and the hook unregisters on unmount/route change so a
+  // stale course title can never leak onto another page's snapshot.
+  const screenLesson = course?.lessons?.find((l) => l.id === activeLesson);
+  useScreenDetails(
+    title
+      ? {
+          kind: "course",
+          title,
+          meta: showQuiz
+            ? (lang === "ar" ? "الكويز مفتوح الآن" : "Quiz is open")
+            : screenLesson
+              ? (lang === "ar"
+                ? `الدرس المفتوح: ${screenLesson.titleAr}`
+                : `Open lesson: ${screenLesson.titleEn}`)
+              : undefined,
+        }
+      : null,
+  );
 
   // ✅ Promo code validation (fetch-based, not tRPC)
   const validatePromo = useCallback(async () => {

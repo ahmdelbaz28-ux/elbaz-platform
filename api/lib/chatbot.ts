@@ -33,6 +33,7 @@
 
 import { env } from "../lib/env";
 import { getSystemPrompt, MODE_TUNING, type ChatbotMode, type ModeTuning } from "./chatbot-prompts.js";
+import type { ParsedScreenContext } from "./chatbot-screen.js";
 import { logger } from "./logger.js";
 import { routeChatCompletion, isWebPluginDisabled, disableWebPluginFor, WEB_PLUGIN_BODY, isOpenRouterDailyLimited, noteOpenRouterDailyLimit, isChatLaneModel, isDiscoveredModelId } from "./ai-router.js";
 import { withCallerAbort } from "./abort-utils.js";
@@ -851,6 +852,10 @@ export async function getChatResponse(request: {
   vision?: boolean;
   /** Rolling summary of this user's older conversations (chat-history.ts). */
   historySummary?: string;
+  /** ✅ SCREEN CONTEXT: validated user-screen snapshot (api/lib/chatbot-screen.ts).
+   *  Injected as a read-only data block so answers are grounded in the
+   *  user's CURRENT open screen, not guesses. */
+  screen?: ParsedScreenContext;
   /** Persistence escalation (rounds ≥ 2): skip the dynamic router. */
   preferLegacy?: boolean;
   /** ✅ AUDIT RUN-2 FIX: abort signal threaded through the LEGACY cascade —
@@ -866,6 +871,7 @@ export async function getChatResponse(request: {
     mode: request.mode,
     catalog: request.catalog,
     historySummary: request.historySummary,
+    screen: request.screen,
     preferLegacy: request.preferLegacy,
     abortSignal: request.abortSignal,
   });
@@ -882,6 +888,8 @@ async function runTextCascade(request: {
   mode?: "thinking" | "instant";
   catalog?: string;
   historySummary?: string;
+  /** ✅ SCREEN CONTEXT: validated user-screen snapshot (chatbot-screen.ts). */
+  screen?: ParsedScreenContext;
   /** Persistence escalation (rounds ≥ 2): skip the dynamic router and reach
    *  the resilient legacy backbone directly — a storming dynamic pool must
    *  never re-burn every round's walk budget before Groq/NVIDIA are tried. */
@@ -891,7 +899,7 @@ async function runTextCascade(request: {
 }): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
   const mode: ChatbotMode = request.mode === "instant" ? "instant" : "thinking";
   const tuning = MODE_TUNING[mode];
-  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, false, request.historySummary);
+  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, false, request.historySummary, request.screen);
   // WEB GROUNDING policy: thinking mode (the accuracy lane) gets live web
   // search on OpenRouter so answers stay documented; instant stays plugin-
   // free for latency. Every failure degrades gracefully (breaker in ai-router
@@ -1027,6 +1035,8 @@ export async function getVisionResponse(request: {
   catalog?: string;
   /** Rolling summary of this user's older conversations (chat-history.ts). */
   historySummary?: string;
+  /** ✅ SCREEN CONTEXT: validated user-screen snapshot (chatbot-screen.ts). */
+  screen?: ParsedScreenContext;
   /** ✅ AUDIT RUN-2 FIX: abort signal reaches both vision passes. */
   abortSignal?: AbortSignal;
 }): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
@@ -1049,6 +1059,7 @@ export async function getVisionResponse(request: {
     mode: request.mode,
     catalog: request.catalog,
     historySummary: request.historySummary,
+    screen: request.screen,
     // ✅ AUDIT RUN-2 FIX: the vision pass-2 cascade honors the caller's abort.
     abortSignal: request.abortSignal,
   });

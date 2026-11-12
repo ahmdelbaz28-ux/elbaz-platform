@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from "react";
 import { Link, useParams } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useScreenDetails } from "@/lib/screen-context";
 import { trpc } from "@/providers/trpc";
 import Seo from "@/components/SEO";
 import { Button } from "@/components/ui/button";
@@ -68,6 +69,20 @@ export default function ArticleDetail() {
     if (!raw) return [] as string[];
     return raw.split(",").map((s) => s.trim()).filter(Boolean);
   }, [article]);
+
+  // 🖥️ SCREEN CONTEXT: register the displayed article so the chatbot answers
+  // from the user's CURRENT screen. Declared BEFORE the early returns (rules
+  // of hooks); null while loading clears any previous registration.
+  useScreenDetails(
+    article
+      ? {
+          kind: "article",
+          title: (isRTL
+            ? (article as { titleAr?: string }).titleAr
+            : (article as { titleEn?: string }).titleEn) || undefined,
+        }
+      : null,
+  );
 
   if (isLoading) {
     return (

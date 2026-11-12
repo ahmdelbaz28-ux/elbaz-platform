@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, memo, forwardRef, useImperativeHandle } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useLocation } from "react-router";
+import { buildChatPageContext, pushTrail, type ScreenAuth } from "@/lib/screen-context";
 import { toast } from "sonner";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useAuth } from "@/hooks/useAuth";
@@ -727,6 +728,21 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingExitStartedRef = useRef(false);
 
+  // ─── SCREEN CONTEXT tracker (owner requirement 2026-11: the bot must see
+  // the user's CURRENT open screen while they navigate) ───
+  // Every route change records the visited path into the session trail, and
+  // the live path/auth are kept in refs so sendMessage composes a FRESH
+  // pageContext snapshot per send attempt — no stale closure, no extra
+  // re-creation of the giant callback on navigation.
+  const location = useLocation();
+  const locationRef = useRef(location.pathname);
+  const authRef = useRef<ScreenAuth>("guest");
+  useLayoutEffect(() => {
+    locationRef.current = location.pathname;
+    pushTrail(location.pathname);
+    authRef.current = user?.role === "admin" ? "admin" : isAuthenticated ? "user" : "guest";
+  }, [location.pathname, user?.role, isAuthenticated]);
+
   // ─── Typing indicator visibility (handles enter/exit animations) ───
   const [typingVisible, setTypingVisible] = useState(false);
   const [typingExiting, setTypingExiting] = useState(false);
@@ -1096,12 +1112,21 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     let replyLang: string = lang;
     if (trimmed) replyLang = ARABIC_RE.test(trimmed) ? "ar" : "en";
 
-    const requestBody = {
+    // SCREEN CONTEXT: a getter — the snapshot is composed per ATTEMPT, so a
+    // silent retry that happens after the user navigated reports the NEW
+    // screen, and every request grounds the model in the CURRENT screen
+    // (page name from the navbar map + registered entity title + trail + UI).
+    const buildRequestBody = () => ({
       messages: apiMessages,
       language: replyLang,
       chatId: chatIdRef.current,
       mode: chatMode,
-    };
+      pageContext: buildChatPageContext({
+        pathname: locationRef.current,
+        lang: lang === "en" ? "en" : "ar",
+        auth: authRef.current,
+      }),
+    });
 
     // Create abort controller
     abortControllerRef.current = new AbortController();
@@ -1150,7 +1175,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
         const streamResponse = await fetch(`${apiOrigin}/api/chatbot/stream`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(requestBody),
+          body: JSON.stringify(buildRequestBody()),
           signal: attemptCtrl.signal,
         });
         if (!streamResponse.ok) return "unreachable";
@@ -1242,7 +1267,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
         const response = await fetch(`${apiOrigin}/api/chatbot`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(requestBody),
+          body: JSON.stringify(buildRequestBody()),
           signal: attemptCtrl.signal,
         });
         const data = await response.json().catch(() => null);
