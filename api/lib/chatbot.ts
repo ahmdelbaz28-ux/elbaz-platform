@@ -528,6 +528,13 @@ export async function tryModel(
     if (!response.ok && wantsWeb && (response.status === 402 || response.status === 400)) {
       disableWebPluginFor();
       logger.warn(`[Chatbot/OpenRouter] web plugin rejected (HTTP ${response.status}) — retrying ${modelId} without it`);
+      // ✅ ROOT-CURE (2026-11-13): the first (mostly consumed) timer is
+      // cleared and a FRESH full timeout is armed — the previous code reused
+      // the same controller, so the retry could fire with ~0s left and abort
+      // instantly, counting as a model failure it never gave a chance.
+      if (timeoutId) clearTimeout(timeoutId);
+      controller = new AbortController();
+      timeoutId = setTimeout(() => { controller!.abort(); }, timeoutMs);
       response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -802,15 +809,28 @@ export async function tryGroqTier(
   if (!groqIsAvailable()) return null;
 
   const [firstTimeout, retryTimeout] = tuning.groqAttemptTimeouts;
+  // ✅ ROOT-CURE (2026-11-13): the tier is now wall-clock bounded (tuning.
+  // groqTierBudgetMs). The per-attempt timeouts alone allowed N models × 2
+  // attempts × 45-60s of theoretical hang time; a deadline check between
+  // attempts caps the tier's worst case so the caller's persistence/retry
+  // layers stay meaningful.
+  const tierDeadline = Date.now() + tuning.groqTierBudgetMs;
   const liveModels = liveGroqModels();
   for (let i = 0; i < liveModels.length; i++) {
     if (abortSignal?.aborted) return null; // ✅ AUDIT RUN-2 FIX: stop on abort
-    chatHealth.groqCurrentModelIndex = GROQ_MODELS.indexOf(liveModels[i]);
+    if (Date.now() > tierDeadline) {
+      logger.warn("[Chatbot] Groq tier budget exhausted — handing back to the cascade", {
+        tried: i, budgetMs: tuning.groqTierBudgetMs,
+      });
+      return null;
+    }
+    chatHealth.groqCurrentModelIndex = i; // ✅ index of liveModels — SAME space the stream reader consumes
     const modelId = liveModels[i];
 
     let result = await tryGroq(messages, systemPrompt, modelId, firstTimeout, tuning, abortSignal);
     if (result) return buildSuccessResult(result);
 
+    if (Date.now() > tierDeadline || abortSignal?.aborted) return null;
     result = await tryGroq(messages, systemPrompt, modelId, retryTimeout, tuning, abortSignal);
     if (result) return buildSuccessResult(result);
 
@@ -997,10 +1017,14 @@ export async function groqFallback(
   abortSignal?: AbortSignal,
 ): Promise<{ reply: string; model: string } | null> {
   const [firstTimeout, retryTimeout] = tuning.groqAttemptTimeouts;
+  // ✅ Same wall-clock budget as tryGroqTier — one hung lane can no longer
+  // hold the request beyond the mode's Groq budget.
+  const tierDeadline = Date.now() + tuning.groqTierBudgetMs;
   for (const modelId of liveGroqModels()) {
-    if (abortSignal?.aborted) return null; // ✅ Review fix: abandoned request never dials the next model
+    if (abortSignal?.aborted || Date.now() > tierDeadline) return null; // ✅ Review fix: abandoned request never dials the next model
     let result = await tryGroq(messages, systemPrompt, modelId, firstTimeout, tuning, abortSignal);
     if (result) return result;
+    if (Date.now() > tierDeadline || abortSignal?.aborted) return null;
     result = await tryGroq(messages, systemPrompt, modelId, retryTimeout, tuning, abortSignal);
     if (result) return result;
   }
@@ -1052,6 +1076,8 @@ export async function getVisionResponse(request: {
   /** LIVE SCREEN: last user image is a frame of the user's real screen —
    *  arms the screen-teacher prompt (grounded step-by-step guidance). */
   screenCapture?: boolean;
+  /** ✅ Persistence escalation: skip the dynamic router (see runTextCascade). */
+  preferLegacy?: boolean;
   /** ✅ AUDIT RUN-2 FIX: abort signal reaches both vision passes. */
   abortSignal?: AbortSignal;
 }): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
@@ -1076,6 +1102,10 @@ export async function getVisionResponse(request: {
     historySummary: request.historySummary,
     screen: request.screen,
     screenCapture: request.screenCapture,
+    // ✅ ROOT-CURE (2026-11-13): vision pass-2 honors the persistence
+    // escalation like the text path — a storming dynamic router must not
+    // re-burn its walk budget on every persistence round of an image request.
+    preferLegacy: request.preferLegacy,
     // ✅ AUDIT RUN-2 FIX: the vision pass-2 cascade honors the caller's abort.
     abortSignal: request.abortSignal,
   });

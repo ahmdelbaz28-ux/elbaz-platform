@@ -5,8 +5,11 @@ import { env } from "../lib/env.js";
 import { logger } from "../lib/logger.js";
 
 function sanitizeDbUri(raw: string): string {
-  // mysql2 does not recognize ssl-mode — strip it from the URI
-  return raw.replaceAll(/[?&]ssl-mode=[^&]*/g, "").replace(/\?$/, "");
+  // ✅ ROOT-CURE (2026-11-13): an unset DATABASE_URL crashed module init with
+  // "Cannot read properties of undefined (reading 'replaceAll')" — surfacing
+  // in logs as "[AiRouter] pool load failed" on every dynamic-router round.
+  // Empty string → the pool creation reports a clear connection error instead.
+  return (raw ?? "").replaceAll(/[?&]ssl-mode=[^&]*/g, "").replace(/\?$/, "");
 }
 
 function createPoolConfig(): mysql.PoolOptions {

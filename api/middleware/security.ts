@@ -44,7 +44,12 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
       "default-src 'self'",
       `script-src 'self' 'nonce-${nonce}' https://cdn.jsdelivr.net https://www.clarity.ms https://accounts.google.com https://oauth2.googleapis.com https://www.youtube.com https://s.ytimg.com`,
       "worker-src 'self'",
-      "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com",
+      // ✅ ROOT-CURE (2026-11-13, live CSP violations on /login): Google
+      // Identity Services injects its own stylesheet
+      // (https://accounts.google.com/gsi/style) when rendering the Sign-In
+      // button — without it in style-src the browser blocked the sheet and
+      // every /login visit filed a CSP violation report.
+      "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com https://accounts.google.com",
       "font-src 'self' https://fonts.gstatic.com",
       "img-src 'self' data: blob: https:",
       // 🐛 FIX (E2E purchase→certificate journey): media-src was MISSING —
@@ -87,7 +92,9 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://www.clarity.ms https://accounts.google.com https://oauth2.googleapis.com https://www.youtube.com https://s.ytimg.com",
       "worker-src 'self'",
-      "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com",
+      // ✅ Same accounts.google.com style-src allowance as the nonce CSP
+      // above (Google Identity Services stylesheet, see the nonce block).
+      "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com https://accounts.google.com",
       "font-src 'self' https://fonts.gstatic.com",
       "img-src 'self' data: blob: https:",
       // 🐛 FIX (E2E purchase→certificate journey): media-src was MISSING —

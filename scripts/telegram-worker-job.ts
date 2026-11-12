@@ -18,6 +18,15 @@
  *      with the shield-identity headers (direct-origin runs need them or the
  *      EDGE_HOST_ENFORCE shield answers a stealth 404).
  *
+ *  BOT-WORKER AUTH (root-cure of the IP-quota starvation): the anonymous
+ *  per-IP daily quota (60/day) treated ALL Telegram users as ONE runner IP —
+ *  after 60 DMs/day the whole bot went silent until UTC midnight. The worker
+ *  now sends `x-bot-worker-auth: hex(HMAC-SHA256(SYNC_INGEST_SECRET,
+ *  "bot-worker-v1"))` — the endpoint's authenticated bot lane (600/day,
+ *  60/min, matching the Telegram-side caps). The secret is the SAME one
+ *  already provisioned as a GitHub Actions secret and a Space secret for the
+ *  yt-sync ingest — zero new secrets; fail-closed on both sides when unset.
+ *
  *  LIFECYCLE: the workflow keeps a queued run warm (concurrency group, no
  *  cancel) — when this job's lifetime ends it stops cleanly and the queued
  *  run takes over within seconds. Telegram re-delivers every unconfirmed
@@ -30,6 +39,7 @@
  *      npx tsx scripts/telegram-worker-job.ts
  * ═══════════════════════════════════════════════════════════════════════════
  */
+import { createHmac } from "node:crypto";
 import {
   beginTelegramSupervision,
   getTelegramBotStatus,
@@ -63,6 +73,19 @@ const api: TelegramApi = {
 };
 
 // ─── Expert brain via the Space's public chatbot route ───────────────────────
+/**
+ * hex(HMAC-SHA256(SYNC_INGEST_SECRET, "bot-worker-v1")) — the endpoint's
+ * bot-lane gate (api/chatbot-router.ts isBotWorkerRequest). Unset/short
+ * secret → no header (fail-closed on the endpoint side: plain anonymous IP
+ * quota, exactly the pre-fix behavior).
+ */
+function botWorkerAuthHeader(): Record<string, string> {
+  const secret = (process.env.SYNC_INGEST_SECRET ?? "").trim();
+  if (secret.length < 16) return {};
+  const token = createHmac("sha256", secret).update("bot-worker-v1").digest("hex");
+  return { "x-bot-worker-auth": token };
+}
+
 const brain: ChatBrain = async (messages, opts) => {
   try {
     const res = await fetch(`${brainBase}/api/chatbot`, {
@@ -73,6 +96,7 @@ const brain: ChatBrain = async (messages, opts) => {
         // or the shield answers a stealth 404 (same contract as the smoke test).
         "X-Forwarded-Host": "ahmedelbaz.qzz.io",
         "X-Forwarded-Proto": "https",
+        ...botWorkerAuthHeader(),
       },
       body: JSON.stringify({ messages, language: opts.language, mode: opts.mode }),
       signal: AbortSignal.timeout(150_000), // provider walk retries inside the Space

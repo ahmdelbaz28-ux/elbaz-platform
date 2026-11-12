@@ -7,6 +7,7 @@
  */
 
 import { Hono, type Context } from "hono";
+import crypto from "node:crypto";
 import { getChatResponse, getStreamResponse, type ChatApiMessage, type ContentPart } from "./lib/chatbot.js";
 // ✅ Extracted (2026-11): input normalization lives in api/lib/chatbot-normalize.js —
 // pure + unit-testable without the router's import graph (no Hono, no DB).
@@ -45,15 +46,15 @@ const CHATBOT_WINDOW_MS = 60_000; // 1 minute window
 // cleanup). Same MAX_SIZE pattern as the shield's rateLimitMap.
 const CHATBOT_MAP_MAX_SIZE = 5000;
 
-function checkChatbotRateLimit(ip: string): boolean {
+function checkChatbotRateLimit(key: string, ratePerMinute = CHATBOT_RATE_LIMIT): boolean {
   const now = Date.now();
   if (chatbotRequests.size >= CHATBOT_MAP_MAX_SIZE) cleanupChatbotMap(now);
-  const entry = chatbotRequests.get(ip);
+  const entry = chatbotRequests.get(key);
   if (!entry || now > entry.resetAt) {
-    chatbotRequests.set(ip, { count: 1, resetAt: now + CHATBOT_WINDOW_MS });
+    chatbotRequests.set(key, { count: 1, resetAt: now + CHATBOT_WINDOW_MS });
     return true;
   }
-  if (entry.count >= CHATBOT_RATE_LIMIT) {
+  if (entry.count >= ratePerMinute) {
     return false;
   }
   entry.count++;
@@ -83,8 +84,48 @@ setInterval(() => {
 // daily cap — the provider breakers remain the hard line).
 const CHATBOT_DAILY_IP_LIMIT = 60;
 const CHATBOT_DAILY_USER_LIMIT = 200;
+// ✅ ROOT-CURE (2026-11-13, Telegram bot starved by the IP quota): the
+// Telegram worker (scripts/telegram-worker-job.ts on GitHub Actions) calls
+// this PUBLIC endpoint unauthenticated, so every Telegram DM user shared the
+// runner's single IP — the whole Telegram user base got ONE 60/day bucket
+// (and one 30/min window). Once it filled, every Telegram user saw the
+// "daily limit" refusal while the site kept working. The worker now proves
+// its identity with a derived HMAC of the SAME SYNC_INGEST_SECRET already
+// provisioned on both sides (Space secret + Actions secret — zero new
+// secrets), and authenticated bot traffic gets its own generous lane:
+//   • 600/day — mirrors the Telegram-side GLOBAL_DAILY_CAP in telegram-bot.ts
+//   • 60/min  — the Telegram worker itself already enforces 20/h/user
+// Fail-closed: unset/short secret → the header is never valid → behavior is
+// byte-identical to before for everyone else.
+const CHATBOT_BOT_DAILY_LIMIT = 600;
+const CHATBOT_BOT_RATE_LIMIT = 60; // req/min for the authenticated bot lane
+const BOT_WORKER_CONTEXT = "bot-worker-v1";
 const CHATBOT_DAILY_MAP_MAX = 20_000;
 const chatbotDailyUsage = new Map<string, { day: string; count: number }>();
+
+/**
+ * True when the request carries a valid bot-worker auth header
+ * (`x-bot-worker-auth: hex(HMAC-SHA256(SYNC_INGEST_SECRET, "bot-worker-v1"))`).
+ * Timing-safe, fail-closed, and never logs the header value.
+ */
+function isBotWorkerRequest(c: Context): boolean {
+  const secret = (process.env.SYNC_INGEST_SECRET ?? "").trim();
+  if (secret.length < 16) return false;
+  const provided = (c.req.header("x-bot-worker-auth") ?? "").trim().toLowerCase();
+  if (!provided) return false;
+  const expected = crypto.createHmac("sha256", secret).update(BOT_WORKER_CONTEXT).digest("hex");
+  const a = Buffer.from(expected, "hex");
+  const b = Buffer.from(provided, "hex");
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+/** Rate-limit key + budget for one request, honoring the bot-worker lane. */
+function chatbotLaneFor(c: Context, ip: string): { key: string; ratePerMinute: number; dailyLimit: number } {
+  if (isBotWorkerRequest(c)) {
+    return { key: "bot-worker", ratePerMinute: CHATBOT_BOT_RATE_LIMIT, dailyLimit: CHATBOT_BOT_DAILY_LIMIT };
+  }
+  return { key: `ip:${ip}`, ratePerMinute: CHATBOT_RATE_LIMIT, dailyLimit: CHATBOT_DAILY_IP_LIMIT };
+}
 
 function chatbotDayUtc(): string {
   return new Date().toISOString().slice(0, 10);
@@ -225,7 +266,8 @@ chatbotRouter.delete("/history", async (c) => {
 chatbotRouter.post("/", async (c) => {
   try {
     const ip = getChatbotIp(c);
-    if (!checkChatbotRateLimit(ip)) {
+    const lane = chatbotLaneFor(c, ip);
+    if (!checkChatbotRateLimit(lane.key, lane.ratePerMinute)) {
       return errorResponse(c, "RATE_LIMITED");
     }
     const body = await c.req.json<{ messages: unknown; language?: string; chatId?: string; mode?: "thinking" | "instant"; pageContext?: unknown }>();
@@ -244,9 +286,10 @@ chatbotRouter.post("/", async (c) => {
 
     // ✅ SECURITY FIX (pre-launch audit run-2): daily per-IP message quota —
     // the abuse brake for anonymous direct-API callers (see block above).
+    // Authenticated bot-worker traffic rides its own lane (no IP sharing).
     const dailyLang = resolveChatLanguage(body.language, messages) === "ar" ? "ar" : "en";
-    if (!bumpAndCheckChatbotDaily(`ip:${ip}`, CHATBOT_DAILY_IP_LIMIT)) {
-      return errorResponse(c, "RATE_LIMITED", { lang: dailyLang, chatId: body.chatId, message: chatbotDailyQuotaMessage(CHATBOT_DAILY_IP_LIMIT, dailyLang) });
+    if (!bumpAndCheckChatbotDaily(lane.key, lane.dailyLimit)) {
+      return errorResponse(c, "RATE_LIMITED", { lang: dailyLang, chatId: body.chatId, message: chatbotDailyQuotaMessage(lane.dailyLimit, dailyLang) });
     }
 
     // Vision quota — enforced BEFORE dispatch so no provider call is wasted.
@@ -398,7 +441,8 @@ function softBusyText(language?: string): string {
 
 chatbotRouter.post("/stream", async (c) => {
   const ip = getChatbotIp(c);
-  if (!checkChatbotRateLimit(ip)) {
+  const lane = chatbotLaneFor(c, ip);
+  if (!checkChatbotRateLimit(lane.key, lane.ratePerMinute)) {
     return errorResponse(c, "RATE_LIMITED");
   }
   // ✅ FIX (pre-launch audit): the JSON parse ran outside try/catch, so a
@@ -426,10 +470,11 @@ chatbotRouter.post("/stream", async (c) => {
 
   // ✅ SECURITY FIX (pre-launch audit run-2): daily per-IP message quota —
   // the abuse brake for anonymous direct-API callers (same contract as the
-  // non-stream endpoint above).
+  // non-stream endpoint above). Authenticated bot-worker traffic rides its
+  // own lane (no IP sharing).
   const dailyLang = resolveChatLanguage(body.language, messages) === "ar" ? "ar" : "en";
-  if (!bumpAndCheckChatbotDaily(`ip:${ip}`, CHATBOT_DAILY_IP_LIMIT)) {
-    return errorResponse(c, "RATE_LIMITED", { lang: dailyLang, chatId: body.chatId, message: chatbotDailyQuotaMessage(CHATBOT_DAILY_IP_LIMIT, dailyLang) });
+  if (!bumpAndCheckChatbotDaily(lane.key, lane.dailyLimit)) {
+    return errorResponse(c, "RATE_LIMITED", { lang: dailyLang, chatId: body.chatId, message: chatbotDailyQuotaMessage(lane.dailyLimit, dailyLang) });
   }
 
   // Vision quota — enforced BEFORE dispatch so no provider call is wasted.

@@ -396,7 +396,7 @@ export async function fetchPlaylistVideosForImport(): Promise<{ items: PlaylistI
  *    known set is a NEW episode → broadcast one notification per video
  *    (capped at MAX_PER_TICK) with the user-centered subscribe nudge.
  */
-export async function checkForNewEpisodes(): Promise<{ announced: ParsedVideo[] }> {
+export async function checkForNewEpisodes(): Promise<{ announced: ParsedVideo[]; blind: boolean }> {
   // Multi-source detection: InnerTube JSON + playlist HTML + Atom feed merged
   // by union (see fetchAllSources) — YouTube throttling one source no longer
   // blinds the watcher (production incident 2026-10-28).
@@ -408,7 +408,7 @@ export async function checkForNewEpisodes(): Promise<{ announced: ParsedVideo[] 
     logger.warn("[YouTubeWatch] no videos parsed this tick — keeping previous state", {
       consecutiveFailures: (prevState?.consecutiveFailures ?? 0) + 1,
     });
-    return { announced: [] };
+    return { announced: [], blind: true };
   }
 
   const prevState = await readState();
@@ -424,7 +424,7 @@ export async function checkForNewEpisodes(): Promise<{ announced: ParsedVideo[] 
       lastError: null,
     });
     logger.info("[YouTubeWatch] first run — state initialized silently", { known: Math.min(videos.length, STATE_MAX_IDS) });
-    return { announced: [] };
+    return { announced: [], blind: false };
   }
 
   // ── Diff against the known set ──
@@ -463,12 +463,28 @@ export async function checkForNewEpisodes(): Promise<{ announced: ParsedVideo[] 
     lastError: null,
   });
 
-  return { announced };
+  return { announced, blind: false };
 }
 
 // ─── Scheduler ─────────────────────────────────────────────────────────────────
 
 let started = false;
+
+// ── ✅ EGRESS CIRCUIT BREAKER (root-cure of the doomed-fetch treadmill) ──
+// The HF Space's shared egress is fully blocked for www.youtube.com AND the
+// Cloudflare relay (production logs 2026-11-12: every InnerTube / HTML / RSS
+// / relay attempt died with "fetch failed", 667+ consecutive failures).
+// The deterministic mirror is the INGEST feed (GitHub Actions cron + worker
+// cron → /api/yt-sync/ingest), which reaches YouTube from clean networks and
+// pushes the playlist TO us every 15 min. Polling from here can therefore
+// only burn ~12 doomed requests per tick — after two consecutive fully-blind
+// ticks this breaker parks direct polling for 30 min (in-memory; a restart
+// merely re-probes once). The admin import dialog is NOT gated — it is an
+// explicit on-demand action.
+const BLIND_TICKS_BEFORE_BACKOFF = 2;
+const BACKOFF_MS = 30 * 60_000;
+let blindTicks = 0;
+let backoffUntil = 0;
 
 /**
  * Start the background watcher. Fire-and-forget safe: every tick is wrapped,
@@ -489,7 +505,21 @@ export function startYoutubeWatcher(): void {
   const tick = async () => {
     ticks++;
     try {
-      await checkForNewEpisodes();
+      if (Date.now() < backoffUntil) {
+        // Egress parked — skip the doomed fetches, keep the maintenance jobs.
+        if (ticks % 8 === 0) await pruneOldNotifications();
+        return;
+      }
+
+      let tickBlind = false;
+      try {
+        const result = await checkForNewEpisodes();
+        tickBlind = result.blind;
+      } catch (err) {
+        tickBlind = true;
+        logger.warn("[YouTubeWatch] tick failed", { error: err instanceof Error ? err.message : String(err) });
+      }
+
       // 🔄 AUTO-SYNC: the course mirrors the playlist — a video uploaded to
       // YouTube becomes a published lesson on the site within one tick (15
       // min), under its exact oEmbed-verified title, and the course cover
@@ -508,11 +538,29 @@ export function startYoutubeWatcher(): void {
             coverUpdated: sync.coverUpdated,
           });
         }
+        // A blind notification tick AND a zero-video sync round = the whole
+        // egress is dark this tick.
+        const syncBlind = !!sync && !sync.ok && sync.videosFound === 0;
+        if (tickBlind && (sync === null || syncBlind)) {
+          blindTicks += 1;
+        } else if (!tickBlind) {
+          blindTicks = 0;
+        }
       } catch (syncErr) {
         logger.warn("[YouTubeWatch] playlist auto-sync failed", {
           error: syncErr instanceof Error ? syncErr.message : String(syncErr),
         });
       }
+
+      if (blindTicks >= BLIND_TICKS_BEFORE_BACKOFF) {
+        backoffUntil = Date.now() + BACKOFF_MS;
+        blindTicks = 0;
+        logger.warn("[YouTubeWatch] egress circuit breaker OPEN — direct YouTube polling parked for 30 min", {
+          reason: "consecutive fully-blind ticks (all sources unreachable)",
+          note: "the ingest feeders (GitHub Actions + worker cron) remain the deterministic mirror path",
+        });
+      }
+
       if (ticks % 8 === 0) await pruneOldNotifications();
     } catch (err) {
       logger.warn("[YouTubeWatch] tick failed", { error: err instanceof Error ? err.message : String(err) });

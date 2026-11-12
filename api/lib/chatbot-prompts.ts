@@ -112,6 +112,14 @@ export interface ModeTuning {
   /** Streaming Groq per-attempt timeouts (ms) — one entry per attempt */
   groqStreamTimeouts: number[];
   /**
+   * ✅ ROOT-CURE (2026-11-13): wall-clock budget for the WHOLE non-streaming
+   * Groq tier (all live models × 2 attempts). Previously unbounded — 7 models
+   * × 2 attempts × 45-60s timeouts meant one hung provider lane could hold a
+   * request for many minutes, starving the endpoint's persistence loop and
+   * the Telegram DM retry contract. thinking: 150s, instant: 60s.
+   */
+  groqTierBudgetMs: number;
+  /**
    * When instant mode falls through to OpenRouter it starts from this FAST
    * model (small active-parameter MoE) instead of the thinking tier-1 model,
    * so the two modes never collapse onto the same model when Groq is down.
@@ -134,6 +142,7 @@ export const MODE_TUNING: Record<ChatbotMode, ModeTuning> = {
     openRouterStreamTimeoutMs: 120000,
     nvidiaStreamTimeoutMs: 120000,
     groqStreamTimeouts: [60000, 90000],
+    groqTierBudgetMs: 150_000,
   },
   // INSTANT — speed first: concise output, short timeouts, fail fast downstream
   instant: {
@@ -150,6 +159,7 @@ export const MODE_TUNING: Record<ChatbotMode, ModeTuning> = {
     // Single short attempt: a healthy Groq answers a short prompt in <1s.
     // If it cannot in 10s, instant must move on — no retry burns.
     groqStreamTimeouts: [10000],
+    groqTierBudgetMs: 60_000,
     // Strong-Arabic fast model (MoE, ~5B active params, reasoning-capable).
     // WAS google/gemma-4-26b-a4b-it:free — LIVE INCIDENT 2026-10-23: Gemma's
     // Arabic spelling is broken (verbatim رايت/التعاياث in a prod reply) and

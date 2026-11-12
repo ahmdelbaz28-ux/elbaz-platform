@@ -53,6 +53,10 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_BRAIN_API_BASE: https://ahmdelbaz28-ahmdrtap.hf.space
+          # Bot-lane auth for /api/chatbot (600/day lane instead of the shared
+          # anonymous 60/day-per-IP bucket — root-cure of the Telegram bot
+          # going silent after 60 DMs/day). Same secret the yt-sync ingest uses.
+          SYNC_INGEST_SECRET: ${{ secrets.SYNC_INGEST_SECRET }}
         run: node_modules/.bin/tsx scripts/telegram-worker-job.ts
 
       # Self-perpetuating chain: GH schedule registration/delivery can lag by

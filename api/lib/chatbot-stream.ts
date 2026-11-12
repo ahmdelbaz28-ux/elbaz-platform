@@ -61,7 +61,7 @@ import {
   validateOpenRouterKey,
 } from "./chatbot.js";
 import { routeChatStream, buildUpstreamSSETransform, isWebPluginDisabled, disableWebPluginFor, WEB_PLUGIN_BODY, noteOpenRouterDailyLimit, isChatLaneModel, isDiscoveredModelId } from "./ai-router.js";
-import { callerAwareTimeout } from "./abort-utils.js";
+import { headerTimeoutSignal } from "./abort-utils.js";
 
 // ════════════════════════════════════════════════════════════════════════
 // STREAMING — provider selection
@@ -380,6 +380,10 @@ async function streamNvidiaProvider(
   encoder: TextEncoder,
 ): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
   let response: Response | null = null;
+  // ✅ ROOT-CURE (2026-11-13): header-only timeout — the timer is DISARMED as
+  // soon as headers arrive, so a long thinking answer streams to completion
+  // instead of being silently cut at nvidiaStreamTimeoutMs mid-sentence.
+  const nvidiaHeaderTimeout = headerTimeoutSignal(request.abortSignal, picked.tuning.nvidiaStreamTimeoutMs);
   try {
     response = await fetch(NVIDIA_ENDPOINT, {
       method: "POST",
@@ -398,12 +402,14 @@ async function streamNvidiaProvider(
         stream: true,
       }),
       // ✅ Review fix: caller abort cancels the in-flight NVIDIA stream fetch.
-      signal: callerAwareTimeout(request.abortSignal, picked.tuning.nvidiaStreamTimeoutMs),
+      signal: nvidiaHeaderTimeout.signal,
     });
   } catch (e) {
     chatHealth.nvidiaConsecFails++;
     chatHealth.nvidiaLastFailTime = Date.now();
     logger.warn("[Chatbot/Stream/NVIDIA] request threw", { error: String(e) });
+  } finally {
+    nvidiaHeaderTimeout.done();
   }
 
   if (!response || !response.ok || !response.body) {
@@ -466,6 +472,9 @@ async function tryGroqStreamFetch(
   attempt: number,
   totalAttempts: number,
 ): Promise<Response | null> {
+  // ✅ ROOT-CURE (2026-11-13): header-only timeout — disarmed once headers
+  // arrive so the body streams unbounded (same contract as rawUpstreamFetch).
+  const headerTimeout = headerTimeoutSignal(request.abortSignal, timeout);
   try {
     return await fetch(GROQ_ENDPOINT, {
       method: "POST",
@@ -484,12 +493,14 @@ async function tryGroqStreamFetch(
         stream: true,
       }),
       // ✅ Review fix: caller abort cancels the in-flight Groq stream fetch.
-      signal: callerAwareTimeout(request.abortSignal, timeout),
+      signal: headerTimeout.signal,
     });
   } catch (e) {
     logger.warn(`[Chatbot/Stream/Groq] ${modelId} attempt ${attempt + 1} threw`, { error: String(e) });
     if (attempt < totalAttempts - 1) await new Promise(r => setTimeout(r, 3000));
     return null;
+  } finally {
+    headerTimeout.done();
   }
 }
 
@@ -619,22 +630,12 @@ async function streamOpenRouterProvider(
       ...(withPlugin ? { plugins: [WEB_PLUGIN_BODY] } : {}),
     });
     try {
-      let response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://ahmedelbaz.qzz.io",
-          "X-Title": "Elbaz LMS Chatbot",
-        },
-        body: orBody(wantsWeb),
-        // ✅ Review fix: caller abort cancels the in-flight OpenRouter fetch.
-        signal: callerAwareTimeout(request.abortSignal, picked.tuning.openRouterStreamTimeoutMs),
-      });
-
-      if (!response.ok && wantsWeb && (response.status === 402 || response.status === 400)) {
-        disableWebPluginFor();
-        logger.warn(`[Chatbot/Stream/OpenRouter] web plugin rejected (HTTP ${response.status}) — retrying ${modelId} without it`);
+      // ✅ ROOT-CURE (2026-11-13): header-only timeout per fetch — disarmed as
+      // soon as headers arrive, so a long generation streams to completion
+      // instead of being silently truncated at openRouterStreamTimeoutMs.
+      const headerTimeout = headerTimeoutSignal(request.abortSignal, picked.tuning.openRouterStreamTimeoutMs);
+      let response: Response;
+      try {
         response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -643,9 +644,33 @@ async function streamOpenRouterProvider(
             "HTTP-Referer": "https://ahmedelbaz.qzz.io",
             "X-Title": "Elbaz LMS Chatbot",
           },
-          body: orBody(false),
-          signal: callerAwareTimeout(request.abortSignal, picked.tuning.openRouterStreamTimeoutMs),
+          body: orBody(wantsWeb),
+          // ✅ Review fix: caller abort cancels the in-flight OpenRouter fetch.
+          signal: headerTimeout.signal,
         });
+      } finally {
+        headerTimeout.done();
+      }
+
+      if (!response.ok && wantsWeb && (response.status === 402 || response.status === 400)) {
+        disableWebPluginFor();
+        logger.warn(`[Chatbot/Stream/OpenRouter] web plugin rejected (HTTP ${response.status}) — retrying ${modelId} without it`);
+        const retryTimeout = headerTimeoutSignal(request.abortSignal, picked.tuning.openRouterStreamTimeoutMs);
+        try {
+          response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+              "Content-Type": "application/json",
+              "HTTP-Referer": "https://ahmedelbaz.qzz.io",
+              "X-Title": "Elbaz LMS Chatbot",
+            },
+            body: orBody(false),
+            signal: retryTimeout.signal,
+          });
+        } finally {
+          retryTimeout.done();
+        }
       }
 
       if (!response.ok || !response.body) {
@@ -760,6 +785,8 @@ async function getVisionStreamResponse(request: {
    *  actual screen (source: "screen_capture") — arms the screen-teacher
    *  prompt for grounded step-by-step guidance. */
   screenCapture?: boolean;
+  /** ✅ Persistence escalation (rounds ≥ 1): skip the dynamic router — same contract as getStreamResponse. */
+  preferLegacy?: boolean;
   /** ✅ AUDIT RUN-2 FIX: the vision stream walk honors the caller's abort. */
   abortSignal?: AbortSignal;
 }): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
@@ -788,22 +815,27 @@ async function getVisionStreamResponse(request: {
   // the user already waited for the read — a busy moment must not downgrade
   // the answer writer to a weak vision model (live incident: garbled Arabic
   // spelling served by a VL model under the old 12s instant budget).
-  const routed = await routeChatStream({
-    messages: pass2Messages,
-    systemPrompt,
-    mode,
-    vision: false,
-    language: request.language,
-    preferredModelId: tuning.openRouterPreferredModel,
-    // ✅ AUDIT RUN-2 FIX: the vision stream walk honors the caller's abort —
-    // the signal was previously dropped on this lane entirely.
-    abortSignal: request.abortSignal,
-    webSearch: mode === "thinking",
-    gen: mode === "instant"
-      ? { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 15_000, globalBudgetMs: 24_000 }
-      : { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 20_000, globalBudgetMs: 22_000 },
-  });
-  if (routed.ok) return { stream: routed.result.stream, model: routed.result.model };
+  // ✅ ROOT-CURE (2026-11-13): the vision lane honors the persistence
+  // escalation (preferLegacy) exactly like the text path — persistence
+  // rounds ≥ 1 skip the dynamic walk instead of re-burning its budget.
+  if (!request.preferLegacy) {
+    const routed = await routeChatStream({
+      messages: pass2Messages,
+      systemPrompt,
+      mode,
+      vision: false,
+      language: request.language,
+      preferredModelId: tuning.openRouterPreferredModel,
+      // ✅ AUDIT RUN-2 FIX: the vision stream walk honors the caller's abort —
+      // the signal was previously dropped on this lane entirely.
+      abortSignal: request.abortSignal,
+      webSearch: mode === "thinking",
+      gen: mode === "instant"
+        ? { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 15_000, globalBudgetMs: 24_000 }
+        : { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 20_000, globalBudgetMs: 22_000 },
+    });
+    if (routed.ok) return { stream: routed.result.stream, model: routed.result.model };
+  }
 
   // Legacy streaming text cascade over the augmented (text-only) messages.
   const pass2Request = { ...request, messages: pass2Messages };
@@ -828,14 +860,10 @@ async function getVisionStreamResponse(request: {
   // queue paces it like normal typing. If even that fails → calm busy note
   // (the client silently retries; no weak-model garbage ever reaches the UI).
   logger.warn("[Chatbot/Vision/Stream] reasoning cascade unavailable — falling back to the non-streaming text cascade over the description.");
-  const textFallback = await streamOpenRouterFallback(pass2Request, systemPrompt, tuning);
-  if (textFallback) return textFallback;
-
-  return {
-    error: request.language === "ar"
-      ? "تعذر تحليل الصورة حالياً — خدمة تحليل الصور مشغولة. جرب مرة أخرى بعد قليل أو اكتب سؤالك نصاً ⚡"
-      : "Image analysis is temporarily busy. Please try again shortly, or send your question as text ⚡",
-  };
+  // ✅ ROOT-CURE (2026-11-13): streamOpenRouterFallback ALWAYS returns an
+  // object ({stream,model} or {error}) — the truthiness check made the
+  // vision-specific busy copy below dead code. Return directly.
+  return await streamOpenRouterFallback(pass2Request, systemPrompt, tuning);
 }
 
 // ════════════════════════════════════════════════════════════════════════

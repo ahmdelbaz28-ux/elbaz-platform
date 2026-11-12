@@ -327,13 +327,31 @@ export async function applyPlaylistSync(
     const db = getDb();
 
     if (videos.length === 0) {
-      // Every source was throttled — keep the course as-is, record the blind tick.
+      // Every source was throttled — keep the course as-is. ✅ ROOT-CURE
+      // (2026-11-13, state flapping): a blind Space tick used to stamp
+      // "playlist fetch returned zero videos" over the HEALTHY record the
+      // ingest feeders (GitHub Actions cron + worker cron) had just written,
+      // so the dashboard error flapped every 15 min even though the mirror
+      // was working. A recent healthy sync (lastSuccessAt < 30 min AND
+      // videosFound > 0) is preserved verbatim — a blind source must never
+      // corrupt the healthy record.
+      const prevStateDate = prevState?.lastSuccessAt ? Date.parse(prevState.lastSuccessAt) : NaN;
+      const recentHealthy =
+        Number.isFinite(prevStateDate) &&
+        Date.now() - prevStateDate < 30 * 60_000 &&
+        (prevState?.videosFound ?? 0) > 0;
       summary.message = "playlist unavailable (throttled?) — nothing changed";
-      await writeState({
-        ...prevState,
-        lastSyncAt: new Date().toISOString(),
-        lastError: "playlist fetch returned zero videos",
-      });
+      if (recentHealthy) {
+        logger.info("[PlaylistSync] blind tick ignored — healthy sync is recent; state preserved", {
+          lastSuccessAt: prevState?.lastSuccessAt,
+        });
+      } else {
+        await writeState({
+          ...prevState,
+          lastSyncAt: new Date().toISOString(),
+          lastError: "playlist fetch returned zero videos",
+        });
+      }
       return summary;
     }
 

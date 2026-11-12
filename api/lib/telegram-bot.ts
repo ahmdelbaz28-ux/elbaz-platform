@@ -95,7 +95,18 @@ const DM_HISTORY_MAX_MESSAGES = 12;
 const DM_HISTORY_TTL_MS = 30 * 60_000;
 const DM_RATE_PER_HOUR = 20;
 const GLOBAL_DAILY_CAP = 600;
-const BRAIN_RETRY_DEADLINE_MS = 20_000;
+/**
+ * One brain attempt may legitimately take 60-150s (the endpoint's own
+ * persistence rounds). The retry contract is therefore ATTEMPT-COUNTED, not
+ * deadline-only: a FAST failure (endpoint down, connection refused — the
+ * outage signature) retries immediately; a SLOW failure (the endpoint
+ * already exhausted its internal provider walk — a provider storm) is not
+ * retried, because an identical second walk would just double the user's
+ * wait. HARD DEADLINE stays as the safety net.
+ */
+const BRAIN_MAX_ATTEMPTS = 2;
+const BRAIN_SLOW_ATTEMPT_MS = 60_000;
+const BRAIN_RETRY_DEADLINE_MS = 150_000;
 
 // ─── Pure helpers (unit-tested) ──────────────────────────────────────────────
 
@@ -229,6 +240,26 @@ const dmHistories = new Map<number, DmHistory>();
 const dmHourCounters = new Map<number, { count: number; resetAt: number }>();
 let globalDailyCounter = { count: 0, resetAt: nextUtcMidnight() };
 
+/**
+ * ✅ ROOT-CURE (2026-11-13, unbounded growth): entries were only ever ADDED —
+ * every user who ever DM'd left a permanent history (12 messages) and an
+ * hourly-counter row, growing without bound on a long-lived pod. The sweep
+ * evicts expired entries; it piggybacks on dmAllowed (cheap, always on the
+ * DM path) and also runs on a slow interval so idle bots still self-clean.
+ */
+function sweepExpiredDmState(): void {
+  const now = Date.now();
+  for (const [chatId, history] of dmHistories) {
+    if (now > history.expiresAt) dmHistories.delete(chatId);
+  }
+  for (const [chatId, counter] of dmHourCounters) {
+    if (now > counter.resetAt) dmHourCounters.delete(chatId);
+  }
+}
+
+const dmSweeper = setInterval(sweepExpiredDmState, 10 * 60_000);
+dmSweeper.unref?.();
+
 function nextUtcMidnight(): number {
   const d = new Date();
   d.setUTCHours(24, 0, 0, 0);
@@ -236,6 +267,7 @@ function nextUtcMidnight(): number {
 }
 
 function dmAllowed(chatId: number): boolean {
+  sweepExpiredDmState();
   const now = Date.now();
   if (now > globalDailyCounter.resetAt) globalDailyCounter = { count: 0, resetAt: nextUtcMidnight() };
   if (globalDailyCounter.count >= GLOBAL_DAILY_CAP) return false;
@@ -441,16 +473,20 @@ export async function handlePrivateMessage(deps: TelegramBotDeps, msg: TgMessage
   const turns = [...prior, { role: "user" as const, content: text }];
 
   let reply: string | null = null;
-  const deadline = (deps.now ?? Date.now)() + BRAIN_RETRY_DEADLINE_MS;
+  const startedAt = (deps.now ?? Date.now)();
   let attempt = 0;
-  while (reply === null && (deps.now ?? Date.now)() < deadline) {
-    if (attempt > 0) await new Promise((r) => setTimeout(r, 3_000));
+  while (reply === null && attempt < BRAIN_MAX_ATTEMPTS && (deps.now ?? Date.now)() - startedAt < BRAIN_RETRY_DEADLINE_MS) {
+    const attemptStart = (deps.now ?? Date.now)();
+    if (attempt > 0) await workerIo.sleep(3_000);
     attempt += 1;
     const result = await deps.brain(turns, { language: lang, mode: deps.dmMode });
     if ("reply" in result) {
       reply = result.reply;
     } else {
       logger.warn("[TelegramBot] brain attempt failed", { attempt, error: result.error.slice(0, 120) });
+      // A slow failure means the endpoint already burned its internal
+      // persistence budget — a retry would double the wait for the same storm.
+      if ((deps.now ?? Date.now)() - attemptStart > BRAIN_SLOW_ATTEMPT_MS) break;
     }
   }
 

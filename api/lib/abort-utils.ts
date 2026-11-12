@@ -23,3 +23,27 @@ export function withCallerAbort(caller: AbortSignal | undefined, attemptSignal: 
 export function callerAwareTimeout(caller: AbortSignal | undefined, timeoutMs: number): AbortSignal {
   return withCallerAbort(caller, AbortSignal.timeout(timeoutMs));
 }
+
+/**
+ * ✅ ROOT-CURE (2026-11-13, silent truncation of long answers): for STREAM
+ * fetches the timeout must bound only the HEADER wait. AbortSignal.timeout()
+ * stays attached to the body and aborts any generation that streams longer
+ * than the timeout mid-sentence — the dynamic router fixed exactly this in
+ * rawUpstreamFetch; this helper gives the legacy cascade the same contract.
+ *
+ * Returns a composed signal plus the `done()` disarm callback: call it as
+ * soon as `fetch` resolves (headers arrived) — the body read is then
+ * unbounded by the timer, and stall/death detection stays the stream
+ * pipeline's job (idle timeout + finish-marker checks).
+ */
+export function headerTimeoutSignal(
+  caller: AbortSignal | undefined,
+  timeoutMs: number,
+): { signal: AbortSignal; done: () => void } {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(new Error("upstream header timeout")), timeoutMs);
+  return {
+    signal: withCallerAbort(caller, ctrl.signal),
+    done: () => clearTimeout(timer),
+  };
+}

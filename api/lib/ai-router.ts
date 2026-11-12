@@ -1682,8 +1682,11 @@ function buildResilientUpstreamStream(params: {
             // live on the next candidate (never one dead block).
             let rescuedAny = false;
             try {
+              // ✅ ROOT-CURE (2026-11-13): emit() alone — it already filters
+              // (think filter), adds to `total` and sanitizes. The previous
+              // `total += t` before emit double-counted the rescue text and
+              // polluted the visible-only total with RAW (unfiltered) deltas.
               rescuedAny = await rescueStreamRound(params.req, key, visible, (t) => {
-                total += t;
                 emit(t);
               });
             } catch { /* streaming rescue failed — non-streaming rescue below */ }
