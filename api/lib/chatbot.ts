@@ -457,7 +457,9 @@ export async function validateOpenRouterKey(): Promise<boolean> {
     chatHealth.openrouterKeyValidated = true;
     if (!resp.ok) {
       const errData = await resp.json().catch(() => ({}));
-      logger.error("[Chatbot/OpenRouter] API key validation failed", { error: JSON.stringify(errData) });
+      // Bound the upstream payload before it enters the log stream — never
+      // dump an unbounded provider response (PII/secret hygiene).
+      logger.error("[Chatbot/OpenRouter] API key validation failed", { error: JSON.stringify(errData).slice(0, 300) });
       logger.error("[Chatbot/OpenRouter] The OPENROUTER_API_KEY in HF Space Secrets is invalid or expired.");
       logger.error("[Chatbot/OpenRouter] Get a new key at https://openrouter.ai/keys and update it in HF Space Settings → Repository secrets.");
     } else {

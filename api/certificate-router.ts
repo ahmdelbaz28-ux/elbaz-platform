@@ -36,16 +36,31 @@ export const certificateRouter = createRouter({
       // Check enrollment — ✅ SECURITY FIX (audit run-1): require an ACTIVE,
       // unexpired enrollment (refunded students previously kept certificate
       // access because the gate tested row existence only).
-      const [enrollment] = await db
-        .select()
-        .from(enrollments)
-        .where(
-          and(
-            activeEnrollmentWhere(userId, input.courseId),
-            eq(enrollments.isCompleted, true)
+      // PERF: enrollment and the idempotency check are independent — run both
+      // in parallel (phase 1: access gates).
+      const [enrollmentRows, existingRows] = await Promise.all([
+        db
+          .select()
+          .from(enrollments)
+          .where(
+            and(
+              activeEnrollmentWhere(userId, input.courseId),
+              eq(enrollments.isCompleted, true)
+            )
           )
-        )
-        .limit(1);
+          .limit(1),
+        db
+          .select()
+          .from(certificates)
+          .where(
+            and(
+              eq(certificates.userId, userId),
+              eq(certificates.courseId, input.courseId)
+            )
+          )
+          .limit(1),
+      ]);
+      const [enrollment] = enrollmentRows;
 
       if (!enrollment) {
         throw new TRPCError({
@@ -54,35 +69,46 @@ export const certificateRouter = createRouter({
         });
       }
 
-      // Check if certificate already exists (idempotency)
-      const [existing] = await db
-        .select()
-        .from(certificates)
-        .where(
-          and(
-            eq(certificates.userId, userId),
-            eq(certificates.courseId, input.courseId)
-          )
-        )
-        .limit(1);
-
+      const [existing] = existingRows;
       if (existing) {
         return { certificateNumber: existing.certificateNumber, alreadyExists: true };
       }
 
       // ✅ CRITICAL FIX: Calculate actual average quiz score for the grade
       // Previously grade was hardcoded to "Distinction" — total fraud!
-      const progressRows = await db
-        .select({ quizScore: lessonProgress.quizScore })
-        .from(lessonProgress)
-        .innerJoin(lessons, eq(lessonProgress.lessonId, lessons.id))
-        .where(
-          and(
-            eq(lessonProgress.userId, userId),
-            eq(lessons.courseId, input.courseId),
-            eq(lessonProgress.isQuizPassed, true),
+      // PERF: these four reads are mutually independent — run them in parallel
+      // (phase 2: grade + certificate payload).
+      const [progressRows, quizRows, courseRows, studentRows] = await Promise.all([
+        db
+          .select({ quizScore: lessonProgress.quizScore })
+          .from(lessonProgress)
+          .innerJoin(lessons, eq(lessonProgress.lessonId, lessons.id))
+          .where(
+            and(
+              eq(lessonProgress.userId, userId),
+              eq(lessons.courseId, input.courseId),
+              eq(lessonProgress.isQuizPassed, true),
+            ),
           ),
-        );
+        db
+          .select({ id: quizQuestions.id })
+          .from(quizQuestions)
+          .innerJoin(lessons, eq(quizQuestions.lessonId, lessons.id))
+          .where(eq(lessons.courseId, input.courseId))
+          .limit(1),
+        db
+          .select()
+          .from(courses)
+          .where(eq(courses.id, input.courseId))
+          .limit(1),
+        db
+          .select({ name: users.name, username: users.username })
+          .from(users)
+          .where(eq(users.id, userId))
+          .limit(1),
+      ]);
+      const [course] = courseRows;
+      const [student] = studentRows;
 
       const avgScore = progressRows.length > 0
         ? Math.round(progressRows.reduce((sum, r) => sum + (r.quizScore ?? 0), 0) / progressRows.length)
@@ -93,12 +119,6 @@ export const certificateRouter = createRouter({
       // quizzes. Previously calculateGrade(0) returned "Pass", so a student
       // who claimed completion via the API without passing anything could
       // mint a publicly verifiable certificate with grade Pass / score 0.
-      const quizRows = await db
-        .select({ id: quizQuestions.id })
-        .from(quizQuestions)
-        .innerJoin(lessons, eq(quizQuestions.lessonId, lessons.id))
-        .where(eq(lessons.courseId, input.courseId))
-        .limit(1);
       const courseHasQuizzes = quizRows.length > 0;
       if (courseHasQuizzes && avgScore < 70) {
         throw new TRPCError({
@@ -112,19 +132,6 @@ export const certificateRouter = createRouter({
       // ✅ SECURITY FIX: Use nanoid instead of Math.random() for certificate number
       // Math.random() is not cryptographically secure and produces predictable values
       const certificateNumber = `EE-CERT-${Date.now()}-${nanoid(8).toUpperCase()}`;
-
-      const [course] = await db
-        .select()
-        .from(courses)
-        .where(eq(courses.id, input.courseId))
-        .limit(1);
-
-      // ✅ Get student name for the certificate
-      const [student] = await db
-        .select({ name: users.name, username: users.username })
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1);
 
       await db.insert(certificates).values({
         userId,

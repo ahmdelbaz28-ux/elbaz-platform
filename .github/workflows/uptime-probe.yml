@@ -1,0 +1,82 @@
+# 🫀 Scheduled uptime probe — closes the biggest production-audit gap:
+# previously the ONLY always-on liveness signal was the Docker HEALTHCHECK
+# (which restarts the container but notifies nobody). Sentry is optional
+# (SENTRY_DSN) and provider-probe alerts via a red GitHub run only.
+#
+# How it works:
+#   1. Every 15 minutes, GET https://ahmedelbaz.qzz.io/api/health from GitHub
+#      with a browser UA (Cloudflare 403-challenges datacenter IPs — live-probed
+#      2026-11-10, same threading as db-backup.yml).
+#   2. Retries up to 3 times with backoff so a single network blip does not
+#      page anyone. HTTP 200 = healthy; 503 = up but degraded (DB down);
+#      anything else / timeout = down.
+#   3. On persistent failure: Telegram alert to the owner (same secrets and
+#      pattern as db-backup.yml) + a red GitHub run as the second channel.
+#
+# Note: /api/health is anonymous-safe — operator detail (uptime/memory/
+# full dependency report) is gated behind the EDGE_ORIGIN_SECRET bearer
+# token, so this probe exposes status only.
+
+name: Uptime Probe
+
+on:
+  schedule:
+    - cron: "*/15 * * * *" # every 15 minutes
+  workflow_dispatch: {} # manual run for testing
+
+permissions: {}
+
+concurrency:
+  group: uptime-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe public /api/health (3 attempts, backoff)
+        id: probe
+        env:
+          TARGET: https://ahmedelbaz.qzz.io/api/health
+          UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36
+        run: |
+          set -uo pipefail
+          for attempt in 1 2 3; do
+            CODE=$(curl -sS --max-time 20 -w '%{http_code}' -o /tmp/health.json \
+              -A "$UA" "$TARGET" 2>/tmp/curl_err.txt || echo "000")
+            echo "attempt ${attempt}: HTTP ${CODE}"
+            BODY=$(head -c 300 /tmp/health.json 2>/dev/null || true)
+            echo "body: ${BODY}"
+            if [ "$CODE" = "200" ] || [ "$CODE" = "503" ]; then
+              echo "status=${CODE}" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            [ "$attempt" -lt 3 ] && sleep $((attempt * 15))
+          done
+          echo "status=${CODE}" >> "$GITHUB_OUTPUT"
+          echo "curl stderr: $(cat /tmp/curl_err.txt 2>/dev/null || true)"
+          exit 1
+
+      - name: Telegram alert on persistent failure
+        if: failure()
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          STATUS="${{ steps.probe.outputs.status }}"
+          curl -s --max-time 15 -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            -d chat_id="${TG_CHAT}" \
+            -d text="🚨 الموقع لا يستجيب! /api/health أعاد HTTP ${STATUS} بعد 3 محاولات. راجع: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            >/dev/null 2>&1 || true
+
+      - name: Telegram alert on degraded (503 — DB down but app up)
+        if: success() && steps.probe.outputs.status == '503'
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          curl -s --max-time 15 -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            -d chat_id="${TG_CHAT}" \
+            -d text="⚠️ الموقع يعمل لكن قاعدة البيانات لا تستجيب (HTTP 503 من /api/health). راجع: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            >/dev/null 2>&1 || true

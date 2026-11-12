@@ -259,11 +259,12 @@ export const localAuthRouter = createRouter({
           throw new TRPCError({ code: "CONFLICT", message: "Username already taken" });
         }
 
-        if (safeEmail) {
-          await assertEmailUnique(db, safeEmail);
-        }
-
-        const passwordHash = await hashPassword(input.password);
+        // PERF: email uniqueness check and bcrypt hashing (~100ms) are
+        // independent — run both in parallel off the critical path.
+        const [, passwordHash] = await Promise.all([
+          safeEmail ? assertEmailUnique(db, safeEmail) : Promise.resolve(),
+          hashPassword(input.password),
+        ]);
 
         let userId: number;
         try {
@@ -647,17 +648,20 @@ export const localAuthRouter = createRouter({
     const userId = ctx.user.id;
 
     // Collect all user-related data from every table
-    const [userData] = await db
-      .select({ id: users.id, username: users.username, name: users.name, email: users.email, role: users.role, preferredLanguage: users.preferredLanguage, createdAt: users.createdAt, lastSignInAt: users.lastSignInAt })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-
-    const userEnrollments = await db.select().from(enrollments).where(eq(enrollments.userId, userId));
-    const userProgress = await db.select().from(lessonProgress).where(eq(lessonProgress.userId, userId));
-    const userPayments = await db.select({ id: payments.id, courseId: payments.courseId, amount: payments.amount, currency: payments.currency, paymentMethod: payments.paymentMethod, status: payments.status, createdAt: payments.createdAt, paidAt: payments.paidAt }).from(payments).where(eq(payments.userId, userId));
-    const userCertificates = await db.select().from(certificates).where(eq(certificates.userId, userId));
-    const userTickets = await db.select({ id: supportTickets.id, subject: supportTickets.subject, category: supportTickets.category, status: supportTickets.status, createdAt: supportTickets.createdAt }).from(supportTickets).where(eq(supportTickets.userId, userId));
+    // PERF: all six reads are keyed by userId and mutually independent —
+    // run them in parallel (GDPR-style export path).
+    const [[userData], userEnrollments, userProgress, userPayments, userCertificates, userTickets] = await Promise.all([
+      db
+        .select({ id: users.id, username: users.username, name: users.name, email: users.email, role: users.role, preferredLanguage: users.preferredLanguage, createdAt: users.createdAt, lastSignInAt: users.lastSignInAt })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1),
+      db.select().from(enrollments).where(eq(enrollments.userId, userId)),
+      db.select().from(lessonProgress).where(eq(lessonProgress.userId, userId)),
+      db.select({ id: payments.id, courseId: payments.courseId, amount: payments.amount, currency: payments.currency, paymentMethod: payments.paymentMethod, status: payments.status, createdAt: payments.createdAt, paidAt: payments.paidAt }).from(payments).where(eq(payments.userId, userId)),
+      db.select().from(certificates).where(eq(certificates.userId, userId)),
+      db.select({ id: supportTickets.id, subject: supportTickets.subject, category: supportTickets.category, status: supportTickets.status, createdAt: supportTickets.createdAt }).from(supportTickets).where(eq(supportTickets.userId, userId)),
+    ]);
 
     return {
       exportedAt: new Date().toISOString(),

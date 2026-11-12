@@ -102,6 +102,9 @@ export async function persistChatRound(userId: number, opts: PersistRoundOptions
  */
 export async function getChatHistory(userId: number): Promise<{ messages: HistoryMessage[]; summary: string | null }> {
   const db = getDb();
+  // PERF: messages and the rolling summary are independent reads — start the
+  // summary promise first so both queries run in parallel (chat open path).
+  const summaryPromise = getLatestSummaryText(userId);
   const rows = await db
     .select({
       id: chatMessages.id,
@@ -137,7 +140,7 @@ export async function getChatHistory(userId: number): Promise<{ messages: Histor
       };
     });
 
-  const summary = await getLatestSummaryText(userId);
+  const summary = await summaryPromise;
   return { messages, summary };
 }
 

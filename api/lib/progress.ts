@@ -31,42 +31,50 @@ export async function recalcEnrollmentProgress(
 }> {
   const db = getDb();
 
-  // 1. Get total published lessons in the course
-  const [totalRow] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(lessons)
-    .where(and(eq(lessons.courseId, courseId), eq(lessons.isPublished, true)));
+  // PERF: all three reads are keyed by (userId, courseId) and mutually
+  // independent — run them in parallel instead of three stacked round-trips.
+  // This runs after EVERY lesson watch / quiz submit, so it is the hottest
+  // waterfall in the system.
+  const [totalRowRows, completedRows, previousRows] = await Promise.all([
+    // 1. Get total published lessons in the course
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(lessons)
+      .where(and(eq(lessons.courseId, courseId), eq(lessons.isPublished, true))),
+    // 2. Get completed lesson IDs for this user in this course
+    // A lesson is "completed" if the user has lessonProgress with isQuizPassed = true OR isCompleted = true
+    db
+      .select({ lessonId: lessonProgress.lessonId })
+      .from(lessonProgress)
+      .innerJoin(lessons, eq(lessonProgress.lessonId, lessons.id))
+      .where(
+        and(
+          eq(lessonProgress.userId, userId),
+          eq(lessons.courseId, courseId),
+          sql`(${lessonProgress.isCompleted} = 1 OR ${lessonProgress.isQuizPassed} = 1)`,
+        ),
+      ),
+    // 3. Current enrollment completion state (for the one-shot congrats trigger)
+    db
+      .select({ isCompleted: enrollments.isCompleted })
+      .from(enrollments)
+      .where(and(eq(enrollments.userId, userId), eq(enrollments.courseId, courseId)))
+      .limit(1),
+  ]);
 
+  const totalRow = totalRowRows[0];
   const totalLessons = totalRow?.count || 0;
 
   if (totalLessons === 0) {
     return { progress: 0, isCompleted: false, completedLessons: 0, totalLessons: 0 };
   }
 
-  // 2. Get completed lesson IDs for this user in this course
-  // A lesson is "completed" if the user has lessonProgress with isQuizPassed = true OR isCompleted = true
-  const completedRows = await db
-    .select({ lessonId: lessonProgress.lessonId })
-    .from(lessonProgress)
-    .innerJoin(lessons, eq(lessonProgress.lessonId, lessons.id))
-    .where(
-      and(
-        eq(lessonProgress.userId, userId),
-        eq(lessons.courseId, courseId),
-        sql`(${lessonProgress.isCompleted} = 1 OR ${lessonProgress.isQuizPassed} = 1)`,
-      ),
-    );
-
   const completedLessons = completedRows.length;
   const progress = Math.round((completedLessons / totalLessons) * 100);
   const isCompleted = completedLessons >= totalLessons;
+  const previous = previousRows[0];
 
-  // 3. Update the enrollment record
-  const [previous] = await db
-    .select({ isCompleted: enrollments.isCompleted })
-    .from(enrollments)
-    .where(and(eq(enrollments.userId, userId), eq(enrollments.courseId, courseId)))
-    .limit(1);
+  // Update the enrollment record
 
   await db
     .update(enrollments)
@@ -144,23 +152,26 @@ export async function getCourseProgressDetail(
 }> {
   const db = getDb();
 
-  const completedRows = await db
-    .select({ lessonId: lessonProgress.lessonId })
-    .from(lessonProgress)
-    .innerJoin(lessons, eq(lessonProgress.lessonId, lessons.id))
-    .where(
-      and(
-        eq(lessonProgress.userId, userId),
-        eq(lessons.courseId, courseId),
-        sql`(${lessonProgress.isCompleted} = 1 OR ${lessonProgress.isQuizPassed} = 1)`,
+  // PERF: the two reads are independent — parallelize.
+  const [completedRows, totalRowRows] = await Promise.all([
+    db
+      .select({ lessonId: lessonProgress.lessonId })
+      .from(lessonProgress)
+      .innerJoin(lessons, eq(lessonProgress.lessonId, lessons.id))
+      .where(
+        and(
+          eq(lessonProgress.userId, userId),
+          eq(lessons.courseId, courseId),
+          sql`(${lessonProgress.isCompleted} = 1 OR ${lessonProgress.isQuizPassed} = 1)`,
+        ),
       ),
-    );
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(lessons)
+      .where(and(eq(lessons.courseId, courseId), eq(lessons.isPublished, true))),
+  ]);
 
-  const [totalRow] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(lessons)
-    .where(and(eq(lessons.courseId, courseId), eq(lessons.isPublished, true)));
-
+  const totalRow = totalRowRows[0];
   const totalLessons = totalRow?.count || 0;
   const completedLessonIds = completedRows.map((r) => r.lessonId);
   const progress = totalLessons > 0 ? Math.round((completedLessonIds.length / totalLessons) * 100) : 0;

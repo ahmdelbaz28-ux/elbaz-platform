@@ -130,19 +130,22 @@ export const courseWatchingProcedures = {
       // `courseId` — NOT NULL with no default — so every heartbeat failed
       // with 500 ("Field 'courseId' doesn't have a default value") on a
       // fresh schema and watch-time tracking was silently broken.
-      await db.execute(
-        sql`INSERT INTO lessonProgress (\`userId\`, \`lessonId\`, \`courseId\`, \`isCompleted\`, \`isQuizPassed\`, \`quizScore\`, \`watchedSeconds\`, \`lastPosition\`, \`lastHeartbeatAt\`)
-         VALUES (${ctx.user.id}, ${input.lessonId}, ${lesson.courseId}, false, false, 0, ${input.watchedSeconds}, ${input.lastPosition}, NOW())
-         ON DUPLICATE KEY UPDATE
-           \`watchedSeconds\` = \`watchedSeconds\` + ${input.watchedSeconds},
-           \`lastPosition\` = ${input.lastPosition},
-           \`lastHeartbeatAt\` = NOW()`
-      );
-
-      await db
-        .update(enrollments)
-        .set({ lastAccessedAt: new Date() })
-        .where(and(eq(enrollments.userId, ctx.user.id), eq(enrollments.courseId, lesson.courseId)));
+      // PERF: the two writes hit different tables with disjoint keys —
+      // run them in parallel (fires every ~15s per playing video).
+      await Promise.all([
+        db.execute(
+          sql`INSERT INTO lessonProgress (\`userId\`, \`lessonId\`, \`courseId\`, \`isCompleted\`, \`isQuizPassed\`, \`quizScore\`, \`watchedSeconds\`, \`lastPosition\`, \`lastHeartbeatAt\`)
+           VALUES (${ctx.user.id}, ${input.lessonId}, ${lesson.courseId}, false, false, 0, ${input.watchedSeconds}, ${input.lastPosition}, NOW())
+           ON DUPLICATE KEY UPDATE
+             \`watchedSeconds\` = \`watchedSeconds\` + ${input.watchedSeconds},
+             \`lastPosition\` = ${input.lastPosition},
+             \`lastHeartbeatAt\` = NOW()`
+        ),
+        db
+          .update(enrollments)
+          .set({ lastAccessedAt: new Date() })
+          .where(and(eq(enrollments.userId, ctx.user.id), eq(enrollments.courseId, lesson.courseId))),
+      ]);
 
       return { success: true };
     }),

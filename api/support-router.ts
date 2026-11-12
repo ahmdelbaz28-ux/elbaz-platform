@@ -46,20 +46,22 @@ export const supportRouter = createRouter({
       const conditions = [eq(supportTickets.userId, ctx.user.id)];
       if (input?.status) conditions.push(eq(supportTickets.status, input.status));
 
-      // Get total count for pagination
-      const [countResult] = await db
-        .select({ total: sql<number>`count(*)` })
-        .from(supportTickets)
-        .where(and(...conditions));
+      // PERF: count and page rows share the same `conditions` — run both in
+      // parallel (support page load).
+      const [[countResult], tickets] = await Promise.all([
+        db
+          .select({ total: sql<number>`count(*)` })
+          .from(supportTickets)
+          .where(and(...conditions)),
+        db
+          .select()
+          .from(supportTickets)
+          .where(and(...conditions))
+          .orderBy(desc(supportTickets.createdAt))
+          .limit(limit)
+          .offset(offset),
+      ]);
       const totalCount = countResult?.total ?? 0;
-
-      const tickets = await db
-        .select()
-        .from(supportTickets)
-        .where(and(...conditions))
-        .orderBy(desc(supportTickets.createdAt))
-        .limit(limit)
-        .offset(offset);
 
       return {
         items: tickets,

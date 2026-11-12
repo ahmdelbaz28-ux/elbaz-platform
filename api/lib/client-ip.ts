@@ -8,14 +8,14 @@
  * Trust order (most-trusted first):
  *   1. cf-connecting-ip  — set by Cloudflare, cannot be spoofed by clients
  *   2. x-real-ip         — set by nginx/typical reverse proxies
- *   3. x-forwarded-for   — first entry only (leftmost = original client when
- *                          the first proxy is trusted, e.g. Cloudflare)
+ *   3. x-forwarded-for   — RIGHTMOST entry only
  *
- * x-forwarded-for semantics: the header is a comma-separated list where the
- * leftmost entry is the original client IP and each subsequent entry is a
- * proxy that forwarded the request. Taking the first entry is correct when
- * your trust boundary starts at the first proxy. We must NOT use .pop()
- * (that would return the last proxy, not the client).
+ * x-forwarded-for semantics: the header is a comma-separated list where each
+ * proxy APPENDS the peer it received the request from. The rightmost entry is
+ * the last hop ADDED BY OUR OWN TRUSTED INFRASTRUCTURE (Cloudflare/HF edge)
+ * and is therefore the only entry a client cannot freely forge (✅ SECURITY
+ * FIX audit run-1 — previously the code took the first entry, letting a
+ * caller spoof an arbitrary "client IP" in the leftmost slot).
  */
 
 /**

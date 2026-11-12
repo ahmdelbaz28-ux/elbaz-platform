@@ -17,6 +17,14 @@ export const commentsRouter = createRouter({
     }))
     .query(async ({ input, ctx }) => {
       const db = getDb();
+      // PERF: the comments read and the viewer's like-set are independent —
+      // start the likes promise first so both queries run in parallel.
+      const likesPromise: Promise<{ commentId: number }[]> = ctx.user
+        ? db
+            .select({ commentId: commentLikes.commentId })
+            .from(commentLikes)
+            .where(eq(commentLikes.userId, ctx.user.id))
+        : Promise.resolve([]);
       const comments = await db
         .select({
           id: lessonComments.id,
@@ -42,15 +50,9 @@ export const commentsRouter = createRouter({
         .orderBy(desc(lessonComments.isPinned), desc(lessonComments.createdAt))
         .limit(input.limit);
 
-      // If user is logged in, fetch their liked comment IDs
-      let likedCommentIds: number[] = [];
-      if (ctx.user) {
-        const likes = await db
-          .select({ commentId: commentLikes.commentId })
-          .from(commentLikes)
-          .where(eq(commentLikes.userId, ctx.user.id));
-        likedCommentIds = likes.map((l) => l.commentId);
-      }
+      // If user is logged in, their liked comment IDs (fetched in parallel above)
+      const likes = await likesPromise;
+      const likedCommentIds = likes.map((l) => l.commentId);
 
       return { items: comments, likedCommentIds };
     }),

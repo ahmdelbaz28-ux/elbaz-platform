@@ -40,7 +40,7 @@ const body = (await poll.json()) as {
 };
 // Event titles/messages originate from user-visible content — strip control
 // characters before logging so a "\n" in a title cannot forge log lines (S5145).
-const cleanLog = (s: string): string => String(s).replace(/[\u0000-\u001f\u007f]/g, " ");
+const cleanLog = (s: string): string => String(s).replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ");
 console.log("\npoll:", poll.status, "events:", body.events?.length);
 for (const ev of body.events ?? []) {
   console.log(`  [${cleanLog(ev.type)}] ${ev.createdAt}`);

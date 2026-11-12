@@ -13,63 +13,65 @@ export const journeyRouter = createRouter({
   timeline: authedQuery.query(async ({ ctx }) => {
     const db = getDb();
 
-    // Enrolled courses with progress
-    const enrolledCourses = await db
-      .select({
-        enrollmentId: enrollments.id,
-        courseId: courses.id,
-        slug: courses.slug,
-        titleEn: courses.titleEn,
-        titleAr: courses.titleAr,
-        thumbnail: courses.thumbnail,
-        progress: enrollments.progress,
-        enrolledAt: enrollments.enrolledAt,
-        completedAt: enrollments.completedAt,
-        isPremium: courses.isPremium,
-      })
-      .from(enrollments)
-      .innerJoin(courses, eq(enrollments.courseId, courses.id))
-      .where(eq(enrollments.userId, ctx.user.id))
-      .orderBy(desc(enrollments.enrolledAt));
-
-    // Certificates earned
-    const certs = await db
-      .select({
-        id: certificates.id,
-        certificateNumber: certificates.certificateNumber,
-        courseId: certificates.courseId,
-        courseSlug: courses.slug,
-        courseTitleEn: courses.titleEn,
-        courseTitleAr: courses.titleAr,
-        grade: certificates.grade,
-        issuedAt: certificates.issuedAt,
-      })
-      .from(certificates)
-      .innerJoin(courses, eq(certificates.courseId, courses.id))
-      .where(eq(certificates.userId, ctx.user.id))
-      .orderBy(desc(certificates.issuedAt));
-
-    // Lesson progress count (completed lessons)
-    const progressRows = await db
-      .select({ cnt: count() })
-      .from(lessonProgress)
-      .where(eq(lessonProgress.userId, ctx.user.id));
+    // PERF: all four queries are keyed by ctx.user.id and mutually independent —
+    // run them in parallel instead of four stacked round-trips.
+    const [enrolledCourses, certs, progressRows, userPayments] = await Promise.all([
+      // Enrolled courses with progress
+      db
+        .select({
+          enrollmentId: enrollments.id,
+          courseId: courses.id,
+          slug: courses.slug,
+          titleEn: courses.titleEn,
+          titleAr: courses.titleAr,
+          thumbnail: courses.thumbnail,
+          progress: enrollments.progress,
+          enrolledAt: enrollments.enrolledAt,
+          completedAt: enrollments.completedAt,
+          isPremium: courses.isPremium,
+        })
+        .from(enrollments)
+        .innerJoin(courses, eq(enrollments.courseId, courses.id))
+        .where(eq(enrollments.userId, ctx.user.id))
+        .orderBy(desc(enrollments.enrolledAt)),
+      // Certificates earned
+      db
+        .select({
+          id: certificates.id,
+          certificateNumber: certificates.certificateNumber,
+          courseId: certificates.courseId,
+          courseSlug: courses.slug,
+          courseTitleEn: courses.titleEn,
+          courseTitleAr: courses.titleAr,
+          grade: certificates.grade,
+          issuedAt: certificates.issuedAt,
+        })
+        .from(certificates)
+        .innerJoin(courses, eq(certificates.courseId, courses.id))
+        .where(eq(certificates.userId, ctx.user.id))
+        .orderBy(desc(certificates.issuedAt)),
+      // Lesson progress count (completed lessons)
+      db
+        .select({ cnt: count() })
+        .from(lessonProgress)
+        .where(eq(lessonProgress.userId, ctx.user.id)),
+      db
+        .select({
+          id: payments.id,
+          amount: payments.amount,
+          status: payments.status,
+          transactionId: payments.transactionId,
+          courseId: payments.courseId,
+          courseTitleEn: courses.titleEn,
+          courseTitleAr: courses.titleAr,
+          createdAt: payments.createdAt,
+        })
+        .from(payments)
+        .innerJoin(courses, eq(payments.courseId, courses.id))
+        .where(eq(payments.userId, ctx.user.id))
+        .orderBy(desc(payments.createdAt)),
+    ]);
     const totalLessonsCompleted = progressRows[0]?.cnt ?? 0;
-    const userPayments = await db
-      .select({
-        id: payments.id,
-        amount: payments.amount,
-        status: payments.status,
-        transactionId: payments.transactionId,
-        courseId: payments.courseId,
-        courseTitleEn: courses.titleEn,
-        courseTitleAr: courses.titleAr,
-        createdAt: payments.createdAt,
-      })
-      .from(payments)
-      .innerJoin(courses, eq(payments.courseId, courses.id))
-      .where(eq(payments.userId, ctx.user.id))
-      .orderBy(desc(payments.createdAt));
 
     // Calculate stats
     const totalCourses = enrolledCourses.length;

@@ -101,7 +101,9 @@ export async function sendEmailWithDiagnostics(message: EmailMessage): Promise<S
 
   if (!response.ok) {
     const errBody = await response.text().catch(() => "");
-    logger.error("[Email/Resend] Error", { status: response.status, body: errBody });
+    // Bound the upstream payload before it enters the log stream — never
+    // dump an unbounded provider response (PII/secret hygiene).
+    logger.error("[Email/Resend] Error", { status: response.status, body: errBody.slice(0, 300) });
 
     // Detect Resend's "sandbox / unverified domain" 403 error so the caller
     // can tell the user the actual reason instead of a generic "email sent".

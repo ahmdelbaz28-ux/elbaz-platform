@@ -15,7 +15,7 @@ test.describe("Login page", () => {
     await login.goto();
   });
 
-  test("renders the credential form with masked password", async ({ page }) => {
+  test("renders the credential form with masked password", async () => {
     await expect(login.usernameInput).toBeVisible();
     await expect(login.passwordInput).toBeVisible();
     await expect(login.passwordInput).toHaveAttribute("type", "password");

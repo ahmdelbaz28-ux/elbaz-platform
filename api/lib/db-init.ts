@@ -1454,9 +1454,12 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
        ON DUPLICATE KEY UPDATE \`value\` = VALUES(\`value\`)`,
     ];
 
-    // Log the generated admin password in development
-    if (!env.isProduction) { // NOSONAR — error-first logging convention for dev/prod split
-      logger.info("[DB] Admin account created", { username: "admin", password: adminPassword });
+    // Dev-only convenience: surface the generated admin password so the local
+    // operator can sign in. Gate on EXPLICIT "development" (not merely
+    // "not production") so an accidental NODE_ENV omission can never print
+    // a live credential, and the container now forces NODE_ENV=production.
+    if (env.NODE_ENV === "development") { // NOSONAR — error-first logging convention for dev/prod split
+      logger.info("[DB] Admin account created (dev password below)", { username: "admin", password: adminPassword });
     } else {
       logger.info("[DB] Admin account created (password from ADMIN_PASSWORD env variable)");
     }

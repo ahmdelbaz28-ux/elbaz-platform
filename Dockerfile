@@ -58,6 +58,11 @@ RUN set -e && \
 USER appuser
 
 EXPOSE 7860
+# Fail-secure: the container must always boot with production semantics
+# (validated env, masked error messages) even if the Space secrets omit
+# NODE_ENV. The CMD below runs tsx directly and does NOT set NODE_ENV,
+# so without this line the image silently defaulted to development mode.
+ENV NODE_ENV=production
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD wget -qO- http://localhost:7860/api/health || exit 1
 ENTRYPOINT ["/sbin/tini", "--"]

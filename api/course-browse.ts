@@ -119,42 +119,46 @@ export const courseBrowseProcedures = {
 
       const offset = ((input?.page ?? 1) - 1) * (input?.limit ?? 12);
 
-      const [countResult] = await db
-        .select({ total: sql<number>`count(*)` })
-        .from(courses)
-        .where(and(...conditions));
+      // PERF: count and page rows share the same `conditions` and are
+      // independent — run them in parallel (fires on every Courses load on
+      // cache-miss, and for every `?search=` request which bypasses cache).
+      const [[countResult], result] = await Promise.all([
+        db
+          .select({ total: sql<number>`count(*)` })
+          .from(courses)
+          .where(and(...conditions)),
+        db
+          .select({
+            id: courses.id,
+            slug: courses.slug,
+            categoryId: courses.categoryId,
+            titleEn: courses.titleEn,
+            titleAr: courses.titleAr,
+            shortDescEn: courses.shortDescEn,
+            shortDescAr: courses.shortDescAr,
+            thumbnail: courses.thumbnail,
+            level: courses.level,
+            isPremium: courses.isPremium,
+            price: courses.price,
+            originalPrice: courses.originalPrice,
+            durationHours: courses.durationHours,
+            rating: courses.rating,
+            reviewCount: courses.reviewCount,
+            studentCount: courses.studentCount,
+            instructorName: courses.instructorName,
+            isFeatured: courses.isFeatured,
+            createdAt: courses.createdAt,
+            categoryName: categories.nameEn,
+            categoryNameAr: categories.nameAr,
+          })
+          .from(courses)
+          .leftJoin(categories, eq(courses.categoryId, categories.id))
+          .where(and(...conditions))
+          .orderBy(desc(courses.isFeatured), desc(courses.createdAt))
+          .limit(input?.limit ?? 12)
+          .offset(offset),
+      ]);
       const totalCount = countResult?.total ?? 0;
-
-      const result = await db
-        .select({
-          id: courses.id,
-          slug: courses.slug,
-          categoryId: courses.categoryId,
-          titleEn: courses.titleEn,
-          titleAr: courses.titleAr,
-          shortDescEn: courses.shortDescEn,
-          shortDescAr: courses.shortDescAr,
-          thumbnail: courses.thumbnail,
-          level: courses.level,
-          isPremium: courses.isPremium,
-          price: courses.price,
-          originalPrice: courses.originalPrice,
-          durationHours: courses.durationHours,
-          rating: courses.rating,
-          reviewCount: courses.reviewCount,
-          studentCount: courses.studentCount,
-          instructorName: courses.instructorName,
-          isFeatured: courses.isFeatured,
-          createdAt: courses.createdAt,
-          categoryName: categories.nameEn,
-          categoryNameAr: categories.nameAr,
-        })
-        .from(courses)
-        .leftJoin(categories, eq(courses.categoryId, categories.id))
-        .where(and(...conditions))
-        .orderBy(desc(courses.isFeatured), desc(courses.createdAt))
-        .limit(input?.limit ?? 12)
-        .offset(offset);
 
       if (!isSearch) {
         const cache = getCache();
@@ -189,27 +193,30 @@ export const courseBrowseProcedures = {
 
       if (!course) return null;
 
-      const [category] = await db
-        .select()
-        .from(categories)
-        .where(eq(categories.id, course.categoryId))
-        .limit(1);
-
-      const courseLessons = await db
-        .select({
-          id: lessons.id,
-          courseId: lessons.courseId,
-          titleEn: lessons.titleEn,
-          titleAr: lessons.titleAr,
-          descriptionEn: lessons.descriptionEn,
-          descriptionAr: lessons.descriptionAr,
-          durationMinutes: lessons.durationMinutes,
-          sortOrder: lessons.sortOrder,
-          isFree: lessons.isFree,
-        })
-        .from(lessons)
-        .where(and(eq(lessons.courseId, course.id), eq(lessons.isPublished, true)))
-        .orderBy(asc(lessons.sortOrder));
+      // PERF: category and lessons both derive only from `course` — run the
+      // two reads in parallel (CourseDetail first paint).
+      const [category, courseLessons] = await Promise.all([
+        db
+          .select()
+          .from(categories)
+          .where(eq(categories.id, course.categoryId))
+          .limit(1),
+        db
+          .select({
+            id: lessons.id,
+            courseId: lessons.courseId,
+            titleEn: lessons.titleEn,
+            titleAr: lessons.titleAr,
+            descriptionEn: lessons.descriptionEn,
+            descriptionAr: lessons.descriptionAr,
+            durationMinutes: lessons.durationMinutes,
+            sortOrder: lessons.sortOrder,
+            isFree: lessons.isFree,
+          })
+          .from(lessons)
+          .where(and(eq(lessons.courseId, course.id), eq(lessons.isPublished, true)))
+          .orderBy(asc(lessons.sortOrder)),
+      ]);
 
       const result = { ...course, category, lessons: courseLessons };
       await cache.set(cacheKey, result, CACHE_TTL.COURSE_DETAIL);

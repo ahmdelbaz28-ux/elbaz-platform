@@ -383,11 +383,14 @@ chatbotRouter.post("/", async (c) => {
 
     // Real course catalog (SWR-cached 10 min, fail-open to "") — lets the bot
     // quote actual course names/levels/prices instead of hallucinating them.
-    const catalog = await getCourseCatalogText();
+    // PERF: catalog and user resolution are independent — start both (same
+    // pattern as the /stream handler below).
+    const catalogPromise = getCourseCatalogText();
 
     // ── Chat-history continuity (logged-in users only, fail-open) ──
     const chatUser = await resolveOptionalUser(c.req.raw);
     const historySummary = chatUser ? await getLatestSummaryText(chatUser.id).catch(() => null) : null;
+    const catalog = await catalogPromise;
 
     // ✅ SECURITY FIX (pre-launch audit run-2): daily per-USER message quota —
     // generous headroom for real students; only an automated loop hits it.

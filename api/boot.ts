@@ -135,7 +135,9 @@ app.use(
       "Authorization",
       "X-Auth-Token",
       "X-Request-ID",
-      "X-Forwarded-For",
+      // NOTE: X-Forwarded-For deliberately NOT allowed — clients must never
+      // set forwarding headers; IP extraction uses cf-connecting-ip and the
+      // proxy-set XFF only (see api/lib/client-ip.ts).
       "X-Capacitor-Platform", // ✅ native app marker sent on every APK request
     ],
     exposeHeaders: ["X-Request-ID", "X-Renewed-Token"],

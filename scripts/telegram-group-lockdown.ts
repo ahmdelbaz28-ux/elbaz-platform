@@ -208,7 +208,7 @@ function rightsSnapshot(m: MemberInfo | undefined): Record<string, boolean> | un
 // strings (chat titles, usernames, error descriptions) — a hostile value with
 // a "\n" could forge log lines (S5145 log injection).
 function sanitizeForLog(s: string): string {
-  return String(s).replace(/[\u0000-\u001f\u007f]/g, " ");
+  return String(s).replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ");
 }
 
 function log(msg: string): void {

@@ -83,31 +83,36 @@ export const articlesRouter = createRouter({
           like(articles.excerptEn, term),
         )!);
       }
-      const rows = await db
-        .select({
-          id: articles.id,
-          slug: articles.slug,
-          titleAr: articles.titleAr,
-          titleEn: articles.titleEn,
-          excerptAr: articles.excerptAr,
-          excerptEn: articles.excerptEn,
-          coverImage: articles.coverImage,
-          category: articles.category,
-          tags: articles.tags,
-          authorName: articles.authorName,
-          viewCount: articles.viewCount,
-          readMinutes: articles.readMinutes,
-          publishedAt: articles.publishedAt,
-        })
-        .from(articles)
-        .where(and(...conditions))
-        .orderBy(desc(articles.publishedAt), desc(articles.createdAt))
-        .limit(input?.limit ?? 20)
-        .offset(input?.offset ?? 0);
-      const [{ cnt }] = await db
-        .select({ cnt: sql<number>`count(*)` })
-        .from(articles)
-        .where(and(...conditions));
+      // PERF: rows and count share the same `conditions` — run both in
+      // parallel (fires on every Articles index load).
+      const [rows, countRows] = await Promise.all([
+        db
+          .select({
+            id: articles.id,
+            slug: articles.slug,
+            titleAr: articles.titleAr,
+            titleEn: articles.titleEn,
+            excerptAr: articles.excerptAr,
+            excerptEn: articles.excerptEn,
+            coverImage: articles.coverImage,
+            category: articles.category,
+            tags: articles.tags,
+            authorName: articles.authorName,
+            viewCount: articles.viewCount,
+            readMinutes: articles.readMinutes,
+            publishedAt: articles.publishedAt,
+          })
+          .from(articles)
+          .where(and(...conditions))
+          .orderBy(desc(articles.publishedAt), desc(articles.createdAt))
+          .limit(input?.limit ?? 20)
+          .offset(input?.offset ?? 0),
+        db
+          .select({ cnt: sql<number>`count(*)` })
+          .from(articles)
+          .where(and(...conditions)),
+      ]);
+      const [{ cnt }] = countRows;
       return { items: rows, total: Number(cnt) };
     }),
 
@@ -122,14 +127,13 @@ export const articlesRouter = createRouter({
         .where(and(eq(articles.slug, input.slug), eq(articles.isPublished, true)))
         .limit(1);
       if (!article) return null;
-      // Best-effort view bump — atomic increment, never blocks the read.
-      try {
-        await db.update(articles)
-          .set({ viewCount: sql`${articles.viewCount} + 1` })
-          .where(eq(articles.id, article.id));
-      } catch {
-        /* counters are non-critical */
-      }
+      // Best-effort view bump — atomic increment, FIRE-AND-FORGET: the read
+      // response must not wait on the counter write (same pattern as
+      // references-router view counting).
+      void db.update(articles)
+        .set({ viewCount: sql`${articles.viewCount} + 1` })
+        .where(eq(articles.id, article.id))
+        .catch(() => { /* counters are non-critical */ });
       return article;
     }),
 

@@ -90,16 +90,31 @@ export const quizRouter = createRouter({
 
       // ✅ ANTI-CHEAT: Rate limit quiz submissions (max 3 per 10 minutes per lesson)
       // Prevents brute-forcing by repeated submission
-      const recentAttempts = await db
-        .select({ id: lessonProgress.id, quizScore: lessonProgress.quizScore })
-        .from(lessonProgress)
-        .where(
-          and(
-            eq(lessonProgress.userId, userId),
-            eq(lessonProgress.lessonId, input.lessonId),
-          ),
-        )
-        .limit(1);
+      // PERF: recentAttempts, lesson lookup and questions are all keyed by
+      // input.lessonId/userId and mutually independent — run them in parallel
+      // (the enrollment check below correctly waits for `lesson`).
+      const [recentAttempts, lessonRows, questions] = await Promise.all([
+        db
+          .select({ id: lessonProgress.id, quizScore: lessonProgress.quizScore })
+          .from(lessonProgress)
+          .where(
+            and(
+              eq(lessonProgress.userId, userId),
+              eq(lessonProgress.lessonId, input.lessonId),
+            ),
+          )
+          .limit(1),
+        db
+          .select({ courseId: lessons.courseId, isFree: lessons.isFree })
+          .from(lessons)
+          .where(eq(lessons.id, input.lessonId))
+          .limit(1),
+        db
+          .select()
+          .from(quizQuestions)
+          .where(eq(quizQuestions.lessonId, input.lessonId)),
+      ]);
+      const [lesson] = lessonRows;
 
       // If already passed, don't allow retake (prevent grade inflation)
       if (recentAttempts.length > 0 && (recentAttempts[0].quizScore ?? 0) >= 70) {
@@ -108,13 +123,6 @@ export const quizRouter = createRouter({
           message: "You have already passed this quiz. Retake is not allowed.",
         });
       }
-
-      // Verify enrollment for paid lessons
-      const [lesson] = await db
-        .select({ courseId: lessons.courseId, isFree: lessons.isFree })
-        .from(lessons)
-        .where(eq(lessons.id, input.lessonId))
-        .limit(1);
 
       if (!lesson) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
@@ -147,10 +155,7 @@ export const quizRouter = createRouter({
         });
       }
 
-      const questions = await db
-        .select()
-        .from(quizQuestions)
-        .where(eq(quizQuestions.lessonId, input.lessonId));
+      // PERF: `questions` was already fetched in the parallel batch above.
 
       // ✅ ANTI-CHEAT: Validate that all submitted question IDs belong to this lesson
       const validQuestionIds = new Set(questions.map((q) => q.id));

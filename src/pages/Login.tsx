@@ -124,7 +124,6 @@ export default function Login() {
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const conn = (navigator as any).connection ?? (navigator as any).mozConnection ?? (navigator as any).webkitConnection;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (conn && (conn.saveData || /^(slow-2g|2g)$/i.test(conn.effectiveType ?? ""))) return;
     const timers: ReturnType<typeof setTimeout>[] = [];
     let decided = false;
