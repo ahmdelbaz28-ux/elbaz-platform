@@ -7,7 +7,14 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
   c.header("X-Frame-Options", "DENY");
   c.header("X-XSS-Protection", "1; mode=block");
   c.header("Referrer-Policy", "strict-origin-when-cross-origin");
-  c.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  // ⚠️ ROOT-CURE (2026-11-13): Chromium gates getDisplayMedia (screen share)
+  // behind the CAMERA permissions policy — `camera=()` hard-blocks the bot's
+  // live screen-teacher lane for every Chrome/Edge user ("Permissions policy
+  // violation: camera is not allowed"). camera=(self) only permits the
+  // permission CHECK; the app never calls getUserMedia, so the camera stays
+  // prompt-gated and effectively unused. display-capture=(self) makes the
+  // screen-share intent explicit (Firefox checks this feature).
+  c.header("Permissions-Policy", "camera=(self), microphone=(), geolocation=(), display-capture=(self)");
 
   const path = c.req.path;
   const isApi = path.startsWith("/api/");

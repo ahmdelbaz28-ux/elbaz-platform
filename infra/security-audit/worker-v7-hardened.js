@@ -353,7 +353,7 @@ function addSecurityHeaders(response, url) {
   newHeaders.set('X-Frame-Options', 'SAMEORIGIN');  // v7: was DENY
   newHeaders.set('X-XSS-Protection', '1; mode=block');
   newHeaders.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-  newHeaders.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+  newHeaders.set('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(), display-capture=(self), payment=()');
   newHeaders.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   newHeaders.set('X-Permitted-Cross-Domain-Policies', 'none');
   // v7: Add X-Request-ID
