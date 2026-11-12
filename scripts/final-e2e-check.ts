@@ -45,8 +45,8 @@ console.log("\npoll:", poll.status, "events:", body.events?.length);
 for (const ev of body.events ?? []) {
   console.log(`  [${cleanLog(ev.type)}] ${ev.createdAt}`);
   console.log(`   title: ${cleanLog(ev.title)}`);
-  console.log(`   url:   ${ev.url ?? "-"}`);
-  console.log(`   msg:   ${ev.message.slice(0, 80)}...`);
+  console.log(`   url:   ${cleanLog(ev.url ?? "-")}`);
+  console.log(`   msg:   ${cleanLog(ev.message.slice(0, 80))}...`);
 }
 const yt = (body.events ?? []).find((e) => e.type === "youtube");
 console.log("\nRESULT:", yt ? "PASS — logged-in user receives the new-episode notification ✓" : "FAIL — no youtube event");
