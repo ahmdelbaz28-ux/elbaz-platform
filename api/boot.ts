@@ -25,6 +25,11 @@ import { randomBytes } from "node:crypto";
  * Falls back to a runtime-generated ID if the file doesn't exist (dev mode).
  */
 let buildId: string | null = null;
+// Version is captured from build-id.json (written at BUILD time by
+// vite.config.ts buildIdPlugin). Reading process.env.npm_package_version
+// at runtime returns "unknown" inside the Docker container — the server
+// runs via node/tsx, outside any npm-script context.
+let buildVersion: string | null = null;
 
 async function loadBuildId() {
   try {
@@ -32,7 +37,8 @@ async function loadBuildId() {
     const content = await readFile("./dist/public/build-id.json", "utf-8");
     const data = JSON.parse(content);
     buildId = data.buildId;
-    appLogger.info(`[Server] Build ID loaded: ${buildId}`);
+    buildVersion = typeof data.version === "string" && data.version !== "unknown" ? data.version : null;
+    appLogger.info(`[Server] Build ID loaded: ${buildId} (version ${buildVersion ?? "n/a"})`);
   } catch {
     // Fallback for dev mode or if build-id.json is missing
     buildId = `runtime-${randomBytes(4).toString("hex")}`;
@@ -193,7 +199,7 @@ app.all("/api/trpc/*", async (c) => {
 // Returns buildId which changes on every deploy, triggering cache clear.
 app.get("/api/version", (c) => {
   return c.json({
-    version: process.env.npm_package_version ?? "unknown",
+    version: buildVersion ?? process.env.npm_package_version ?? "unknown",
     buildId: buildId ?? "unknown",
     stage: env.NODE_ENV,
     timestamp: new Date().toISOString(),
