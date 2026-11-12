@@ -794,7 +794,9 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
     { enabled: !!activeLesson && isAuthenticated }
   );
 
-  // ── Subscribe-to-the-channel gate (support prompt before playback) ───────
+  // ── Subscribe-to-the-channel gate (HARD gate before any playback) ───────
+  // Owner contract (2026): NO video opens until the viewer completes the
+  // subscribe flow — the gate has no skip button (see SubscribeGate.tsx).
   // Config lives in siteSettings section "subscribeGate" (admin-editable):
   //   enabled: "true"|"false" · channelUrl · days (unlock window).
   // Defaults keep the gate ON with the channel's known handle so the feature

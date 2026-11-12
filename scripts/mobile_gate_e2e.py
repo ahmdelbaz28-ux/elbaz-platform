@@ -23,6 +23,11 @@ import time
 
 from playwright.sync_api import sync_playwright
 
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from _gate_unlock import gate_visible as _gate_shown, unlock_subscribe_gate
+
 BASE = "http://127.0.0.1:5173"
 COURSE_PATH = "/courses/etap-complete-course"
 OUT = "/home/z/my-project/download/mobile_e2e"
@@ -58,8 +63,17 @@ SUB_GATE_OK = {"result": {"data": {"json": {
     "enabled": "true", "channelUrl": "https://www.youtube.com/@AhmedElbazEng", "days": "30",
 }}}}
 
+MY_REVIEW_NULL = {"result": {"data": {"json": None}}}
+PAYMOB_OFF = {"result": {"data": {"json": {
+    "configured": False, "missing": ["all"], "mode": "unset",
+    "methods": {"card": False, "wallet": False},
+}}}}
+
 def envelope_for_get(name: str, url: str):
     if name == "auth.me": return 200, ME_OK
+    if name.startswith("review.myReview"): return 200, MY_REVIEW_NULL
+    if name.startswith("course.previewVideo"): return 200, LESSON_VIDEO
+    if name.startswith("payment.isConfigured"): return 200, PAYMOB_OFF
     if name == "course.checkEnrollment": return 200, CHECK_ENROLL
     if name.startswith("course.lessonVideo"): return 200, LESSON_VIDEO
     if name.startswith("course.getSavedPosition"): return 200, SAVED_POS
@@ -167,19 +181,20 @@ with sync_playwright() as p:
         m = pg.evaluate(MEASURE)
         check("mobile) page has NO horizontal overflow (before unlock)", m["overflow"] <= 2, f"overflow={m['overflow']}px vw={m['vw']}")
 
-        # ── Subscribe gate on a fresh device ──
+        # ── Subscribe gate on a fresh device (HARD: no skip button) ──
         gate = pg.locator("[data-testid=subscribe-gate]")
-        gate_visible = gate.count() > 0 and gate.first.is_visible()
+        shown = gate.count() > 0 and gate.first.is_visible()
+        gate_visible = shown
         if EXPECT_GATE:
             check("mobile) subscribe gate blocks playback on fresh device", gate_visible)
+            check("mobile) no skip button exists (hard gate)", pg.locator("[data-testid=subscribe-gate-already]").count() == 0)
         else:
             note("mobile) subscribe gate visible (old build: informational)", str(gate_visible))
         pg.screenshot(path=f"{OUT}/mobile_gate.png")
 
         if gate_visible:
-            # Unlock via the honest «already subscribed» escape
-            pg.locator("[data-testid=subscribe-gate-already]").first.click()
-            pg.wait_for_timeout(1_500)
+            # Unlock via the enforced two-step subscribe flow (open → confirm)
+            unlock_subscribe_gate(pg)
 
         mounted = wait_player(pg)
         check("mobile) embedded YouTube player mounts after unlock", mounted)
@@ -237,11 +252,11 @@ with sync_playwright() as p:
         gate_d = gd.count() > 0 and gd.first.is_visible()
         if EXPECT_GATE:
             check("desktop) subscribe gate blocks playback on fresh device", gate_d)
+            check("desktop) no skip button exists (hard gate)", pgd.locator("[data-testid=subscribe-gate-already]").count() == 0)
         else:
             note("desktop) subscribe gate visible (informational)", str(gate_d))
         if gate_d:
-            pgd.locator("[data-testid=subscribe-gate-already]").first.click()
-            pgd.wait_for_timeout(1_500)
+            unlock_subscribe_gate(pgd)
         if wait_player(pgd):
             pgd.wait_for_timeout(2_500)
             md = pgd.evaluate(MEASURE)

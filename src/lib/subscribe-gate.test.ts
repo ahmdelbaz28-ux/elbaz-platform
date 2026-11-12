@@ -7,8 +7,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildSubscribeUrl,
+  clearSubscribeFlow,
   clearSubscribeUnlock,
+  hasPressedSubscribe,
   isSubscribeUnlocked,
+  markSubscribePressed,
   subscribeUnlockUntil,
   unlockSubscribe,
 } from "./subscribe-gate";
@@ -106,6 +109,61 @@ describe("subscribe gate unlock state", () => {
     vi.stubGlobal("localStorage", fakeLocalStorage());
     unlockSubscribe(0, now);
     expect(isSubscribeUnlocked(now + 1)).toBe(true); // 1-day floor applied
+  });
+});
+
+describe("subscribe flow marker (pressed-subscribe state)", () => {
+  beforeEach(() => {
+    vi.stubGlobal("sessionStorage", fakeLocalStorage());
+  });
+
+  afterEach(() => {
+    clearSubscribeFlow();
+  });
+
+  it("starts with no pressed marker (gate fully armed)", () => {
+    expect(hasPressedSubscribe()).toBe(false);
+  });
+
+  it("marks pressed and stays valid inside the TTL window", () => {
+    markSubscribePressed(now);
+    expect(hasPressedSubscribe(now)).toBe(true);
+    expect(hasPressedSubscribe(now + 59 * 60 * 1000)).toBe(true); // 59 min later
+  });
+
+  it("expires the marker after the TTL (1 hour)", () => {
+    markSubscribePressed(now);
+    expect(hasPressedSubscribe(now + 60 * 60 * 1000 + 1)).toBe(false);
+  });
+
+  it("treats corrupt payloads as not-pressed", () => {
+    vi.stubGlobal("sessionStorage", fakeLocalStorage({ "elbaz-sub-gate-flow": "not-a-number" }));
+    expect(hasPressedSubscribe()).toBe(false);
+    vi.stubGlobal("sessionStorage", undefined);
+    expect(hasPressedSubscribe()).toBe(false);
+  });
+
+  it("never throws when sessionStorage throws (private mode)", () => {
+    vi.stubGlobal("sessionStorage", throwingLocalStorage());
+    expect(() => hasPressedSubscribe()).not.toThrow();
+    expect(() => markSubscribePressed(now)).not.toThrow();
+    expect(hasPressedSubscribe()).toBe(false);
+  });
+
+  it("clear removes the marker", () => {
+    markSubscribePressed(now);
+    expect(hasPressedSubscribe()).toBe(true);
+    clearSubscribeFlow();
+    expect(hasPressedSubscribe()).toBe(false);
+  });
+
+  it("records the honest via marker on new unlocks", () => {
+    const store = fakeLocalStorage();
+    vi.stubGlobal("localStorage", store);
+    unlockSubscribe(30, now);
+    const raw = JSON.parse(store.getItem("elbaz-sub-gate-unlock") ?? "{}") as { until?: number; via?: string };
+    expect(raw.until).toBe(now + 30 * DAY);
+    expect(raw.via).toBe("subscribe-flow");
   });
 });
 

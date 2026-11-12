@@ -25,6 +25,10 @@ import socketserver
 import urllib.parse
 
 from playwright.sync_api import sync_playwright
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from _gate_unlock import unlock_subscribe_gate
 
 DIST = "/home/z/my-project/work/elbaz-platform/dist/public"
 OUT = "/home/z/my-project/work/elbaz-platform/scripts/shots_mobile_video"
@@ -194,8 +198,7 @@ def probe_width(browser, width, height):
 
     gate = pg.locator('[data-testid="subscribe-gate"]')
     if gate.count() >= 1 and gate.first.is_visible():
-        pg.locator('[data-testid="subscribe-gate-already"]').first.click()
-        pg.wait_for_timeout(3500)
+        unlock_subscribe_gate(pg, wait_ms=3500)
 
     for _ in range(12):
         if pg.locator("[data-youtube-player] iframe").count() >= 1:

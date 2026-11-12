@@ -15,6 +15,10 @@ import subprocess
 import sys
 
 from playwright.sync_api import sync_playwright
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from _gate_unlock import unlock_subscribe_gate
 
 PROD = "https://ahmedelbaz.qzz.io"
 SLUG = "etap-complete-course"
@@ -116,10 +120,9 @@ with sync_playwright() as p:
 
     gate = pg.locator('[data-testid="subscribe-gate"]')
     if gate.count() >= 1 and gate.first.is_visible():
-        print("gate shown → bypass")
+        print("gate shown → enforced subscribe flow (open → confirm)")
         pg.screenshot(path=f"{OUT}/p2_gate.png")
-        pg.locator('[data-testid="subscribe-gate-already"]').first.click()
-        pg.wait_for_timeout(4000)
+        unlock_subscribe_gate(pg, wait_ms=4000)
 
     for _ in range(15):
         if pg.locator("[data-youtube-player] iframe").count() >= 1:

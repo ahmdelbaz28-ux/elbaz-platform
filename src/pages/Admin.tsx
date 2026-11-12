@@ -1074,8 +1074,8 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                       <div className="flex items-center gap-2">
                         <Youtube className="h-5 w-5 text-[#ff5f57]" />
                         <div>
-                          <h3 className="text-sm font-semibold text-foreground">{isRTL ? "بوابة اشتراك القناة قبل المشاهدة" : "Channel-subscription gate before playback"}</h3>
-                          <p className="text-xs text-text-muted">{isRTL ? "لوحة واحدة قبل أول فيديو تطلب اشتراك مجاني في القناة — مرة واحدة على الجهاز ولمدة تختارها، بدون إزعاج متكرر" : "One panel before the first video asks for a free channel subscription — once per device for a window you choose, never nagging"}</p>
+                          <h3 className="text-sm font-semibold text-foreground">{isRTL ? "بوابة اشتراك القناة قبل المشاهدة (إجبارية)" : "Channel-subscription gate before playback (enforced)"}</h3>
+                          <p className="text-xs text-text-muted">{isRTL ? "شرط إجباري قبل أي فيديو: المستخدم لازم يدوس «اشتراك» في القناة الأول — من غير زر تخطي — وبعد الاشتراك مش هنرد اسأله لمدة تختارها" : "Enforced before ANY video: the viewer must press subscribe first — no skip button — then stays unlocked for a window you choose"}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">

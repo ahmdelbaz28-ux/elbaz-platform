@@ -16,11 +16,17 @@ Run: DISPLAY=:99 python3 scripts/youtube_lesson_local_e2e.py
 """
 import json
 import re
+import urllib.parse
 import subprocess
 import sys
 import time
 
 from playwright.sync_api import sync_playwright
+
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from _gate_unlock import assert_subscribe_url, gate_visible, unlock_subscribe_gate
 
 BASE = "http://127.0.0.1:5173"
 COURSE_PATH = "/courses/etap-complete-course"
@@ -68,8 +74,22 @@ def lesson_video_response(kind: str):
 def saved_position():
     return 200, {"result": {"data": {"json": {"lastPosition": 0, "watchedSeconds": 0, "isCompleted": False}}}}
 
-def envelope_for_get(name: str):
+MY_REVIEW_NULL = {"result": {"data": {"json": None}}}
+
+def envelope_for_get(name: str, url: str = ""):
     if name == "auth.me": return 200, ME_OK
+    if name.startswith("review.myReview"): return 200, MY_REVIEW_NULL
+    if name.startswith("course.previewVideo"):
+        # Guest preview must mirror the LESSON's own kind (youtube vs r2) —
+        # parse the lessonId out of the encoded tRPC input.
+        lesson_id = 101
+        try:
+            raw = url.split("input=")[1]
+            parsed = json.loads(urllib.parse.unquote(raw))
+            lesson_id = int(parsed.get("json", {}).get("lessonId") or 101)
+        except Exception:
+            pass
+        return lesson_video_response("youtube" if lesson_id == 101 else "r2")
     if name == "course.checkEnrollment": return 200, CHECK_ENROLL
     if name.startswith("course.lessonVideo"):
         # query contains input=…&lessonId — route both lesson ids to their kind
@@ -101,7 +121,7 @@ with sync_playwright() as p:
                 if path.startswith("course.lessonVideo"):
                     st, body = lesson_video_response(kind)
                     return route.fulfill(status=st, content_type="application/json", body=json.dumps(body))
-                packed = envelope_for_get(path)
+                packed = envelope_for_get(path, url)
                 if packed:
                     st, body = packed
                     return route.fulfill(status=st, content_type="application/json", body=json.dumps(body))
@@ -136,14 +156,13 @@ with sync_playwright() as p:
             continue
         target.click()
         pg.wait_for_timeout(2_000)
-        # The subscribe gate (if enabled) takes the video slot first — unlock
-        # via the honest «already subscribed» escape, then wait for the player.
+        # The subscribe gate (HARD, no skip button) takes the video slot first —
+        # unlock via the enforced two-step subscribe flow (open → confirm).
         try:
-            gate = pg.locator("[data-testid=subscribe-gate]")
-            if gate.count() > 0 and gate.first.is_visible():
-                print("subscribe gate shown — unlocking (already-subscribed path)")
-                pg.locator("[data-testid=subscribe-gate-already]").first.click()
-                pg.wait_for_timeout(1_500)
+            if gate_visible(pg):
+                print("subscribe gate shown — unlocking (subscribe-flow: open → confirm)")
+                popups = unlock_subscribe_gate(pg)
+                check("YT) gate opened channel with sub_confirmation", assert_subscribe_url(popups), str(popups))
         except Exception:
             pass
         # Wait for the video area to resolve

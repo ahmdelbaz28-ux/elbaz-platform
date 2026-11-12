@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { trpc } from "@/providers/trpc";
 import { trackEvent } from "@/lib/clarity";
+import CommentNudge from "@/components/CommentNudge";
 import { buildYouTubeWatchUrl } from "@/lib/youtube-url";
 import {
   loadYouTubeIframeApi,
@@ -314,6 +315,10 @@ export default function YouTubeLessonPlayer({
           {lang === "en" ? "▶ YouTube" : "▶ يوتيوب"}
         </a>
       </div>
+
+      {/* Owner contract: encourage a YouTube comment — once per video,
+          inline under the player, dismissible, never blocking playback. */}
+      <CommentNudge videoId={videoId} lang={lang} />
     </div>
   );
 }
