@@ -8,7 +8,7 @@ vi.mock("./env.js", () => ({ env: { NODE_ENV: "test", isProduction: false } }));
 vi.mock("./youtube-watcher.js", () => ({ fetchPlaylistVideosForImport: vi.fn(async () => ({ items: [], verified: true })) }));
 vi.mock("./cache.js", () => ({ invalidateCourseDetailCache: vi.fn() }));
 
-import { planPlaylistSync, type ExistingLesson } from "./playlist-sync.js";
+import { planPlaylistSync, isPlaceholderTitle, type ExistingLesson } from "./playlist-sync.js";
 import type { ParsedVideo } from "./notification-utils.js";
 
 const V1: ParsedVideo = { videoId: "0l7WBjMF6uo", title: "كورس ETAP المجاني | تعلم ETAP من الصفر وحتى الاحتراف" };
@@ -106,5 +106,33 @@ describe("planPlaylistSync", () => {
     expect(plan.updates).toEqual([]);
     expect(plan.inserts).toEqual([]);
     expect(plan.removable.map((r) => r.id)).toEqual([2]);
+  });
+});
+
+// ✅ ROOT-CURE regression (2026-11-13): placeholder-title filter + in-payload
+// dedupe — dead YouTube videos ("فيديو خاص" / "Private video") must never
+// become lessons, and a payload repeating a videoId must not insert it twice.
+describe("placeholder titles + in-payload dedupe (root-cure 2026-11-13)", () => {
+  it("isPlaceholderTitle flags YouTube's unavailable titles in BOTH languages", () => {
+    expect(isPlaceholderTitle("Private Video")).toBe(true);
+    expect(isPlaceholderTitle("Deleted video")).toBe(true);
+    expect(isPlaceholderTitle("فيديو خاص")).toBe(true);
+    expect(isPlaceholderTitle("فيديو محذوف")).toBe(true);
+    expect(isPlaceholderTitle("الفيديو غير متاح")).toBe(true);
+    expect(isPlaceholderTitle("   ")).toBe(true);
+    expect(isPlaceholderTitle("المحاضرة الثالثة | تحليل أنظمة القوى")).toBe(false);
+    expect(isPlaceholderTitle("ETAP Load Flow Tutorial")).toBe(false);
+  });
+
+  it("planPlaylistSync inserts a repeated videoId exactly ONCE", () => {
+    const videos: ParsedVideo[] = [
+      { videoId: "aaaaaaaaaaa", title: "الأول", },
+      { videoId: "aaaaaaaaaaa", title: "الأول", },
+      { videoId: "bbbbbbbbbbb", title: "الثاني", },
+    ];
+    const plan = planPlaylistSync([], videos, { isFree: true });
+    expect(plan.inserts).toHaveLength(2);
+    expect(plan.inserts[0]?.videoId).toBe("aaaaaaaaaaa");
+    expect(plan.inserts[1]?.videoId).toBe("bbbbbbbbbbb");
   });
 });

@@ -580,14 +580,18 @@ async function markProviderAuthFail(providerId: number): Promise<void> {
 }
 
 /** Record a success — resets breaker state and remembers the mode shortcut. */
-function recordSuccess(provider: AiProvider, model: AiModel, latencyMs: number, mode: ChatbotMode): void {
+function recordSuccess(provider: AiProvider, model: AiModel, latencyMs: number, mode: ChatbotMode, opts: { probe?: boolean } = {}): void {
   const key = modelKey(provider.id, model.modelId);
   modelCooldownUntil.delete(key);
   modelConsecFails.set(key, 0);
   providerCooldownUntil.delete(provider.id);
   providerConsecFails.set(provider.id, 0);
   provider429Streak.set(provider.id, 0);
-  lastWorkingByMode[mode] = { key, time: Date.now() };
+  // ✅ ROOT-CURE (2026-11-13): the admin connectivity probe used to pin
+  // lastWorkingByMode for 5 minutes — a successful "اختبار" click silently
+  // steered LIVE traffic to the probe model. Probes mirror DB health but
+  // never touch routing state.
+  if (!opts.probe) lastWorkingByMode[mode] = { key, time: Date.now() };
   pushEvent({ ts: Date.now(), provider: provider.slug, model: model.modelId, kind: "success", detail: `${Math.round(latencyMs)}ms` });
   void mirrorModelHealth(model.id, {
     status: "ok",
@@ -1003,10 +1007,17 @@ export function isPublicProviderUrl(rawUrl: string): boolean {
   }
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
     const [a, b] = host.split(".").map(Number);
-    if (a === 127 || a === 10 || a === 0 || a === 169 || a === 172 || a === 192) {
+    // ✅ ROOT-CURE (2026-11-13): the private-range list missed CGNAT
+    // (100.64.0.0/10), benchmarking (198.18.0.0/15) and the special-purpose
+    // 192.0.0.0/24 — admin-writable baseUrls could target infrastructure in
+    // those ranges. Second octet refinement kept for 172.16/12, 192.168/16
+    // and 169.254/16.
+    if (a === 127 || a === 10 || a === 0 || a === 169 || a === 172 || a === 192 || a === 100 || a === 198) {
       if (a === 172 && b < 16) return true;
-      if (a === 192 && b !== 168) return true;
+      if (a === 192 && (b !== 168 && b !== 0)) return true;
       if (a === 169 && b !== 254) return true;
+      if (a === 100 && (b < 64 || b > 127)) return true;
+      if (a === 198 && (b < 18 || b > 19)) return true;
       return false;
     }
   }
@@ -1859,7 +1870,8 @@ export async function testProvider(provider: AiProvider): Promise<{ ok: boolean;
     const reply = await readNonStreamReply(attempt.response);
     if (reply.ok) {
       const latencyMs = Date.now() - started;
-      recordSuccess(provider, m, latencyMs, "thinking");
+      // probe:true — DB health mirrors update, routing state does not.
+      recordSuccess(provider, m, latencyMs, "thinking", { probe: true });
       return { ok: true, latencyMs, model: m.modelId };
     }
   }

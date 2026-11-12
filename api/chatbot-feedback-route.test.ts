@@ -105,3 +105,41 @@ describe("POST / (chatbot feedback)", () => {
     expect(last).toBe(429);
   });
 });
+
+// ✅ ROOT-CURE regression (2026-11-13, chatbot-normalize): a conversation
+// whose every message is EMPTY text (no images) must be rejected with a 400
+// BEFORE dispatch — it used to pass normalization and burn a real provider
+// call with nothing to answer. (Kept here as the router-level input contract
+// home; the pure function lives in chatbot-normalize.ts.)
+import { normalizeChatInput } from "./lib/chatbot-normalize.js";
+
+describe("normalizeChatInput — blank conversation rejection (root-cure 2026-11-13)", () => {
+  it("rejects an all-blank conversation", () => {
+    const r = normalizeChatInput([{ role: "user", content: "" }]);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.failure.status).toBe(400);
+  });
+
+  it("rejects whitespace-only messages", () => {
+    const r = normalizeChatInput([{ role: "user", content: "   " }, { role: "assistant", content: "  " }]);
+    expect(r.ok).toBe(false);
+  });
+
+  it("still accepts an image-only message (blank text + image part)", () => {
+    const dataUrl = `data:image/png;base64,${"a".repeat(200)}`;
+    const r = normalizeChatInput([
+      { role: "user", content: [{ type: "image_url", image_url: { url: dataUrl } }] },
+    ]);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.data.vision).toBe(true);
+  });
+
+  it("still accepts a normal mixed conversation", () => {
+    const r = normalizeChatInput([
+      { role: "user", content: "ما هو تحميل الحمل؟" },
+      { role: "assistant", content: "تحميل الحمل هو..." },
+      { role: "user", content: "اشرح أكثر" },
+    ]);
+    expect(r.ok).toBe(true);
+  });
+});

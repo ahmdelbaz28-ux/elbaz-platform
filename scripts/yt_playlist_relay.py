@@ -17,6 +17,7 @@ Merged by union, first non-empty title wins, unavailable-video titles dropped.
 import hashlib
 import hmac
 import json
+import time
 import os
 import re
 import sys
@@ -30,7 +31,21 @@ INGEST_URL = os.environ.get(
 SECRET = os.environ.get("SYNC_INGEST_SECRET", "")
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 VIDEO_ID_RE = re.compile(r"^[\w-]{11}$")
-UNAVAILABLE_TITLES = ("private video", "deleted video", "unavailable")
+# ✅ ROOT-CURE (2026-11-13): the relay fetches with hl=ar, so YouTube serves
+# ARABIC placeholder titles ("فيديو خاص" / "فيديو محذوف" / "الفيديو غير متاح")
+# for private/deleted videos — the English-only list let them through and the
+# server published them as real lessons. Both languages are now filtered
+# here AND again server-side (api/yt-sync-ingest.ts, defense in depth).
+UNAVAILABLE_TITLES = (
+    "private video", "deleted video", "unavailable", "video unavailable",
+    "فيديو خاص", "فيديو محذوف", "الفيديو غير متاح", "هذا الفيديو غير متاح",
+)
+# Anti-replay: sign body + "." + ts and send the ts; the server rejects
+# timestamps outside a 10-minute window.
+TS_WINDOW_SECONDS = 600
+# Payload chunking — the ingest schema caps a single push; a playlist larger
+# than one chunk is pushed as several ordered requests instead of failing.
+CHUNK_SIZE = 100
 
 
 def http(url, data=None, headers=None, timeout=25):
@@ -175,27 +190,34 @@ def main():
         print("ERROR: SYNC_INGEST_SECRET missing/short")
         sys.exit(3)
 
-    body = json.dumps(
-        {"videos": videos, "source": "gh-actions"},
-        ensure_ascii=False,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    sig = hmac.new(SECRET.encode(), body, hashlib.sha256).hexdigest()
-    try:
-        with http(
-            INGEST_URL,
-            data=body,
-            headers={
-                "Content-Type": "application/json",
-                "x-sync-signature": sig,
-                # shield middleware requires the platform host on server-to-server calls
-                "x-forwarded-host": "ahmedelbaz.qzz.io",
-            },
-        ) as res:
-            print(f"ingest status: {res.status}")
-            print(res.read().decode()[:600])
-    except Exception as exc:
-        print(f"ERROR: ingest POST failed: {exc}")
+    failed = False
+    for start in range(0, len(videos), CHUNK_SIZE):
+        chunk = videos[start:start + CHUNK_SIZE]
+        body = json.dumps(
+            {"videos": chunk, "source": "gh-actions"},
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        ts = str(int(time.time() * 1000))
+        sig = hmac.new(SECRET.encode(), body + b"." + ts.encode(), hashlib.sha256).hexdigest()
+        try:
+            with http(
+                INGEST_URL,
+                data=body,
+                headers={
+                    "Content-Type": "application/json",
+                    "x-sync-signature": sig,
+                    "x-sync-ts": ts,
+                    # shield middleware requires the platform host on server-to-server calls
+                    "x-forwarded-host": "ahmedelbaz.qzz.io",
+                },
+            ) as res:
+                print(f"ingest status: {res.status} (videos {start + 1}-{start + len(chunk)})")
+                print(res.read().decode()[:600])
+        except Exception as exc:
+            print(f"ERROR: ingest POST failed: {exc}")
+            failed = True
+    if failed:
         sys.exit(4)
 
 

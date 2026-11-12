@@ -264,13 +264,23 @@ chatbotRouter.delete("/history", async (c) => {
 
 // ── Non-streaming chat endpoint ──
 chatbotRouter.post("/", async (c) => {
+  // ✅ ROOT-CURE (2026-11-13): the JSON parse used to run inside the giant
+  // try/catch below, so a malformed request body produced an unhandled 500
+  // (INTERNAL) + a false error log — exactly the bug the /stream endpoint
+  // already had fixed. Malformed JSON is a client bug: answer 400 with the
+  // SAME shape /stream uses, before the try block.
+  let body: { messages: unknown; language?: string; chatId?: string; mode?: "thinking" | "instant"; pageContext?: unknown };
+  try {
+    body = await c.req.json<{ messages: unknown; language?: string; chatId?: string; mode?: "thinking" | "instant"; pageContext?: unknown }>();
+  } catch {
+    return c.json({ error: "INVALID_JSON", message: "Request body must be valid JSON." }, 400);
+  }
   try {
     const ip = getChatbotIp(c);
     const lane = chatbotLaneFor(c, ip);
     if (!checkChatbotRateLimit(lane.key, lane.ratePerMinute)) {
       return errorResponse(c, "RATE_LIMITED");
     }
-    const body = await c.req.json<{ messages: unknown; language?: string; chatId?: string; mode?: "thinking" | "instant"; pageContext?: unknown }>();
 
     const normalized = normalizeChatInput(body.messages);
     if (!normalized.ok) {
@@ -281,7 +291,13 @@ chatbotRouter.post("/", async (c) => {
     const { messages, vision, imageCount, totalTextChars, screenCapture } = normalized.data;
 
     if (totalTextChars > MAX_TOTAL_CHARS) {
-      return errorResponse(c, "TOO_LARGE", { message: "Conversation too long. Please start a new chat." });
+      const tooLongAr = resolveChatLanguage(body.language, messages) === "ar";
+      return errorResponse(c, "TOO_LARGE", {
+        lang: tooLongAr ? "ar" : "en",
+        message: tooLongAr
+          ? "المحادثة أصبحت طويلة جداً — ابدأ محادثة جديدة من فضلك."
+          : "Conversation too long. Please start a new chat.",
+      });
     }
 
     // ✅ SECURITY FIX (pre-launch audit run-2): daily per-IP message quota —
@@ -343,9 +359,10 @@ chatbotRouter.post("/", async (c) => {
     };
     let result = await getChatResponse(chatRequest);
     let persistRound = 0;
-    // ✅ ARCH-AUDIT FIX: the persistence loop also honors the client's
-    // disconnect signal — a gone client never keeps burning walk rounds.
-    while (!result.success && Date.now() < nonStreamPersistDeadline && !c.req.raw.signal?.aborted) {
+    // ✅ ROOT-CURE (2026-11-13): a PERMANENT failure (every provider key
+    // absent/invalid) never becomes better by retrying — skip the persistence
+    // loop and answer the configuration notice immediately.
+    while (!result.success && !(result as { permanent?: boolean }).permanent && Date.now() < nonStreamPersistDeadline && !c.req.raw.signal?.aborted) {
       persistRound += 1;
       await new Promise((r) => setTimeout(r, 4_000));
       // Persistence escalation: rounds ≥ 2 skip the dynamic router and go
@@ -465,7 +482,14 @@ chatbotRouter.post("/stream", async (c) => {
   const { messages, vision, imageCount, totalTextChars, screenCapture } = normalized.data;
 
   if (totalTextChars > MAX_TOTAL_CHARS) {
-    return errorResponse(c, "TOO_LARGE", { chatId: body.chatId, message: "Conversation too long. Please start a new chat." });
+    const tooLongAr = resolveChatLanguage(body.language, messages) === "ar";
+    return errorResponse(c, "TOO_LARGE", {
+      chatId: body.chatId,
+      lang: tooLongAr ? "ar" : "en",
+      message: tooLongAr
+        ? "المحادثة أصبحت طويلة جداً — ابدأ محادثة جديدة من فضلك."
+        : "Conversation too long. Please start a new chat.",
+    });
   }
 
   // ✅ SECURITY FIX (pre-launch audit run-2): daily per-IP message quota —
@@ -630,7 +654,13 @@ chatbotRouter.post("/stream", async (c) => {
     accumulatedReply += rest;
     return forwardEncoder.encode(`data: ${JSON.stringify({ text: rest })}\n\n`);
   };
-  const flushAccumulator = () => {
+  // ✅ ROOT-CURE (2026-11-13, flushAccumulator persisted text the client never
+  // received): the trailing unterminated SSE event's text used to be added to
+  // accumulatedReply WITHOUT being emitted — the persisted history and the
+  // user-visible reply diverged on a stream that ends without a final newline.
+  // The flush now RETURNS the client-facing bytes; the caller enqueues them
+  // exactly like flushLeakTail's output.
+  const flushAccumulator = (): Uint8Array | null => {
     // ✅ AUDIT RUN-2 FIX (hardening from run-2 hunt): flush the decoder's
     // final multibyte buffer, then route the trailing event through the leak
     // gate BEFORE it can reach accumulatedReply — the trailing text must
@@ -648,12 +678,14 @@ chatbotRouter.post("/stream", async (c) => {
               accumulatedReply = promptLeakRefusal(language);
               logger.warn("[Chatbot] prompt-leak tripwire fired on tail flush — reply replaced with refusal");
             }
-            return;
+            return null;
           }
           accumulatedReply += parsed.text;
+          return forwardEncoder.encode(`data: ${JSON.stringify({ text: parsed.text })}\n\n`);
         }
       } catch { /* incomplete trailing event — drop */ }
     }
+    return null;
   };
 
   type StreamResult = { stream: ReadableStream<Uint8Array>; model: string } | { error: string };
@@ -761,7 +793,8 @@ chatbotRouter.post("/stream", async (c) => {
           const tailBytes = flushLeakTail();
           if (tailBytes) safeEnqueue(tailBytes);
 
-          flushAccumulator();
+          const trailingBytes = flushAccumulator();
+          if (trailingBytes && !leakDetected) safeEnqueue(trailingBytes);
           const reply = accumulatedReply.trim();
           if (reply) {
             served = true;

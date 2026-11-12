@@ -30,7 +30,11 @@ import { createHash } from "node:crypto";
 import { stripThinkBlocks } from "./think-filter.js";
 import { sanitizeReplyOutput, containsPromptLeak, promptLeakRefusal } from "./chatbot-prompts.js";
 
-const SENTENCE_END_RE = /[.!?…:؛،"'”’）)\]】»*]\s*$/;
+// ✅ ROOT-CURE (2026-11-13, Arabic question mark): U+061F ؟ was missing, so
+// EVERY complete Arabic answer ending in a question ("…هل تريد شرح الخطوات؟")
+// looked mid-sentence to the rescue heuristic (needless rescue rounds) and to
+// the truncation policy (the closing question got CUT OFF the reply).
+const SENTENCE_END_RE = /[.!?…؟:؛،"'”’）)\]】»*]\s*$/;
 
 /** Heuristic: the text ends like a finished sentence (not cut mid-thought). */
 export function looksComplete(text: string): boolean {
@@ -60,7 +64,9 @@ export function trimToLastSentence(text: string): string {
   const t = text.trim();
   if (!t || t.includes("```") || t.includes("\n") || t.length < TRIM_MIN_LENGTH) return text;
   let lastEnd = -1;
-  const re = /[.!?…؛]/g;
+  // ✅ ROOT-CURE (2026-11-13): ؟ (U+061F) added — see SENTENCE_END_RE above.
+  // Arabic comma ، stays OUT deliberately: it is not a safe cut point.
+  const re = /[.!?…؟؛]/g;
   for (let m = re.exec(t); m; m = re.exec(t)) {
     const after = t.slice(m.index + m[0].length);
     // Sentence end counts when it is followed by whitespace or end of text —

@@ -24,7 +24,10 @@ export const courseWatchingProcedures = {
       const [lesson] = await db
         .select()
         .from(lessons)
-        .where(eq(lessons.id, input.lessonId))
+        // ✅ ROOT-CURE (2026-11-13): raw lesson ids bypassed isPublished — an
+        // admin-unpublished/draft lesson stayed playable by anyone holding
+        // its id. The public course feed filters drafts; so do the raw ids.
+        .where(and(eq(lessons.id, input.lessonId), eq(lessons.isPublished, true)))
         .limit(1);
 
       if (!lesson) throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
@@ -71,7 +74,9 @@ export const courseWatchingProcedures = {
       const [lesson] = await db
         .select({ courseId: lessons.courseId, isFree: lessons.isFree })
         .from(lessons)
-        .where(eq(lessons.id, input.lessonId))
+        // ✅ ROOT-CURE (2026-11-13): draft lessons must not accumulate
+        // progress/watch-time either — same isPublished gate as lessonVideo.
+        .where(and(eq(lessons.id, input.lessonId), eq(lessons.isPublished, true)))
         .limit(1);
 
       if (!lesson) {
@@ -107,7 +112,9 @@ export const courseWatchingProcedures = {
       const [lesson] = await db
         .select({ courseId: lessons.courseId, isFree: lessons.isFree })
         .from(lessons)
-        .where(eq(lessons.id, input.lessonId))
+        // ✅ ROOT-CURE (2026-11-13): draft lessons must not accumulate
+        // progress/watch-time either — same isPublished gate as lessonVideo.
+        .where(and(eq(lessons.id, input.lessonId), eq(lessons.isPublished, true)))
         .limit(1);
 
       if (!lesson) {

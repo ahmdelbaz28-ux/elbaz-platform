@@ -146,5 +146,26 @@ export function normalizeChatInput(raw: unknown): { ok: true; data: NormalizedCh
   if (messages.length === 0) {
     return { ok: false, failure: { status: 400, code: "BAD_REQUEST", en: "Messages array is required", ar: "Messages array is required" } };
   }
+  // ✅ ROOT-CURE (2026-11-13, blank conversation burned a provider call): a
+  // request whose every message is empty text (and no images) used to pass
+  // normalization and DISPATCH a real provider call with nothing to answer —
+  // a wasted call + a confusing 503 for a client bug. The direct-API caller
+  // now gets the clean 400 it always deserved. (A blank message WITH an
+  // attached image stays valid — image-only questions are a product flow.)
+  const conversationBlank = imageCount === 0 && messages.every((m) => {
+    const t = typeof m.content === "string" ? m.content : "";
+    return t.trim().length === 0;
+  });
+  if (conversationBlank) {
+    return {
+      ok: false,
+      failure: {
+        status: 400,
+        code: "BAD_REQUEST",
+        en: "Message text is empty — write your question and send it again",
+        ar: "نص الرسالة فارغ — اكتب سؤالك وأعد الإرسال",
+      },
+    };
+  }
   return { ok: true, data: { messages, vision: imageCount > 0, imageCount, totalTextChars, screenCapture } };
 }

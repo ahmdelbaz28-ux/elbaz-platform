@@ -17,6 +17,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { trpc } from "@/providers/trpc";
+import { sendHeartbeatBeacon } from "@/lib/watch-beacon";
 
 interface UseWatchTrackerOptions {
   lessonId: number | null;
@@ -253,14 +254,12 @@ export function useWatchTracker({
         const watchedSeconds = Math.floor((Date.now() - lastTickRef.current) / 1000);
 
         if (lessonIdRef.current && (watchedSeconds >= 1 || currentPosition !== lastPositionRef.current)) {
-          const blob = new Blob([JSON.stringify({
+          // ✅ ROOT-CURE (2026-11-13): superjson envelope — see watch-beacon.ts.
+          sendHeartbeatBeacon({
             lessonId: lessonIdRef.current,
             watchedSeconds: Math.min(watchedSeconds, 120),
             lastPosition: currentPosition,
-          })], { type: "application/json" });
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const baseUrl = (globalThis as any).Capacitor?.isNativePlatform?.() ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io") : "";
-          navigator.sendBeacon?.(`${baseUrl}/api/trpc/course.heartbeat`, blob);
+          });
         }
       }
     };

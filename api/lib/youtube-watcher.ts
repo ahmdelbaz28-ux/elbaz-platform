@@ -48,7 +48,11 @@ const FETCH_TIMEOUT_MS = 20 * 1000;
 /** Max notifications per tick (a burst of N uploads never spams more than this). */
 const MAX_PER_TICK = 3;
 /** How many known video ids to keep in the state row. */
-const STATE_MAX_IDS = 100;
+// ✅ ROOT-CURE (2026-11-13): 100 ids meant a playlist beyond 100 videos was
+// never remembered past position 100 — every tick re-announced the same
+// "new episode" 3 times every 15 min forever. 500 covers every real course
+// playlist; the state row stays a few KB.
+const STATE_MAX_IDS = 500;
 
 const STATE_SECTION = "youtubeWatch";
 const STATE_KEY = "state";

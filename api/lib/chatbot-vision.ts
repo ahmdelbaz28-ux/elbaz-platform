@@ -205,11 +205,12 @@ export async function readImageViaVisionModels(
   messages: ChatApiMessage[],
   language?: string,
   screenCapture?: boolean,
+  abortSignal?: AbortSignal,
 ): Promise<VisionReadResult> {
   const cached = visionReadCache.get(messages);
   if (cached) return cached;
 
-  const result = await performVisionRead(messages, language, screenCapture);
+  const result = await performVisionRead(messages, language, screenCapture, abortSignal);
   visionReadCache.set(messages, result);
   return result;
 }
@@ -218,11 +219,14 @@ async function performVisionRead(
   messages: ChatApiMessage[],
   language?: string,
   screenCapture?: boolean,
+  abortSignal?: AbortSignal,
 ): Promise<VisionReadResult> {
   const systemPrompt = visionExtractionPrompt(language, screenCapture);
   const startedAt = Date.now();
   /** True when another reader stage still fits inside the overall budget. */
-  const stageFits = () => Date.now() - startedAt + VISION_STAGE_MIN_REMAINING_MS < VISION_READ_BUDGET_MS;
+  const stageFits = () =>
+    !abortSignal?.aborted
+    && Date.now() - startedAt + VISION_STAGE_MIN_REMAINING_MS < VISION_READ_BUDGET_MS;
 
   const accept = (reply: string | null | undefined, model: string): VisionReadResult | null => {
     const cleaned = stripThinkBlocks(reply ?? "");
@@ -254,6 +258,10 @@ async function performVisionRead(
         preferredModelId: VISION_PRIMARY_READER,
         allowReasoningText: true,
         gen: { temperature: 0.1, maxTokens: 1500, attemptTimeoutMs: VISION_READ_TIMEOUT_MS, globalBudgetMs: 35_000 },
+        // ✅ ROOT-CURE (2026-11-13): PASS-1 honors the caller's disconnect —
+        // a gone client (or hard-cap abort) must not keep burning vision
+        // provider quota for up to 45s (same contract as PASS 2).
+        abortSignal,
       });
       if (routed.ok) {
         const hit = accept(routed.result.reply, routed.result.model);
@@ -273,7 +281,7 @@ async function performVisionRead(
     // when Groq rotates the model out (2026-10-23: 404), the read skips the
     // dead attempt and moves straight to the OpenRouter VL sweep.
     try {
-      const r1 = await tryGroq(messages, systemPrompt, GROQ_VISION_MODEL, VISION_READ_TIMEOUT_MS);
+      const r1 = await tryGroq(messages, systemPrompt, GROQ_VISION_MODEL, VISION_READ_TIMEOUT_MS, undefined, abortSignal);
       const hit1 = r1 ? accept(r1.reply, `groq/${GROQ_VISION_MODEL}`) : null;
       if (hit1) return hit1;
     } catch (err) {
@@ -283,7 +291,7 @@ async function performVisionRead(
 
   if (stageFits()) {
     try {
-      const or = await tryOpenRouterVision(messages, systemPrompt, 15_000);
+      const or = await tryOpenRouterVision(messages, systemPrompt, 15_000, undefined, abortSignal);
       const hit = or ? accept(or.reply, or.model) : null;
       if (hit) return hit;
     } catch (err) {

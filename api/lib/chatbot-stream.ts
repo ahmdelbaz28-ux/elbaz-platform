@@ -130,7 +130,7 @@ async function tryPickOpenRouterProvider(systemPrompt: string, tuning: ModeTunin
   const lastEntry = chatHealth.lastWorkingByMode[modeKey];
   if (
     lastEntry?.model &&
-    (Date.now() - lastEntry.time) < 600000 &&
+    (Date.now() - lastEntry.time) < 300_000 && // ✅ 5-min TTL — same window as chatbot.ts/ai-router.ts (was a drifting 10-min here)
     (modelFailCount[lastEntry.model] || 0) < 3 &&
     (!preferred || lastEntry.model === preferred) &&
     isChatLaneModel(lastEntry.model)
@@ -212,6 +212,14 @@ export async function pickWorkingModel(
 // ════════════════════════════════════════════════════════════════════════
 // SSE STREAMING HELPERS
 // ════════════════════════════════════════════════════════════════════════
+
+/**
+ * ✅ ROOT-CURE (2026-11-13): error responses whose bodies are never consumed
+ * pin the undici socket until GC — release them on every non-429 error path.
+ */
+function discardStreamBody(response: Response): void {
+  try { void response.body?.cancel().catch(() => { /* already dead */ }); } catch { /* no body */ }
+}
 
 function buildStreamErrorResponse(kind: "noProvider" | "openRouterError" | "openRouterConnectError", language?: string): { error: string } {
   const messages: Record<typeof kind, { ar: string; en: string }> = {
@@ -654,6 +662,7 @@ async function streamOpenRouterProvider(
 
       if (!response.ok && wantsWeb && (response.status === 402 || response.status === 400)) {
         disableWebPluginFor();
+        discardStreamBody(response); // the mostly-consumed first response must not pin its socket
         logger.warn(`[Chatbot/Stream/OpenRouter] web plugin rejected (HTTP ${response.status}) — retrying ${modelId} without it`);
         const retryTimeout = headerTimeoutSignal(request.abortSignal, picked.tuning.openRouterStreamTimeoutMs);
         try {
@@ -687,6 +696,8 @@ async function streamOpenRouterProvider(
             const body = (await response.text()).slice(0, 2_000);
             if (/free-models-per-(day|month)/i.test(body)) noteOpenRouterDailyLimit();
           } catch { /* body unreadable — normal 429 handling */ }
+        } else {
+          discardStreamBody(response);
         }
         modelFailCount[modelId] = (modelFailCount[modelId] || 0) + 1;
         realAttempts++;
@@ -796,7 +807,7 @@ async function getVisionStreamResponse(request: {
 
   // ── PASS 1 (READ): vision model extracts a factual description (bounded,
   // non-streaming — the description is short and the reasoning pass streams).
-  const read = await readImageViaVisionModels(request.messages, request.language, request.screenCapture);
+  const read = await readImageViaVisionModels(request.messages, request.language, request.screenCapture, request.abortSignal);
   const pass2Messages = read.ok && read.description
     ? buildAugmentedTextMessages(request.messages, read.description, request.language)
     : buildVisionFailureMessages(request.messages, request.language);

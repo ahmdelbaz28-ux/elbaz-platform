@@ -17,6 +17,18 @@ export default defineConfig({
     include: ["api/**/*.test.ts", "api/**/*.spec.ts", "src/**/*.test.ts", "src/**/*.spec.ts"],
     testTimeout: 30000, // 30s timeout for tests (Modal retry backoff can take time)
     hookTimeout: 30000,
+    // ✅ ROOT-CURE (2026-11-13): security-audit-run1/run2 failed at IMPORT
+    // time in any bare environment because validateEnv (env.ts, loaded via
+    // the jwt/connection import chain) requires APP_SECRET + GOOGLE_CLIENT_ID.
+    // CI exported them by hand (sonarcloud.yml); the suite is now self-
+    // contained with the SAME test-only dummies CI uses — never real secrets.
+    env: {
+      NODE_ENV: "test",
+      APP_SECRET: "test-secret-not-for-production-minimum-32-chars",
+      GOOGLE_CLIENT_ID: "test-google-client-id.apps.googleusercontent.com",
+      OPENROUTER_API_KEY: "sk-or-v1-test-key-for-ci-only",
+      DATABASE_URL: "mysql2://test:test@localhost:3306/test",
+    },
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],

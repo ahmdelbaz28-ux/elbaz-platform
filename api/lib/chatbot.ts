@@ -47,6 +47,16 @@ import { buildAugmentedTextMessages, buildVisionFailureMessages, readImageViaVis
 
 export const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+/**
+ * ✅ ROOT-CURE (2026-11-13, socket pressure during provider storms): error
+ * responses whose bodies are never consumed pin the undici socket until GC.
+ * Cancel the body (fire-and-forget, no unhandled rejection) on every error
+ * path that does not read it.
+ */
+function discardBody(response: Response): void {
+  try { void response.body?.cancel().catch(() => { /* already dead */ }); } catch { /* no body */ }
+}
+
 // ── Multimodal content types (OpenAI-compatible vision format) ──
 // A message's content is a plain string OR an array of typed parts. Only the
 // LAST user message of a request may carry image parts (the router flattens
@@ -131,6 +141,7 @@ export const chatHealth = {
   groqLastSuccess: 0,
   groqLastFailTime: 0,
   groqCurrentModelIndex: 0,
+  groqLastDialedModel: "",
 
   nvidiaKeyValid: null as boolean | null,
   nvidiaConsecFails: 0,
@@ -253,12 +264,14 @@ export async function tryGroq(
       chatHealth.groqConsecFails++;
       chatHealth.groqLastFailTime = Date.now();
       logger.error("[Chatbot/Groq] request rejected", { status: response.status });
+      discardBody(response);
       return null;
     }
 
     if (!response.ok) {
       chatHealth.groqConsecFails++;
       chatHealth.groqLastFailTime = Date.now();
+      discardBody(response);
       return null;
     }
 
@@ -360,12 +373,14 @@ export async function tryNvidia(
       chatHealth.nvidiaConsecFails++;
       chatHealth.nvidiaLastFailTime = Date.now();
       logger.error("[Chatbot/NVIDIA] request rejected", { status: response.status });
+      discardBody(response);
       return null;
     }
 
     if (!response.ok) {
       chatHealth.nvidiaConsecFails++;
       chatHealth.nvidiaLastFailTime = Date.now();
+      discardBody(response);
       return null;
     }
 
@@ -562,6 +577,7 @@ export async function tryModel(
       logger.error("[Chatbot/OpenRouter] API key returned 401 Unauthorized — key is invalid or expired");
       chatHealth.openrouterKeyValid = false;
       chatHealth.openrouterKeyValidated = true;
+      discardBody(response);
       return null;
     }
 
@@ -573,6 +589,8 @@ export async function tryModel(
           const body = (await response.text()).slice(0, 2_000);
           if (/free-models-per-(day|month)/i.test(body)) noteOpenRouterDailyLimit();
         } catch { /* body unreadable — normal 429 handling */ }
+      } else {
+        discardBody(response);
       }
       modelFailCount[modelId] = (modelFailCount[modelId] || 0) + 1;
       return null;
@@ -770,14 +788,19 @@ function buildSuccessResult(result: { reply: string; model: string }): { success
   return { success: true, reply: result.reply, model: result.model };
 }
 
-function buildAllTiersFailedResponse(language?: string): { success: boolean; error: string } {
+function buildAllTiersFailedResponse(language?: string): { success: boolean; error: string; permanent: boolean } {
   const nvidiaDead = chatHealth.nvidiaKeyValid === false || !NVIDIA_API_KEY;
   const groqDead = chatHealth.groqKeyValid === false || !GROQ_API_KEY;
   const orDead = chatHealth.openrouterKeyValid === false || !OPENROUTER_API_KEY;
 
   if (nvidiaDead && groqDead && orDead) {
+    // ✅ ROOT-CURE (2026-11-13): `permanent: true` tells the router's
+    // persistence loop to STOP — with EVERY key absent/invalid the walk can
+    // never succeed, and the old loop burned its full 30s deadline on futile
+    // retries before answering a mere misconfiguration.
     return {
       success: false,
+      permanent: true,
       error: language === "ar"
         ? "مفتاحات API الخاصة بالشات بوت غير مُهيأة أو غير صالحة. يرجى التواصل مع الدعم الفني."
         : "The chatbot API keys are not configured or invalid. Please contact support.",
@@ -787,6 +810,7 @@ function buildAllTiersFailedResponse(language?: string): { success: boolean; err
   logger.error("[Chatbot] All tiers failed (NVIDIA + OpenRouter + Groq).");
   return {
     success: false,
+    permanent: false,
     error: language === "ar"
       ? "الخدمة تمر بضغط عالٍ في هذه اللحظات — أعد إرسال سؤالك بعد لحظة وسأجيبك فوراً ⚡"
       : "The service is under heavy load right now — please send your question again in a moment and I'll answer right away ⚡",
@@ -824,8 +848,13 @@ export async function tryGroqTier(
       });
       return null;
     }
-    chatHealth.groqCurrentModelIndex = i; // ✅ index of liveModels — SAME space the stream reader consumes
     const modelId = liveModels[i];
+    // ✅ ROOT-CURE (2026-11-13): diagnostics used to read GROQ_MODELS[i] while
+    // this index lives in the DISCOVERY-FILTERED liveModels space — whenever
+    // discovery filtered any id, stats reported the wrong "current model".
+    // The dialed model id itself is the only unambiguous record.
+    chatHealth.groqCurrentModelIndex = i;
+    chatHealth.groqLastDialedModel = modelId;
 
     let result = await tryGroq(messages, systemPrompt, modelId, firstTimeout, tuning, abortSignal);
     if (result) return buildSuccessResult(result);
@@ -1016,6 +1045,11 @@ export async function groqFallback(
   tuning: ModeTuning = MODE_TUNING.thinking,
   abortSignal?: AbortSignal,
 ): Promise<{ reply: string; model: string } | null> {
+  // ✅ ROOT-CURE (2026-11-13): the streaming recovery chain dialed Groq even
+  // while its cooldown breaker was armed (MAX_CONSEC_GROQ_FAILS reached) —
+  // every NVIDIA/OpenRouter empty-stream recovery re-burned dead Groq
+  // attempts and stretched the outage tail. Same gate as tryGroqTier.
+  if (!groqIsAvailable()) return null;
   const [firstTimeout, retryTimeout] = tuning.groqAttemptTimeouts;
   // ✅ Same wall-clock budget as tryGroqTier — one hung lane can no longer
   // hold the request beyond the mode's Groq budget.
@@ -1084,7 +1118,7 @@ export async function getVisionResponse(request: {
   // ── PASS 1 (READ): a vision-capable model extracts a factual description ──
   // The vision lane is offered ONLY the raw multimodal messages with the
   // extraction prompt — never the ETAP persona, never asked for the answer.
-  const read = await readImageViaVisionModels(request.messages, request.language, request.screenCapture);
+  const read = await readImageViaVisionModels(request.messages, request.language, request.screenCapture, request.abortSignal);
 
   // ── PASS 2 (ANSWER): the description becomes TEXT and the normal
   // reasoning-first cascade produces the final engineering answer. The
@@ -1153,7 +1187,7 @@ export function getChatbotStats() {
     tier3: {
       provider: "groq",
       models: GROQ_MODELS,
-      currentModel: GROQ_MODELS[chatHealth.groqCurrentModelIndex] || GROQ_MODELS[0],
+      currentModel: chatHealth.groqLastDialedModel || GROQ_MODELS[0],
       configured: !!GROQ_API_KEY,
       keyValid: chatHealth.groqKeyValid,
       consecFails: chatHealth.groqConsecFails,

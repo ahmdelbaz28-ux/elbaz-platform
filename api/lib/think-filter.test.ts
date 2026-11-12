@@ -139,3 +139,21 @@ describe("ThinkStreamFilter (streaming)", () => {
     expect(out).toBe("\n## Answer\nDo X.");
   });
 });
+
+// ✅ ROOT-CURE regression (2026-11-13, length-changing lowercase): the scan
+// used to search `text.toLowerCase()` but slice the ORIGINAL string — a char
+// whose lowercase form changes length (Turkish İ U+0130 → 2 chars) shifted
+// every index and corrupted the output. indexOfCI now reports indexes into
+// the ORIGINAL string.
+describe("length-changing lowercase (İ) — index integrity", () => {
+  it("stripThinkBlocks survives İ before a think block", () => {
+    expect(stripThinkBlocks("İstanbul <think>secret</think> done")).toBe("İstanbul  done");
+  });
+
+  it("ThinkStreamFilter survives İ split across chunks", () => {
+    const f = new ThinkStreamFilter();
+    const out = f.push("İstanbul <thi") + f.push("nk>secret</think> done") + f.flush();
+    expect(out).toBe("İstanbul  done");
+    expect(out).not.toContain("secret");
+  });
+});

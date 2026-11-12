@@ -798,7 +798,7 @@ const MessageBubble = memo(function MessageBubble({ msg, lang, copied, onCopy, o
       img.addEventListener("error", onError, { once: true });
       offs.push(() => img.removeEventListener("error", onError));
     }
-    return () => offs.forEach((off) => off());
+    return () => offs.forEach((off) => { off(); });
   }, [msg.content, msg.role, msg.isError, lang]);
 
   return (
@@ -950,6 +950,23 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   // snapshot above the rated reply). Synced after every render.
   const messagesRef = useRef<Message[]>(messages);
   useLayoutEffect(() => { messagesRef.current = messages; }, [messages]);
+
+  // ─── Identity-change reload (security, root-cure 2026-11-13) ───
+  // The state initializer above runs ONCE, before the auth check settles —
+  // on a shared browser it loads the GUEST key even though a session cookie
+  // exists. Without this effect those guest messages stay in the UI AND get
+  // written into the logged-in user's storage key by the persist effect
+  // (cross-identity leak the per-identity keys were designed to prevent).
+  // When the identity flips (login settles / logout), the conversation is
+  // reloaded from the CORRECT identity key. Guarded by identity only, so a
+  // language switch can never wipe an active conversation.
+  const identityRef = useRef<number | null | undefined>(user?.id ?? null);
+  useEffect(() => {
+    const identity = user?.id ?? null;
+    if (identity === identityRef.current) return;
+    identityRef.current = identity;
+    setMessages(loadMessagesFromStorage(chatStorageKey(identity)) || [WELCOME_MESSAGES[lang] ?? WELCOME_MESSAGES.en]);
+  }, [user?.id, lang]);
   const abortControllerRef = useRef<AbortController | null>(null);
   // Bumped on clearChat — any in-flight sendMessage with an older generation
   // becomes stale and must NOT touch state afterwards (prevents the cleared
@@ -1280,7 +1297,12 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
 
     setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, feedback: rating } : m)));
 
-    void fetch("/api/chatbot/feedback", {
+    // ✅ ROOT-CURE (2026-11-13, mobile builds): the vote used to fetch the
+    // RELATIVE url "/api/chatbot/feedback" — on native (Capacitor) builds the
+    // other chat call sites use API_BASE (absolute production origin), so the
+    // relative fetch hit the local app origin and EVERY feedback vote from
+    // the mobile app silently vanished. Same origin contract as history/send.
+    void fetch(`${API_BASE}/api/chatbot/feedback`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1324,7 +1346,13 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     // UI-only notifications, not real answers — replaying them into provider
     // history made the next reply see fake "assistant" turns (and occasionally
     // echo the busy copy back).
-    const historyMessages = messages
+    // ✅ ROOT-CURE (2026-11-13, retry duplicated the retried question): the
+    // history used to be built from the render-time `messages` closure — during
+    // a retry that closure still contained BOTH the old error bubble's user
+    // question AND the freshly re-appended one, so the provider saw the question
+    // twice. messagesRef.current is synced after every render, so by the time
+    // the retry's 100ms deferred send fires it holds the FILTERED list.
+    const historyMessages = messagesRef.current
       .slice(-20)
       .filter((m) => m.id !== "welcome" && !m.isError);
     type ApiContent = string | Array<
@@ -1611,7 +1639,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
       setStreamingContent("");
       abortControllerRef.current = null;
     }
-  }, [isLoading, messages, lang, chatMode, startReveal, stopReveal, drainReveal]);
+  }, [isLoading, lang, chatMode, startReveal, stopReveal, drainReveal]);
 
   // ─── 📐 "ارسمها دلوقتي" chip → one-tap follow-up ───
   // The bot promised a diagram but the reply carried no SLD board: one tap

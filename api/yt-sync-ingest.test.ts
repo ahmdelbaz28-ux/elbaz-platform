@@ -16,6 +16,17 @@ vi.mock("./lib/playlist-sync.js", () => ({
   applyPlaylistSync,
   getSyncState,
   getSyncSettings,
+  // ✅ 2026-11-13: the ingest now filters YouTube placeholder titles
+  // ("فيديو خاص" / "Private video" …) server-side — the mock passes the real
+  // implementation's behavior through (pure function, no DB).
+  isPlaceholderTitle: (title: string): boolean => {
+    const t = title.trim().toLowerCase();
+    if (!t) return true;
+    return [
+      "private video", "deleted video", "unavailable", "video unavailable",
+      "فيديو خاص", "فيديو محذوف", "الفيديو غير متاح", "هذا الفيديو غير متاح",
+    ].some((m) => t.includes(m.toLowerCase()));
+  },
 }));
 
 import { ytSyncIngestRoute } from "./yt-sync-ingest";

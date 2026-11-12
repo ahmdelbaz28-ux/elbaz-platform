@@ -343,10 +343,17 @@ export const platformCoreEn = `
 //      value-first invitation style (user-need framing, never forcing)
 // ════════════════════════════════════════════════════════════════════════
 
+// ✅ ROOT-CURE (2026-11-13, second hard-coded copy of the playlist id): the
+// bot used to advertise a FROZEN playlist URL while the sync engine reads
+// YOUTUBE_PLAYLIST_ID from the environment — setting the env moved the whole
+// platform EXCEPT the bot's answer. The env now flows into the bot too
+// (same default, so the tests' verbatim assertion still holds).
+const BOT_PLAYLIST_ID = process.env.YOUTUBE_PLAYLIST_ID || "PLeeb5_Qjhcgc";
+
 /** Single source of truth for the official links (tests assert these verbatim). */
 export const OFFICIAL_LINKS = {
   website: "https://ahmedelbaz.qzz.io",
-  youtubePlaylist: "https://youtube.com/playlist?list=PLeeb5_Qjhcgc",
+  youtubePlaylist: `https://youtube.com/playlist?list=${BOT_PLAYLIST_ID}`,
   telegram: "https://t.me/engahmedetap",
   facebook: "https://www.facebook.com/share/1Cm6U14ihR/",
   instagram: "https://www.instagram.com/ahmedetap1",

@@ -19,7 +19,7 @@
  */
 
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
-import { getDb } from "../queries/connection.js";
+import { getDb, getRawConnection } from "../queries/connection.js";
 import { courses, lessons, notifications, siteSettings } from "@db/schema";
 import { logger } from "./logger.js";
 import { invalidateCourseDetailCache } from "./cache.js";
@@ -114,6 +114,96 @@ export async function getSyncState(): Promise<PlaylistSyncState | null> {
   }
 }
 
+/**
+ * ✅ ROOT-CURE (2026-11-13, prunedOnce re-armed itself on DB errors):
+ * `getSyncState()` returns null BOTH when the state row genuinely does not
+ * exist (first run → the one-time purge is correct) AND when the DB read
+ * fails (a transient error must NEVER re-arm the destructive purge). The
+ * strict variant lets applyPlaylistSync tell those two cases apart.
+ */
+export async function getSyncStateStrict(): Promise<PlaylistSyncState | null> {
+  const db = getDb();
+  const [row] = await db
+    .select({ value: siteSettings.value })
+    .from(siteSettings)
+    .where(and(eq(siteSettings.section, SYNC_SECTION), eq(siteSettings.key, STATE_KEY)))
+    .limit(1);
+  return row?.value ? (JSON.parse(row.value) as PlaylistSyncState) : null;
+}
+
+/**
+ * ✅ ROOT-CURE (2026-11-13, concurrent syncs raced → duplicate published
+ * lessons): three independent feeders (GH Actions relay ~every 14 min, the
+ * in-server watcher tick every 15 min, admin buttons) used to read "no
+ * lesson for video X" at the same moment and both insert. A MySQL advisory
+ * lock (session-scoped, auto-released when the connection dies) now
+ * serializes the apply phase across pods and processes. Fail-open: engines
+ * without GET_LOCK (e.g. PlanetScale) proceed unlocked — the previous
+ * behavior — instead of refusing to sync at all.
+ */
+const YT_SYNC_LOCK_NAME = "elbaz_yt_playlist_sync";
+
+async function acquireYtSyncLock(): Promise<{ release: () => Promise<void> } | null> {
+  let conn: Awaited<ReturnType<typeof getRawConnection>>;
+  try {
+    conn = await getRawConnection();
+  } catch (err) {
+    logger.warn("[PlaylistSync] advisory lock unavailable — proceeding unlocked", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { release: async () => {} };
+  }
+  try {
+    const [rows] = await conn.execute("SELECT GET_LOCK(?, 0) AS acquired", [YT_SYNC_LOCK_NAME]);
+    const acquired = (rows as { acquired: number }[])[0]?.acquired;
+    if (acquired !== 1) {
+      conn.release();
+      return null;
+    }
+  } catch (err) {
+    logger.warn("[PlaylistSync] GET_LOCK unavailable — proceeding unlocked", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { release: () => { try { conn.release(); } catch { /* already released */ } return Promise.resolve(); } };
+  }
+  let released = false;
+  return {
+    release: async () => {
+      if (released) return;
+      released = true;
+      try { await conn.execute("SELECT RELEASE_LOCK(?)", [YT_SYNC_LOCK_NAME]); } catch { /* connection died — lock auto-released */ }
+      try { conn.release(); } catch { /* already released */ }
+    },
+  };
+}
+
+/**
+ * YouTube "unavailable video" placeholder titles in BOTH languages YouTube
+ * may serve (the relay fetches with hl=ar — Arabic placeholders are the
+ * COMMON case, English the fallback). A placeholder must never become a
+ * published lesson. Shared by the ingest endpoint and the admin import so
+ * every feeder filters identically.
+ */
+export const PLACEHOLDER_TITLE_MARKERS: readonly string[] = [
+  // English (hl=en)
+  "private video",
+  "deleted video",
+  "unavailable",
+  "video unavailable",
+  // Arabic (hl=ar) — القائمة الرسمية التي يخدمها يوتيوب للفيديوهات غير المتاحة
+  "فيديو خاص",
+  "فيديو محذوف",
+  "الفيديو غير متاح",
+  "هذا الفيديو غير متاح",
+];
+
+/** True when a title is one of YouTube's placeholder/error titles. */
+export function isPlaceholderTitle(title: string): boolean {
+  const t = title.trim().toLowerCase();
+  if (!t) return true; // whitespace/empty titles are placeholders too
+  return PLACEHOLDER_TITLE_MARKERS.some((m) => t.includes(m.toLowerCase()));
+}
+
 async function writeState(state: PlaylistSyncState): Promise<void> {
   const db = getDb();
   const value = JSON.stringify(state);
@@ -193,8 +283,14 @@ export function planPlaylistSync(
   }
 
   // ── Playlist → lesson matching (inserts in playlist order) ──
+  // ✅ ROOT-CURE (2026-11-13): a payload containing the same videoId twice
+  // used to insert TWO lessons (existingByVideoId only knows PRE-SYNC rows).
+  // The planned-insert set dedupes within the payload; the first occurrence
+  // (playlist order) wins, matching the orderOf/titleOf maps above.
+  const plannedInserts = new Set<string>();
   videos.forEach((video, idx) => {
-    if (existingByVideoId.has(video.videoId)) return;
+    if (existingByVideoId.has(video.videoId) || plannedInserts.has(video.videoId)) return;
+    plannedInserts.add(video.videoId);
     plan.inserts.push({
       videoId: video.videoId,
       title: video.title,
@@ -323,7 +419,19 @@ export async function applyPlaylistSync(
     }
 
     const settings = await getSyncSettings();
-    const prevState = await getSyncState();
+    // ✅ ROOT-CURE (2026-11-13): read the state STRICTLY — a transient DB
+    // error must not be indistinguishable from "first run" (the old
+    // fail-open null re-armed the destructive purge on the next tick).
+    let prevState: PlaylistSyncState | null = null;
+    let stateReadFailed = false;
+    try {
+      prevState = await getSyncStateStrict();
+    } catch (stateErr) {
+      stateReadFailed = true;
+      logger.warn("[PlaylistSync] sync-state read failed — purge stays disarmed this tick", {
+        error: stateErr instanceof Error ? stateErr.message : String(stateErr),
+      });
+    }
     const db = getDb();
 
     if (videos.length === 0) {
@@ -355,6 +463,18 @@ export async function applyPlaylistSync(
       return summary;
     }
 
+    // ✅ ROOT-CURE (concurrent syncs): hold the advisory lock for the whole
+    // read-plan-write phase. A second feeder that arrives while a sync is
+    // running skips ITS tick — the running sync already covers the same
+    // playlist, so skipping cannot lose content.
+    const lock = await acquireYtSyncLock();
+    if (!lock) {
+      summary.ok = true; // not an error — the in-flight sync serves this tick
+      summary.message = "another playlist sync is in flight — this tick skipped";
+      logger.info("[PlaylistSync] concurrent sync detected — tick skipped", { reason: options.reason });
+      return summary;
+    }
+    try {
     const existing = await db
       .select({
         id: lessons.id,
@@ -369,7 +489,10 @@ export async function applyPlaylistSync(
 
     // "Only real videos" purge runs ONCE automatically (deploy upgrade), then
     // only on explicit admin request — auto ticks never delete afterwards.
-    const replace = options.replace === true || !prevState?.prunedOnce;
+    // ✅ ROOT-CURE: an unreadable state row (stateReadFailed) is treated as
+    // "already pruned" — the one-time purge only ever fires when the state
+    // row GENUINELY does not exist yet.
+    const replace = options.replace === true || (!prevState?.prunedOnce && !stateReadFailed);
 
     const plan = planPlaylistSync(existing, videos, { isFree: settings.autoImportFree });
 
@@ -459,6 +582,9 @@ export async function applyPlaylistSync(
     await invalidateCourseDetailCache(course.slug);
     summary.ok = true;
     return summary;
+    } finally {
+      await lock.release();
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     // Drizzle wraps the REAL driver error in `cause` (DrizzleQueryError) —

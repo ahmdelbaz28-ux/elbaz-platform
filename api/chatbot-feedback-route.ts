@@ -15,8 +15,11 @@ import { logger } from "./lib/logger";
 export const feedbackSchema = z.object({
   chatId: z.string().min(4).max(64),
   rating: z.enum(["up", "down"]),
-  question: z.string().min(1).max(8_000),
-  answer: z.string().min(1).max(8_000),
+  // ✅ FIX (2026-11-13): the caps now MATCH the DB columns (question 2000 /
+  // answer 4000 in chatbot-feedback.ts) — the old 8_000 let schema-valid
+  // votes through only to be silently truncated at insert time.
+  question: z.string().min(1).max(2_000),
+  answer: z.string().min(1).max(4_000),
   comment: z.string().max(FEEDBACK_COMMENT_CAP).optional(),
   language: z.enum(["ar", "en"]).optional(),
   mode: z.enum(["thinking", "instant"]).optional(),

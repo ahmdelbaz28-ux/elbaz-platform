@@ -19,6 +19,7 @@ import { trpc } from "@/providers/trpc";
 import { trackEvent } from "@/lib/clarity";
 import CommentNudge from "@/components/CommentNudge";
 import { buildYouTubeWatchUrl } from "@/lib/youtube-url";
+import { sendHeartbeatBeacon } from "@/lib/watch-beacon";
 import {
   loadYouTubeIframeApi,
   YT_STATE,
@@ -241,19 +242,14 @@ export default function YouTubeLessonPlayer({
       const currentPosition = Math.floor(playerRef.current?.getCurrentTime() || 0);
       const watchedSeconds = Math.floor((Date.now() - lastTickRef.current) / 1000);
       if (watchedSeconds >= 1 || currentPosition !== lastPositionRef.current) {
-        const blob = new Blob(
-          [JSON.stringify({
-            lessonId: lessonIdRef.current,
-            watchedSeconds: Math.min(watchedSeconds, 120),
-            lastPosition: currentPosition,
-          })],
-          { type: "application/json" },
-        );
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const baseUrl = (globalThis as any).Capacitor?.isNativePlatform?.()
-          ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io")
-          : "";
-        navigator.sendBeacon?.(`${baseUrl}/api/trpc/course.heartbeat`, blob);
+        // ✅ ROOT-CURE (2026-11-13): the beacon now carries the superjson
+        // envelope tRPC parses — the raw JSON body was silently discarded
+        // (input parse failure) and the final ≤60s of progress never saved.
+        sendHeartbeatBeacon({
+          lessonId: lessonIdRef.current,
+          watchedSeconds: Math.min(watchedSeconds, 120),
+          lastPosition: currentPosition,
+        });
       }
     };
     globalThis.addEventListener("beforeunload", handleBeforeUnload);

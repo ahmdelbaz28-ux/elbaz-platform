@@ -17,7 +17,7 @@ import {
   applyPlaylistSync,
   getDashboardSyncInfo,
   saveSyncSettings,
-} from "./lib/playlist-sync.js";
+  isPlaceholderTitle } from "./lib/playlist-sync.js";
 
 export const adminCoursesProcedures = {
   listCourses: adminQuery
@@ -345,7 +345,9 @@ export const adminCoursesProcedures = {
           .filter((id): id is string => !!id),
       );
 
-      const fresh = items.filter((item) => !linkedIds.has(item.videoId));
+      // ✅ ROOT-CURE (2026-11-13): placeholders ("فيديو خاص" / "Private
+      // video" …) must never become lessons on the manual import path either.
+      const fresh = items.filter((item) => !linkedIds.has(item.videoId) && !isPlaceholderTitle(item.title));
       if (fresh.length === 0) {
         return { created: 0, skipped: items.length, total: items.length, verified, titles: [] };
       }
@@ -462,9 +464,25 @@ export const adminCoursesProcedures = {
   syncPlaylistNow: adminMutation
     .input(z.object({ replace: z.boolean().default(false) }))
     .mutation(async ({ input }) => {
-      const { items } = await fetchPlaylistVideosForImport();
+      // ✅ ROOT-CURE (2026-11-13, full sync deleted real lessons during a
+      // throttle wave): the replace path used to ignore the fetch's
+      // `verified` flag. When oEmbed could not verify candidates (YouTube
+      // throttling → a PARTIAL snapshot), a replace:true sync deleted every
+      // lesson missing from that snapshot — published lessons AND all user
+      // progress — and the videos returned as NEW lesson ids once YouTube
+      // was reachable again. A degraded fetch is now forced to additive
+      // mode; the destructive cleanup only ever runs on a VERIFIED snapshot.
+      const { items, verified } = await fetchPlaylistVideosForImport();
       const videos = items.map((i) => ({ videoId: i.videoId, title: i.title }));
-      return applyPlaylistSync(videos, { replace: input.replace, reason: "admin-manual" });
+      const replace = input.replace && verified;
+      const summary = await applyPlaylistSync(videos, { replace, reason: "admin-manual" });
+      if (input.replace && !verified) {
+        summary.message = [
+          summary.message,
+          "تم تجاهل طلب الحذف الشامل: لم يتم التحقق من القائمة من يوتيوب في هذه اللحظة (تقييد محتمل) — تمت مزامنة آمنة بدون حذف. أعد المحاولة بعد قليل.",
+        ].filter(Boolean).join(" — ");
+      }
+      return summary;
     }),
 
   /** Policy toggles for the sync engine (auto-import / free previews / cover). */

@@ -22,6 +22,24 @@
  * model in the cascade. Exactly the behavior we want.
  */
 
+/**
+ * ✅ ROOT-CURE (2026-11-13, length-changing lowercase): the previous scan ran
+ * indexOf on `text.toLowerCase()` but SLICED the ORIGINAL string. A char whose
+ * lowercase form changes length (Turkish İ U+0130 → "i̇" = 2 chars) shifts every
+ * downstream index, so slices landed at the wrong offsets — verified live:
+ * "İstanbul <think>secret</think> done" → "İstanbul <done". This finder does a
+ * case-insensitive search that always reports indexes into the ORIGINAL string.
+ */
+function indexOfCI(haystack: string, needle: string, from = 0): number {
+  // "g" + lastIndex gives indexOf-from semantics (search forward from `from`);
+  // a fresh regex per call keeps the stateless contract. m.index is always an
+  // index into the ORIGINAL haystack — slices can never drift again.
+  const re = new RegExp(needle.replace(/[.*+?^${}()[\]\\]/g, "\\$&"), "gi");
+  re.lastIndex = from;
+  const m = re.exec(haystack);
+  return m ? m.index : -1;
+}
+
 const OPEN_TAGS = ["<think>", "<reasoning>"] as const;
 const CLOSE_TAGS = ["</think>", "</reasoning>"] as const;
 
@@ -37,9 +55,9 @@ export function stripThinkBlocks(text: string): string {
     for (const open of OPEN_TAGS) {
       const close = `</${open.slice(1)}`;
       for (;;) {
-        const start = out.toLowerCase().indexOf(open);
+        const start = indexOfCI(out, open);
         if (start === -1) break;
-        const end = out.toLowerCase().indexOf(close, start + open.length);
+        const end = indexOfCI(out, close, start + open.length);
         if (end === -1) {
           // Unclosed block: drop everything from the opening tag onward.
           out = out.slice(0, start);
@@ -84,11 +102,10 @@ export class ThinkStreamFilter {
 
     for (;;) {
       if (!this.inside) {
-        const lowered = this.buffer.toLowerCase();
         let openIdx = -1;
         let openTag = "";
         for (const t of OPEN_TAGS) {
-          const idx = lowered.indexOf(t);
+          const idx = indexOfCI(this.buffer, t);
           if (idx !== -1 && (openIdx === -1 || idx < openIdx)) {
             openIdx = idx;
             openTag = t;
@@ -113,11 +130,10 @@ export class ThinkStreamFilter {
       }
 
       // Inside a think block: look for the matching close tag.
-      const lowered = this.buffer.toLowerCase();
       let closeIdx = -1;
       let closeTag = "";
       for (const t of CLOSE_TAGS) {
-        const idx = lowered.indexOf(t);
+        const idx = indexOfCI(this.buffer, t);
         if (idx !== -1 && (closeIdx === -1 || idx < closeIdx)) {
           closeIdx = idx;
           closeTag = t;

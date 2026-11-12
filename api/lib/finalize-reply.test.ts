@@ -134,3 +134,32 @@ describe("opaqueModelKey — never-name-providers on the wire", () => {
     expect(opaqueModelKey("groq/llama-3.3-70b")).not.toBe(opaqueModelKey("nvidia/llama-3.3-70b"));
   });
 });
+
+// ✅ ROOT-CURE regression (2026-11-13, Arabic question mark ؟ missing):
+// U+061F ended neither the rescue heuristic nor the truncation scan, so
+// complete Arabic answers ending in "؟" looked mid-sentence (needless rescue
+// rounds) and the closing question got cut off single-paragraph replies.
+describe("Arabic question mark ؟ — sentence-end contract (root-cure 2026-11-13)", () => {
+  it("looksComplete accepts an Arabic answer ending in ؟", () => {
+    expect(looksComplete("هل تريد شرح خطوات التنسيق؟")).toBe(true);
+    expect(looksComplete("قيمة الجهد 11 ك.ف — هل المخطط موصول نجمي؟")).toBe(true);
+  });
+
+  it("looksComplete still rejects genuinely incomplete text", () => {
+    expect(looksComplete("ثم نفتح قائمة")).toBe(false);
+    expect(looksComplete("")).toBe(false);
+  });
+
+  it("trimToLastSentence KEEPS the closing Arabic question of a prose reply", () => {
+    const reply = "استخدم ETAP لفتح الدراسة ثم اختر Star من شريط الأدوات الرئيسي. هل تريد أن أشرح خطوات التنسيق بالتفصيل؟";
+    expect(trimToLastSentence(reply)).toBe(reply);
+  });
+
+  it("finalizeReply passes a full Arabic question-ending reply through unchanged", () => {
+    const reply = "الحمل الكلي يساوي مجموع الأحمال الجزئية مضروباً في معامل التزامن حسب الكود. هل تريد مثالاً حسابياً كاملاً؟";
+    const final = finalizeReply(reply, "ar");
+    expect(final.reply).toBe(reply);
+    expect(final.truncated).toBe(false);
+    expect(final.leaked).toBe(false);
+  });
+});

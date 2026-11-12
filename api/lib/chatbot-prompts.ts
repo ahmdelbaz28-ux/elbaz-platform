@@ -188,14 +188,66 @@ const reasoningGuard = `\n\n⛔ OUTPUT RULES (critical):\n- Reply ONLY with the 
 
 // CJK: punctuation/symbols, kana, ideograph ext-A, ideographs, hangul,
 // fullwidth forms, halfwidth kana — none of these belong in AR/EN replies.
-const CJK_OUTPUT_RE = /[\u3000-\u303F\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uFF01-\uFF5E\uFF61-\uFF9F]/g;
+const CJK_OUTPUT_RE = /[\u3000-\u303F\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uFF01-\uFF5E\uFF61-\uFF9F]/;
 
+// ✅ ROOT-CURE (2026-11-13, sanitize destroyed legitimate reply content):
+// the previous implementation ran `.replace(/\(\s*\)/g, "")` (strip EVERY
+// empty paren pair) and `.replace(/[ \t]{2,}/g, " ")` (collapse EVERY space
+// run) unconditionally on every reply and every streamed delta — not just on
+// the artifacts a CJK removal leaves behind. Live impact: `def calc():` became
+// `def calc:`, indented code / ASCII SLD spec boards lost their indentation,
+// and diagram art built from parens was erased. The cleanup is now SEAM-SCOPED:
+// one left-to-right scan consumes each maximal CJK run and repairs ONLY the
+// seam it leaves — the whitespace runs touching the run collapse to exactly
+// one space, and a "( CJK-run )" pair vanishes WITH its parens. Text with no
+// CJK (the overwhelmingly common case) is returned byte-identical, so real
+// code, indentation and ASCII diagrams can never be touched again. The scan
+// stays delta-safe: purely local decisions, no trimming, no cross-chunk state.
 export function sanitizeReplyOutput(text: string): string {
   if (!text) return text;
-  return text
-    .replace(CJK_OUTPUT_RE, "")
-    .replace(/\(\s*\)/g, "")   // empty parens left when the removed CJK sat between them
-    .replace(/[ \t]{2,}/g, " "); // doubled spaces left by the strip
+  if (!CJK_OUTPUT_RE.test(text)) return text;
+
+  let out = "";
+  let i = 0;
+  const n = text.length;
+  while (i < n) {
+    const ch = text[i] ?? "";
+    if (!CJK_OUTPUT_RE.test(ch)) {
+      out += ch;
+      i++;
+      continue;
+    }
+    // ── a CJK run starts here: consume the WHOLE run in one decision ──
+    let j = i;
+    while (j < n && CJK_OUTPUT_RE.test(text[j]!)) j++;
+    // Left seam: trailing spaces of `out` that touch the run.
+    let trimTo = out.length;
+    while (trimTo > 0 && out[trimTo - 1] === " ") trimTo--;
+    const leftSpaces = out.length - trimTo;
+    // Right seam: spaces in the source directly after the run.
+    let k = j;
+    while (k < n && text[k] === " ") k++;
+    const leftChar = trimTo > 0 ? out[trimTo - 1]! : "";
+    const rightChar = k < n ? text[k]! : "";
+
+    if (leftChar === "(" && rightChar === ")") {
+      // "( CJK-run )" — the pair vanishes WITH its parens, its inner spaces
+      // AND the spaces that hugged the "(" from the left, so
+      // "حماية (下游) أساسية" → "حماية أساسية", never "حماية  أساسية".
+      // The text after ")" continues normally.
+      let cut = trimTo - 1;
+      while (cut > 0 && out[cut - 1] === " ") cut--;
+      out = out.slice(0, cut);
+      i = k + 1;
+      continue;
+    }
+    // Plain run: drop it and collapse the seam to EXACTLY one space when
+    // whitespace existed on either side ("قيمة  下游  قيمة" → "قيمة قيمة").
+    out = out.slice(0, trimTo);
+    i = k;
+    if (i < n && (leftSpaces > 0 || k > j)) out += " ";
+  }
+  return out;
 }
 
 // ══════════════════════════════════════════════════════════════════════
