@@ -3,6 +3,11 @@ import json, re
 from playwright.sync_api import sync_playwright
 
 PROD = "https://ahmedelbaz.qzz.io"
+# Private state dir (0700) inside the repo — never /tmp (world-writable):
+# the admin session state and browser profiles contain REAL credentials.
+from pathlib import Path as _Path
+STATE_DIR = _Path(__file__).resolve().parent.parent / ".local" / "state"
+STATE_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
 OUT = "/home/z/my-project/download"
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 
@@ -21,7 +26,7 @@ def pass_cloudflare(pg):
         except Exception:
             pass
         pg.wait_for_timeout(6000)
-    return True
+    return False  # retries exhausted — challenge still active
 
 def find_yt_frame(pg):
     for f in pg.frames:
@@ -35,7 +40,7 @@ with sync_playwright() as p:
               "--autoplay-policy=no-user-gesture-required"])
     ctx = browser.new_context(viewport={"width": 1440, "height": 900},
                               user_agent=UA, locale="ar-EG", service_workers="block",
-                              storage_state="/tmp/prod_admin_state.json")
+                              storage_state=str(STATE_DIR / "prod_admin_state.json"))
     pg = ctx.new_page()
     errors = []
     pg.on("pageerror", lambda e: errors.append(f"pageerror: {str(e)[:120]}"))
@@ -49,7 +54,8 @@ with sync_playwright() as p:
         else:
             print(f"reload #{attempt} — player didn't mount yet")
             pg.reload(wait_until="domcontentloaded", timeout=60000)
-        pass_cloudflare(pg)
+        if not pass_cloudflare(pg):
+            raise SystemExit("Cloudflare challenge not passed — playback proof aborted")
         pg.wait_for_timeout(6000)
 
         yt = None

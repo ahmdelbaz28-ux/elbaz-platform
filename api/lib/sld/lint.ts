@@ -122,7 +122,7 @@ export function lintSpec(spec: SldSpec): LintResult {
       continue;
     }
     if (a === b) findings.push({ level: "warn", rule: "self-loop", detail: `${a}→${a}` });
-    const key = [a, b].sort().join("|");
+    const key = [a, b].sort((x, y) => x.localeCompare(y)).join("|");
     if (seen.has(key)) findings.push({ level: "warn", rule: "duplicate-wire", detail: key });
     seen.add(key);
   }

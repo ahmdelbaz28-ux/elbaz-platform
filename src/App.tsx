@@ -1,5 +1,6 @@
 import { Routes, Route, useLocation, useNavigationType } from "react-router";
 import { lazy, Suspense, useEffect, useState } from "react";
+import { MotionConfig } from "framer-motion";
 import { Toaster } from "sonner";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -233,6 +234,12 @@ export default function App() {
   useRoutePrefetch();
   return (
     <ErrorBoundary>
+      {/* ♿ Accessibility quality floor (frontend-design pass): honor the OS
+          "reduce motion" setting globally. framer-motion turns transform/
+          layout animations into fade-only for users who opted out — one
+          switch instead of auditing every motion.* call site. Canvas
+          backgrounds already check the media query individually. */}
+      <MotionConfig reducedMotion="user">
       <NotificationProvider>
         {/* 🔔 Live server notifications → toasts + bell (polls /api/notifications/poll,
             only active while logged in; no-ops silently for guests) */}
@@ -296,6 +303,7 @@ export default function App() {
           </ThemeProvider>
         </EngineeringModeProvider>
       </NotificationProvider>
+      </MotionConfig>
     </ErrorBoundary>
   );
 }

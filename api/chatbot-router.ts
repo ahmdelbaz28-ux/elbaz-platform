@@ -560,9 +560,13 @@ chatbotRouter.post("/stream", async (c) => {
 
   // Real course catalog + chat-history continuity — prepared ONCE here so
   // every persistence round inside the stream reuses them (fail-open).
-  const catalog = await getCourseCatalogText();
+  // PERF: catalog and user resolution are independent — start both, await
+  // each only where its value is first needed (saves one serial DB round
+  // trip per chat message on the stream's critical path).
+  const catalogPromise = getCourseCatalogText();
   const chatUser = await resolveOptionalUser(c.req.raw);
   const historySummary = chatUser ? await getLatestSummaryText(chatUser.id).catch(() => null) : null;
+  const catalog = await catalogPromise;
 
   // ✅ SECURITY FIX (pre-launch audit run-2): daily per-USER message quota —
   // generous headroom for real students; only an automated loop hits it.

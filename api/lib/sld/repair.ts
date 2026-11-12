@@ -122,7 +122,7 @@ export function repairSpec(spec: SldSpec): RepairResult {
       actions.push(`drop wire ${String(pair?.[0] ?? "?")}->${String(pair?.[1] ?? "?")} - endpoint missing`);
       continue;
     }
-    const key = [a, b].sort().join("|");
+    const key = [a, b].sort((x, y) => x.localeCompare(y)).join("|");
     if (a === b || seenConn.has(key)) {
       actions.push(`drop ${a === b ? "self-loop" : "duplicate"} wire ${a}->${b}`);
       continue;

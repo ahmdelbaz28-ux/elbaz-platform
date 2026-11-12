@@ -20,6 +20,12 @@ Flow:
 """
 import json, os, re, subprocess, sys, urllib.parse
 
+# Private state dir (0700) inside the repo — never /tmp (world-writable):
+# the admin session state and browser profiles contain REAL credentials.
+from pathlib import Path as _Path
+STATE_DIR = _Path(__file__).resolve().parent.parent / ".local" / "state"
+STATE_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
+
 PROD = "https://ahmedelbaz.qzz.io"
 OUT = "/home/z/my-project/download"
 subprocess.run(["mkdir", "-p", OUT], check=True)
@@ -136,7 +142,7 @@ with sync_playwright() as p:
     if any("P1" in f for f in fails):
         print("LOGIN FAILED — aborting")
         sys.exit(1)
-    ctx.storage_state(path="/tmp/prod_admin_state.json")  # session reuse for follow-ups
+    ctx.storage_state(path=str(STATE_DIR / "prod_admin_state.json"))  # session reuse for follow-ups
 
     # ---------- P2: discover the ETAP course + lessons ----------
     courses = unwrap_batched(trpc_query(pg, "admin.listCourses", {"page": 1, "limit": 50}))

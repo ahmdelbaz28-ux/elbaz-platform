@@ -69,7 +69,7 @@ jobs:
           EDGE_ORIGIN_SECRET: ${{ secrets.EDGE_ORIGIN_SECRET }}
         run: |
           set -x
-          npx tsx scripts/provider-probe.ts 2>&1 | tee /tmp/probe.log
+          node_modules/.bin/tsx scripts/provider-probe.ts 2>&1 | tee /tmp/probe.log
           CODE=${PIPESTATUS[0]}
           echo "probe exit code: $CODE"
           exit "$CODE"

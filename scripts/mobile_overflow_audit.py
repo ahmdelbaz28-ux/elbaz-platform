@@ -99,7 +99,7 @@ def pass_cloudflare(pg):
         except Exception:
             pass
         pg.wait_for_timeout(6000)
-    return True
+    return False  # retries exhausted — challenge still active
 
 
 def dismiss_cookie(pg):
@@ -124,7 +124,10 @@ with sync_playwright() as p:
     for name, path in PAGES:
         try:
             pg.goto(PROD + path, wait_until="domcontentloaded", timeout=60_000)
-            pass_cloudflare(pg)
+            if not pass_cloudflare(pg):
+                report[name] = {"cloudflare_blocked": True, "overflow": None, "offenders": []}
+                print(f"[BLOCKED ] {name:15s} cloudflare challenge not passed")
+                continue
             pg.wait_for_timeout(3500)
             dismiss_cookie(pg)
             pg.wait_for_timeout(800)

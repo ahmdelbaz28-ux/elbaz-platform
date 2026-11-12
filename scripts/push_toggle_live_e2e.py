@@ -19,6 +19,12 @@ import time
 
 from playwright.sync_api import sync_playwright
 
+# Private state dir (0700) inside the repo — never /tmp (world-writable):
+# the admin session state and browser profiles contain REAL credentials.
+from pathlib import Path as _Path
+STATE_DIR = _Path(__file__).resolve().parent.parent / ".local" / "state"
+STATE_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
+
 PROD = "https://ahmedelbaz.qzz.io"
 OUT = "/home/z/my-project/download/push-fix"
 USER, PW = "chatfix_live_01", "ChatFix2026X"
@@ -60,7 +66,7 @@ with sync_playwright() as p:
     # subscriptions there (crbug.com/401439) — measured on this very flow.
     # A persistent profile is not incognito, so the real happy path is testable.
     import shutil
-    profile_dir = "/tmp/push-e2e-profile"
+    profile_dir = str(STATE_DIR / "push-e2e-profile")
     shutil.rmtree(profile_dir, ignore_errors=True)  # always a true first visit
     ctx = p.chromium.launch_persistent_context(
         profile_dir,

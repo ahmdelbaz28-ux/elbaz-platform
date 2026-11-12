@@ -254,6 +254,9 @@ jobs:
                 echo "    The worker script itself deployed fine — skipping live relay assertions."
                 exit 0
                 ;;
+              *)
+                echo "Redirect target is not a Cloudflare Access page — continuing relay assertions."
+                ;;
             esac
             if [ "$STEALTH" != "404" ]; then
               echo "❌ Relay gate broken: unauthenticated /yt/playlist returned $STEALTH (expected stealth 404)"

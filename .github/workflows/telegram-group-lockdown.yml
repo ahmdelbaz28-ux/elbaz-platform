@@ -60,7 +60,7 @@ jobs:
           LOCKDOWN_SUSPECT_CHAT_ID: ${{ inputs.suspect_group_id }}
           # A direct suspect makes the update-peek pointless — trim its window.
           LOCKDOWN_DISCOVERY_SECONDS: ${{ inputs.suspect_group_id != '' && '60' || '420' }}
-        run: npx tsx scripts/telegram-group-lockdown.ts
+        run: node_modules/.bin/tsx scripts/telegram-group-lockdown.ts
 
       # The lockdown's update-peek fights the poller by design (409 dance) —
       # hand the token back to the production chain immediately afterwards.

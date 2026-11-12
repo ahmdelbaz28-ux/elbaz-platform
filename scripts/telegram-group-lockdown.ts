@@ -204,9 +204,16 @@ function rightsSnapshot(m: MemberInfo | undefined): Record<string, boolean> | un
   return snap;
 }
 
+// Strip control characters / newlines: log payloads include Telegram-provided
+// strings (chat titles, usernames, error descriptions) — a hostile value with
+// a "\n" could forge log lines (S5145 log injection).
+function sanitizeForLog(s: string): string {
+  return String(s).replace(/[\u0000-\u001f\u007f]/g, " ");
+}
+
 function log(msg: string): void {
   const t = Math.round((Date.now() - startedAt) / 1000);
-  console.log(`[Lockdown +${t}s] ${msg}`);
+  console.log(`[Lockdown +${t}s] ${sanitizeForLog(msg)}`);
 }
 
 // ─── Phase 1: discovery ──────────────────────────────────────────────────────
@@ -449,7 +456,7 @@ async function sweepOwnMessages(
 async function main(): Promise<void> {
   const me = await tg<{ id: number; username?: string; is_bot: boolean }>("getMe");
   if (!me.ok || !me.result) {
-    console.error(`[Lockdown] getMe rejected: ${me.description ?? "unknown"} — aborting`);
+    console.error(`[Lockdown] getMe rejected: ${sanitizeForLog(me.description ?? "unknown")} — aborting`);
     process.exit(1);
   }
   const botId = me.result.id;

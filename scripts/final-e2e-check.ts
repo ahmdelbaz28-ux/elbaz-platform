@@ -38,10 +38,13 @@ const poll = await fetch(`${BASE}/api/notifications/poll`, { headers: { ...H, Co
 const body = (await poll.json()) as {
   events: Array<{ id: string; type: string; title: string; message: string; url?: string; createdAt: string }>;
 };
+// Event titles/messages originate from user-visible content — strip control
+// characters before logging so a "\n" in a title cannot forge log lines (S5145).
+const cleanLog = (s: string): string => String(s).replace(/[\u0000-\u001f\u007f]/g, " ");
 console.log("\npoll:", poll.status, "events:", body.events?.length);
 for (const ev of body.events ?? []) {
-  console.log(`  [${ev.type}] ${ev.createdAt}`);
-  console.log(`   title: ${ev.title}`);
+  console.log(`  [${cleanLog(ev.type)}] ${ev.createdAt}`);
+  console.log(`   title: ${cleanLog(ev.title)}`);
   console.log(`   url:   ${ev.url ?? "-"}`);
   console.log(`   msg:   ${ev.message.slice(0, 80)}...`);
 }
