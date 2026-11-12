@@ -33,6 +33,7 @@
 
 import { env } from "../lib/env";
 import { getSystemPrompt, MODE_TUNING, type ChatbotMode, type ModeTuning } from "./chatbot-prompts.js";
+import { extractRoutingSignal } from "./chatbot-skillnet.js";
 import type { ParsedScreenContext } from "./chatbot-screen.js";
 import { logger } from "./logger.js";
 import { routeChatCompletion, isWebPluginDisabled, disableWebPluginFor, WEB_PLUGIN_BODY, isOpenRouterDailyLimited, noteOpenRouterDailyLimit, isChatLaneModel, isDiscoveredModelId } from "./ai-router.js";
@@ -907,7 +908,10 @@ async function runTextCascade(request: {
 }): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
   const mode: ChatbotMode = request.mode === "instant" ? "instant" : "thinking";
   const tuning = MODE_TUNING[mode];
-  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, false, request.historySummary, request.screen, request.screenCapture);
+  // ✅ SKILLNET ROUTING (v3.5.0): the latest user message is the routing
+  // signal — the skill router injects only the relevant domain cores/packs.
+  const routingSignal = extractRoutingSignal(request.messages);
+  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, false, request.historySummary, request.screen, request.screenCapture, routingSignal);
   // WEB GROUNDING policy: thinking mode (the accuracy lane) gets live web
   // search on OpenRouter so answers stay documented; instant stays plugin-
   // free for latency. Every failure degrades gracefully (breaker in ai-router

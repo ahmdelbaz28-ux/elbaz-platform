@@ -21,6 +21,7 @@
  */
 
 import { getSystemPrompt, MODE_TUNING, sanitizeReplyOutput, type ModeTuning } from "./chatbot-prompts.js";
+import { extractRoutingSignal } from "./chatbot-skillnet.js";
 import type { ParsedScreenContext } from "./chatbot-screen.js";
 import { logger } from "./logger.js";
 import { ThinkStreamFilter } from "./think-filter.js";
@@ -155,7 +156,7 @@ async function tryPickOpenRouterProvider(systemPrompt: string, tuning: ModeTunin
 }
 
 export async function pickWorkingModel(
-  _messages: ChatApiMessage[],
+  messages: ChatApiMessage[],
   language?: string,
   mode: "thinking" | "instant" = "thinking",
   catalog?: string,
@@ -173,7 +174,11 @@ export async function pickWorkingModel(
   // continuity that the non-stream path kept. The summary now threads through.
   // ✅ SCREEN CONTEXT: the screen snapshot threads through the same way — the
   // legacy backbone must see the user's current screen too.
-  const systemPrompt = getSystemPrompt(language, mode, catalog, false, historySummary, screen, screenCapture);
+  // ✅ SKILLNET ROUTING (v3.5.0): the previously-unused messages parameter is
+  // now the routing signal source — the legacy backbone gets the same routed
+  // prompt as the dynamic router path.
+  const routingSignal = extractRoutingSignal(messages);
+  const systemPrompt = getSystemPrompt(language, mode, catalog, false, historySummary, screen, screenCapture, routingSignal);
 
   if (mode === "instant") {
     // ─── INSTANT: fastest first — Groq → OpenRouter (fast model) → NVIDIA ───
@@ -768,7 +773,14 @@ async function getVisionStreamResponse(request: {
   const pass2Messages = read.ok && read.description
     ? buildAugmentedTextMessages(request.messages, read.description, request.language)
     : buildVisionFailureMessages(request.messages, request.language);
-  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, false, request.historySummary, request.screen, request.screenCapture);
+  // ✅ SKILLNET ROUTING (v3.5.0): the augmented pass-2 messages carry the
+  // vision model's screen description — the router matches software/study
+  // names from BOTH the user's caption and the screen text itself.
+  // routingFloor=true: an image WAS attached — the historical pass-2 prompt
+  // always carried the full core set, so the technical floor is forced even
+  // when the reader failed and the description is just the honesty note.
+  const routingSignal = extractRoutingSignal(pass2Messages);
+  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, false, request.historySummary, request.screen, request.screenCapture, routingSignal, true);
 
   // ── PASS 2 (ANSWER): streaming reasoning-first cascade over the TEXT
   // description — the strongest available model writes the answer.
@@ -874,7 +886,7 @@ export async function getStreamResponse(request: {
     const routerTuning = MODE_TUNING[routerMode];
     const routed = await routeChatStream({
       messages: request.messages,
-      systemPrompt: getSystemPrompt(request.language, routerMode, request.catalog, false, request.historySummary, request.screen, request.screenCapture),
+      systemPrompt: getSystemPrompt(request.language, routerMode, request.catalog, false, request.historySummary, request.screen, request.screenCapture, extractRoutingSignal(request.messages)),
       mode: routerMode,
       vision: false,
       language: request.language,

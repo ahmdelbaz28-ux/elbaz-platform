@@ -30,6 +30,7 @@
  */
 
 import { buildScreenBlock, type ParsedScreenContext } from "./chatbot-screen.js";
+import { SKILL_REGISTRY, registerSkillContent, routeSkills, logSkillRouting } from "./chatbot-skillnet.js";
 
 import {
   versionRuleAr,
@@ -42,9 +43,6 @@ import {
   expertPositioningEn,
   guidedNavigationAr,
   guidedNavigationEn,
-  pfCore,
-  skmCore,
-  pvsystCore,
   mentorProtocolAr,
   mentorProtocolEn,
   platformCoreAr,
@@ -87,8 +85,14 @@ import {
  *          suffices (promises/deferrals/permission-asking banned), ask
  *          exactly ONE question when one essential fact is missing, assume
  *          + state when a sound engineering assumption can replace it.
+ * 3.5.0 → SKILLNET SKILL ROUTING LAYER (zjunlp/SkillNet-inspired): optional
+ *          `routingSignal` (the user's latest message + live-vision text)
+ *          activates a deterministic skill router that injects ONLY the
+ *          relevant domain cores + FOUR NEW study packs (Arc Flash,
+ *          Protection Coordination, Load Flow, Solar PV). No signal →
+ *          full-fallback (superset of 3.4.0 — always-on blocks untouched).
  */
-export const PROMPT_VERSION = "3.4.0";
+export const PROMPT_VERSION = "3.5.0";
 
 export type ChatbotMode = "thinking" | "instant";
 
@@ -520,6 +524,21 @@ const electricalDepthQuickEn = `
 ⚡ Electrical quick anchors (mandatory whenever relevant): battery capacity is meaningless without its discharge rate (C10/C20) and end voltage — size per IEEE 485 with the 1.25 ageing factor; kW ≠ kVA — convert through the power factor; breaker interrupting duty is assessed with X/R and motor contribution; soil resistivity is a measured, never assumed, input in any earthing design (IEEE 80 / IEC 62305).`;
 
 // ════════════════════════════════════════════════════════════════════════
+// SKILLNET REGISTRATION (v3.5.0) — hand the two delegated cores' content to
+// the skill router once, at module load (after the consts above exist).
+// Dependency direction stays one-way: prompts → skillnet (skillnet never
+// imports prompts).
+// ════════════════════════════════════════════════════════════════════════
+registerSkillContent("etap-expert-core", {
+  thinking: { ar: etapExpertCore, en: etapExpertCore },
+  instant: { ar: etapQuickCore, en: etapQuickCore },
+});
+registerSkillContent("electrical-depth-pack", {
+  thinking: { ar: electricalDepthPackAr, en: electricalDepthPackEn },
+  instant: { ar: electricalDepthQuickAr, en: electricalDepthQuickEn },
+});
+
+// ════════════════════════════════════════════════════════════════════════
 // SYSTEM PROMPT BUILDER
 // ════════════════════════════════════════════════════════════════════════
 
@@ -537,9 +556,45 @@ const electricalDepthQuickEn = `
  *                 while they work inside an engineering program. Arms the
  *                 screen-teacher block (grounded step-by-step guidance,
  *                 zero guessing) INSTEAD of the generic vision block.
+ * @param routingSignal  SKILLNET ROUTING (v3.5.0): the user's latest message
+ *                 text (+ the live-vision screen description in the vision
+ *                 lane). When PROVIDED, the deterministic skill router
+ *                 injects only the matching domain cores/study packs (with
+ *                 live-screen/vision forcing the technical floor). When
+ *                 OMITTED (tests, doctor scripts) → full-fallback: every
+ *                 routable skill is injected — a superset of the 3.4.0
+ *                 prompt, so legacy callers can never lose depth.
+ * @param routingFloor  Force the technical floor (etap core + depth pack)
+ *                 regardless of the signal — used by the vision pass-2 lane
+ *                 where an image WAS attached (historically always full).
  */
-export function getSystemPrompt(language?: string, mode: ChatbotMode = "thinking", catalog?: string, vision = false, historySummary?: string, screen?: ParsedScreenContext, screenCapture = false): string {
+export function getSystemPrompt(language?: string, mode: ChatbotMode = "thinking", catalog?: string, vision = false, historySummary?: string, screen?: ParsedScreenContext, screenCapture = false, routingSignal?: string, routingFloor = false): string {
   const catalogBlock = buildCourseCatalogBlock(catalog ?? "");
+
+  // ── SKILLNET ROUTING (v3.5.0) — deterministic skill selection. signal
+  // absent → decision = null → every routable block is injected (full
+  // fallback, byte-compatible superset of the historical prompt).
+  const skillLang: "ar" | "en" = language === "ar" ? "ar" : "en";
+  const routingDecision = routingSignal === undefined
+    ? null
+    : routeSkills({ signal: routingSignal, lang: skillLang, mode, screenCapture, vision, floor: routingFloor });
+  if (routingDecision) logSkillRouting(routingDecision, { lane: mode });
+  const skillIncluded = (id: string): boolean =>
+    !routingDecision || routingDecision.strategy === "full-fallback"
+      ? true
+      : routingDecision.selected.some((s) => s.id === id);
+
+  // Routed zone A — pf/skm/pvsyst/etap/depth + the four new study packs, in
+  // the registry's canonical order (exactly the historical composition order
+  // with the new packs inserted after the depth pack). Zone B — the SLD
+  // drawing skill keeps its historical position AFTER the evidence model.
+  const routedZoneA = SKILL_REGISTRY
+    .filter((s) => s.id !== "sld-drawing-skill" && s.modes.includes(mode))
+    .map((s) => (skillIncluded(s.id) ? s.build(skillLang, mode) : ""))
+    .join("");
+  const routedZoneB = skillIncluded("sld-drawing-skill")
+    ? (skillLang === "ar" ? sldSkillAr : sldSkillEn)
+    : "";
 
   // ── Screen-context block — the user's CURRENT open screen (page, displayed
   // entity, nav trail, UI state) embedded as read-only data. Built for the
@@ -604,7 +659,7 @@ Hard rules (guessing is absolutely forbidden):
 🚫 محظورات:
 - لا تخترع روابط (URLs) غير موجودة.
 - لا تذكر أبداً أنك ذكاء اصطناعي أو نموذج لغوي أو من أي مزود مثل OpenRouter. ولا تذكر أسماء مزودين أو شركات تقنية حتى في النفي («لست مثل كذا») — إن سُئلت عن هويتك أو مزودك قل فقط: «أنا مساعد منصة الباز ولا أرتبط بأي جهة تقنية أخرى» دون تسمية أي اسم.
-- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${instantModeAr}${expertPositioningAr}${reasoningGuard}${langAndFormatRuleAr}${etapQuickCore}${electricalDepthQuickAr}${evidenceQuickAr}${instantSkillsAr}${platformCoreAr}${officialChannelsAr}${safetyRuleAr}${visionBlockAr}${summaryBlock}${catalogBlock}${screenBlock}`;
+- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${instantModeAr}${expertPositioningAr}${reasoningGuard}${langAndFormatRuleAr}${routedZoneA}${evidenceQuickAr}${instantSkillsAr}${platformCoreAr}${officialChannelsAr}${safetyRuleAr}${visionBlockAr}${summaryBlock}${catalogBlock}${screenBlock}`;
     }
     return `You are the official AI Assistant of the "Elbaz Platform" (specializing in engineering courses).
 You are a highly professional, balanced, and interactive technical assistant. Do NOT use any personal name for yourself; introduce yourself only as the platform's smart assistant.
@@ -621,7 +676,7 @@ You are a highly professional, balanced, and interactive technical assistant. Do
 🚫 Rules:
 - Do NOT hallucinate fake URLs.
 - NEVER mention you are an AI, a language model, or from OpenRouter or any other provider. Never name providers or tech companies even in negations ("I am not like X") — if asked about your identity or provider, say only: "I am the Elbaz Platform assistant, not affiliated with any other tech company" without naming any name.
-- If asked about non-engineering topics, politely decline and state your expertise.${instantModeEn}${expertPositioningEn}${reasoningGuard}${langAndFormatRuleEn}${etapQuickCore}${electricalDepthQuickEn}${evidenceQuickEn}${instantSkillsEn}${platformCoreEn}${officialChannelsEn}${safetyRuleEn}${visionBlockEn}${summaryBlock}${catalogBlock}${screenBlock}`;
+- If asked about non-engineering topics, politely decline and state your expertise.${instantModeEn}${expertPositioningEn}${reasoningGuard}${langAndFormatRuleEn}${routedZoneA}${evidenceQuickEn}${instantSkillsEn}${platformCoreEn}${officialChannelsEn}${safetyRuleEn}${visionBlockEn}${summaryBlock}${catalogBlock}${screenBlock}`;
   }
 
   // ── thinking (default) ──
@@ -644,7 +699,7 @@ You are a highly professional, balanced, and interactive technical assistant. Do
 🚫 محظورات:
 - لا تخترع روابط (URLs) غير موجودة.
 - لا تذكر أبداً أنك ذكاء اصطناعي أو نموذج لغوي أو من أي مزود مثل OpenRouter. ولا تذكر أسماء مزودين أو شركات تقنية حتى في النفي («لست مثل كذا») — إن سُئلت عن هويتك أو مزودك قل فقط: «أنا مساعد منصة الباز ولا أرتبط بأي جهة تقنية أخرى» دون تسمية أي اسم.
-- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${thinkingModeAr}${expertPositioningAr}${reasoningGuard}${langAndFormatRuleAr}${versionRuleAr}${mentorProtocolAr}${researchSkillAr}${accuracyContractAr}${guidedNavigationAr}${pfCore}${skmCore}${pvsystCore}${etapExpertCore}${electricalDepthPackAr}${evidenceModelAr}${sldSkillAr}${platformCoreAr}${supportProtocolAr}${officialChannelsAr}${safetyRuleAr}${webGroundingAr}${visionBlockAr}${summaryBlock}${catalogBlock}${screenBlock}`;
+- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${thinkingModeAr}${expertPositioningAr}${reasoningGuard}${langAndFormatRuleAr}${versionRuleAr}${mentorProtocolAr}${researchSkillAr}${accuracyContractAr}${guidedNavigationAr}${routedZoneA}${evidenceModelAr}${routedZoneB}${platformCoreAr}${supportProtocolAr}${officialChannelsAr}${safetyRuleAr}${webGroundingAr}${visionBlockAr}${summaryBlock}${catalogBlock}${screenBlock}`;
   }
   return `You are the official AI Assistant of the "Elbaz Platform" (specializing in engineering courses).
 You are a highly professional, balanced, and interactive technical assistant. Do NOT use any personal name for yourself; introduce yourself only as the platform's smart assistant.
@@ -664,5 +719,5 @@ You are a highly professional, balanced, and interactive technical assistant. Do
 🚫 Rules:
 - Do NOT hallucinate fake URLs.
 - NEVER mention you are an AI, a language model, or from OpenRouter or any other provider. Never name providers or tech companies even in negations ("I am not like X") — if asked about your identity or provider, say only: "I am the Elbaz Platform assistant, not affiliated with any other tech company" without naming any name.
-- If asked about non-engineering topics, politely decline and state your expertise.${thinkingModeEn}${expertPositioningEn}${reasoningGuard}${langAndFormatRuleEn}${versionRuleEn}${mentorProtocolEn}${researchSkillEn}${accuracyContractEn}${guidedNavigationEn}${pfCore}${skmCore}${pvsystCore}${etapExpertCore}${electricalDepthPackEn}${evidenceModelEn}${sldSkillEn}${platformCoreEn}${supportProtocolEn}${officialChannelsEn}${safetyRuleEn}${webGroundingEn}${visionBlockEn}${summaryBlock}${catalogBlock}${screenBlock}`;
+- If asked about non-engineering topics, politely decline and state your expertise.${thinkingModeEn}${expertPositioningEn}${reasoningGuard}${langAndFormatRuleEn}${versionRuleEn}${mentorProtocolEn}${researchSkillEn}${accuracyContractEn}${guidedNavigationEn}${routedZoneA}${evidenceModelEn}${routedZoneB}${platformCoreEn}${supportProtocolEn}${officialChannelsEn}${safetyRuleEn}${webGroundingEn}${visionBlockEn}${summaryBlock}${catalogBlock}${screenBlock}`;
 }
