@@ -8,6 +8,9 @@
 
 import { Hono, type Context } from "hono";
 import { getChatResponse, getStreamResponse, type ChatApiMessage, type ContentPart } from "./lib/chatbot.js";
+// ✅ Extracted (2026-11): input normalization lives in api/lib/chatbot-normalize.js —
+// pure + unit-testable without the router's import graph (no Hono, no DB).
+import { normalizeChatInput, MAX_MESSAGE_CHARS, MAX_TOTAL_CHARS } from "./lib/chatbot-normalize.js";
 import { parseScreenContext } from "./lib/chatbot-screen.js";
 import { getCourseCatalogText } from "./lib/course-catalog.js";
 import { containsPromptLeak, promptLeakRefusal } from "./lib/chatbot-prompts.js";
@@ -150,126 +153,6 @@ function resolveChatLanguage(
   return requested;
 }
 
-// ── Multimodal input normalization (vision) ─────────────────────────────
-// Security/size rules:
-//   • Only data: URLs with an image mime are accepted (no remote URLs — the
-//     server must never be tricked into fetching attacker-chosen resources).
-//   • Per-image base64 cap + per-request image count cap keep the request
-//     far below the shield's 1MB payload guard.
-//   • ONLY the LAST user message may carry image parts — anything else is
-//     flattened to plain text so text-only providers are never exposed to
-//     image parts in history.
-const IMAGE_DATAURL_RE = /^data:image\/(jpeg|jpg|png|webp|gif);base64,/;
-const MAX_IMAGE_PART_BASE64 = 450_000; // ~337KB binary per image
-const MAX_IMAGES_PER_REQUEST = 2;
-
-interface NormalizedChatInput {
-  messages: ChatApiMessage[];
-  /** Last user message carries image parts — must route to vision models. */
-  vision: boolean;
-  imageCount: number;
-  totalTextChars: number;
-}
-
-type NormalizeFailure = { status: 400 | 413; en: string; ar: string; code: ChatbotErrorCode };
-
-function normalizeChatInput(raw: unknown): { ok: true; data: NormalizedChatInput } | { ok: false; failure: NormalizeFailure } {
-  if (!Array.isArray(raw) || raw.length === 0) {
-    return { ok: false, failure: { status: 400, code: "BAD_REQUEST", en: "Messages array is required", ar: "Messages array is required" } };
-  }
-  const sliced = raw.slice(-50);
-
-  // Locate the last user message — the only one allowed to carry images.
-  let lastUserIdx = -1;
-  for (let i = sliced.length - 1; i >= 0; i--) {
-    const m = sliced[i] as { role?: unknown } | null;
-    if (m && m.role === "user") { lastUserIdx = i; break; }
-  }
-
-  const messages: ChatApiMessage[] = [];
-  let imageCount = 0;
-  let totalTextChars = 0;
-
-  for (let i = 0; i < sliced.length; i++) {
-    const m = sliced[i] as { role?: unknown; content?: unknown } | null;
-    if (!m || typeof m !== "object") continue;
-    const role = m.role === "assistant" ? "assistant" : "user";
-    const content = m.content;
-
-    if (typeof content === "string") {
-      const clipped = content.slice(0, MAX_MESSAGE_CHARS);
-      totalTextChars += clipped.length;
-      messages.push({ role, content: clipped });
-      continue;
-    }
-
-    if (!Array.isArray(content)) {
-      messages.push({ role, content: "" });
-      continue;
-    }
-
-    // Parts array — split text vs image parts.
-    const textParts: string[] = [];
-    const imageUrls: string[] = [];
-    for (const part of content as unknown[]) {
-      if (!part || typeof part !== "object") continue;
-      const p = part as { type?: unknown; text?: unknown; image_url?: { url?: unknown } };
-      if (p.type === "text" && typeof p.text === "string") {
-        textParts.push(p.text);
-      } else if (p.type === "image_url" && typeof p.image_url?.url === "string") {
-        imageUrls.push(p.image_url.url);
-      }
-    }
-
-    const isLastUser = i === lastUserIdx && imageUrls.length > 0;
-    if (isLastUser) {
-      if (imageUrls.length > MAX_IMAGES_PER_REQUEST) {
-        return {
-          ok: false,
-          failure: {
-            status: 400,
-            code: "BAD_INPUT",
-            en: `Too many images — max ${MAX_IMAGES_PER_REQUEST} per message`,
-            ar: `صور كثيرة — الحد الأقصى ${MAX_IMAGES_PER_REQUEST} صورة لكل رسالة`,
-          },
-        };
-      }
-      for (const url of imageUrls) {
-        if (!IMAGE_DATAURL_RE.test(url) || url.length > MAX_IMAGE_PART_BASE64) {
-          return {
-            ok: false,
-            failure: {
-              status: 413,
-              code: "TOO_LARGE",
-              en: "Attached image is too large or in an unsupported format — try a smaller image",
-              ar: "الصورة المرفقة كبيرة جداً أو بصيغة غير مدعومة — جرب صورة أصغر",
-            },
-          };
-        }
-      }
-      imageCount = imageUrls.length;
-      const text = textParts.join(" ").slice(0, MAX_MESSAGE_CHARS);
-      totalTextChars += text.length;
-      const parts: ContentPart[] = [
-        ...(text ? [{ type: "text" as const, text }] : []),
-        ...imageUrls.map((url) => ({ type: "image_url" as const, image_url: { url } })),
-      ];
-      messages.push({ role, content: parts });
-    } else {
-      // History (or stray) image message — flatten to plain text.
-      const text = textParts.join(" ").slice(0, MAX_MESSAGE_CHARS);
-      const note = imageUrls.length > 0 ? `${text ? " " : ""}[صورة مرفقة]` : "";
-      totalTextChars += text.length + note.length;
-      messages.push({ role, content: text + note });
-    }
-  }
-
-  if (messages.length === 0) {
-    return { ok: false, failure: { status: 400, code: "BAD_REQUEST", en: "Messages array is required", ar: "Messages array is required" } };
-  }
-  return { ok: true, data: { messages, vision: imageCount > 0, imageCount, totalTextChars } };
-}
-
 /** Bilingual daily-quota notice — a polite apology that states the 5-images-per-day
  * allowance and invites the user to ask anything else (SonarCloud S3358 — no nested ternaries). */
 function imageQuotaExceededResponse(used: number): { en: string; ar: string } {
@@ -278,12 +161,6 @@ function imageQuotaExceededResponse(used: number): { en: string; ar: string } {
     ar: `أعتذر منك جداً 🙏 المتاح فقط ${DAILY_IMAGE_LIMIT} صور يومياً حفاظاً على كوتة تحليل الصور (استهلكت ${used}/${DAILY_IMAGE_LIMIT} اليوم) — لكنني جاهز تماماً للرد على أي استفسار آخر، اكتب سؤالك وأنا معك!`,
   };
 }
-
-// ── Shared content caps (module scope — used by normalizeChatInput too) ──
-// ✅ SECURITY FIX (audit run-1): cap per-message content (previously a
-// single 1MB request could ship ~250k tokens to paid providers).
-const MAX_MESSAGE_CHARS = 8_000;
-const MAX_TOTAL_CHARS = 60_000;
 
 // ── Chat-history persistence helpers (logged-in users only) ──
 // The assistant reply is only persisted on SUCCESS so error banners and
@@ -359,7 +236,7 @@ chatbotRouter.post("/", async (c) => {
       const f = normalized.failure;
       return errorResponse(c, f.code, { lang: isAr ? "ar" : "en", message: isAr ? f.ar : f.en });
     }
-    const { messages, vision, imageCount, totalTextChars } = normalized.data;
+    const { messages, vision, imageCount, totalTextChars, screenCapture } = normalized.data;
 
     if (totalTextChars > MAX_TOTAL_CHARS) {
       return errorResponse(c, "TOO_LARGE", { message: "Conversation too long. Please start a new chat." });
@@ -408,6 +285,9 @@ chatbotRouter.post("/", async (c) => {
       mode: body.mode,
       catalog,
       vision,
+      // LIVE SCREEN: the last user message image is a frame of the user's
+      // actual screen — arms the screen-teacher prompt (grounded guidance).
+      screenCapture,
       historySummary: historySummary ?? undefined,
       // ✅ SCREEN CONTEXT: the client's live screen snapshot (open page,
       // displayed entity, nav trail) — strictly validated before it may reach
@@ -538,7 +418,7 @@ chatbotRouter.post("/stream", async (c) => {
     const f = normalized.failure;
     return errorResponse(c, f.code, { lang: isAr ? "ar" : "en", chatId: body.chatId, message: isAr ? f.ar : f.en });
   }
-  const { messages, vision, imageCount, totalTextChars } = normalized.data;
+  const { messages, vision, imageCount, totalTextChars, screenCapture } = normalized.data;
 
   if (totalTextChars > MAX_TOTAL_CHARS) {
     return errorResponse(c, "TOO_LARGE", { chatId: body.chatId, message: "Conversation too long. Please start a new chat." });
@@ -598,6 +478,9 @@ chatbotRouter.post("/stream", async (c) => {
     mode,
     catalog,
     vision,
+    // LIVE SCREEN: the last user message image is a frame of the user's
+    // actual screen — arms the screen-teacher prompt (grounded guidance).
+    screenCapture,
     historySummary: historySummary ?? undefined,
     // ✅ SCREEN CONTEXT: the client's live screen snapshot — validated above
     // the walk so every round sees the same grounded screen state.

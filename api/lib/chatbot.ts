@@ -856,6 +856,10 @@ export async function getChatResponse(request: {
    *  Injected as a read-only data block so answers are grounded in the
    *  user's CURRENT open screen, not guesses. */
   screen?: ParsedScreenContext;
+  /** LIVE SCREEN: the last user message image is a frame of the user's
+   *  actual screen (source: "screen_capture") — arms the screen-teacher
+   *  prompt for grounded step-by-step guidance, zero guessing. */
+  screenCapture?: boolean;
   /** Persistence escalation (rounds ≥ 2): skip the dynamic router. */
   preferLegacy?: boolean;
   /** ✅ AUDIT RUN-2 FIX: abort signal threaded through the LEGACY cascade —
@@ -872,6 +876,7 @@ export async function getChatResponse(request: {
     catalog: request.catalog,
     historySummary: request.historySummary,
     screen: request.screen,
+    screenCapture: request.screenCapture,
     preferLegacy: request.preferLegacy,
     abortSignal: request.abortSignal,
   });
@@ -890,6 +895,9 @@ async function runTextCascade(request: {
   historySummary?: string;
   /** ✅ SCREEN CONTEXT: validated user-screen snapshot (chatbot-screen.ts). */
   screen?: ParsedScreenContext;
+  /** LIVE SCREEN: last user image is a frame of the user's real screen —
+   *  arms the screen-teacher prompt (grounded step-by-step guidance). */
+  screenCapture?: boolean;
   /** Persistence escalation (rounds ≥ 2): skip the dynamic router and reach
    *  the resilient legacy backbone directly — a storming dynamic pool must
    *  never re-burn every round's walk budget before Groq/NVIDIA are tried. */
@@ -899,7 +907,7 @@ async function runTextCascade(request: {
 }): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
   const mode: ChatbotMode = request.mode === "instant" ? "instant" : "thinking";
   const tuning = MODE_TUNING[mode];
-  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, false, request.historySummary, request.screen);
+  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, false, request.historySummary, request.screen, request.screenCapture);
   // WEB GROUNDING policy: thinking mode (the accuracy lane) gets live web
   // search on OpenRouter so answers stay documented; instant stays plugin-
   // free for latency. Every failure degrades gracefully (breaker in ai-router
@@ -1037,13 +1045,16 @@ export async function getVisionResponse(request: {
   historySummary?: string;
   /** ✅ SCREEN CONTEXT: validated user-screen snapshot (chatbot-screen.ts). */
   screen?: ParsedScreenContext;
+  /** LIVE SCREEN: last user image is a frame of the user's real screen —
+   *  arms the screen-teacher prompt (grounded step-by-step guidance). */
+  screenCapture?: boolean;
   /** ✅ AUDIT RUN-2 FIX: abort signal reaches both vision passes. */
   abortSignal?: AbortSignal;
 }): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
   // ── PASS 1 (READ): a vision-capable model extracts a factual description ──
   // The vision lane is offered ONLY the raw multimodal messages with the
   // extraction prompt — never the ETAP persona, never asked for the answer.
-  const read = await readImageViaVisionModels(request.messages, request.language);
+  const read = await readImageViaVisionModels(request.messages, request.language, request.screenCapture);
 
   // ── PASS 2 (ANSWER): the description becomes TEXT and the normal
   // reasoning-first cascade produces the final engineering answer. The
@@ -1060,6 +1071,7 @@ export async function getVisionResponse(request: {
     catalog: request.catalog,
     historySummary: request.historySummary,
     screen: request.screen,
+    screenCapture: request.screenCapture,
     // ✅ AUDIT RUN-2 FIX: the vision pass-2 cascade honors the caller's abort.
     abortSignal: request.abortSignal,
   });

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect, useCallback, memo, forwardRef, useImperativeHandle } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, memo, forwardRef, useImperativeHandle, useSyncExternalStore } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { buildChatPageContext, pushTrail, type ScreenAuth } from "@/lib/screen-context";
 import { toast } from "sonner";
@@ -18,9 +18,20 @@ import {
   RotateCcw,
   Brain,
   ImagePlus,
+  MonitorUp,
+  MonitorX,
   ThumbsUp,
   ThumbsDown,
 } from "lucide-react";
+import {
+  captureScreenFrame,
+  captureScreenPreview,
+  getScreenShareState,
+  screenShareSupported,
+  startScreenShare,
+  stopScreenShare,
+  subscribeScreenShare,
+} from "@/lib/screen-share";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -41,6 +52,8 @@ interface MessageImage {
   dataUrl?: string;
   thumb?: string;
   name?: string;
+  /** "screen_capture" — the frame came from the live screen-share lane. */
+  source?: "screen_capture";
 }
 
 // ─── localStorage persistence ───────────────────────────────────────────────
@@ -123,7 +136,7 @@ function saveMessagesToStorage(msgs: Message[], key: string): void {
         feedback: m.feedback || undefined,
         // NEVER persist the full dataUrl (localStorage budget) — the 160px
         // thumb is enough for history display after a reload.
-        image: m.image ? { thumb: m.image.thumb, name: m.image.name } : undefined,
+        image: m.image ? { thumb: m.image.thumb, name: m.image.name, source: m.image.source } : undefined,
       }));
     try { localStorage.removeItem(LEGACY_CHAT_STORAGE_KEY); } catch { /* pre-fix entry */ }
     localStorage.setItem(key, JSON.stringify(serializable));
@@ -146,7 +159,7 @@ function loadMessagesFromStorage(key: string): Message[] | null {
         model: m.model || undefined,
         isError: m.isError || undefined,
         feedback: m.feedback || undefined,
-        image: m.image ? { thumb: m.image.thumb, name: m.image.name } : undefined,
+        image: m.image ? { thumb: m.image.thumb, name: m.image.name, source: m.image.source } : undefined,
       }));
   } catch {
     // Intentionally ignored: corrupt or unreadable storage — return null so caller re-initializes. — SonarCloud S2486
@@ -195,6 +208,8 @@ interface AttachedImage {
   dataUrl: string; // compressed full image → sent to the API as image_url part
   thumb: string;   // 160px preview → bubble display + localStorage
   name?: string;
+  /** "screen_capture" — live frame from the screen-share lane (server flag). */
+  source?: "screen_capture";
 }
 
 const IMAGE_MAX_DIM_STEPS: readonly number[] = [1024, 768, 640];
@@ -239,6 +254,101 @@ async function compressImageFile(file: File): Promise<AttachedImage> {
   const thumb = drawToDataUrl(img, THUMB_DIM, 0.6);
   return { dataUrl, thumb, name: file.name };
 }
+
+// ─── Live screen-share (vision) — the "teacher beside you" lane ────────────
+// While sharing is active, EVERY message auto-carries a fresh frame of the
+// user's real screen (captured at send time), so the bot answers from the
+// actual program UI (menus, buttons, values) — never from guesses. A manual
+// file attachment still wins (explicit user intent).
+
+const SCREEN_READ_PROMPT_AR = "اقرأ الشاشة المرفقة بعناية: ما البرنامج والنافذة المفتوحة أمامي الآن، وما الخطوة التالية التي عليّ عملها بالضبط؟ اذكر أسماء القوائم والأزرار كما تظهر على الشاشة حرفياً، ووجهني خطوة بخطوة.";
+const SCREEN_READ_PROMPT_EN = "Read the attached screen carefully: which program and window do I have open right now, and what exact next step should I take? Use the menu and button names exactly as they appear on screen and guide me step by step.";
+
+/**
+ * Live share bar — preview + status + one-tap "read my screen" action.
+ * Isolated + memoized: its 2fps preview ticker re-renders ONLY this bar,
+ * never the composer or the conversation.
+ */
+const ScreenShareBar = memo(function ScreenShareBar({ lang, active, starting, label, onToggle, onReadNow, readDisabled }: Readonly<{
+  lang: string;
+  active: boolean;
+  starting: boolean;
+  label: string;
+  onToggle: () => void;
+  onReadNow: () => void;
+  readDisabled: boolean;
+}>) {
+  const [preview, setPreview] = useState<string | null>(null);
+  useEffect(() => {
+    if (!active) return undefined; // bar unmounts its body when idle — no stale reset needed
+    const tick = () => setPreview(captureScreenPreview());
+    tick(); // first frame immediately (captureScreenPreview() returns null when not live — honest)
+    const iv = setInterval(tick, 500);
+    return () => clearInterval(iv);
+  }, [active]);
+
+  if (starting) {
+    return (
+      <div className="mb-2 flex items-center gap-2 rounded-xl border border-[#1e2d3d] bg-[#111827] p-2">
+        <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />
+        <span className="text-[12px] text-slate-400">
+          {lang === "ar" ? "جارٍ فتح نافذة مشاركة الشاشة..." : "Opening the screen-share picker..."}
+        </span>
+      </div>
+    );
+  }
+  if (!active) return null;
+  return (
+    <div className="mb-2 flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/5 p-2">
+      {preview ? (
+        <img
+          src={preview}
+          alt=""
+          aria-hidden="true"
+          draggable={false}
+          className="h-12 w-20 flex-shrink-0 rounded-lg border border-white/10 object-cover"
+        />
+      ) : (
+        <div className="flex h-12 w-20 flex-shrink-0 items-center justify-center rounded-lg border border-white/10 bg-black/40">
+          <MonitorUp className="h-4 w-4 text-slate-500" />
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="flex items-center gap-1.5 text-[12px] font-medium text-red-300">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+          </span>
+          {lang === "ar" ? "مباشر من شاشتك" : "Live from your screen"}
+          {label ? <span className="ms-1 truncate font-normal text-slate-400">— {label}</span> : null}
+        </p>
+        <p className="truncate text-[10px] text-slate-400">
+          {lang === "ar"
+            ? "كل رسالة سترسل لقطة حية — البوت يقرأ برنامجك ويوجهك خطوة بخطوة"
+            : "Every message sends a live frame — the bot reads your program and guides you step by step"}
+        </p>
+      </div>
+      <button
+        onClick={onReadNow}
+        disabled={readDisabled}
+        className="flex h-8 flex-shrink-0 items-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-2.5 text-[11.5px] font-semibold text-cyan-300 transition-colors hover:border-cyan-300/50 hover:bg-cyan-400/20 disabled:cursor-not-allowed disabled:opacity-40"
+        title={lang === "ar" ? "اقرأ شاشتي الآن ووجهني" : "Read my screen now and guide me"}
+        aria-label={lang === "ar" ? "اقرأ شاشتي الآن ووجهني" : "Read my screen now and guide me"}
+      >
+        <MonitorUp className="h-3.5 w-3.5" />
+        {lang === "ar" ? "اقرأ الآن" : "Read now"}
+      </button>
+      <button
+        onClick={onToggle}
+        className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-red-300 transition-colors hover:bg-red-400/10 hover:text-red-400"
+        title={lang === "ar" ? "إيقاف مشاركة الشاشة" : "Stop screen sharing"}
+        aria-label={lang === "ar" ? "إيقاف مشاركة الشاشة" : "Stop screen sharing"}
+      >
+        <MonitorX className="h-4 w-4" />
+      </button>
+    </div>
+  );
+});
 
 /**
  * Drain one SSE response into onPayload until the stream ends or the chat is
@@ -313,16 +423,19 @@ function AttachmentArea({ attachment, compressing, lang, onRemove }: Readonly<{
     );
   }
   if (!attachment) return null; // narrows the type for the preview below
+  const displayName = attachment.source === "screen_capture"
+    ? (lang === "ar" ? "لقطة مباشرة من شاشتك" : "Live screen capture")
+    : (attachment.name || (lang === "ar" ? "صورة" : "Image"));
   return (
     <div className="mb-2 flex items-center gap-2 rounded-xl border border-[#1e2d3d] bg-[#111827] p-2">
       <img
         src={attachment.thumb}
-        alt={attachment.name || "attachment"}
+        alt={displayName}
         className="h-12 w-12 flex-shrink-0 rounded-lg border border-white/10 object-cover"
         draggable={false}
       />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[12px] text-slate-300">{attachment.name || (lang === "ar" ? "صورة" : "Image")}</p>
+        <p className="truncate text-[12px] text-slate-300">{displayName}</p>
         <p className="text-[10px] text-cyan-400/70">
           {lang === "ar" ? "سيتم تحليل الصورة بالذكاء الاصطناعي" : "The image will be analyzed by AI"}
         </p>
@@ -339,8 +452,8 @@ function AttachmentArea({ attachment, compressing, lang, onRemove }: Readonly<{
   );
 }
 
-/** Attach-button + textarea + send-button row (extracted for clarity). */
-function ComposerRow({ value, onValueChange, onKeyDown, taRef, fileInputRef, onPickFile, onFilePicked, canSend, isLoading, compressing, doSend, lang }: Readonly<{
+/** Attach + screen-share buttons, textarea, send button (extracted for clarity). */
+function ComposerRow({ value, onValueChange, onKeyDown, taRef, fileInputRef, onPickFile, onFilePicked, canSend, isLoading, compressing, doSend, lang, screenSupported, screenActive, screenStarting, onToggleScreenShare }: Readonly<{
   value: string;
   onValueChange: (v: string) => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
@@ -353,7 +466,14 @@ function ComposerRow({ value, onValueChange, onKeyDown, taRef, fileInputRef, onP
   compressing: boolean;
   doSend: () => void;
   lang: string;
+  screenSupported: boolean;
+  screenActive: boolean;
+  screenStarting: boolean;
+  onToggleScreenShare: () => void;
 }>) {
+  const placeholder = screenActive
+    ? (lang === "ar" ? "اسأل عن أي شيء يظهر على شاشتك..." : "Ask about anything on your screen...")
+    : (lang === "ar" ? "اسأل سؤالك الهندسي..." : "Ask your engineering question...");
   return (
     <div className="flex items-end gap-2">
       {/* Attach image (vision) button */}
@@ -375,13 +495,31 @@ function ComposerRow({ value, onValueChange, onKeyDown, taRef, fileInputRef, onP
       >
         {compressing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
       </button>
+      {/* Live screen share (vision) — desktop browsers with getDisplayMedia */}
+      {screenSupported && (
+        <button
+          onClick={onToggleScreenShare}
+          disabled={isLoading || screenStarting}
+          className={screenActive
+            ? "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-red-500/40 bg-red-500/10 text-red-300 transition-all hover:border-red-400/60 hover:text-red-300 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+            : "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-[#1e2d3d] bg-[#111827] text-slate-400 transition-all hover:border-cyan-500/40 hover:text-cyan-300 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"}
+        title={screenActive
+          ? (lang === "ar" ? "إيقاف مشاركة الشاشة" : "Stop screen sharing")
+          : (lang === "ar" ? "مشاركة شاشتك — البوت يقرأ برنامجك ويوجهك" : "Share your screen — the bot reads your program and guides you")}
+        aria-label={screenActive
+          ? (lang === "ar" ? "إيقاف مشاركة الشاشة" : "Stop screen sharing")
+          : (lang === "ar" ? "مشاركة شاشتك" : "Share your screen")}
+      >
+        {screenStarting ? <Loader2 className="h-4 w-4 animate-spin" /> : screenActive ? <MonitorX className="h-4 w-4" /> : <MonitorUp className="h-4 w-4" />}
+      </button>
+      )}
       <div className="relative flex-1">
         <textarea
           ref={taRef}
           value={value}
           onChange={(e) => { onValueChange(e.target.value); }}
           onKeyDown={onKeyDown}
-          placeholder={lang === "ar" ? "اسأل سؤالك الهندسي..." : "Ask your engineering question..."}
+          placeholder={placeholder}
           rows={1}
           disabled={isLoading}
           dir={ARABIC_RE.test(value) ? "rtl" : "ltr"}
@@ -416,6 +554,13 @@ const ChatInputArea = memo(forwardRef<ChatInputHandle, ChatInputAreaProps>(funct
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // ─── Live screen-share state (external store — no re-render coupling) ───
+  const screenState = useSyncExternalStore(subscribeScreenShare, getScreenShareState);
+  const [screenSupported] = useState(screenShareSupported); // feature detection never changes within a page
+  const [screenStarting, setScreenStarting] = useState(false);
+  const [capturing, setCapturing] = useState(false); // frame grab in flight (few ms) — blocks double-sends
+  const screenActive = screenState.status === "active";
+
   const autoresize = useCallback(() => {
     const el = taRef.current;
     if (!el) return;
@@ -436,21 +581,94 @@ const ChatInputArea = memo(forwardRef<ChatInputHandle, ChatInputAreaProps>(funct
     },
   }), [autoresize]);
 
-  const canSend = (value.trim().length > 0 || attachment !== null) && !isLoading && !compressing;
+  const canSend = (value.trim().length > 0 || attachment !== null) && !isLoading && !compressing && !capturing;
 
-  const doSend = useCallback(() => {
-    if (isLoading || compressing) return;
+  // ─── Toggle live screen sharing (browser picker → live frame lane) ───
+  const toggleScreenShare = useCallback(async () => {
+    if (screenStarting) return;
+    if (screenActive) {
+      stopScreenShare();
+      toast(lang === "ar" ? "تم إيقاف مشاركة الشاشة" : "Screen sharing stopped", { duration: 1800 });
+      return;
+    }
+    setScreenStarting(true);
+    const res = await startScreenShare();
+    setScreenStarting(false);
+    if (res.ok) {
+      toast(
+        lang === "ar"
+          ? "تم ربط شاشتك مباشرة — اسألني عن أي شيء يظهر عليها وسأوجهك خطوة بخطوة كأنني جالس بجانبك"
+          : "Your screen is live — ask me about anything on it and I'll guide you step by step, like a teacher sitting beside you",
+        { duration: 4000 },
+      );
+      return;
+    }
+    const msg = res.reason === "denied"
+      ? (lang === "ar"
+        ? "تم رفض إذن مشاركة الشاشة — اسمح بالمشاركة من شريط المتصفح وحاول مجدداً"
+        : "Screen share permission was denied — allow it from the browser bar and try again")
+      : res.reason === "unsupported"
+        ? (lang === "ar"
+          ? "مشاركة الشاشة غير مدعومة في هذا المتصفح — استخدم كروم أو إيدج على الكمبيوتر"
+          : "Screen sharing isn't supported in this browser — use Chrome or Edge on desktop")
+        : (lang === "ar"
+          ? "تعذر بدء مشاركة الشاشة — حاول مجدداً"
+          : "Couldn't start screen sharing — please try again");
+    toast(msg, { duration: 3200 });
+  }, [screenStarting, screenActive, lang]);
+
+  // ─── One-tap "read my screen now" — fresh frame + guidance prompt ───
+  const readScreenNow = useCallback(() => {
+    if (isLoading || capturing) return;
+    const frame = captureScreenFrame();
+    if (!frame) {
+      toast(
+        lang === "ar"
+          ? "تعذر التقاط الشاشة — تأكد أن المشاركة ما زالت نشطة"
+          : "Couldn't capture the screen — make sure sharing is still active",
+        { duration: 2500 },
+      );
+      return;
+    }
+    onSend(
+      lang === "ar" ? SCREEN_READ_PROMPT_AR : SCREEN_READ_PROMPT_EN,
+      { dataUrl: frame.dataUrl, thumb: frame.thumb, name: "screen-capture.jpg", source: "screen_capture" },
+    );
+  }, [isLoading, capturing, lang, onSend]);
+
+  const doSend = useCallback(async () => {
+    if (isLoading || compressing || capturing) return;
     if (!value.trim() && !attachment) return;
-    onSend(value, attachment);
+    // LIVE SCREEN: while sharing is active every send carries the CURRENT
+    // frame (a manual file attachment still wins). Capture failure degrades
+    // honestly — the message goes text-only with an explicit notice, the bot
+    // is never told it saw a frame it did not receive.
+    let finalAttachment: AttachedImage | null = attachment;
+    if (!finalAttachment && screenActive) {
+      setCapturing(true);
+      const frame = captureScreenFrame();
+      setCapturing(false);
+      if (frame) {
+        finalAttachment = { dataUrl: frame.dataUrl, thumb: frame.thumb, name: "screen-capture.jpg", source: "screen_capture" };
+      } else {
+        toast(
+          lang === "ar"
+            ? "تعذر التقاط الشاشة — سيتم إرسال رسالتك نصاً فقط"
+            : "Screen capture failed — your message will be sent as text only",
+          { duration: 2500 },
+        );
+      }
+    }
+    onSend(value, finalAttachment);
     setValue("");
     setAttachment(null);
     requestAnimationFrame(autoresize);
-  }, [value, attachment, isLoading, compressing, onSend, autoresize]);
+  }, [value, attachment, isLoading, compressing, capturing, screenActive, lang, onSend, autoresize]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      doSend();
+      void doSend();
     }
   };
 
@@ -479,6 +697,18 @@ const ChatInputArea = memo(forwardRef<ChatInputHandle, ChatInputAreaProps>(funct
       className="flex-shrink-0 px-3 py-3 border-t border-[#1e2d3d] bg-[#0a1019]"
       style={isMobileViewport ? { paddingBottom: "max(env(safe-area-inset-bottom, 0px) + 0.5rem, 0.75rem)" } : undefined}
     >
+      {/* Live screen-share bar (preview + status + "read now") — mounts only
+          while starting/active, its 2fps ticker re-renders only itself */}
+      <ScreenShareBar
+        lang={lang}
+        active={screenActive}
+        starting={screenState.status === "starting"}
+        label={screenState.label}
+        onToggle={() => { void toggleScreenShare(); }}
+        onReadNow={readScreenNow}
+        readDisabled={isLoading || capturing}
+      />
+
       {/* Attachment preview / compressing indicator (extracted component) */}
       <AttachmentArea
         attachment={attachment}
@@ -498,8 +728,12 @@ const ChatInputArea = memo(forwardRef<ChatInputHandle, ChatInputAreaProps>(funct
         canSend={canSend}
         isLoading={isLoading}
         compressing={compressing}
-        doSend={doSend}
+        doSend={() => { void doSend(); }}
         lang={lang}
+        screenSupported={screenSupported}
+        screenActive={screenActive}
+        screenStarting={screenStarting}
+        onToggleScreenShare={() => { void toggleScreenShare(); }}
       />
       <p className={`mt-2 text-center text-[10px] text-slate-600 ${kbOpen ? "hidden" : ""}`}>
         {lang === "ar"
@@ -1074,7 +1308,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
       role: "user",
       content: trimmed,
       timestamp: new Date(),
-      image: image ? { dataUrl: image.dataUrl, thumb: image.thumb, name: image.name } : undefined,
+      image: image ? { dataUrl: image.dataUrl, thumb: image.thumb, name: image.name, source: image.source } : undefined,
     };
 
     // Update messages state
@@ -1093,7 +1327,10 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     const historyMessages = messages
       .slice(-20)
       .filter((m) => m.id !== "welcome" && !m.isError);
-    type ApiContent = string | Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }>;
+    type ApiContent = string | Array<
+      | { type: "text"; text: string }
+      | { type: "image_url"; image_url: { url: string }; source?: "screen_capture" }
+    >;
     const apiMessages: { role: "user" | "assistant"; content: ApiContent }[] = [];
     for (const m of historyMessages) {
       apiMessages.push({ role: m.role as "user" | "assistant", content: m.content });
@@ -1101,7 +1338,10 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     if (image) {
       const contentParts: Exclude<ApiContent, string> = [];
       if (trimmed) contentParts.push({ type: "text", text: trimmed });
-      contentParts.push({ type: "image_url", image_url: { url: image.dataUrl } });
+      // `source: "screen_capture"` — the server validates this flag and arms
+      // the LIVE SCREEN TEACHER prompt (grounded step-by-step guidance, zero
+      // guessing about anything not visible in the frame).
+      contentParts.push({ type: "image_url", image_url: { url: image.dataUrl }, source: image.source });
       apiMessages.push({ role: "user", content: contentParts });
     } else {
       apiMessages.push({ role: "user", content: trimmed });

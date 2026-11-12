@@ -57,7 +57,37 @@ const visionReadCache = new WeakMap<ChatApiMessage[], VisionReadResult>();
 /** Max description chars injected into the reasoning prompt. */
 const MAX_DESCRIPTION_CHARS = 6_000;
 
-export function visionExtractionPrompt(language?: string): string {
+export function visionExtractionPrompt(language?: string, screenCapture?: boolean): string {
+  if (screenCapture) {
+    if (language === "ar") {
+      return `أنت محرك قراءة شاشات دقيق لمنصة هندسة كهربائية. الصورة المرفقة لقطة مباشرة من شاشة حاسوب المستخدم وهو يعمل داخل برنامج (غالباً برنامج هندسي مثل ETAP أو SKM أو PowerFactory أو Excel). مهمتك قراءتها قراءة واقعية كاملة — وصف فقط، بلا نصائح وبلا حلول.
+المطلوب استخراجه بالترتيب:
+1. اسم البرنامج وعنوان النافذة النشطة حرفياً (وشريط العنوان أعلى النافذة).
+2. كل النصوص الظاهرة حرفياً: أسماء القوائم المنسدلة والأزرار والتبويبات والحقول ورسائل الحالات — بدون ترجمة أو تعديل.
+3. أي قيم وأرقام ووحدات كما هي مكتوبة بالضبط (فولت، ك.ف.أ، أمبير، نسب، معاملات، أبعاد كابلات، نتائج حسابات).
+4. العنصر المحدد/النشط حالياً على الشاشة (الخلية المظللة، الشبكة المختارة، البيسة أو الفيدر المحدد، نافذة الحوار المفتوحة) وموقعه في الواجهة.
+5. بنية الواجهة: الشريط العلوي، الأشرطة/التابات، اللوحات الجانبية، الجداول الظاهرة وأسماء أعمدتها، والمخطط إن وُجد وطريقة توصيل عناصره.
+6. أي رسالة خطأ أو تحذير أو مؤشر تشغيل ظاهر.
+قواعد صارمة:
+- إذا كانت قيمة غير مقروءة اكتب [غير مقروء] — لا تخمّن أبداً ولا تكمل كلمة من عندك.
+- إن لم يظهر عنصر معين على الشاشة فقل صراحةً "غير ظاهر في اللقطة" — لا تفترض وجوده.
+- لا تقدم أي إجابة أو توصية — وصف الشاشة فقط. سيجيب نموذج آخر على سؤال المستخدم بناءً على وصفك.
+- ابدأ بالوصف مباشرة دون مقدمات.`;
+    }
+    return `You are a precise screen-reading engine for an electrical-engineering platform. The attached image is a LIVE frame of the user's computer screen while they work inside a program (most likely an engineering tool such as ETAP, SKM, PowerFactory, or Excel). Read it factually and completely — description ONLY, no advice, no solutions.
+Extract, in order:
+1. The program name and the ACTIVE window title verbatim (title bar text).
+2. Every visible text VERBATIM: dropdown menus, buttons, tabs, field labels, status messages — no translation, no paraphrase.
+3. Every value, number and unit exactly as written (volts, kVA, amps, percentages, settings, cable sizes, calculation results).
+4. The currently selected/active element on screen (highlighted cell, selected network item, chosen bus/feeder, open dialog) and its location in the UI.
+5. The UI layout: top ribbon/menu bar, tabs, side panels, visible tables with their column headers, and any diagram with its visible connectivity.
+6. Any error message, warning, or progress indicator visible.
+Hard rules:
+- If a value is unreadable write [unreadable] — NEVER guess or complete words.
+- If an element is not visible say explicitly "not visible in this frame" — never assume it exists.
+- Do NOT answer the user's question or give any recommendation — describe the screen only. Another model will answer based on your description.
+- Start the description directly, no preamble.`;
+  }
   if (language === "ar") {
     return `أنت محرك تحليل صور دقيق لمنصة هندسة كهربائية. سترى صورة مرفقة من المستخدم. مهمتك وصفها وصفاً واقعياً كاملاً — وصف فقط، بلا نصائح وبلا حلول.
 المطلوب استخراجه بالترتيب:
@@ -174,11 +204,12 @@ const MIN_DESCRIPTION_CHARS = 20;
 export async function readImageViaVisionModels(
   messages: ChatApiMessage[],
   language?: string,
+  screenCapture?: boolean,
 ): Promise<VisionReadResult> {
   const cached = visionReadCache.get(messages);
   if (cached) return cached;
 
-  const result = await performVisionRead(messages, language);
+  const result = await performVisionRead(messages, language, screenCapture);
   visionReadCache.set(messages, result);
   return result;
 }
@@ -186,8 +217,9 @@ export async function readImageViaVisionModels(
 async function performVisionRead(
   messages: ChatApiMessage[],
   language?: string,
+  screenCapture?: boolean,
 ): Promise<VisionReadResult> {
-  const systemPrompt = visionExtractionPrompt(language);
+  const systemPrompt = visionExtractionPrompt(language, screenCapture);
   const startedAt = Date.now();
   /** True when another reader stage still fits inside the overall budget. */
   const stageFits = () => Date.now() - startedAt + VISION_STAGE_MIN_REMAINING_MS < VISION_READ_BUDGET_MS;

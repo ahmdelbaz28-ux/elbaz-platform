@@ -532,8 +532,13 @@ const electricalDepthQuickEn = `
  * @param catalog  Real course-catalog text (from api/lib/course-catalog.ts).
  *                 Injected verbatim into the catalog block in both modes.
  *                 Empty/undefined → fallback line (never invented courses).
+ * @param screenCapture  LIVE SCREEN flag (source: "screen_capture") — the
+ *                 attached image is a live frame of the user's real screen
+ *                 while they work inside an engineering program. Arms the
+ *                 screen-teacher block (grounded step-by-step guidance,
+ *                 zero guessing) INSTEAD of the generic vision block.
  */
-export function getSystemPrompt(language?: string, mode: ChatbotMode = "thinking", catalog?: string, vision = false, historySummary?: string, screen?: ParsedScreenContext): string {
+export function getSystemPrompt(language?: string, mode: ChatbotMode = "thinking", catalog?: string, vision = false, historySummary?: string, screen?: ParsedScreenContext, screenCapture = false): string {
   const catalogBlock = buildCourseCatalogBlock(catalog ?? "");
 
   // ── Screen-context block — the user's CURRENT open screen (page, displayed
@@ -553,11 +558,32 @@ export function getSystemPrompt(language?: string, mode: ChatbotMode = "thinking
   // ── Vision block — appended ONLY when the user attached an image ──
   // The model must ground its answer in what it actually sees (single-line
   // diagrams, panel photos, handwritten problems, error screenshots).
+  // LIVE SCREEN (screenCapture=true): the image is a live frame of the
+  // user's real screen inside an engineering program — the generic block is
+  // REPLACED by the screen-teacher block (stricter, guidance-oriented).
+  const screenTeacherBlockAr = `\n\n🖥️ وضع المعلّم المباشر (شاشة المستخدم الحقيقية): الصورة المرفقة ليست صورة عادية — إنها لقطة مباشرة من شاشة حاسوب المستخدم وهو يعمل الآن داخل برنامج هندسي (غالباً ETAP أو SKM أو PowerFactory). أنت المعلّم الخبير الجالس بجانبه الآن، وواجبك توجيهه داخل البرنامج خطوة بخطوة حتى يصل لما يريد بالضبط.
+قواعد صارمة (ممنوع التخمين منعًا باتًا):
+- اعتمد حصريًا على وصف الشاشة المرفق: اسم البرنامج، النافذة النشطة، القوائم والأزرار والتبويبات الظاهرة، والقيم المقروءة.
+- اذكر أسماء القوائم والأزرار حرفيًا كما تظهر على الشاشة (مثال: Process → Run Load Flow) — لا تختلق مسارًا لعنصر غير ظاهر في اللقطة؛ إن كان العنصر المطلوب غير ظاهر قل ذلك بوضوح ووجّه المستخدم لفتح القائمة الصحيحة مما تراه فعلًا على شاشته.
+- إن كانت قيمة غير مقروءة اطلب منه تكبيرها أو إعادة إرسال لقطة جديدة — لا تفترض قيمتها أبدًا.
+- أعطه خطوتين إلى ثلاث خطوات قصيرة مرقمة في كل رد، ثم اطلب منه إرسال لقطة جديدة للتأكد من الوصول للنتيجة قبل الخطوة التالية — هكذا يعمل المعلم الجالس بجانب الطالب.
+- اشرح ببساطة وصبر، مع الإبقاء على المصطلحات التقنية وأسماء القوائم بالإنجليزية كما في البرنامج.`;
+  const screenTeacherBlockEn = `\n\n🖥️ LIVE SCREEN TEACHER MODE (the user's real screen): the attached image is not an ordinary picture — it is a live frame of the user's computer screen while they work inside an engineering program (most likely ETAP, SKM, or PowerFactory). You are the expert teacher sitting beside them right now, and your job is to guide them inside the program step by step until they reach exactly what they need.
+Hard rules (guessing is absolutely forbidden):
+- Rely EXCLUSIVELY on the attached screen description: program name, active window, visible menus/buttons/tabs, and readable values.
+- Use menu and button names VERBATIM as they appear on screen (e.g. Process → Run Load Flow) — never invent a path to an element that is not visible in the frame; if the needed element is not visible, say so clearly and guide the user to open the right menu from what IS visible on their screen.
+- If a value is unreadable, ask the user to zoom in or send a fresh capture — never assume its value.
+- Give 2-3 short numbered steps per reply, then ask the user to send a fresh capture to verify the result before the next step — this is how a teacher sitting beside a student works.
+- Explain simply and patiently, keeping technical terms and menu names in English as they appear in the program.`;
   const visionBlockAr = vision
-    ? `\n\n🖼️ وضع تحليل الصور: المستخدم أرفق صورة مع رسالته (ممكن تكون: مخطط Single-Line Diagram، صورة لوحة توزيع، مسألة مكتوبة بخط اليد، لقطة شاشة من ETAP/SKM، أو صورة خطأ).\n- حلّل الصورة بدقة وابنِ إجابتك على ما تراه فعلاً — لا تخترع تفاصيل غير موجودة في الصورة.\n- إذا كانت الصورة فيها مسألة أو مخطط كهربائي، اشرح خطوة بخطوة بالعربي مع الإبقاء على المصطلحات التقنية بالإنجليزية.\n- إذا كانت الصورة غير واضحة أو ناقصة، اطلب توضيحاً وحدد بالضبط ماذا تحتاج أن ترى بوضوح.\n- إذا كانت الصورة غير متعلقة بالهندسة الكهربائية، قل ذلك بصراحة بلباقة.`
+    ? (screenCapture
+      ? screenTeacherBlockAr
+      : `\n\n🖼️ وضع تحليل الصور: المستخدم أرفق صورة مع رسالته (ممكن تكون: مخطط Single-Line Diagram، صورة لوحة توزيع، مسألة مكتوبة بخط اليد، لقطة شاشة من ETAP/SKM، أو صورة خطأ).\n- حلّل الصورة بدقة وابنِ إجابتك على ما تراه فعلاً — لا تخترع تفاصيل غير موجودة في الصورة.\n- إذا كانت الصورة فيها مسألة أو مخطط كهربائي، اشرح خطوة بخطوة بالعربي مع الإبقاء على المصطلحات التقنية بالإنجليزية.\n- إذا كانت الصورة غير واضحة أو ناقصة، اطلب توضيحاً وحدد بالضبط ماذا تحتاج أن ترى بوضوح.\n- إذا كانت الصورة غير متعلقة بالهندسة الكهربائية، قل ذلك بصراحة بلباقة.`)
     : "";
   const visionBlockEn = vision
-    ? `\n\n🖼️ IMAGE ANALYSIS MODE: the user attached an image with their message (possible: a Single-Line Diagram, a distribution panel photo, a handwritten problem, an ETAP/SKM screenshot, or an error photo).\n- Analyze the image carefully and ground your answer in what you actually see — never invent details that are not in the image.\n- If the image contains an electrical problem or diagram, explain step by step, keeping technical terms in English.\n- If the image is unclear or incomplete, ask for a clarification and state exactly what you need to see clearly.\n- If the image is unrelated to electrical engineering, say so politely and directly.`
+    ? (screenCapture
+      ? screenTeacherBlockEn
+      : `\n\n🖼️ IMAGE ANALYSIS MODE: the user attached an image with their message (possible: a Single-Line Diagram, a distribution panel photo, a handwritten problem, an ETAP/SKM screenshot, or an error photo).\n- Analyze the image carefully and ground your answer in what you actually see — never invent details that are not in the image.\n- If the image contains an electrical problem or diagram, explain step by step, keeping technical terms in English.\n- If the image is unclear or incomplete, ask for a clarification and state exactly what you need to see clearly.\n- If the image is unrelated to electrical engineering, say so politely and directly.`)
     : "";
 
 

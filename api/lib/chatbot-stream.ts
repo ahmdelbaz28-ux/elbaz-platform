@@ -161,6 +161,9 @@ export async function pickWorkingModel(
   catalog?: string,
   historySummary?: string,
   screen?: ParsedScreenContext,
+  /** LIVE SCREEN: last user image is a frame of the user's real screen —
+   *  arms the screen-teacher prompt in the legacy backbone too. */
+  screenCapture?: boolean,
 ): Promise<PickedProvider | null> {
   const tuning = mode === "instant" ? MODE_TUNING.instant : MODE_TUNING.thinking;
   // ✅ ARCH-AUDIT FIX (stream legacy path silently drops the long-term memory
@@ -170,7 +173,7 @@ export async function pickWorkingModel(
   // continuity that the non-stream path kept. The summary now threads through.
   // ✅ SCREEN CONTEXT: the screen snapshot threads through the same way — the
   // legacy backbone must see the user's current screen too.
-  const systemPrompt = getSystemPrompt(language, mode, catalog, false, historySummary, screen);
+  const systemPrompt = getSystemPrompt(language, mode, catalog, false, historySummary, screen, screenCapture);
 
   if (mode === "instant") {
     // ─── INSTANT: fastest first — Groq → OpenRouter (fast model) → NVIDIA ───
@@ -748,6 +751,10 @@ async function getVisionStreamResponse(request: {
   historySummary?: string;
   /** ✅ SCREEN CONTEXT: validated user-screen snapshot (chatbot-screen.ts). */
   screen?: ParsedScreenContext;
+  /** LIVE SCREEN: the last user message image is a frame of the user's
+   *  actual screen (source: "screen_capture") — arms the screen-teacher
+   *  prompt for grounded step-by-step guidance. */
+  screenCapture?: boolean;
   /** ✅ AUDIT RUN-2 FIX: the vision stream walk honors the caller's abort. */
   abortSignal?: AbortSignal;
 }): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
@@ -757,11 +764,11 @@ async function getVisionStreamResponse(request: {
 
   // ── PASS 1 (READ): vision model extracts a factual description (bounded,
   // non-streaming — the description is short and the reasoning pass streams).
-  const read = await readImageViaVisionModels(request.messages, request.language);
+  const read = await readImageViaVisionModels(request.messages, request.language, request.screenCapture);
   const pass2Messages = read.ok && read.description
     ? buildAugmentedTextMessages(request.messages, read.description, request.language)
     : buildVisionFailureMessages(request.messages, request.language);
-  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, false, request.historySummary, request.screen);
+  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, false, request.historySummary, request.screen, request.screenCapture);
 
   // ── PASS 2 (ANSWER): streaming reasoning-first cascade over the TEXT
   // description — the strongest available model writes the answer.
@@ -788,7 +795,7 @@ async function getVisionStreamResponse(request: {
 
   // Legacy streaming text cascade over the augmented (text-only) messages.
   const pass2Request = { ...request, messages: pass2Messages };
-  const picked = await pickWorkingModel(pass2Messages, request.language, mode, request.catalog, request.historySummary, request.screen);
+  const picked = await pickWorkingModel(pass2Messages, request.language, mode, request.catalog, request.historySummary, request.screen, request.screenCapture);
   if (picked) {
     if (picked.provider === "nvidia") {
       return await streamNvidiaProvider(pass2Request, picked, encoder);
@@ -836,6 +843,10 @@ export async function getStreamResponse(request: {
   /** ✅ SCREEN CONTEXT: validated user-screen snapshot (chatbot-screen.ts) —
    *  grounds every answer in the user's CURRENT open screen. */
   screen?: ParsedScreenContext;
+  /** LIVE SCREEN: the last user message image is a frame of the user's
+   *  actual screen (source: "screen_capture") — arms the screen-teacher
+   *  prompt for grounded step-by-step guidance. */
+  screenCapture?: boolean;
   /** Persistence escalation (walk rounds ≥ 2): skip the dynamic router and
    *  go straight to the resilient legacy backbone — a storming dynamic pool
    *  must never re-burn every round's budget before Groq/NVIDIA answer. */
@@ -863,7 +874,7 @@ export async function getStreamResponse(request: {
     const routerTuning = MODE_TUNING[routerMode];
     const routed = await routeChatStream({
       messages: request.messages,
-      systemPrompt: getSystemPrompt(request.language, routerMode, request.catalog, false, request.historySummary, request.screen),
+      systemPrompt: getSystemPrompt(request.language, routerMode, request.catalog, false, request.historySummary, request.screen, request.screenCapture),
       mode: routerMode,
       vision: false,
       language: request.language,
@@ -881,7 +892,7 @@ export async function getStreamResponse(request: {
     if (routed.ok) return { stream: routed.result.stream, model: routed.result.model };
   }
 
-  const picked = await pickWorkingModel(request.messages, request.language, request.mode || "thinking", request.catalog, request.historySummary, request.screen);
+  const picked = await pickWorkingModel(request.messages, request.language, request.mode || "thinking", request.catalog, request.historySummary, request.screen, request.screenCapture);
 
   if (!picked) {
     return buildStreamErrorResponse("noProvider", request.language);

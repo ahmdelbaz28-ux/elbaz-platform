@@ -1,7 +1,7 @@
 {
   "name": "elbaz-platform",
   "private": true,
-  "version": "2026.05.10-v16",
+  "version": "2026.05.10-v17",
   "type": "module",
   "scripts": {
     "prebuild": "node scripts/prebuild-guard.js",
