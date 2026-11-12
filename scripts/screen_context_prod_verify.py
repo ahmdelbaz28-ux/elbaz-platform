@@ -99,7 +99,15 @@ def main():
 
     # ── P2: without any snapshot the bot must NOT invent a page ──
     r2 = ask("أنا الآن في أي صفحة من الموقع؟", None, "P2 no-guessing (no snapshot)")
-    invented = any(m in r2 for m in ["صفحة الكورس", "صفحة المقال", "الكورسات قبل", "أنت في صفحة الكورس"])
+    # STRICT-FALSE-POSITIVE FIX: the old check matched the substring
+    # "صفحة الكورس" — which also occurs inside the LEGITIMATE suggestion
+    # "صفحة الكورسات". Inventing means ASSERTING where the user is, not
+    # recommending pages, so only assertive phrasings count as inventions.
+    invented = any(m in r2 for m in [
+        "أنت في صفحة الكورس", "أنت الآن في صفحة الكورس", "تتصفح حالياً صفحة الكورس",
+        "أنت في صفحة المقال", "أنت الآن في صفحة المقال", "أنت في صفحة الكورس:",
+        "الصفحة التي تتصفحها هي", "الصفحة المفتوحة لديك هي",
+    ])
     asks_or_declines = any(m in r2 for m in ["لا أستطيع", "لا يمكنني", "أخبرني", "قلي", "أقول لك", "لست متأكد", "لا أرى", "لا أعرف", "الرئيسية أو", "الصفحة الرئيسية", "لا أملك"])
     check("P2 does not invent a screen when none is sent", (not invented) and (asks_or_declines or len(r2) > 0),
           f"(invented={invented})")
