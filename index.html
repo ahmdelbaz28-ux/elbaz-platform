@@ -178,7 +178,12 @@
     <meta http-equiv="Expires" content="0" />
 
     <!-- CSP is enforced via HTTP header in boot.ts (not meta tag — avoids double-policy conflicts) -->
-    <link rel="preload" as="image" href="hero-main.svg" type="image/svg+xml" />
+    <!-- 🚀 PERF (round-2 LCP pass): preload the REAL hero image the homepage renders
+         (Home.tsx -> ParallaxHeroImage). It previously preloaded hero-main.svg — the
+         course-card fallback — so the browser spent an early connection on the wrong
+         file while the actual LCP image waited for JS parse. WebP saves ~36% vs the
+         progressive JPEG (94.7KB vs 148.5KB at PSNR 37.6dB). -->
+    <link rel="preload" as="image" href="/hero-main.webp" type="image/webp" fetchpriority="high" />
   </head>
   <body>
     <!-- ⚠️ CRITICAL: Cache-nuke MUST run first — before React and Service Worker.

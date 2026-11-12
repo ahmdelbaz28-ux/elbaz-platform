@@ -3,7 +3,7 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { trpc } from "@/providers/trpc";
 import CourseCard from "@/components/CourseCard";
 import Seo from "@/components/SEO";
-import { StaggerContainer, StaggerItem, FadeIn, NeonGlow } from "@/components/ui/motion";
+import { NeonGlow } from "@/components/ui/motion";
 import AnimatedIcon from "@/components/ui/AnimatedIcon";
 import BentoCard from "@/components/ui/BentoCard";
 import AnimatedCounter from "@/components/ui/AnimatedCounter";
@@ -340,7 +340,7 @@ function ParallaxHeroImage({ src, alt, className }: { readonly src: string; read
 
   return (
     <motion.div ref={ref} style={{ y, scale }} className={className}>
-      <img src={src} alt={alt} className="w-full h-auto object-cover max-h-[480px] lg:max-h-[600px] xl:max-h-[680px]" loading="eager" fetchPriority="high" decoding="async" width="1200" height="800" onError={() => setImgError(true)} />
+      <img src={src} alt={alt} className="w-full h-auto object-cover max-h-[480px] lg:max-h-[600px] xl:max-h-[680px]" loading="eager" fetchPriority="high" decoding="async" width="1280" height="714" onError={() => setImgError(true)} />
     </motion.div>
   );
 }
@@ -431,9 +431,13 @@ export default function Home() { // NOSONAR — landing page with hero + feature
         />
 
         <div className="relative z-10 mx-auto flex max-w-7xl flex-col items-center px-4 py-16 lg:flex-row lg:px-6 lg:py-20 gap-8 lg:gap-0">
-          <StaggerContainer className="flex-1 text-center lg:text-start" staggerChildren={0.12}>
-            <StaggerItem>
-              <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.5, type: "spring" }} className="flex items-center justify-center gap-2 lg:justify-start">
+          {/* ⚡ PERF (round-2 LCP pass): above-the-fold hero must NOT gate paint behind
+              opacity animations. LCP ignores elements at opacity 0, so StaggerItem's
+              hidden state delayed the recorded LCP by the stagger delays (~0.3-1.1s).
+              The H1 is now static (always visible on first paint); secondary rows keep
+              short fades with tiny delays. */}
+          <div className="flex-1 text-center lg:text-start">
+              <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.3, ease: "easeOut" }} className="flex items-center justify-center gap-2 lg:justify-start">
                 <motion.div animate={{ opacity: [0.5, 1, 0.5], scale: [0.95, 1.05, 0.95] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}>
                   <Zap className="h-4 w-4 text-[var(--animation-accent)]" />
                 </motion.div>
@@ -441,9 +445,7 @@ export default function Home() { // NOSONAR — landing page with hero + feature
                   {lang === "en" ? "PREMIUM ELECTRICAL ENGINEERING" : "تعليم هندسي كهربي متميز"}
                 </span>
               </motion.div>
-            </StaggerItem>
 
-            <StaggerItem>
               <h1 className="mt-6 text-5xl font-extrabold leading-[1.06] tracking-tight text-foreground sm:text-5xl lg:text-[64px]">
                 {lang === "en" ? "Master the Power" : "أتقن قوة"}
                 <br />
@@ -451,16 +453,12 @@ export default function Home() { // NOSONAR — landing page with hero + feature
                   {lang === "en" ? "of Electrical Engineering" : "الهندسة الكهربية"}
                 </span>
               </h1>
-            </StaggerItem>
 
-            <StaggerItem>
-              <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, duration: 0.6 }} className="mx-auto mt-5 max-w-lg text-base leading-relaxed text-text-muted lg:mx-0 lg:text-lg">
+              <motion.p initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08, duration: 0.4 }} className="mx-auto mt-5 max-w-lg text-base leading-relaxed text-text-muted lg:mx-0 lg:text-lg">
                 {lang === "en" ? "From electrical network design to advanced simulations in ETAP, SKM, PowerFactory, and PVSyst. Learn from an industry expert with real-world project experience." : "من تصميم الشبكات الكهربية إلى المحاكاة المتقدمة في ETAP وSKM وPowerFactory وPVSyst. تعلم من خبير صناعة ذي خبرة عملية."}
               </motion.p>
-            </StaggerItem>
 
-            <StaggerItem>
-              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4, duration: 0.5 }} className="mt-8 flex flex-col items-center gap-4 sm:flex-row lg:justify-start">
+              <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, duration: 0.4 }} className="mt-8 flex flex-col items-center gap-4 sm:flex-row lg:justify-start">
                 <Link to="/courses">
                   <ArcFlashButton variant="primary" onClick={() => trackEvent("cta_click", { button: "explore_courses", page: "hero" })}>
                     <Zap className="h-4 w-4" />
@@ -474,24 +472,27 @@ export default function Home() { // NOSONAR — landing page with hero + feature
                   </ArcFlashButton>
                 </Link>
               </motion.div>
-            </StaggerItem>
 
-            <StaggerItem>
-              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5, duration: 0.5 }} className="mt-10 flex flex-wrap items-center justify-center gap-8 lg:justify-start">
+              <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22, duration: 0.4 }} className="mt-10 flex flex-wrap items-center justify-center gap-8 lg:justify-start">
                 <AnimatedCounter value={resolvedStats.totalStudents} label={t("studentsEnrolled")} color="var(--animation-accent)" suffix="+" />
                 <div className="h-10 w-px bg-border" />
                 <AnimatedCounter value={resolvedStats.satisfactionRate} label={t("satisfactionRate")} color="#10b981" suffix="%" />
                 <div className="h-10 w-px bg-border" />
                 <AnimatedCounter value={resolvedStats.totalCourses} label={t("premiumCourses")} color="#f59e0b" suffix="+" />
               </motion.div>
-            </StaggerItem>
-          </StaggerContainer>
+          </div>
 
-          <FadeIn delay={0.3} className="mt-8 flex flex-1 justify-center lg:mt-0 lg:justify-end">
-            <motion.div initial={{ opacity: 0, scale: 0.9, x: 50 }} animate={{ opacity: 1, scale: 1, x: 0 }} transition={{ duration: 0.8, type: "spring", stiffness: 100, damping: 20 }} className="relative w-full max-w-2xl lg:max-w-[600px] xl:max-w-[700px]">
+          {/* ⚡ PERF (round-2 LCP): the hero image IS the LCP element. Both the
+              old FadeIn wrapper (opacity 0 + blur, delay 0.3 + 0.6s) and the
+              inner spring (opacity 0 → 1 over 0.8s) delayed the first PAINT of
+              the image, so the browser recorded LCP ~1.5s after the bytes were
+              already on screen. The image now mounts at FULL opacity; only the
+              transform (scale/x) animates — transforms never gate LCP. */}
+          <div className="mt-8 flex flex-1 justify-center lg:mt-0 lg:justify-end">
+            <motion.div initial={{ opacity: 1, scale: 0.96, x: 24 }} animate={{ opacity: 1, scale: 1, x: 0 }} transition={{ duration: 0.4, ease: "easeOut" }} className="relative w-full max-w-2xl lg:max-w-[600px] xl:max-w-[700px]">
               <motion.div animate={{ opacity: [0.4, 0.7, 0.4], scale: [1, 1.05, 1] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }} className="absolute -inset-6 rounded-[2rem] bg-gradient-to-br from-accent-secondary/20 via-accent/10 to-transparent blur-3xl" />
               <motion.div animate={{ boxShadow: ["0 0 30px rgba(6,182,212,0.3)", "0 0 50px rgba(6,182,212,0.5)", "0 0 30px rgba(6,182,212,0.3)"] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }} className="relative z-10 overflow-hidden rounded-[1.5rem] border border-border bg-background shadow-2xl">
-                <ParallaxHeroImage src="hero-main.jpg" alt="Master Electrical Engineering with Eng. Ahmed Elbaz" />
+                <ParallaxHeroImage src="/hero-main.webp" alt="Master Electrical Engineering with Eng. Ahmed Elbaz" />
                 <div className="absolute inset-0 bg-gradient-to-t from-background/40 via-transparent to-white/5 pointer-events-none" />
               </motion.div>
 
@@ -514,7 +515,7 @@ export default function Home() { // NOSONAR — landing page with hero + feature
                 </motion.div>
               </motion.div>
             </motion.div>
-          </FadeIn>
+          </div>
         </div>
 
         {/* Scroll-down indicator — mobile: in normal flow BELOW the banner

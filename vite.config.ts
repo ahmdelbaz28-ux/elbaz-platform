@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto"
 import { writeFile } from "node:fs/promises"
 const __dirname = import.meta.dirname
 import react from "@vitejs/plugin-react"
-import { defineConfig, type Plugin } from "vite"
+import { defineConfig, type Plugin, type Rollup } from "vite"
 import { VitePWA } from 'vite-plugin-pwa'
 import viteCompression from 'vite-plugin-compression'
 
@@ -60,6 +60,37 @@ function buildIdPlugin(): Plugin {
   }
 }
 
+// 🚀 PERF (round-2 LCP): the landing route chunk (Home-*.js) is discovered only
+// AFTER index-*.js has finished parsing and executing — the dynamic import()
+// runs inside React's first render. On a cold mobile visit that serialises two
+// big downloads on the LCP path. Injecting a conditional modulepreload into the
+// HTML head lets the browser fetch Home-*.js IN PARALLEL with the main bundle
+// (only when the visitor actually lands on "/", so /courses traffic never pays
+// for it). The hashed filename is read from the real build output, so it stays
+// correct on every rebuild. Repeat visits are unaffected — the SW precache
+// already serves both files instantly.
+function homeChunkPreloadPlugin(): Plugin {
+  return {
+    name: 'elbaz-home-chunk-modulepreload',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html, ctx) {
+        const homeChunk = ctx.bundle && Object.values(ctx.bundle).find(
+          (out): out is Rollup.OutputChunk =>
+            'type' in out && out.type === 'chunk' && out.name === 'Home'
+        )
+        // Dev server has no bundle — nothing to preload.
+        if (!homeChunk) return html
+        const script =
+          `<script>if(location.pathname==='/'){var l=document.createElement('link');` +
+          `l.rel='modulepreload';l.href='/${homeChunk.fileName}';` +
+          `document.head.appendChild(l);}</script>`
+        return html.replace('</head>', `${script}\n  </head>`)
+      },
+    },
+  }
+}
+
 // Files that must NEVER be precached by the Service Worker.
 // These files need to be fetched fresh from the server on every page load:
 // - cache-nuke.js: detects version changes, must be fresh to detect new deploys
@@ -103,6 +134,7 @@ export default defineConfig({
     viteCompression({ algorithm: 'gzip', threshold: 1024 }),
     viteCompression({ algorithm: 'brotliCompress', threshold: 1024, ext: '.br' }),
     buildIdPlugin(),
+    homeChunkPreloadPlugin(),
     // 🛡️ Elite: Exclude cache-nuke.js and rtl-detect.js from PWA processing entirely.
     // These files must run BEFORE the Service Worker and cannot be treated as modules.
     {
