@@ -52,7 +52,8 @@ vi.mock("./lib/chat-history.js", () => ({
 }));
 
 const getCourseCatalogText = vi.hoisted(() => vi.fn(async () => ""));
-vi.mock("./lib/course-catalog.js", () => ({ getCourseCatalogText, COURSE_CATALOG_CACHE_KEY: "chatbot:course-catalog" }));
+const getCourseCatalogLiteText = vi.hoisted(() => vi.fn(async () => ""));
+vi.mock("./lib/course-catalog.js", () => ({ getCourseCatalogText, getCourseCatalogLiteText, COURSE_CATALOG_CACHE_KEY: "chatbot:course-catalog", COURSE_CATALOG_LITE_CACHE_KEY: "chatbot:course-catalog-lite" }));
 
 const logger = vi.hoisted(() => ({
   info: vi.fn(),

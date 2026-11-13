@@ -13,7 +13,8 @@ import { getChatResponse, getStreamResponse, type ChatApiMessage, type ContentPa
 // pure + unit-testable without the router's import graph (no Hono, no DB).
 import { normalizeChatInput, MAX_MESSAGE_CHARS, MAX_TOTAL_CHARS } from "./lib/chatbot-normalize.js";
 import { parseScreenContext } from "./lib/chatbot-screen.js";
-import { getCourseCatalogText } from "./lib/course-catalog.js";
+import { getCourseCatalogText, getCourseCatalogLiteText } from "./lib/course-catalog.js";
+import { courseIntentFromMessages } from "./lib/chatbot-intent.js";
 import { containsPromptLeak, promptLeakRefusal } from "./lib/chatbot-prompts.js";
 import { finalizeReply, opaqueModelKey } from "./lib/finalize-reply.js";
 import { chatbotError, logSafeError, scrubCredentials, type ChatbotErrorCode } from "./lib/chatbot-errors.js";
@@ -336,7 +337,14 @@ chatbotRouter.post("/", async (c) => {
     // quote actual course names/levels/prices instead of hallucinating them.
     // PERF: catalog and user resolution are independent — start both (same
     // pattern as the /stream handler below).
-    const catalogPromise = getCourseCatalogText();
+    // ✅ TOKEN OPTIMIZATION (v3.6.0): the FULL 40-course catalog (~8.1k chars)
+    // rides only on course/platform intent — detected generously and STICKY
+    // over the recent conversation (a follow-up like «طيب والأخيرة دي؟» after
+    // a course question still gets the full list). Pure technical questions
+    // carry the featured sample instead. Vision lanes always get the full
+    // catalog (a screenshot may be a course page the text never mentions).
+    const courseIntent = vision || courseIntentFromMessages(messages);
+    const catalogPromise = courseIntent ? getCourseCatalogText() : getCourseCatalogLiteText();
 
     // ── Chat-history continuity (logged-in users only, fail-open) ──
     const chatUser = await resolveOptionalUser(c.req.raw);
@@ -357,6 +365,9 @@ chatbotRouter.post("/", async (c) => {
       language: resolveChatLanguage(body.language, messages),
       mode: body.mode,
       catalog,
+      // ✅ TOKEN OPTIMIZATION: which catalog block style the prompt renders
+      // (full contract vs featured-sample contract) — matches the choice above.
+      catalogMode: courseIntent ? ("full" as const) : ("lite" as const),
       vision,
       // LIVE SCREEN: the last user message image is a frame of the user's
       // actual screen — arms the screen-teacher prompt (grounded guidance).
@@ -538,7 +549,11 @@ chatbotRouter.post("/stream", async (c) => {
   // PERF: catalog and user resolution are independent — start both, await
   // each only where its value is first needed (saves one serial DB round
   // trip per chat message on the stream's critical path).
-  const catalogPromise = getCourseCatalogText();
+  // ✅ TOKEN OPTIMIZATION (v3.6.0): full catalog only on course/platform
+  // intent (sticky over recent history) or the vision lane — otherwise the
+  // featured sample rides along (see the non-stream handler for the contract).
+  const courseIntent = vision || courseIntentFromMessages(messages);
+  const catalogPromise = courseIntent ? getCourseCatalogText() : getCourseCatalogLiteText();
   const chatUser = await resolveOptionalUser(c.req.raw);
   const historySummary = chatUser ? await getLatestSummaryText(chatUser.id).catch(() => null) : null;
   const catalog = await catalogPromise;
@@ -564,6 +579,7 @@ chatbotRouter.post("/stream", async (c) => {
     language,
     mode,
     catalog,
+    catalogMode: courseIntent ? ("full" as const) : ("lite" as const),
     vision,
     // LIVE SCREEN: the last user message image is a frame of the user's
     // actual screen — arms the screen-teacher prompt (grounded guidance).

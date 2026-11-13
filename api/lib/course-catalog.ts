@@ -16,14 +16,19 @@ import { getDb } from "../queries/connection.js";
 import { courses } from "@db/schema";
 import { fetchWithSWR } from "./cache.js";
 import { logger } from "./logger.js";
+import { sliceCatalogLite } from "./chatbot-intent.js";
 
 /** Hard cap to bound prompt tokens even if the catalog grows large. */
 const MAX_COURSES = 40;
+
+/** Lite catalog = the featured head only (intent-gated requests). */
+const LITE_COURSES = 8;
 
 /** Cache TTL (seconds) — matches other course caches (COURSES: 5 min). */
 const CATALOG_TTL_SECONDS = 10 * 60;
 
 export const COURSE_CATALOG_CACHE_KEY = "chatbot:course-catalog";
+export const COURSE_CATALOG_LITE_CACHE_KEY = "chatbot:course-catalog-lite";
 
 const LEVEL_AR: Record<string, string> = {
   beginner: "مبتدئ",
@@ -99,6 +104,25 @@ export async function getCourseCatalogText(): Promise<string> {
     return await fetchWithSWR(COURSE_CATALOG_CACHE_KEY, fetchCatalogFromDb, CATALOG_TTL_SECONDS);
   } catch (err) {
     logger.warn("[Chatbot/Catalog] Catalog fetch failed (fail-open)", { error: err instanceof Error ? err.message : String(err) });
+    return "";
+  }
+}
+
+/**
+ * ✅ TOKEN OPTIMIZATION (v3.6.0): the FEATURED-SAMPLE catalog head (top 8
+ * courses, same DB ordering) for requests without course/platform intent.
+ * Derived from the SAME SWR-cached full text — one DB path, one cache, and
+ * the lite slice can never disagree with the full catalog. Never throws.
+ */
+export async function getCourseCatalogLiteText(): Promise<string> {
+  try {
+    return await fetchWithSWR(
+      COURSE_CATALOG_LITE_CACHE_KEY,
+      async () => sliceCatalogLite(await fetchCatalogFromDb(), LITE_COURSES),
+      CATALOG_TTL_SECONDS,
+    );
+  } catch (err) {
+    logger.warn("[Chatbot/Catalog] Lite catalog fetch failed (fail-open)", { error: err instanceof Error ? err.message : String(err) });
     return "";
   }
 }

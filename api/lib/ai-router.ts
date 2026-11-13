@@ -39,6 +39,7 @@
 import { and, asc, eq } from "drizzle-orm";
 import { aiModels, aiProviders, type AiModel, type AiProvider } from "@db/schema";
 import { logger } from "./logger.js";
+import { reportTokenUsage } from "./token-usage.js";
 import { sanitizeReplyOutput } from "./chatbot-prompts.js";
 import { stripThinkBlocks, ThinkStreamFilter } from "./think-filter.js";
 import { looksComplete } from "./finalize-reply.js";
@@ -1138,11 +1139,12 @@ export async function attemptUpstream(p: AttemptParams): Promise<{ ok: true; res
   return first;
 }
 
-async function readNonStreamReply(response: Response, allowReasoningFallback = false): Promise<{ ok: true; reply: string; finish?: string } | { ok: false; detail: string }> {
+async function readNonStreamReply(response: Response, allowReasoningFallback = false): Promise<{ ok: true; reply: string; finish?: string; usage?: unknown } | { ok: false; detail: string }> {
   try {
     const data = (await response.json()) as {
       error?: unknown;
       choices?: { message?: { content?: string | null; reasoning?: string | null; reasoning_content?: string | null }; finish_reason?: string | null }[];
+      usage?: unknown;
     };
     if (data.error) {
       const detail = typeof data.error === "string" ? data.error : JSON.stringify(data.error);
@@ -1154,7 +1156,7 @@ async function readNonStreamReply(response: Response, allowReasoningFallback = f
     const choice = data.choices?.[0];
     const msg = choice?.message;
     const reply = stripThinkBlocks(msg?.content ?? "");
-    if (reply && reply.trim()) return { ok: true, reply: reply.trim(), finish: choice?.finish_reason ?? undefined };
+    if (reply && reply.trim()) return { ok: true, reply: reply.trim(), finish: choice?.finish_reason ?? undefined, usage: data.usage };
     // Reasoning-fallback (vision READ pass only): a reasoning-token model can
     // burn the whole token budget inside message.reasoning and still emit a
     // valid image extraction — live-verified on the Kilo gateway
@@ -1175,13 +1177,27 @@ async function readNonStreamReply(response: Response, allowReasoningFallback = f
 /**
  * Transform an upstream OpenAI SSE stream into our lightweight
  * `data: {"text": "…"}` protocol (same wire format as chatbot-stream.ts).
+ * ✅ TOKEN OPTIMIZATION (v3.6.0): `onUsage` receives the provider's terminal
+ * usage chunk (when present) so legacy-stream calls report billed tokens.
  */
-export function buildUpstreamSSETransform(encoder: TextEncoder): TransformStream<Uint8Array, Uint8Array> {
+export function buildUpstreamSSETransform(encoder: TextEncoder, onUsage?: (usage: unknown) => void): TransformStream<Uint8Array, Uint8Array> {
   const decoder = new TextDecoder();
   // Reasoning-guard: <think>/<reasoning> blocks embedded in delta.content are
   // stripped even when their tags arrive split across chunks.
   const think = new ThinkStreamFilter();
   let buffer = "";
+  let usageSeen = false;
+  const checkUsage = (parsed: { usage?: unknown }): void => {
+    if (usageSeen || !onUsage) return;
+    const u = parsed.usage;
+    if (!u || typeof u !== "object") return;
+    const hasTokens = (u as { prompt_tokens?: unknown }).prompt_tokens !== undefined
+      || (u as { completion_tokens?: unknown }).completion_tokens !== undefined;
+    if (hasTokens) {
+      usageSeen = true;
+      onUsage(u);
+    }
+  };
   return new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
       buffer += decoder.decode(chunk, { stream: true });
@@ -1191,7 +1207,8 @@ export function buildUpstreamSSETransform(encoder: TextEncoder): TransformStream
         const trimmed = line.trim();
         if (!trimmed || trimmed === "data: [DONE]" || !trimmed.startsWith("data: ")) continue;
         try {
-          const parsed = JSON.parse(trimmed.slice(6)) as { choices?: { delta?: { content?: string } }[] };
+          const parsed = JSON.parse(trimmed.slice(6)) as { choices?: { delta?: { content?: string } }[]; usage?: unknown };
+          checkUsage(parsed);
           const content = parsed.choices?.[0]?.delta?.content;
           if (content) {
             const safe = think.push(content);
@@ -1206,7 +1223,8 @@ export function buildUpstreamSSETransform(encoder: TextEncoder): TransformStream
       const rest = buffer.trim();
       if (rest.startsWith("data: ") && rest.slice(6).trim() !== "[DONE]") {
         try {
-          const parsed = JSON.parse(rest.slice(6)) as { choices?: { delta?: { content?: string } }[] };
+          const parsed = JSON.parse(rest.slice(6)) as { choices?: { delta?: { content?: string } }[]; usage?: unknown };
+          checkUsage(parsed);
           const content = parsed.choices?.[0]?.delta?.content;
           if (content) {
             const safe = think.push(content);
@@ -1306,6 +1324,9 @@ export async function routeChatCompletion(req: RouteRequest): Promise<RoutingOut
       logger.info(`[AiRouter] candidate empty reply — ${provider.slug}/${model.modelId}: ${reply.detail.slice(0, 140)}`);
       continue;
     }
+    // ✅ TOKEN OPTIMIZATION (v3.6.0): every dynamic-router non-stream call
+    // reports its billed tokens.
+    reportTokenUsage("ai-router", `${provider.slug}/${model.modelId}`, reply.usage);
 
     let finalReply = reply.reply;
     // ✅ ARCH-AUDIT FIX (non-stream replies had NO truncation rescue): a reply
@@ -1348,6 +1369,10 @@ interface UpstreamEvent {
   finish?: string;
   done?: boolean;
   error?: string;
+  /** ✅ TOKEN OPTIMIZATION (v3.6.0): the OpenAI-compatible final usage-only
+   *  chunk (choices: [] + usage: {…}) — surfaced so every dynamic-router
+   *  stream reports its billed tokens. */
+  usage?: unknown;
 }
 
 /** Parse one upstream SSE line into a typed event (null when ignorable). */
@@ -1361,9 +1386,17 @@ export function parseUpstreamSseLine(line: string): UpstreamEvent | null {
     const parsed = JSON.parse(raw) as {
       error?: unknown;
       choices?: { delta?: { content?: unknown; reasoning_content?: unknown; reasoning?: unknown }; finish_reason?: unknown }[];
+      usage?: unknown;
     };
     if (parsed.error) {
       return { error: typeof parsed.error === "string" ? parsed.error : JSON.stringify(parsed.error).slice(0, 200) };
+    }
+    // ✅ TOKEN OPTIMIZATION (v3.6.0): the usage-only terminal chunk carries
+    // `choices: []` — extract it BEFORE the choice gate so it is not dropped.
+    if (parsed.usage && typeof parsed.usage === "object") {
+      const hasTokens = (parsed.usage as { prompt_tokens?: unknown }).prompt_tokens !== undefined
+        || (parsed.usage as { completion_tokens?: unknown }).completion_tokens !== undefined;
+      if (hasTokens) return { usage: parsed.usage };
     }
     const choice = parsed.choices?.[0];
     if (!choice) return null;
@@ -1646,6 +1679,9 @@ function buildResilientUpstreamStream(params: {
               const ev = parseUpstreamSseLine(line);
               if (!ev) continue;
               if (ev.error) { streamError = ev.error; fatal = true; break; }
+              // ✅ TOKEN OPTIMIZATION (v3.6.0): the winner's billed tokens are
+              // now observable (usage-only terminal chunk).
+              if (ev.usage !== undefined) reportTokenUsage("ai-router-stream", `${provider.slug}/${model.modelId}`, ev.usage);
               // ✅ AUDIT RUN-2 FIX (hunter-2f): emit() already adds the
               // FILTERED text to `total` — adding the RAW delta here
               // double-counted and polluted the visible-only total with

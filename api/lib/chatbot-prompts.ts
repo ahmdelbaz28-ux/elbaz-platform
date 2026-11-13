@@ -62,6 +62,7 @@ import {
   sldSkillAr,
   sldSkillEn,
   buildCourseCatalogBlock,
+  buildCourseCatalogLiteBlock,
 } from "./chatbot-skills.js";
 
 // ════════════════════════════════════════════════════════════════════════
@@ -91,8 +92,25 @@ import {
  *          relevant domain cores + FOUR NEW study packs (Arc Flash,
  *          Protection Coordination, Load Flow, Solar PV). No signal →
  *          full-fallback (superset of 3.4.0 — always-on blocks untouched).
+ *
+ * 3.6.0 → TOKEN OPTIMIZATION LAYER (zero content changes — ORDER ONLY):
+ *          ① CACHE-FRIENDLY LAYOUT: all FIXED blocks (persona, mode, guard,
+ *          language rules, protocols, platform facts, channels, safety,
+ *          web grounding, evidence model) now compose BEFORE the routed
+ *          zone, and all per-request data blocks (routed skills, vision,
+ *          summary, catalog, screen) stay LAST. The stable prefix is now
+ *          byte-identical across every request of the same mode+language
+ *          → provider-side prompt caching (OpenAI/Groq/NVIDIA automatic
+ *          prefix caching) discounts 50-90% of the prompt tokens. Blocks
+ *          are independent rule sections — reordering whole sections
+ *          preserves semantics; no wording was edited.
+ *          ② The catalog block text is now chosen by the CALLER
+ *          (chatbot-router.ts) via chatbot-intent.ts: full 40-course block
+ *          only on course/platform intent (sticky over recent history),
+ *          a featured-course sample otherwise. Vision lanes always get the
+ *          full catalog.
  */
-export const PROMPT_VERSION = "3.5.0";
+export const PROMPT_VERSION = "3.6.0";
 
 export type ChatbotMode = "thinking" | "instant";
 
@@ -623,9 +641,17 @@ registerSkillContent("electrical-depth-pack", {
  * @param routingFloor  Force the technical floor (etap core + depth pack)
  *                 regardless of the signal — used by the vision pass-2 lane
  *                 where an image WAS attached (historically always full).
+ * @param catalogMode  ✅ TOKEN OPTIMIZATION (v3.6.0): "full" renders the
+ *                 complete 40-course catalog block (default — every legacy
+ *                 caller unchanged); "lite" renders the featured-sample
+ *                 block chosen by the router via chatbot-intent.ts. Both
+ *                 texts arrive through `catalog`; this flag only picks the
+ *                 block STYLE and its honesty contract line.
  */
-export function getSystemPrompt(language?: string, mode: ChatbotMode = "thinking", catalog?: string, vision = false, historySummary?: string, screen?: ParsedScreenContext, screenCapture = false, routingSignal?: string, routingFloor = false): string {
-  const catalogBlock = buildCourseCatalogBlock(catalog ?? "");
+export function getSystemPrompt(language?: string, mode: ChatbotMode = "thinking", catalog?: string, vision = false, historySummary?: string, screen?: ParsedScreenContext, screenCapture = false, routingSignal?: string, routingFloor = false, catalogMode: "full" | "lite" = "full"): string {
+  const catalogBlock = catalogMode === "lite"
+    ? buildCourseCatalogLiteBlock(catalog ?? "")
+    : buildCourseCatalogBlock(catalog ?? "");
 
   // ── SKILLNET ROUTING (v3.5.0) — deterministic skill selection. signal
   // absent → decision = null → every routable block is injected (full
@@ -715,7 +741,7 @@ Hard rules (guessing is absolutely forbidden):
 🚫 محظورات:
 - لا تخترع روابط (URLs) غير موجودة.
 - لا تذكر أبداً أنك ذكاء اصطناعي أو نموذج لغوي أو من أي مزود مثل OpenRouter. ولا تذكر أسماء مزودين أو شركات تقنية حتى في النفي («لست مثل كذا») — إن سُئلت عن هويتك أو مزودك قل فقط: «أنا مساعد منصة الباز ولا أرتبط بأي جهة تقنية أخرى» دون تسمية أي اسم.
-- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${instantModeAr}${expertPositioningAr}${reasoningGuard}${langAndFormatRuleAr}${routedZoneA}${evidenceQuickAr}${instantSkillsAr}${platformCoreAr}${officialChannelsAr}${safetyRuleAr}${visionBlockAr}${summaryBlock}${catalogBlock}${screenBlock}`;
+- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${instantModeAr}${expertPositioningAr}${reasoningGuard}${langAndFormatRuleAr}${evidenceQuickAr}${instantSkillsAr}${platformCoreAr}${officialChannelsAr}${safetyRuleAr}${routedZoneA}${visionBlockAr}${summaryBlock}${catalogBlock}${screenBlock}`;
     }
     return `You are the official AI Assistant of the "Elbaz Platform" (specializing in engineering courses).
 You are a highly professional, balanced, and interactive technical assistant. Do NOT use any personal name for yourself; introduce yourself only as the platform's smart assistant.
@@ -732,7 +758,7 @@ You are a highly professional, balanced, and interactive technical assistant. Do
 🚫 Rules:
 - Do NOT hallucinate fake URLs.
 - NEVER mention you are an AI, a language model, or from OpenRouter or any other provider. Never name providers or tech companies even in negations ("I am not like X") — if asked about your identity or provider, say only: "I am the Elbaz Platform assistant, not affiliated with any other tech company" without naming any name.
-- If asked about non-engineering topics, politely decline and state your expertise.${instantModeEn}${expertPositioningEn}${reasoningGuard}${langAndFormatRuleEn}${routedZoneA}${evidenceQuickEn}${instantSkillsEn}${platformCoreEn}${officialChannelsEn}${safetyRuleEn}${visionBlockEn}${summaryBlock}${catalogBlock}${screenBlock}`;
+- If asked about non-engineering topics, politely decline and state your expertise.${instantModeEn}${expertPositioningEn}${reasoningGuard}${langAndFormatRuleEn}${evidenceQuickEn}${instantSkillsEn}${platformCoreEn}${officialChannelsEn}${safetyRuleEn}${routedZoneA}${visionBlockEn}${summaryBlock}${catalogBlock}${screenBlock}`;
   }
 
   // ── thinking (default) ──
@@ -755,7 +781,7 @@ You are a highly professional, balanced, and interactive technical assistant. Do
 🚫 محظورات:
 - لا تخترع روابط (URLs) غير موجودة.
 - لا تذكر أبداً أنك ذكاء اصطناعي أو نموذج لغوي أو من أي مزود مثل OpenRouter. ولا تذكر أسماء مزودين أو شركات تقنية حتى في النفي («لست مثل كذا») — إن سُئلت عن هويتك أو مزودك قل فقط: «أنا مساعد منصة الباز ولا أرتبط بأي جهة تقنية أخرى» دون تسمية أي اسم.
-- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${thinkingModeAr}${expertPositioningAr}${reasoningGuard}${langAndFormatRuleAr}${versionRuleAr}${mentorProtocolAr}${researchSkillAr}${accuracyContractAr}${guidedNavigationAr}${routedZoneA}${evidenceModelAr}${routedZoneB}${platformCoreAr}${supportProtocolAr}${officialChannelsAr}${safetyRuleAr}${webGroundingAr}${visionBlockAr}${summaryBlock}${catalogBlock}${screenBlock}`;
+- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${thinkingModeAr}${expertPositioningAr}${reasoningGuard}${langAndFormatRuleAr}${versionRuleAr}${mentorProtocolAr}${researchSkillAr}${accuracyContractAr}${guidedNavigationAr}${platformCoreAr}${supportProtocolAr}${officialChannelsAr}${safetyRuleAr}${webGroundingAr}${evidenceModelAr}${routedZoneA}${routedZoneB}${visionBlockAr}${summaryBlock}${catalogBlock}${screenBlock}`;
   }
   return `You are the official AI Assistant of the "Elbaz Platform" (specializing in engineering courses).
 You are a highly professional, balanced, and interactive technical assistant. Do NOT use any personal name for yourself; introduce yourself only as the platform's smart assistant.
@@ -775,5 +801,5 @@ You are a highly professional, balanced, and interactive technical assistant. Do
 🚫 Rules:
 - Do NOT hallucinate fake URLs.
 - NEVER mention you are an AI, a language model, or from OpenRouter or any other provider. Never name providers or tech companies even in negations ("I am not like X") — if asked about your identity or provider, say only: "I am the Elbaz Platform assistant, not affiliated with any other tech company" without naming any name.
-- If asked about non-engineering topics, politely decline and state your expertise.${thinkingModeEn}${expertPositioningEn}${reasoningGuard}${langAndFormatRuleEn}${versionRuleEn}${mentorProtocolEn}${researchSkillEn}${accuracyContractEn}${guidedNavigationEn}${routedZoneA}${evidenceModelEn}${routedZoneB}${platformCoreEn}${supportProtocolEn}${officialChannelsEn}${safetyRuleEn}${webGroundingEn}${visionBlockEn}${summaryBlock}${catalogBlock}${screenBlock}`;
+- If asked about non-engineering topics, politely decline and state your expertise.${thinkingModeEn}${expertPositioningEn}${reasoningGuard}${langAndFormatRuleEn}${versionRuleEn}${mentorProtocolEn}${researchSkillEn}${accuracyContractEn}${guidedNavigationEn}${platformCoreEn}${supportProtocolEn}${officialChannelsEn}${safetyRuleEn}${webGroundingEn}${evidenceModelEn}${routedZoneA}${routedZoneB}${visionBlockEn}${summaryBlock}${catalogBlock}${screenBlock}`;
 }

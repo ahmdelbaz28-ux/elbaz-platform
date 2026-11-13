@@ -31,6 +31,60 @@ export const MAX_IMAGES_PER_REQUEST = 2;
 export const MAX_MESSAGE_CHARS = 8_000;
 export const MAX_TOTAL_CHARS = 60_000;
 
+// ── ✅ TOKEN OPTIMIZATION (v3.6.0) — SLIDING-WINDOW HISTORY TRIM ──
+// The client ships its last 20 messages VERBATIM; assistant replies on this
+// platform reach 8k chars each, so a 10-round conversation could carry
+// ~30-60k chars (~8-15k prompt tokens) of mostly-stale assistant prose —
+// re-billed on EVERY send and on EVERY cascade attempt. The trim keeps the
+// IMMEDIATE context verbatim (the last 2 assistant turns + the current
+// question) and clips OLDER turns to short excerpts; long-range continuity
+// is already covered by the rolling summary (chat-history.ts).
+// Quality contract: the last 2 assistant answers (the direct conversational
+// thread) and every user question are NEVER clipped below their normal caps
+// — older assistant text is context, not commitments.
+export const TRIM_RECENT_ASSISTANT_FULL = 2;
+export const TRIMMED_ASSISTANT_CHARS = 600;
+export const TRIMMED_USER_CHARS = 800;
+const ASSISTANT_CLIP_MARK = "… [رد سابق مختصر]";
+const USER_CLIP_MARK = "… [رسالة سابقة مختصرة]";
+
+/**
+ * Clip OLD conversation turns to short excerpts, newest-first exemption:
+ *   • the last 2 assistant messages stay full;
+ *   • the LAST user message stays full (the current question);
+ *   • older user messages clip to TRIMMED_USER_CHARS;
+ *   • older assistant messages clip to TRIMMED_ASSISTANT_CHARS.
+ * Pure, delta-free — operates on already-normalized messages; image parts
+ * (last user message only) pass through untouched.
+ */
+export function trimHistoryForContext(messages: ChatApiMessage[]): ChatApiMessage[] {
+  const lastAssistantIdx: number[] = [];
+  const lastUserIdx = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]?.role === "user") return i;
+    }
+    return -1;
+  })();
+  for (let i = messages.length - 1; i >= 0 && lastAssistantIdx.length < TRIM_RECENT_ASSISTANT_FULL; i--) {
+    if (messages[i]?.role === "assistant") lastAssistantIdx.push(i);
+  }
+  const fullAssistant = new Set(lastAssistantIdx);
+
+  const clipText = (text: string, cap: number, mark: string): string =>
+    text.length > cap ? `${text.slice(0, cap).trimEnd()}${mark}` : text;
+
+  return messages.map((m, i) => {
+    if (typeof m.content !== "string") return m; // image parts: last user message only — never touched
+    if (m.role === "assistant") {
+      if (fullAssistant.has(i)) return m;
+      return { ...m, content: clipText(m.content, TRIMMED_ASSISTANT_CHARS, ASSISTANT_CLIP_MARK) };
+    }
+    // user: only the LAST user message keeps full text
+    if (i === lastUserIdx) return m;
+    return { ...m, content: clipText(m.content, TRIMMED_USER_CHARS, USER_CLIP_MARK) };
+  });
+}
+
 export interface NormalizedChatInput {
   messages: ChatApiMessage[];
   /** Last user message carries image parts — must route to vision models. */
@@ -60,7 +114,6 @@ export function normalizeChatInput(raw: unknown): { ok: true; data: NormalizedCh
 
   const messages: ChatApiMessage[] = [];
   let imageCount = 0;
-  let totalTextChars = 0;
   let screenCapture = false;
 
   for (let i = 0; i < sliced.length; i++) {
@@ -71,7 +124,6 @@ export function normalizeChatInput(raw: unknown): { ok: true; data: NormalizedCh
 
     if (typeof content === "string") {
       const clipped = content.slice(0, MAX_MESSAGE_CHARS);
-      totalTextChars += clipped.length;
       messages.push({ role, content: clipped });
       continue;
     }
@@ -128,7 +180,6 @@ export function normalizeChatInput(raw: unknown): { ok: true; data: NormalizedCh
       }
       imageCount = imageUrls.length;
       const text = textParts.join(" ").slice(0, MAX_MESSAGE_CHARS);
-      totalTextChars += text.length;
       const parts: ContentPart[] = [
         ...(text ? [{ type: "text" as const, text }] : []),
         ...imageUrls.map((url) => ({ type: "image_url" as const, image_url: { url } })),
@@ -138,7 +189,6 @@ export function normalizeChatInput(raw: unknown): { ok: true; data: NormalizedCh
       // History (or stray) image message — flatten to plain text.
       const text = textParts.join(" ").slice(0, MAX_MESSAGE_CHARS);
       const note = imageUrls.length > 0 ? `${text ? " " : ""}[صورة مرفقة]` : "";
-      totalTextChars += text.length + note.length;
       messages.push({ role, content: text + note });
     }
   }
@@ -146,6 +196,10 @@ export function normalizeChatInput(raw: unknown): { ok: true; data: NormalizedCh
   if (messages.length === 0) {
     return { ok: false, failure: { status: 400, code: "BAD_REQUEST", en: "Messages array is required", ar: "Messages array is required" } };
   }
+  // ✅ TOKEN OPTIMIZATION (v3.6.0): clip OLD turns before the blank check —
+  // clipping never changes emptiness (empty clip = empty) so the ROOT-CURE
+  // blank-conversation guard below keeps its exact semantics.
+  const trimmedMessages = trimHistoryForContext(messages);
   // ✅ ROOT-CURE (2026-11-13, blank conversation burned a provider call): a
   // request whose every message is empty text (and no images) used to pass
   // normalization and DISPATCH a real provider call with nothing to answer —
@@ -167,5 +221,12 @@ export function normalizeChatInput(raw: unknown): { ok: true; data: NormalizedCh
       },
     };
   }
-  return { ok: true, data: { messages, vision: imageCount > 0, imageCount, totalTextChars, screenCapture } };
+  const totalTrimmedChars = trimmedMessages.reduce((sum, m) => {
+    if (typeof m.content === "string") return sum + m.content.length;
+    if (Array.isArray(m.content)) {
+      return sum + m.content.reduce((s, p) => s + (p && typeof p === "object" && typeof (p as { text?: unknown }).text === "string" ? ((p as { text: string }).text.length) : 0), 0);
+    }
+    return sum;
+  }, 0);
+  return { ok: true, data: { messages: trimmedMessages, vision: imageCount > 0, imageCount, totalTextChars: totalTrimmedChars, screenCapture } };
 }

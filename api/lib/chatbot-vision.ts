@@ -54,8 +54,16 @@ const VISION_PRIMARY_READER = "nvidia/nemotron-3.5-super-vl:free";
 // A WeakMap keyed on the messages array caches the read for the lifetime of
 // that one request (the array is garbage-collected with the request). */
 const visionReadCache = new WeakMap<ChatApiMessage[], VisionReadResult>();
-/** Max description chars injected into the reasoning prompt. */
-const MAX_DESCRIPTION_CHARS = 6_000;
+/** Max description chars injected into the reasoning prompt.
+ *  ✅ TOKEN OPTIMIZATION (v3.6.0): 6000 → 2400. The pass-1 extractor is
+ *  already bounded (max_tokens 1500, temp 0.1) and live extractions land in
+ *  the 800-1500 char range — 2400 keeps ~1.6x headroom over the real
+ *  ceiling while cutting ~900 billed tokens from every screen frame
+ *  (×60 frames/day on the live-screen lane). The verbatim menu/value text
+ *  the screen-teacher contract depends on always fits: the cap binds the
+ *  injector, and finalizeReply's sentence-trim keeps any residual cut
+ *  mid-sentence-free. */
+const MAX_DESCRIPTION_CHARS = 2_400;
 
 export function visionExtractionPrompt(language?: string, screenCapture?: boolean): string {
   if (screenCapture) {

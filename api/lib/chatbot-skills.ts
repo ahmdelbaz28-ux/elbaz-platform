@@ -485,6 +485,25 @@ export function buildCourseCatalogBlock(catalog: string): string {
 ${catalog || "لا تتوفر قائمة محدثة الآن — أرشد الطالب لصفحة الكورسات على المنصة دون ذكر أسماء أو أسعار."}`;
 }
 
+/**
+ * ✅ TOKEN OPTIMIZATION (v3.6.0): lite catalog block — a FEATURED SAMPLE of
+ * the real catalog for messages with zero course/platform intent (the model
+ * was paying ~2k tokens for the full 40-course list on pure technical
+ * questions). The sample still contains ONLY real DB courses, so the bot
+ * keeps quoting real names/prices for the featured head; the contract line
+ * tells it the full list exists and must never be invented. Messages WITH
+ * course intent (detected by api/lib/chatbot-intent.ts, sticky over recent
+ * history) always receive the FULL block — this lite block never answers a
+ * course-specific question alone.
+ */
+export function buildCourseCatalogLiteBlock(catalog: string): string {
+  return `
+
+📚 عينة من أبرز كورسات المنصة (معلومات حقيقية من قاعدة البيانات — استخدمها فقط كما هي ولا تخترع كورسات أو أسعاراً):
+${catalog || "لا تتوفر قائمة محدثة الآن — أرشد الطالب لصفحة الكورسات على المنصة دون ذكر أسماء أو أسعار."}
+${catalog ? "هذه عينة من الكتالوج الكامل وليست كل الكورسات — إن سأل المستخدم عن كورس محدد أو سعره غير مذكور أعلاه، أخبره أن القائمة الكاملة مع الأسعار متاحة في صفحة الكورسات بالمنصة واعرض مساعدته في اختيار كورس من العينة أو شرح موضوع تقني." : ""}`;
+}
+
 // ════════════════════════════════════════════════════════════════════════
 // 12) SLD DRAWING SKILL — the bot can DRAW single-line diagrams (thinking)
 // ════════════════════════════════════════════════════════════════════════

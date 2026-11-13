@@ -7,8 +7,11 @@
  *      engineering anchors (IEEE 485 / IEC 62305 / ISO 8528 / X/R / 1.25).
  *   2. Instant prompts carry ONLY the token-light quick anchors — the full
  *      pack must NEVER leak into the speed-priority mode (token budget guard).
- *   3. The pack composes AFTER the ETAP expert core and BEFORE the platform
- *      core (documented design order).
+ *   3. The pack composes AFTER the ETAP expert core (routed-zone order).
+ *      ✅ v3.6.0 TOKEN OPTIMIZATION: the platform core moved into the STABLE
+ *      PREFIX (before the routed zone) for provider prompt caching — the
+ *      documented composition order is now: fixed blocks → routed zone →
+ *      data blocks (vision/summary/catalog/screen) last.
  *   4. House rules survive the addition: no CJK, no placeholder leak, table
  *      ban + language rule + safety rule + reasoning guard all present.
  *
@@ -76,13 +79,17 @@ describe("Option A: electrical depth pack (thinking mode)", () => {
     for (const anchor of depthAnchorsEn) expect(enPrompt).toContain(anchor);
   });
 
-  it("composes the pack AFTER the ETAP expert core and BEFORE the platform core", () => {
+  it("composes the pack AFTER the ETAP expert core, with platform core in the stable prefix (v3.6.0 cache-friendly order)", () => {
     const idxEtap = arPrompt.indexOf("ETAP EXPERT SYSTEM");
     const idxPack = arPrompt.indexOf("حزمة العمق الكهربائي");
     const idxPlatform = arPrompt.indexOf("الجنيه المصري (EGP)");
-    expect(idxEtap).toBeGreaterThan(-1);
+    // v3.6.0: all FIXED blocks (persona … platform facts … evidence model)
+    // compose BEFORE the routed zone, and per-request data blocks LAST.
+    expect(idxPlatform).toBeGreaterThan(-1);
+    expect(idxPlatform).toBeLessThan(idxEtap);
     expect(idxPack).toBeGreaterThan(idxEtap);
-    expect(idxPlatform).toBeGreaterThan(idxPack);
+    // The per-request catalog block stays in the volatile tail.
+    expect(arPrompt.indexOf("كتالوج كورسات المنصة")).toBeGreaterThan(idxPack);
   });
 
   it("keeps the pack bilingual — EN thinking gets the EN pack, not the AR one", () => {
@@ -208,13 +215,16 @@ describe("Reach-gems: answer-source (evidence) model (thinking mode)", () => {
     for (const anchor of evidenceAnchorsEn) expect(enPrompt).toContain(anchor);
   });
 
-  it("composes the model AFTER the electrical depth pack and BEFORE the platform core", () => {
+  it("composes the model in the stable prefix BEFORE the routed zone (v3.6.0 cache-friendly order)", () => {
     const idxPack = arPrompt.indexOf("حزمة العمق الكهربائي");
     const idxEvidence = arPrompt.indexOf("نموذج مصدر الإجابة");
     const idxPlatform = arPrompt.indexOf("الجنيه المصري (EGP)");
-    expect(idxPack).toBeGreaterThan(-1);
-    expect(idxEvidence).toBeGreaterThan(idxPack);
-    expect(idxPlatform).toBeGreaterThan(idxEvidence);
+    // v3.6.0: platform core → … → evidence model (FIXED prefix) → routed
+    // zone (depth pack) → data blocks. The evidence model is stable context,
+    // so it must sit inside the cacheable prefix.
+    expect(idxPlatform).toBeGreaterThan(-1);
+    expect(idxEvidence).toBeGreaterThan(idxPlatform);
+    expect(idxPack).toBeGreaterThan(idxEvidence);
   });
 
   it("instant prompts carry the one-line evidence anchor only", () => {

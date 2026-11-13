@@ -34,6 +34,8 @@
 import { env } from "../lib/env";
 import { getSystemPrompt, MODE_TUNING, type ChatbotMode, type ModeTuning } from "./chatbot-prompts.js";
 import { extractRoutingSignal } from "./chatbot-skillnet.js";
+import { webIntentFromMessages } from "./chatbot-intent.js";
+import { reportTokenUsage } from "./token-usage.js";
 import type { ParsedScreenContext } from "./chatbot-screen.js";
 import { logger } from "./logger.js";
 import { routeChatCompletion, isWebPluginDisabled, disableWebPluginFor, WEB_PLUGIN_BODY, isOpenRouterDailyLimited, noteOpenRouterDailyLimit, isChatLaneModel, isDiscoveredModelId } from "./ai-router.js";
@@ -278,6 +280,7 @@ export async function tryGroq(
     const data = await response.json() as {
       error?: unknown;
       choices?: { message?: { content?: string | null } }[];
+      usage?: unknown;
     };
 
     if (data.error) {
@@ -285,6 +288,9 @@ export async function tryGroq(
       chatHealth.groqLastFailTime = Date.now();
       return null;
     }
+
+    // ✅ TOKEN OPTIMIZATION (v3.6.0): every billed call is now observable.
+    reportTokenUsage("groq", modelId, data.usage);
 
     // stripThinkBlocks: hard guarantee — a model that ignores the prompt
     // guard and emits <think> blocks never leaks reasoning to the user.
@@ -387,6 +393,7 @@ export async function tryNvidia(
     const data = await response.json() as {
       error?: unknown;
       choices?: { message?: { content?: string | null } }[];
+      usage?: unknown;
     };
 
     if (data.error) {
@@ -394,6 +401,9 @@ export async function tryNvidia(
       chatHealth.nvidiaLastFailTime = Date.now();
       return null;
     }
+
+    // ✅ TOKEN OPTIMIZATION (v3.6.0): every billed call is now observable.
+    reportTokenUsage("nvidia", NVIDIA_MODEL, data.usage);
 
     // stripThinkBlocks: see tryGroq — zero visible reasoning, ever.
     const reply = stripThinkBlocks(data.choices?.[0]?.message?.content ?? "");
@@ -596,12 +606,15 @@ export async function tryModel(
       return null;
     }
 
-    const data = await response.json() as { error?: unknown; choices?: { message?: { content?: string } }[] };
+    const data = await response.json() as { error?: unknown; choices?: { message?: { content?: string } }[]; usage?: unknown };
 
     if (data.error) {
       modelFailCount[modelId] = (modelFailCount[modelId] || 0) + 1;
       return null;
     }
+
+    // ✅ TOKEN OPTIMIZATION (v3.6.0): every billed call is now observable.
+    reportTokenUsage("openrouter", modelId, data.usage);
 
     // stripThinkBlocks: see tryGroq — zero visible reasoning, ever.
     const reply = stripThinkBlocks(data.choices?.[0]?.message?.content ?? "");
@@ -660,6 +673,15 @@ export async function tryModelsByTier(
   // WEB BUDGET — at most two plugin'd attempts (first + one fast-fail spare);
   // the rest of the sweep runs plugin-free so search latency never stacks.
   let webBudget = webSearch ? 2 : 0;
+  // ✅ TOKEN OPTIMIZATION (v3.6.0) — ATTEMPT BUDGET: every failed attempt
+  // re-bills the FULL prompt (system + history ≈ 12-22k tokens on a real
+  // request) on a DIFFERENT model that cannot reuse the prefix cache. A
+  // degraded sweep of 16+ chat-lane models used to cost up to ~20 full-payload
+  // calls for ONE user message. Ten attempts preserve the availability
+  // contract (10 distinct models before giving up) while capping the worst
+  // case; the endpoint's persistence loop still retries afterwards.
+  const MAX_SWEEP_ATTEMPTS = 10;
+  let sweepAttempts = 0;
   for (let tier = 1; tier <= 4; tier++) {
     if (abortSignal?.aborted) return null; // ✅ AUDIT RUN-2 FIX: stop on abort
     let tierTried = 0;
@@ -667,6 +689,10 @@ export async function tryModelsByTier(
 
     for (const model of AI_MODELS) {
       if (abortSignal?.aborted) return null; // ✅ AUDIT RUN-2 FIX
+      if (sweepAttempts >= MAX_SWEEP_ATTEMPTS) {
+        logger.warn(`[Chatbot/OpenRouter] sweep attempt budget exhausted (${MAX_SWEEP_ATTEMPTS} full-payload calls) — stopping the tier walk`, { tier });
+        return null;
+      }
       if (model.tier !== tier) continue;
       // Chat-lane gate — specialists (code/docs/tiny/allam/gemma) never write
       // chat answers even from the legacy static sweep.
@@ -676,6 +702,7 @@ export async function tryModelsByTier(
         continue;
       }
       tierTried++;
+      sweepAttempts++;
       const useWeb = webBudget > 0;
       if (useWeb) webBudget--;
       const result = await tryModel(model.id, messages, systemPrompt, tierTimeouts[tier], tuning, useWeb, abortSignal);
@@ -705,9 +732,17 @@ export async function tryAllModelsAsLastResort(
   // letting it outlive every caller deadline.
   const LAST_RESORT_WALL_MS = 45_000;
   const wallDeadline = Date.now() + LAST_RESORT_WALL_MS;
+  // ✅ TOKEN OPTIMIZATION (v3.6.0): same attempt budget as the tiered sweep —
+  // each last-resort attempt re-bills the full prompt on a fresh model.
+  const MAX_LAST_RESORT_ATTEMPTS = 8;
+  let lastResortAttempts = 0;
   for (const model of AI_MODELS) {
     if (Date.now() > wallDeadline) {
       logger.warn("[Chatbot/OpenRouter] last-resort sweep hit its 45s wall — stopping (breakers stay armed)");
+      break;
+    }
+    if (lastResortAttempts >= MAX_LAST_RESORT_ATTEMPTS) {
+      logger.warn(`[Chatbot/OpenRouter] last-resort attempt budget exhausted (${MAX_LAST_RESORT_ATTEMPTS}) — stopping`);
       break;
     }
     if (abortSignal?.aborted) return null; // ✅ AUDIT RUN-2 FIX: stop on abort
@@ -719,6 +754,7 @@ export async function tryAllModelsAsLastResort(
     // re-dialed on EVERY last-resort walk and the breakers never armed. The
     // breaker state is now honored even at last resort; only a SUCCESSFUL
     // answer (inside tryModel's own accounting) clears strikes.
+    lastResortAttempts++;
     const result = await tryModel(model.id, messages, systemPrompt, 10000, tuning, webSearch, abortSignal);
     if (result) return result;
   }
@@ -898,6 +934,10 @@ export async function getChatResponse(request: {
   mode?: "thinking" | "instant";
   /** Real course-catalog text (api/lib/course-catalog.ts) — injected into the system prompt. */
   catalog?: string;
+  /** ✅ TOKEN OPTIMIZATION (v3.6.0): which catalog block style renders —
+   *  "full" (default, legacy contract) or "lite" (featured sample chosen
+   *  by the router via chatbot-intent.ts). */
+  catalogMode?: "full" | "lite";
   /** Image attached to the last user message — force vision-only routing. */
   vision?: boolean;
   /** Rolling summary of this user's older conversations (chat-history.ts). */
@@ -924,6 +964,7 @@ export async function getChatResponse(request: {
     language: request.language,
     mode: request.mode,
     catalog: request.catalog,
+    catalogMode: request.catalogMode,
     historySummary: request.historySummary,
     screen: request.screen,
     screenCapture: request.screenCapture,
@@ -942,6 +983,8 @@ async function runTextCascade(request: {
   language?: string;
   mode?: "thinking" | "instant";
   catalog?: string;
+  /** ✅ TOKEN OPTIMIZATION (v3.6.0): catalog block style — see getChatResponse. */
+  catalogMode?: "full" | "lite";
   historySummary?: string;
   /** ✅ SCREEN CONTEXT: validated user-screen snapshot (chatbot-screen.ts). */
   screen?: ParsedScreenContext;
@@ -970,12 +1013,18 @@ async function runTextCascade(request: {
   const routingSignal = extractRoutingSignal(request.messages);
   // ✅ ROOT-CURE (2026-11-13): the vision flag now threads into the prompt —
   // vision pass-2 requests carry the screen-teacher / image-analysis block.
-  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, request.vision === true, request.historySummary, request.screen, request.screenCapture, routingSignal);
+  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, request.vision === true, request.historySummary, request.screen, request.screenCapture, routingSignal, false, request.catalogMode);
   // WEB GROUNDING policy: thinking mode (the accuracy lane) gets live web
   // search on OpenRouter so answers stay documented; instant stays plugin-
   // free for latency. Every failure degrades gracefully (breaker in ai-router
   // + prompt-level no-guess contract) — grounding never blocks the reply.
-  const webSearch = mode === "thinking";
+  // ✅ TOKEN OPTIMIZATION (v3.6.0): the plugin's injected search results cost
+  // 1-3k tokens per attempt — it now rides ONLY on messages that plausibly
+  // need live data (versions, external-software prices/licenses, news, years).
+  // Pure calculation/explanation questions get the identical answer without
+  // the injected results. False negatives err safe: the trigger list is
+  // generous and any doubt keeps grounding ON (legacy behavior).
+  const webSearch = mode === "thinking" && webIntentFromMessages(request.messages);
 
   // ─── DYNAMIC ROUTER (v9) — admin-managed providers first ──────────────
   // Any provider the admin configured in the dashboard (with a valid key and

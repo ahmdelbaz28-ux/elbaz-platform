@@ -61,6 +61,8 @@ import {
   validateOpenRouterKey,
 } from "./chatbot.js";
 import { routeChatStream, buildUpstreamSSETransform, isWebPluginDisabled, disableWebPluginFor, WEB_PLUGIN_BODY, noteOpenRouterDailyLimit, isChatLaneModel, isDiscoveredModelId } from "./ai-router.js";
+import { webIntentFromMessages } from "./chatbot-intent.js";
+import { reportTokenUsage } from "./token-usage.js";
 import { headerTimeoutSignal } from "./abort-utils.js";
 
 // ════════════════════════════════════════════════════════════════════════
@@ -115,7 +117,7 @@ async function tryPickGroqProvider(systemPrompt: string, tuning: ModeTuning): Pr
  * reuses a last-working model that belongs to the thinking tier, so the two
  * modes stay on visibly different models even when both land on OpenRouter.
  */
-async function tryPickOpenRouterProvider(systemPrompt: string, tuning: ModeTuning): Promise<PickedProvider | null> {
+async function tryPickOpenRouterProvider(systemPrompt: string, tuning: ModeTuning, webSearch = false): Promise<PickedProvider | null> {
   if (!chatHealth.openrouterKeyValidated) {
     await validateOpenRouterKey();
   }
@@ -136,20 +138,20 @@ async function tryPickOpenRouterProvider(systemPrompt: string, tuning: ModeTunin
     isChatLaneModel(lastEntry.model)
   ) {
     logger.info("[Chatbot] Using last working OpenRouter model", { model: lastEntry.model, mode: modeKey });
-    return { provider: "openrouter", modelId: lastEntry.model, systemPrompt, tuning, webSearch: modeKey === "thinking" };
+    return { provider: "openrouter", modelId: lastEntry.model, systemPrompt, tuning, webSearch };
   }
 
   // Mode's preferred fast model (instant), if healthy
   if (preferred && isChatLaneModel(preferred) && (modelFailCount[preferred] || 0) < 3 && AI_MODELS.some(m => m.id === preferred)) {
     logger.info("[Chatbot] Using preferred fast OpenRouter model", { model: preferred });
-    return { provider: "openrouter", modelId: preferred, systemPrompt, tuning, webSearch: modeKey === "thinking" };
+    return { provider: "openrouter", modelId: preferred, systemPrompt, tuning, webSearch };
   }
 
   // Use best tier-1 chat-lane model directly — no probing needed
   const bestModel = AI_MODELS.find(m => m.tier === 1 && isChatLaneModel(m.id));
   if (bestModel) {
     logger.info("[Chatbot] Using best OpenRouter model", { model: bestModel.id });
-    return { provider: "openrouter", modelId: bestModel.id, systemPrompt, tuning, webSearch: modeKey === "thinking" };
+    return { provider: "openrouter", modelId: bestModel.id, systemPrompt, tuning, webSearch };
   }
 
   return null;
@@ -170,6 +172,11 @@ export async function pickWorkingModel(
    *  screen-teacher / image-analysis block reaches the legacy backbone too
    *  (the dynamic-router path threads the flag separately). */
   vision?: boolean,
+  /** ✅ TOKEN OPTIMIZATION (v3.6.0): catalog block style (full | lite). */
+  catalogMode?: "full" | "lite",
+  /** ✅ TOKEN OPTIMIZATION (v3.6.0): intent-gated web grounding (computed
+   *  once by getStreamResponse over the latest user message). */
+  webSearch?: boolean,
 ): Promise<PickedProvider | null> {
   const tuning = mode === "instant" ? MODE_TUNING.instant : MODE_TUNING.thinking;
   // ✅ ARCH-AUDIT FIX (stream legacy path silently drops the long-term memory
@@ -184,14 +191,14 @@ export async function pickWorkingModel(
   // prompt as the dynamic router path.
   const routingSignal = extractRoutingSignal(messages);
   // ✅ ROOT-CURE (2026-11-13): the vision flag threads into the legacy prompt.
-  const systemPrompt = getSystemPrompt(language, mode, catalog, vision === true, historySummary, screen, screenCapture, routingSignal);
+  const systemPrompt = getSystemPrompt(language, mode, catalog, vision === true, historySummary, screen, screenCapture, routingSignal, false, catalogMode);
 
   if (mode === "instant") {
     // ─── INSTANT: fastest first — Groq → OpenRouter (fast model) → NVIDIA ───
     const groqPick = await tryPickGroqProvider(systemPrompt, tuning);
     if (groqPick) return groqPick;
 
-    const openRouterPick = await tryPickOpenRouterProvider(systemPrompt, tuning);
+    const openRouterPick = await tryPickOpenRouterProvider(systemPrompt, tuning, webSearch);
     if (openRouterPick) return openRouterPick;
 
     logger.warn("[Chatbot] Groq + OpenRouter unavailable — using NVIDIA for instant mode");
@@ -205,7 +212,7 @@ export async function pickWorkingModel(
   const nvidiaPick = await tryPickNvidiaProvider(systemPrompt, tuning);
   if (nvidiaPick) return nvidiaPick;
 
-  const openRouterPick = await tryPickOpenRouterProvider(systemPrompt, tuning);
+  const openRouterPick = await tryPickOpenRouterProvider(systemPrompt, tuning, webSearch);
   if (openRouterPick) return openRouterPick;
 
   logger.warn("[Chatbot] NVIDIA + OpenRouter unavailable — using Groq for thinking mode");
@@ -471,8 +478,8 @@ async function streamNvidiaProvider(
  * the OpenAI-compatible SSE protocol for both the dynamic router and the
  * legacy cascade (Sonar: no duplicated parsing logic).
  */
-function buildSSEContentTransformStream(encoder: TextEncoder): TransformStream<Uint8Array, Uint8Array> {
-  return buildUpstreamSSETransform(encoder);
+function buildSSEContentTransformStream(encoder: TextEncoder, onUsage?: (usage: unknown) => void): TransformStream<Uint8Array, Uint8Array> {
+  return buildUpstreamSSETransform(encoder, onUsage);
 }
 
 /**
@@ -580,7 +587,7 @@ async function streamGroqProvider(
       chatHealth.groqKeyValid = true;
       logger.info(`[Chatbot/Stream/Groq] ${modelId} SUCCESS`);
 
-      const transformStreamOC = buildSSEContentTransformStream(encoder);
+      const transformStreamOC = buildSSEContentTransformStream(encoder, (usage) => reportTokenUsage("groq-stream", modelId, usage));
       return { stream: response.body!.pipeThrough(transformStreamOC), model: modelId };
     }
 
@@ -711,7 +718,7 @@ async function streamOpenRouterProvider(
         continue;
       }
 
-      const transformStream = buildSSEContentTransformStream(encoder);
+      const transformStream = buildSSEContentTransformStream(encoder, (usage) => reportTokenUsage("openrouter-stream", modelId, usage));
       return { stream: response.body.pipeThrough(transformStream), model: modelId };
     } catch (e) {
       modelFailCount[modelId] = (modelFailCount[modelId] || 0) + 1;
@@ -794,6 +801,8 @@ async function getVisionStreamResponse(request: {
   language?: string;
   mode?: "thinking" | "instant";
   catalog?: string;
+  /** ✅ TOKEN OPTIMIZATION (v3.6.0): catalog block style (full | lite). */
+  catalogMode?: "full" | "lite";
   /** Rolling summary of this user's older conversations (chat-history.ts). */
   historySummary?: string;
   /** ✅ SCREEN CONTEXT: validated user-screen snapshot (chatbot-screen.ts). */
@@ -828,7 +837,7 @@ async function getVisionStreamResponse(request: {
   // pass-2 IS a vision request — the screen-teacher block (live frames) or
   // the generic image-analysis block (ordinary attachments) must reach the
   // persona prompt on EVERY lane (dynamic router, legacy backbone, fallback).
-  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, true, request.historySummary, request.screen, request.screenCapture, routingSignal, true);
+  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, true, request.historySummary, request.screen, request.screenCapture, routingSignal, true, request.catalogMode);
 
   // ── PASS 2 (ANSWER): streaming reasoning-first cascade over the TEXT
   // description — the strongest available model writes the answer.
@@ -839,6 +848,10 @@ async function getVisionStreamResponse(request: {
   // ✅ ROOT-CURE (2026-11-13): the vision lane honors the persistence
   // escalation (preferLegacy) exactly like the text path — persistence
   // rounds ≥ 1 skip the dynamic walk instead of re-burning its budget.
+  // ✅ TOKEN OPTIMIZATION (v3.6.0): web grounding gated by intent — the
+  // description+question text decides (versions/prices/news need live data;
+  // a screenshot walkthrough usually does not).
+  const pass2WebIntent = webIntentFromMessages(pass2Messages);
   if (!request.preferLegacy) {
     const routed = await routeChatStream({
       messages: pass2Messages,
@@ -850,7 +863,7 @@ async function getVisionStreamResponse(request: {
       // ✅ AUDIT RUN-2 FIX: the vision stream walk honors the caller's abort —
       // the signal was previously dropped on this lane entirely.
       abortSignal: request.abortSignal,
-      webSearch: mode === "thinking",
+      webSearch: mode === "thinking" && pass2WebIntent,
       gen: mode === "instant"
         ? { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 15_000, globalBudgetMs: 24_000 }
         : { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 20_000, globalBudgetMs: 22_000 },
@@ -862,7 +875,7 @@ async function getVisionStreamResponse(request: {
   const pass2Request = { ...request, messages: pass2Messages };
   // ✅ ROOT-CURE (2026-11-13): vision=true — the legacy lane's prompt carries
   // the screen-teacher / image-analysis block too (see pickWorkingModel).
-  const picked = await pickWorkingModel(pass2Messages, request.language, mode, request.catalog, request.historySummary, request.screen, request.screenCapture, true);
+  const picked = await pickWorkingModel(pass2Messages, request.language, mode, request.catalog, request.historySummary, request.screen, request.screenCapture, true, request.catalogMode, pass2WebIntent);
   if (picked) {
     if (picked.provider === "nvidia") {
       return await streamNvidiaProvider(pass2Request, picked, encoder);
@@ -899,6 +912,8 @@ export async function getStreamResponse(request: {
   mode?: "thinking" | "instant";
   /** Real course-catalog text (api/lib/course-catalog.ts) — injected into the system prompt. */
   catalog?: string;
+  /** ✅ TOKEN OPTIMIZATION (v3.6.0): catalog block style (full | lite). */
+  catalogMode?: "full" | "lite";
   /** Image attached to the last user message — force vision-only routing. */
   vision?: boolean;
   /** Rolling summary of this user's older conversations (chat-history.ts). */
@@ -935,9 +950,13 @@ export async function getStreamResponse(request: {
   if (!request.preferLegacy) {
     const routerMode: "thinking" | "instant" = request.mode === "instant" ? "instant" : "thinking";
     const routerTuning = MODE_TUNING[routerMode];
+    // ✅ TOKEN OPTIMIZATION (v3.6.0): web grounding gated by intent (once per
+    // request — the latest user message decides; legacy behavior = always-on
+    // in thinking, so any doubt keeps grounding ON).
+    const routerWebIntent = webIntentFromMessages(request.messages);
     const routed = await routeChatStream({
       messages: request.messages,
-      systemPrompt: getSystemPrompt(request.language, routerMode, request.catalog, false, request.historySummary, request.screen, request.screenCapture, extractRoutingSignal(request.messages)),
+      systemPrompt: getSystemPrompt(request.language, routerMode, request.catalog, false, request.historySummary, request.screen, request.screenCapture, extractRoutingSignal(request.messages), false, request.catalogMode),
       mode: routerMode,
       vision: false,
       language: request.language,
@@ -946,8 +965,9 @@ export async function getStreamResponse(request: {
       preferredModelId: routerTuning.openRouterPreferredModel,
       // ✅ ARCH-AUDIT FIX: caller abort propagates into the candidate walk.
       abortSignal: request.abortSignal,
-      // Web grounding: thinking = documented-answer lane (OpenRouter plugin).
-      webSearch: routerMode === "thinking",
+      // Web grounding: thinking = documented-answer lane (OpenRouter plugin),
+      // now intent-gated — pure calculation questions skip the injected search.
+      webSearch: routerMode === "thinking" && routerWebIntent,
       gen: routerMode === "instant"
         ? { temperature: routerTuning.temperature, maxTokens: routerTuning.maxTokens, attemptTimeoutMs: 10_000, globalBudgetMs: 12_000 }
         : { temperature: routerTuning.temperature, maxTokens: routerTuning.maxTokens, attemptTimeoutMs: 20_000, globalBudgetMs: 22_000 },
@@ -955,7 +975,7 @@ export async function getStreamResponse(request: {
     if (routed.ok) return { stream: routed.result.stream, model: routed.result.model };
   }
 
-  const picked = await pickWorkingModel(request.messages, request.language, request.mode || "thinking", request.catalog, request.historySummary, request.screen, request.screenCapture);
+  const picked = await pickWorkingModel(request.messages, request.language, request.mode || "thinking", request.catalog, request.historySummary, request.screen, request.screenCapture, undefined, request.catalogMode, request.mode !== "instant" && webIntentFromMessages(request.messages));
 
   if (!picked) {
     return buildStreamErrorResponse("noProvider", request.language);

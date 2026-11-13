@@ -28,8 +28,12 @@ const SUMMARY_ROLE = "summary";
 const SUMMARY_WINDOW_MS = 24 * 60 * 60 * 1000; // ~1 day
 /** Don't regenerate the summary for fewer than this many uncovered old rounds. */
 const SUMMARY_MIN_UNCOVERED_ROUNDS = 12;
-/** Cap on old messages fed into one summarization call. */
-const SUMMARY_MAX_SOURCE_MESSAGES = 200;
+/** Cap on old messages fed into one summarization call.
+ *  ✅ TOKEN OPTIMIZATION (v3.6.0): 200 → 80 — the rolling summary is a
+ *  brief-bullet distillation of the user's own interests/decisions; the
+ *  RECENT end of the transcript is the semantically relevant part, and the
+ *  char cap below (12k) is what actually binds. 80 rows still saturates it. */
+const SUMMARY_MAX_SOURCE_MESSAGES = 80;
 const MAX_SAVED_CHARS = 8_000;
 const MAX_SUMMARY_CHARS = 1_500;
 /** Keep at most this many summary rows per user (older ones pruned). */
@@ -213,7 +217,14 @@ export async function maybeUpdateRollingSummary(userId: number): Promise<void> {
   const transcript = sourceRows
     .map((r) => `${r.role === "user" ? "المستخدم" : "المساعد (كلام غير موثوق)"}: ${clip(r.content)}`)
     .join("\n")
-    .slice(0, 40_000);
+    // ✅ TOKEN OPTIMIZATION (v3.6.0): 40k → 12k chars (~3-10k prompt tokens
+    // per summary job instead of ~10-17k). The transcript keeps the OLDEST
+    // uncovered rows (chronological join above), but the summary instruction
+    // asks only for the user's expressed interests/decisions — the 12k head
+    // plus the previous summary preserve the same distilled output; the job
+    // runs rarely (≥12 uncovered rounds older than 24h) and its output cap
+    // (1.5k chars) is unchanged.
+    .slice(0, 12_000);
 
   // ✅ ARCH-AUDIT FIX (distillation admits unverified assistant claims):
   // the admission contract is now asymmetric — ONLY user-stated facts,
