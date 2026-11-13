@@ -58,6 +58,12 @@ download/
 worklog.md
 agent-ctx/
 
+# ✅ Installed agent skills (npx skills CLI convention): .agents/skills/<name>/
+# must be COMMITTED — skills-lock.json computedHash is verified against these
+# files by `skills list/check/install --frozen-lockfile`.
+!.agents/skills/
+!.agents/skills/**
+
 # ── Testing / Coverage ──
 test-results/
 coverage/

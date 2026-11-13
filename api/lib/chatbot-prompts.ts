@@ -109,8 +109,19 @@ import {
  *          only on course/platform intent (sticky over recent history),
  *          a featured-course sample otherwise. Vision lanes always get the
  *          full catalog.
+ *
+ *          v3.7.0 — ECOSYSTEM SKILLS: two new registry skills composed in
+ *          the routed zone A (both modes): caveman-conciseness (ALWAYS-ON
+ *          concise-voice discipline → output-token savings with zero
+ *          meaning loss, adapted from JuliusBrussee/caveman) and
+ *          find-skills-discovery (routed open-registry discovery protocol
+ *          for skills.sh, adapted from vercel-labs/skills find-skills).
+ *          Fixed blocks untouched → the cacheable stable prefix is
+ *          byte-identical to v3.6.0; new content lands only in the
+ *          variable routed zone, so provider-side prefix caching is
+ *          unaffected.
  */
-export const PROMPT_VERSION = "3.6.0";
+export const PROMPT_VERSION = "3.7.0";
 
 export type ChatbotMode = "thinking" | "instant";
 

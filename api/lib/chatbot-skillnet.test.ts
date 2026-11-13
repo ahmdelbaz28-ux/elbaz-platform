@@ -65,9 +65,11 @@ describe("routeSkills — happy path", () => {
     expect(dropped).toContain("skm-core");
     expect(dropped).toContain("pvsyst-core");
     // Every ROUTABLE selection carries a human-readable reason (SkillNet
-    // contract); always-on identity cores legitimately carry score 0.
+    // contract); always-on skills (identity cores + the v3.7.0 caveman
+    // voice) legitimately carry score 0.
+    const alwaysOnIds = new Set(SKILL_REGISTRY.filter((s) => s.alwaysOn).map((s) => s.id));
     for (const s of decision.selected) {
-      if (s.id === "etap-expert-core" || s.id === "electrical-depth-pack") continue;
+      if (alwaysOnIds.has(s.id)) continue;
       expect(s.reasons.length).toBeGreaterThan(0);
       expect(s.score).toBeGreaterThan(0);
     }
@@ -160,7 +162,99 @@ describe("routeSkills — edge cases", () => {
   });
 });
 
-// ── FAILURE MODE: fallback superset + lean prompt keeps every always-on ────
+// ─── v3.7.0: ecosystem skills — caveman voice × find-skills discovery ─────
+
+ describe("v3.7.0 ecosystem skills — caveman × find-skills", () => {
+  it("registry carries both skills with the right category/modes/version", () => {
+    const caveman = SKILL_REGISTRY.find((s) => s.id === "caveman-conciseness");
+    const find = SKILL_REGISTRY.find((s) => s.id === "find-skills-discovery");
+    expect(caveman).toBeDefined();
+    expect(find).toBeDefined();
+    expect(caveman!.category).toBe("voice-discipline");
+    expect(find!.category).toBe("discovery");
+    expect(caveman!.version).toBe("1.0.0");
+    expect(find!.version).toBe("1.0.0");
+    for (const mode of ["thinking", "instant"] as const) {
+      for (const lang of ["ar", "en"] as const) {
+        expect(caveman!.build(lang, mode).length).toBeGreaterThan(80);
+        expect(find!.build(lang, mode).length).toBeGreaterThan(80);
+      }
+    }
+  });
+
+  it("caveman is always-on: rides along in a lean prompt in both modes and languages", () => {
+    for (const mode of ["thinking", "instant"] as const) {
+      for (const lang of ["ar", "en"] as const) {
+        const decision = routeSkills({ signal: "شكراً جزيلاً", lang, mode });
+        const ids = decision.selected.map((s) => s.id);
+        expect(ids).toContain("caveman-conciseness");
+        expect(ids).not.toContain("find-skills-discovery");
+      }
+    }
+  });
+
+  it("find-skills routes on an EE tool/skill discovery question (ar + en)", () => {
+    const ar = routeSkills({ signal: "هل توجد مهارة تساعدني في حسابات Excel لجداول الأحمال؟", lang: "ar", mode: "thinking" });
+    expect(ar.strategy).toBe("routed");
+    expect(ar.selected.map((s) => s.id)).toContain("find-skills-discovery");
+
+    const en = routeSkills({ signal: "Is there a skill for MATLAB simulation of motors?", lang: "en", mode: "thinking" });
+    expect(en.selected.map((s) => s.id)).toContain("find-skills-discovery");
+  });
+
+  it("find-skills does NOT fire on the historical technical signals (no false positives)", () => {
+    for (const signal of [
+      "كيف أعمل دراسة arc flash في ETAP خطوة بخطوة؟",
+      "أنا أستخدم PVSyst لمشروع طاقة شمسية وأريد تحجيم السلاسل",
+      "كيف أضبط إعدادات الريليه وأتحقق من التنسيق بين القواطع؟",
+      "ما الخطوة الجاية؟",
+      "شكراً جزيلاً على الرد اللطيف",
+      "اكتب لي قصة قصيرة",
+    ]) {
+      const decision = routeSkills({ signal, lang: "ar", mode: "thinking" });
+      expect(decision.selected.map((s) => s.id)).not.toContain("find-skills-discovery");
+    }
+  });
+
+  it("prompt level: full-fallback carries both skills; lean carries caveman only", () => {
+    const full = getSystemPrompt("ar", "thinking");
+    expect(full).toContain("مهارة الإيجاز الذكي");
+    expect(full).toContain("مهارة اكتشاف المهارات");
+
+    const lean = getSystemPrompt("ar", "thinking", undefined, false, undefined, undefined, false, "شكراً جزيلاً على الرد اللطيف");
+    expect(lean).toContain("مهارة الإيجاز الذكي");
+    expect(lean).not.toContain("مهارة اكتشاف المهارات");
+  });
+
+  it("prompt level: discovery question injects the find-skills protocol with vetting rules", () => {
+    const p = getSystemPrompt("ar", "thinking", undefined, false, undefined, undefined, false, "هل توجد مهارة تساعدني في كتابة تقارير LaTeX للأبحاث الهندسية؟");
+    expect(p).toContain("مهارة اكتشاف المهارات");
+    expect(p).toContain("skills.sh");
+    expect(p).toContain("npx skills find");
+    // vetting discipline present
+    expect(p).toContain("فحص الجودة إلزامي");
+  });
+
+  it("instant anchors exist and the instant routed prompt stays under the token budget", () => {
+    expect(SKILL_REGISTRY.find((s) => s.id === "caveman-conciseness")!.build("ar", "instant"))
+      .toContain("مرسى الإيجاز الذكي");
+    expect(SKILL_REGISTRY.find((s) => s.id === "find-skills-discovery")!.build("ar", "instant"))
+      .toContain("مرسى اكتشاف المهارات");
+
+    const p = getSystemPrompt("ar", "instant", undefined, false, undefined, undefined, false, "هل توجد مهارة لمحاكاة MATLAB؟");
+    expect(p.length).toBeLessThan(22_000);
+    expect(p).toContain("مرسى الإيجاز الذكي");
+    expect(p).toContain("مرسى اكتشاف المهارات");
+  });
+
+  it("English prompt mirrors the caveman discipline", () => {
+    const p = getSystemPrompt("en", "thinking");
+    expect(p).toContain("CONCISE VOICE SKILL");
+    expect(p).toContain("negations (not, never, no, only, except)");
+  });
+});
+
+// ─── FAILURE MODE: fallback superset + lean prompt keeps every always-on ────
 
 describe("prompt composition — fallback and lean guarantees", () => {
   it("no signal → full-fallback prompt is a SUPERSET of every domain core + pack", () => {

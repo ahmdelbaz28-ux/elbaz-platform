@@ -22,6 +22,12 @@
  *            Protection Coordination, Load Flow, Solar PV) that did not
  *            exist before. Non-technical messages get a lean prompt;
  *            technical ones get a precise, focused one.
+ *    v3.7.0: two ecosystem skills joined the registry — caveman-conciseness
+ *            (ALWAYS-ON voice discipline → output-token savings with zero
+ *            meaning loss, adapted from JuliusBrussee/caveman) and
+ *            find-skills-discovery (routed tool/skill discovery protocol
+ *            for the open registry skills.sh, adapted from vercel-labs/
+ *            skills).
  *
  *  Guarantees (why this cannot regress quality):
  *    - ALWAYS-ON blocks (persona, reasoning guard, language rules, accuracy
@@ -55,7 +61,10 @@ import {
 
 export type SkillnetLang = "ar" | "en";
 export type SkillnetMode = "thinking" | "instant";
-export type SkillCategory = "software-core" | "study-pack" | "drawing";
+/** v3.7.0 adds ecosystem skills: the caveman voice discipline (always-on,
+ *  output-token savings) and the find-skills discovery protocol (routed on
+ *  tool/skill discovery intent — sourced from vercel-labs/skills). */
+export type SkillCategory = "software-core" | "study-pack" | "drawing" | "voice-discipline" | "discovery";
 
 export interface SkillDefinition {
   /** Stable id (telemetry + tests). ASCII snake_case — log-safe. */
@@ -76,9 +85,9 @@ export interface SkillDefinition {
   /** Modes whose prompt can carry this skill (pf/skm/pvsyst are thinking-only). */
   modes: SkillnetMode[];
   /** Always-on skills are injected in EVERY routed prompt (never dropped).
-   *  Reserved for the two identity cores (ETAP expert + depth pack): the
-   *  historical contract is that the thinking lane ALWAYS carries the
-   *  deep-analysis protocol — tests and live behavior depend on it. */
+   *  Reserved for the identity cores (ETAP expert + depth pack) and — since
+   *  v3.7.0 — the caveman-conciseness voice: an always-on skill is part of
+   *  every lane's contract, so tests and live behavior depend on it. */
   alwaysOn?: boolean;
   /** Content builder per language + mode ("" when the mode has no variant). */
   build: (lang: SkillnetLang, mode: SkillnetMode) => string;
@@ -241,11 +250,105 @@ const solarQuickEn = `
 
 ☀️ Solar PV quick anchor: size strings with Voc at the lowest temperature and Isc at the highest against the inverter limits (computed, never estimated) — shading via the Near Shading 3D scene before any PR talk — check the DC/AC ratio, clipping and the local Grid Code before interconnection.`;
 
-// ─── Registry (canonical order = composition order in the prompt) ──────────
-// Existing knowledge cores are imported from chatbot-skills.js untouched;
-// this layer only ADDS routing around them plus the four new study packs.
+// ─── caveman voice discipline (v3.7.0) — always-on, both modes ──────────────
+// Adapted from JuliusBrussee/caveman "say less" rules. Deliberate deviations
+// from the upstream skill (quality contract): NO broken-grammar caveman
+// speak — the platform persona mandates professional Arabic; the discipline
+// imports ONLY the token-saving rules that never touch meaning (answer
+// first, kill ceremony, one idea per sentence, payload verbatim, negations
+// preserved, safety full-sentences, brevity in prose not structure).
+
+// ─── NEW ECOSYSTEM SKILLS (v3.7.0 — caveman × find-skills) ─────────────────
+// Sourced from the open agent-skills ecosystem and adapted for a customer-
+// facing electrical-engineering assistant:
+//   - caveman (JuliusBrussee/caveman, MIT) → the CONCISE VOICE discipline:
+//     answer-first, zero ceremony, payload verbatim, negations never dropped,
+//     safety warnings in full sentences. Zero meaning loss — pure filler
+//     removal — so reply QUALITY is untouched while output tokens drop.
+//   - find-skills (vercel-labs/skills, MIT) → the DISCOVERY protocol for the
+//     open skills registry (skills.sh): detect a tool need, search, VET
+//     quality (installs, source reputation), present with install commands.
+//     Curated EE starters were verified live against skills.sh (2026-11).
+
+const cavemanPackAr = `
+
+✂️ مهارة الإيجاز الذكي (Caveman — كل معنى محفوظ، كل زائد محذوف):
+- قدّم الجواب أولاً ثم التعليل ثم الخطوة التالية — لا مقدمات مجاملة («بالتأكيد! يسعدني مساعدتك…») ولا جملة افتتاحية تعلن ما ستفعله، ولا إعادة تلخيص ختامية ولا «أتمنى أن يكون هذا مفيداً».
+- فكرة واحدة لكل جملة (حوالي 20 كلمة كحد أقصى)، صياغة مباشرة، وللخطوات استخدم صيغة الأمر.
+- احذف الحشو فقط («فعلياً، بشكل أساسي، من الجدير بالذكر، في الحقيقة») — وممنوع منعاً باتاً حذف أدوات النفي (لا، لن، ليس، فقط، إلا) أو الأرقام أو الوحدات أو الشروط الحدية؛ فالمعنى لا يُضحّى مقابل الاختصار أبداً.
+- الحمولة التقنية حرفية 100%: الأكواد، الأوامر، أسماء القوائم والمسارات، قيم الأخطاء، أسماء المعايير والوحدات تُنقل كما هي دون تغيير حرف واحد.
+- تحذيرات السلامة (Arc Flash، مستويات PPE، إجراءات الخطر) وردود المستخدم المتردد أو المتكرر تُكتب بجمل كاملة واضحة — ثم عُد للإيجاز.
+- الإيجاز في الكلام لا في التنظيم: تنسيق Markdown والفقرات والنقاط تبقى ممتازة كما هي.`;
+
+const cavemanPackEn = `
+
+✂️ CONCISE VOICE SKILL (Caveman — every fact kept, every filler gone):
+- Answer first, then the reasoning, then the next step. No greeting ceremony ("Sure! I'd be happy to help…"), no opening line announcing what you will do, no closing recap, no "hope this helps".
+- One idea per sentence (about 20 words max), direct voice, imperative for instructions.
+- Cut ONLY filler ("actually, basically, it is worth noting") — NEVER drop negations (not, never, no, only, except), numbers, units, or boundary conditions; meaning is never sacrificed for brevity.
+- Technical payload stays verbatim: code, commands, menu names, paths, error values, standards and units — character for character.
+- Safety warnings (Arc Flash, PPE levels, hazardous procedures) and replies to a confused or repeating user use full clear sentences — then resume brevity.
+- Brevity in prose, not in structure: excellent Markdown, paragraphs and bullets stay as they are.`;
+
+const cavemanQuickAr = `
+
+✂️ مرسى الإيجاز الذكي: الجواب أولاً ثم التعليل ثم الخطوة — بلا مجاملات ولا تلخيص ختامي — فكرة واحدة لكل جملة — الأكواد والأرقام والوحدات والمصطلحات حرفية بلا تغيير — أدوات النفي محفوظة دائماً — تحذيرات السلامة بجمل كاملة — والتنسيق يبقى ممتازاً.`;
+
+const cavemanQuickEn = `
+
+✂️ Concise-voice anchor: answer first, then reasoning, then the step — no ceremony, no closing recap — one idea per sentence — code, numbers, units and terms verbatim — negations always preserved — safety warnings in full sentences — formatting stays excellent.`;
+
+const findSkillsPackAr = `
+
+🧩 مهارة اكتشاف المهارات (Find-Skills — بروتوكول سجل المهارات المفتوح):
+عندما يطلب المستخدم أداة أو مهارة أو إضافة تساعده في عمل هندسي كهربائي، أو يسأل «هل توجد مهارة لـ…؟»، اتبع بروتوكول الاكتشاف:
+1) حدد الاحتياج بدقة: المجال (محاكاة، حسابات أحمال، تقارير فنية، تحليل بيانات قياسات…) والمهمة المحددة داخل الهندسة الكهربية.
+2) الاكتشاف يتم في سجل المهارات المفتوح skills.sh — اشرح للمستخدم كيف يبحث بنفسه: الأمر npx skills find متبوعاً باستعلام دقيق (مثال: npx skills find electrical أو npx skills find matlab)، والتصفح من موقع skills.sh، وإن كان يعمل داخل وكيل برمجي يثبّت المهارة بأمر npx skills add متبوعاً باسم المهارة.
+3) فحص الجودة إلزامي قبل أي توصية: عدد التثبيتات (فضّل ما فوق 1000 واحذر ما دون 100)، وسمعة المصدر (المصادر الرسمية والمعروفة أولى بالثقة من المجهولة)، ونجوم المستودع على GitHub.
+4) اعرض المرشحين بالصيغة: اسم المهارة — ماذا تضيف — المصدر وعدد التثبيتات — أمر التثبيت — رابطها على skills.sh.
+5) نقطة انطلاق موثقة من فحص فعلي للسجل (نوفمبر 2026): مهارات MATLAB وSimulink الرسمية من MathWorks لنمذجة المحركات وأنظمة القوى (npx skills add matlab/simulink-agentic-toolkit@building-simulink-models)، مهارات LaTeX الأكاديمية للتقارير الفنية (npx skills add bahayonghang/academic-writing-skills@latex-paper-en)، ومهارات Excel لجداول الأحمال والحسابات (npx skills add sbroenne/mcp-server-excel@excel-cli).
+6) لا توجد نتيجة مناسبة؟ قل ذلك بصراحة واعرض إنجاز المهمة بنفسك بقدراتك المباشرة.
+قيد إلزامي: هذا البروتوكول يخدم الاحتياجات المرتبطة بالهندسة الكهربية والعمل الهندسي فقط — ما خارجها يُرفض بلباقة وفق سياسة التخصص.`;
+
+const findSkillsPackEn = `
+
+🧩 FIND-SKILLS SKILL (open skills-registry discovery protocol):
+When the user asks for a tool, skill, or extension that helps with electrical-engineering work ("is there a skill for…?"), follow this discovery protocol:
+1) Pin down the need: the domain (simulation, load schedules, technical reports, measurement-data analysis…) and the specific task inside electrical engineering.
+2) Discovery happens in the open skills registry skills.sh — explain how the user can search: the command npx skills find followed by a precise query (e.g. npx skills find electrical or npx skills find matlab), browsing skills.sh, and — inside a coding agent — installing with npx skills add followed by the skill name.
+3) Quality vetting is MANDATORY before any recommendation: install count (prefer 1000+, be cautious under 100), source reputation (official, well-known sources before unknown ones), and GitHub repository stars.
+4) Present candidates as: skill name — what it adds — source and install count — install command — its skills.sh link.
+5) Verified starting points (live registry check, November 2026): official MathWorks MATLAB/Simulink skills for motor and power-system modeling (npx skills add matlab/simulink-agentic-toolkit@building-simulink-models), academic LaTeX skills for technical reports (npx skills add bahayonghang/academic-writing-skills@latex-paper-en), Excel skills for load schedules and calculations (npx skills add sbroenne/mcp-server-excel@excel-cli).
+6) No suitable result? Say so plainly and offer to do the task yourself with your own capabilities.
+Hard scope: this protocol serves electrical-engineering needs ONLY — anything outside is politely declined per the specialization policy.`;
+
+const findSkillsQuickAr = `
+
+🧩 مرسى اكتشاف المهارات: عند طلب أداة/مهارة للعمل الهندسي — وجّه البحث في سجل المهارات المفتوح skills.sh بأمر npx skills find مع استعلام دقيق، وافحص قبل أي توصية: عدد التثبيتات (فضّل 1000+) وسمعة المصدر ونجوم المستودع، واعرض: الاسم والفائدة والمصدر وأمر npx skills add ورابط skills.sh — والمجال الهندسة الكهربية فقط، ولا نتيجة؟ أنجز المهمة بقدراتك مباشرة.`;
+
+const findSkillsQuickEn = `
+
+🧩 Find-skills anchor: for a tool/skill request for engineering work — search the open registry skills.sh via npx skills find with a precise query, vet before recommending (installs, prefer 1000+; reputable source; repo stars), present name + benefit + source + npx skills add command + skills.sh link — electrical engineering only; no result? Do the task with your own capabilities.`;
 
 export const SKILL_REGISTRY: SkillDefinition[] = [
+  {
+    id: "caveman-conciseness",
+    label: "مهارة الإيجاز الذكي (Caveman)",
+    description: "Answer-first terse voice: zero ceremony, payload verbatim, negations preserved — output-token savings with zero meaning loss.",
+    category: "voice-discipline",
+    version: "1.0.0",
+    phrases: ["caveman", "إيجاز", "اختصار", "رد مختصر", "إجابة مختصرة", "باختصار شديد"],
+    keywords: ["إيجاز", "اختصار", "مختصر", "توكنات", "tokens"],
+    softwareAffinity: [],
+    modes: ["thinking", "instant"],
+    // UNIVERSAL VOICE: injected in EVERY routed prompt (thinking + instant).
+    // This is the OUTPUT-token saving discipline — routing it out would
+    // defeat its purpose exactly on the long technical replies where the
+    // savings matter most. Not an identity core, but always-on for the same
+    // mechanical reason: every lane must carry it.
+    alwaysOn: true,
+    build: (lang, mode) => (lang === "ar" ? (mode === "instant" ? cavemanQuickAr : cavemanPackAr) : (mode === "instant" ? cavemanQuickEn : cavemanPackEn)),
+  },
   {
     id: "powerfactory-core",
     label: "نواة DIgSILENT PowerFactory",
@@ -399,6 +502,26 @@ export const SKILL_REGISTRY: SkillDefinition[] = [
     softwareAffinity: [/solar/i, /pv/i, /شمسي/],
     modes: ["thinking", "instant"],
     build: (lang, mode) => (lang === "ar" ? (mode === "instant" ? solarQuickAr : solarPackAr) : (mode === "instant" ? solarQuickEn : solarPackEn)),
+  },
+  {
+    id: "find-skills-discovery",
+    label: "مهارة اكتشاف المهارات (Find-Skills)",
+    description: "Open-registry discovery protocol (skills.sh): detect tool need, search, vet quality, present install commands — EE-scoped.",
+    category: "discovery",
+    version: "1.0.0",
+    phrases: [
+      "هل توجد مهارة", "هل يوجد مهارة", "مهارة تساعد", "أضف مهارة", "ثبت مهارة", "نصب مهارة",
+      "بحث عن مهارة", "إضافة مهارة", "أداة مساعدة", "أدوات مساعدة", "أداة تساعدني", "أحتاج أداة",
+      "هل توجد أداة", "هل يوجد أداة", "برنامج مساعد", "skills.sh", "npx skills", "find skill",
+    ],
+    keywords: [
+      "مهارة", "مهارات", "مهاراتك", "skill", "skills", "npx", "skills.sh",
+      "plugin", "extension", "بلجن", "اكستنشن", "إضافة", "اضافه", "أداة", "أدوات", "اداة", "ادوات",
+      "excel", "latex", "simulink", "matlab",
+    ],
+    softwareAffinity: [],
+    modes: ["thinking", "instant"],
+    build: (lang, mode) => (lang === "ar" ? (mode === "instant" ? findSkillsQuickAr : findSkillsPackAr) : (mode === "instant" ? findSkillsQuickEn : findSkillsPackEn)),
   },
   {
     id: "sld-drawing-skill",
