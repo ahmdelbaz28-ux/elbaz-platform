@@ -34,7 +34,11 @@ import { sanitizeReplyOutput, containsPromptLeak, promptLeakRefusal } from "./ch
 // EVERY complete Arabic answer ending in a question ("…هل تريد شرح الخطوات؟")
 // looked mid-sentence to the rescue heuristic (needless rescue rounds) and to
 // the truncation policy (the closing question got CUT OFF the reply).
-const SENTENCE_END_RE = /[.!?…؟:؛،"'”’）)\]】»*]\s*$/;
+// CJK terminators are spelled as Unicode escapes: the platform rule forbids
+// printing any CJK glyph in assistant-related sources, while the regex still
+// matches the exact same code points (U+FF09 fullwidth right parenthesis and
+// U+3011 right black lenticular bracket).
+const SENTENCE_END_RE = /[.!?…؟:؛،"'”’\uFF09)\]\u3011»*]\s*$/;
 
 /** Heuristic: the text ends like a finished sentence (not cut mid-thought). */
 export function looksComplete(text: string): boolean {

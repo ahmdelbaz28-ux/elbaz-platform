@@ -366,13 +366,13 @@ describe("composition matrix (core invariants, applies to every variant)", () =>
   });
 
   it("FAILURE MODE: sanitizer strips CJK from user-facing replies (delta-safe)", () => {
-    expect(sanitizeReplyOutput("مرحبا 官网 world")).toBe("مرحبا world");
+    expect(sanitizeReplyOutput("مرحبا \u5B98\u7F51 world")).toBe("مرحبا world");
     // ✅ ROOT-CURE (2026-11-13): the old global "(\s*)" + multi-space collapse
     // destroyed legitimate content — `def calc():` → `def calc:`, `f()` → `f`,
     // indented code flattened. The cleanup is now SEAM-SCOPED (only around the
     // removed CJK): the paren-artifact is asserted WITH the CJK that caused it,
     // and legitimate code/parens/indentation must survive byte-identically.
-    expect(sanitizeReplyOutput("التعايث (官网) اختبار")).toBe("التعايث اختبار");
+    expect(sanitizeReplyOutput("التعايث (\u5B98\u7F51) اختبار")).toBe("التعايث اختبار");
     expect(sanitizeReplyOutput("clean text")).toBe("clean text");
   });
 

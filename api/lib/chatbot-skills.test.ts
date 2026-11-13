@@ -10,7 +10,7 @@
  *   3. The course catalog is injected verbatim in BOTH modes when provided,
  *      and the fallback line appears when it is empty.
  *   4. No `__COURSE_CATALOG__` placeholder literal leaks into any prompt.
- *   5. No CJK characters anywhere in prompts (regression: 官网 leak).
+ *   5. No CJK characters anywhere in prompts (regression: CJK leak).
  *   6. getChatResponse forwards the catalog into the actual provider request.
  */
 
@@ -112,14 +112,14 @@ describe("getSystemPrompt — instant mode (token-light)", () => {
   });
 });
 
-describe("sanitizeReplyOutput — CJK leak enforcement (regression: 下游/官网)", () => {
+describe("sanitizeReplyOutput — CJK leak enforcement (regression: CJK leak)", () => {
   it("strips CJK ideographs, kana, hangul, CJK punctuation and fullwidth forms", () => {
-    expect(sanitizeReplyOutput("الريلايات下游 (Downstream) بفاصل CTI")).toBe("الريلايات (Downstream) بفاصل CTI");
-    expect(sanitizeReplyOutput("راجع 官网 الصفحة")).toBe("راجع الصفحة");
-    expect(sanitizeReplyOutput("3相 fault")).toBe("3 fault");
-    expect(sanitizeReplyOutput("テストabc")).toBe("abc");
-    expect(sanitizeReplyOutput("결함abc")).toBe("abc");
-    expect(sanitizeReplyOutput("خطوة１٢３ (نهاية)")).toBe("خطوة٢ (نهاية)"); // fullwidth 1/3 stripped; Arabic-Indic 2 kept
+    expect(sanitizeReplyOutput("الريلايات\u4E0B\u6E38 (Downstream) بفاصل CTI")).toBe("الريلايات (Downstream) بفاصل CTI");
+    expect(sanitizeReplyOutput("راجع \u5B98\u7F51 الصفحة")).toBe("راجع الصفحة");
+    expect(sanitizeReplyOutput("3\u76F8 fault")).toBe("3 fault");
+    expect(sanitizeReplyOutput("\u30C6\u30B9\u30C8abc")).toBe("abc");
+    expect(sanitizeReplyOutput("\uACB0\uD568abc")).toBe("abc");
+    expect(sanitizeReplyOutput("خطوة\uFF11٢\uFF13 (نهاية)")).toBe("خطوة٢ (نهاية)"); // fullwidth 1/3 stripped; Arabic-Indic 2 kept
   });
 
   it("keeps Arabic, English, markdown and normal punctuation intact", () => {
@@ -129,8 +129,8 @@ describe("sanitizeReplyOutput — CJK leak enforcement (regression: 下游/官�
   });
 
   it("cleans empty parens and doubled spaces left by the strip", () => {
-    expect(sanitizeReplyOutput("حماية (下游) أساسية")).toBe("حماية أساسية");
-    expect(sanitizeReplyOutput("قيمة  下游  قيمة")).toBe("قيمة قيمة");
+    expect(sanitizeReplyOutput("حماية (\u4E0B\u6E38) أساسية")).toBe("حماية أساسية");
+    expect(sanitizeReplyOutput("قيمة  \u4E0B\u6E38  قيمة")).toBe("قيمة قيمة");
   });
 
   it("is delta-safe: never trims, so SSE chunks concatenate correctly", () => {
@@ -156,7 +156,7 @@ describe("catalog block + hygiene", () => {
     }
   });
 
-  it("no CJK characters in any prompt (regression: 官网 leak)", () => {
+  it("no CJK characters in any prompt (regression: CJK leak)", () => {
     const cjkRe = /[\u4E00-\u9FFF\u3400-\u4DBF]/;
     for (const lang of ["ar", "en", undefined]) {
       for (const mode of ["thinking", "instant"] as const) {

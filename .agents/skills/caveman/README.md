@@ -15,7 +15,7 @@ Caveman is one of three sibling skills:
 |-------|---------|-------------|
 | `caveman` | `/caveman` | The voice. Default. Answer first, fluff gone, every fact kept. |
 | `ultracave` | `/ultracave` | Grammar stripped. Fragments, one word when one word is enough, each fact once. |
-| `megacave` | `/megacave` | Classical Chinese (文言文). Far fewer characters, technical terms verbatim. |
+| `megacave` | `/megacave` | Classical Chinese (Literary Chinese). Far fewer characters, technical terms verbatim. |
 
 `/caveman ultra` and `/caveman wenyan` still work as aliases.
 
@@ -59,7 +59,9 @@ ultracave:
 > Inline object prop, new ref, re-render. `useMemo`.
 
 megacave:
-> 每繪新生對象參照，故重繪；以 `useMemo` 包之則免。
+> (The same tip rendered in Literary Chinese — omitted from this vendored
+> copy because the platform forbids printing any Chinese characters in
+> assistant-related sources.)
 
 ## See also
 

@@ -23,6 +23,68 @@
 
 ## [Unreleased]
 
+## [3.7.1] — 2026-11-14
+
+### Fixed — NO-CJK HYGIENE (قاعدة صارمة: ممنوع أي حرف صيني في مصادر المساعد)
+
+مصدر الطلب: توجيه صريح — **ممنوع منعاً باتاً طباعة أي تعليمات للمساعد الذكي
+باللغة الصينية**. الفحص الشامل (نقاط كود U+3000–U+30FF / U+3400–U+4DBF /
+U+4E00–U+9FFF / U+AC00–U+D7AF / U+FF01–U+FF5E / U+FF61–U+FF9F) على كل مصادر
+المساعد (`api/`, `src/`, `scripts/`, `tests/`, `db/`, `.agents/`، والمستندات
+الجذرية) وجد أحرفاً صينية في **تعليقات كود** و**fixtures اختبارية** فقط —
+نصوص البرومبت الفعلية المُرسلة للمساعد كانت نظيفة أصلاً (الاختبار
+`no CJK characters in any prompt` يغطي كل الوضعين واللغتين).
+
+الإصلاح الجذري (سلوك وقت التشغيل متطابق بالبايت):
+
+1. **`api/lib/chatbot-prompts.ts`** — تعليقات توثيق انسكاب CJK التاريخية
+   أُعيدت كتابتها بالإنجليزية (لا حرف CJK مطبوع).
+2. **`api/lib/chatbot-skills.test.ts` / `api/lib/chatbot-prompts.quality.test.ts`
+   / `api/lib/finalize-reply.test.ts`** — fixtures اختبارات الـ sanitizer
+   حُوّلت إلى Unicode escapes (`\uXXXX`)، فالملف خالٍ من أي حرف مطبوع بينما
+   الاختبارات ما زالت تختبر **نقاط كود CJK حقيقية** وقت التشغيل.
+3. **`api/lib/finalize-reply.ts`** — موُنهتا الجملة CJK في `SENTENCE_END_RE`
+   أصبحا `\uFF09` و `\u3011` (نفس نقاط الكود بالضبط، لا تغيير سلوكي).
+4. **`.agents/skills/caveman/README.md`** — مستند vendored من المستودع
+   الأصلي: المثال الصيني الكلاسيكي أُعيدت صياغته بالإنجليزية. ملفا SKILL.md
+   الفعليان (caveman/find-skills) نظيفان ولم يُلمسا — تجزئة skills-lock.json
+   سليمة.
+
+**الأثر المقيس:** صفر تغيير في بايتات البرومبت — البادئة القابلة للتخزين
+المؤقت متطابقة بايتاً ببايت مع 3.7.0/3.6.0.
+
+### Fixed — EN THINKING CEILING (الحجم الإنجليزي كسر ميزانية الطبيب)
+
+مصدر الطلب: فحص `chatbot-doctor` أظهر `size_en:thinking` = 42,417 / 40,000 —
+خلل وُلد مع 3.7.0 (محتوى مهارتي caveman وfind-skills دفع البرومبت الإنجليزي
+فوق الميزانية، بعد أن كان نفس الخلل أُصلح في 2026-11-13 بحذف تكرار حرفي).
+السبب الجذري: الترجمة الإنجليزية مطولة عن النص العربي الأصلي بـ ~3,700 حرفاً
+بنفس المحتوى الدلالي تماماً — دهون ترجمة لا قواعد إضافية.
+
+الإصلاح الجذري (ضغط صياغة إنجليزية فقط — كل قاعدة وكل مرساة محمية بالاختبارات
+بقيت حرفياً كما هي):
+
+1. **إزالة تكرار حقيقي بين الكتل الإنجليزية:** قاعدة الحساب الصريح
+   (formula → substitution → units → result) كانت مكررة بين `thinkingModeEn`
+   و`accuracyContractEn` — بقيت في عقد الدقة وأحيل إليها وضع التفكير؛ قاعدة
+   "1. Do X — one step per line" و**double asterisks** كانت مكررة بين
+   `guidedNavigationEn` و`langAndFormatRuleEn` — بقيت في قاعدة التنسيق.
+2. **شد صياغة الكتل الإنجليزية المطولة** (evidenceModel, guidedNavigation,
+   accuracyContract, supportProtocol, officialChannels, mentorProtocol,
+   platformCore, safetyRule, versionRule, webGrounding, thinkingMode,
+   electricalDepthPack, sldSkill, arcFlash/protection/loadFlow/solar packs,
+   findSkillsPack, cavemanPack, قالب المقدمة الإنجليزي) — كل قاعدة دلالية
+   محفوظة 1:1، والأمثلة السلوكية الحرفية (عبارات المنع المقتبسة، أوامر
+   التثبيت، الروابط الرسمية الستة) لم تُلمس.
+
+**الأثر المقيس:** `size_en:thinking` = 39,873 / 40,000 (توفير 2,544 حرفاً ≈
+630 توكن لكل طلب إنجليزي في وضع التفكير — اتساقاً مع مهمة توفير التوكنات
+3.6.0) — `chatbot-doctor`: 13 pass / 0 warn / 0 fail. برومبت العربي لم
+يتغير بايتاً واحداً (38,680 كما هو)، والبادئة القابلة للتخزين المؤقت للإنجليزي
+قصُرت لكنها ما زالت ثابتة البنية عبر الطلبات فتستمر بالتخزين المؤقت من
+المزوّد. الاختبارات: 137/137 (prompts-quality + skills + skillnet + chatbot +
+finalize-reply) — كل المرسيات المحمية حرفية كما هي.
+
 ## [3.7.0] — 2026-11-14
 
 ### Added — ECOSYSTEM SKILLS (مهارتا caveman وfind-skills من النظام البيئي المفتوح)

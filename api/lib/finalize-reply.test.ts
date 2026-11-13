@@ -39,7 +39,7 @@ describe("finalizeReply — unified egress pipeline", () => {
   });
 
   it("sanitizes CJK output", () => {
-    const r = finalizeReply("الخطأ هو 官网 في الإعداد");
+    const r = finalizeReply("الخطأ هو \u5B98\u7F51 في الإعداد");
     expect(r.reply).not.toMatch(/[\u4E00-\u9FFF]/);
     expect(r.reply).toContain("الخطأ هو");
   });
