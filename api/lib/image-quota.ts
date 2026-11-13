@@ -17,6 +17,38 @@ import { logger } from "./logger.js";
 /** Daily image allowance per user (per IP) — kept small to preserve the vision providers' quota. */
 export const DAILY_IMAGE_LIMIT = 5;
 
+/**
+ * ✅ ROOT-CURE (2026-11-13, live screen sessions died after 5 frames): LIVE
+ * screen-teacher frames get their OWN daily lane. The screen-teacher contract
+ * demands a fresh frame with EVERY message ("2-3 steps, then send a new
+ * capture"), so a real guidance session needs far more than 5 frames — under
+ * the shared 5/day cap the advertised live-screen capability was unusable
+ * after five exchanges. The lane is still hard-bounded: the per-IP message
+ * cap (60/day) already limits how many frames can possibly be sent, so a
+ * 60/day frame allowance can never exceed the message quota's cost ceiling
+ * (60 screen frames + 5 attachments = ≤65 vision reads/day/IP).
+ * The tag is client-supplied, so an abuser gains nothing: tagging a plain
+ * attachment as "screen_capture" merely moves it from the 5-bucket to the
+ * 60-bucket — the total vision cost per IP stays bounded either way.
+ */
+export const DAILY_SCREEN_FRAME_LIMIT = 60;
+
+/** Distinct quota key for the live-screen lane (same storage, own bucket). */
+export function screenFrameQuotaKey(ip: string): string {
+  return `${ip}#screen`;
+}
+
+/**
+ * Which daily quota lane a vision request rides: live screen frames
+ * (`source: "screen_capture"`) use the 60/day screen lane, ordinary
+ * attachments keep the 5/day lane. Pure + unit-testable.
+ */
+export function visionQuotaLane(screenCapture: boolean, ip: string): { key: string; limit: number; screen: boolean } {
+  return screenCapture
+    ? { key: screenFrameQuotaKey(ip), limit: DAILY_SCREEN_FRAME_LIMIT, screen: true }
+    : { key: ip, limit: DAILY_IMAGE_LIMIT, screen: false };
+}
+
 const memQuota = new Map<string, { day: string; used: number }>();
 // ✅ SECURITY FIX (pre-launch audit run-2, chatbot.map-bounds): the mirror
 // is keyed by client IP — spoofable header values used to grow it without

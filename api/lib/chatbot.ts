@@ -948,6 +948,14 @@ async function runTextCascade(request: {
   /** LIVE SCREEN: last user image is a frame of the user's real screen —
    *  arms the screen-teacher prompt (grounded step-by-step guidance). */
   screenCapture?: boolean;
+  /** ✅ ROOT-CURE (2026-11-13, vision block was dead in production): an IMAGE
+   *  request (vision pass-2) must arm the vision block in the system prompt —
+   *  the screen-teacher rules for live screen frames, the generic image-
+   *  analysis rules for ordinary attachments. Every production call site used
+   *  to hardcode vision=false, so these blocks NEVER reached any real model
+   *  while the unit tests (which call getSystemPrompt directly with
+   *  vision=true) kept passing — classic test/production drift. */
+  vision?: boolean;
   /** Persistence escalation (rounds ≥ 2): skip the dynamic router and reach
    *  the resilient legacy backbone directly — a storming dynamic pool must
    *  never re-burn every round's walk budget before Groq/NVIDIA are tried. */
@@ -960,7 +968,9 @@ async function runTextCascade(request: {
   // ✅ SKILLNET ROUTING (v3.5.0): the latest user message is the routing
   // signal — the skill router injects only the relevant domain cores/packs.
   const routingSignal = extractRoutingSignal(request.messages);
-  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, false, request.historySummary, request.screen, request.screenCapture, routingSignal);
+  // ✅ ROOT-CURE (2026-11-13): the vision flag now threads into the prompt —
+  // vision pass-2 requests carry the screen-teacher / image-analysis block.
+  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, request.vision === true, request.historySummary, request.screen, request.screenCapture, routingSignal);
   // WEB GROUNDING policy: thinking mode (the accuracy lane) gets live web
   // search on OpenRouter so answers stay documented; instant stays plugin-
   // free for latency. Every failure degrades gracefully (breaker in ai-router
@@ -1136,6 +1146,11 @@ export async function getVisionResponse(request: {
     historySummary: request.historySummary,
     screen: request.screen,
     screenCapture: request.screenCapture,
+    // ✅ ROOT-CURE (2026-11-13, vision block was dead in production): the
+    // vision pass-2 IS a vision request — the persona prompt must carry the
+    // screen-teacher block (live frames) or the generic image-analysis block
+    // (ordinary attachments). See runTextCascade.vision.
+    vision: true,
     // ✅ ROOT-CURE (2026-11-13): vision pass-2 honors the persistence
     // escalation like the text path — a storming dynamic router must not
     // re-burn its walk budget on every persistence round of an image request.

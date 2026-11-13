@@ -165,6 +165,11 @@ export async function pickWorkingModel(
   /** LIVE SCREEN: last user image is a frame of the user's real screen —
    *  arms the screen-teacher prompt in the legacy backbone too. */
   screenCapture?: boolean,
+  /** ✅ ROOT-CURE (2026-11-13, vision block was dead in production): the
+   *  vision pass-2 legacy lane must build its prompt with vision=true so the
+   *  screen-teacher / image-analysis block reaches the legacy backbone too
+   *  (the dynamic-router path threads the flag separately). */
+  vision?: boolean,
 ): Promise<PickedProvider | null> {
   const tuning = mode === "instant" ? MODE_TUNING.instant : MODE_TUNING.thinking;
   // ✅ ARCH-AUDIT FIX (stream legacy path silently drops the long-term memory
@@ -178,7 +183,8 @@ export async function pickWorkingModel(
   // now the routing signal source — the legacy backbone gets the same routed
   // prompt as the dynamic router path.
   const routingSignal = extractRoutingSignal(messages);
-  const systemPrompt = getSystemPrompt(language, mode, catalog, false, historySummary, screen, screenCapture, routingSignal);
+  // ✅ ROOT-CURE (2026-11-13): the vision flag threads into the legacy prompt.
+  const systemPrompt = getSystemPrompt(language, mode, catalog, vision === true, historySummary, screen, screenCapture, routingSignal);
 
   if (mode === "instant") {
     // ─── INSTANT: fastest first — Groq → OpenRouter (fast model) → NVIDIA ───
@@ -818,7 +824,11 @@ async function getVisionStreamResponse(request: {
   // always carried the full core set, so the technical floor is forced even
   // when the reader failed and the description is just the honesty note.
   const routingSignal = extractRoutingSignal(pass2Messages);
-  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, false, request.historySummary, request.screen, request.screenCapture, routingSignal, true);
+  // ✅ ROOT-CURE (2026-11-13, vision block was dead in production): the vision
+  // pass-2 IS a vision request — the screen-teacher block (live frames) or
+  // the generic image-analysis block (ordinary attachments) must reach the
+  // persona prompt on EVERY lane (dynamic router, legacy backbone, fallback).
+  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, true, request.historySummary, request.screen, request.screenCapture, routingSignal, true);
 
   // ── PASS 2 (ANSWER): streaming reasoning-first cascade over the TEXT
   // description — the strongest available model writes the answer.
@@ -850,7 +860,9 @@ async function getVisionStreamResponse(request: {
 
   // Legacy streaming text cascade over the augmented (text-only) messages.
   const pass2Request = { ...request, messages: pass2Messages };
-  const picked = await pickWorkingModel(pass2Messages, request.language, mode, request.catalog, request.historySummary, request.screen, request.screenCapture);
+  // ✅ ROOT-CURE (2026-11-13): vision=true — the legacy lane's prompt carries
+  // the screen-teacher / image-analysis block too (see pickWorkingModel).
+  const picked = await pickWorkingModel(pass2Messages, request.language, mode, request.catalog, request.historySummary, request.screen, request.screenCapture, true);
   if (picked) {
     if (picked.provider === "nvidia") {
       return await streamNvidiaProvider(pass2Request, picked, encoder);

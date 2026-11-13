@@ -18,7 +18,7 @@ import { containsPromptLeak, promptLeakRefusal } from "./lib/chatbot-prompts.js"
 import { finalizeReply, opaqueModelKey } from "./lib/finalize-reply.js";
 import { chatbotError, logSafeError, scrubCredentials, type ChatbotErrorCode } from "./lib/chatbot-errors.js";
 import { getClientIpFromHono as getChatbotIp } from "./lib/client-ip";
-import { getImageQuotaUsed, incrementImageQuota, DAILY_IMAGE_LIMIT } from "./lib/image-quota.js";
+import { getImageQuotaUsed, incrementImageQuota, DAILY_IMAGE_LIMIT, DAILY_SCREEN_FRAME_LIMIT, visionQuotaLane } from "./lib/image-quota.js";
 import { persistChatRound, getChatHistory, getLatestSummaryText } from "./lib/chat-history.js";
 import { resolveOptionalUser } from "./context.js";
 import { logger } from "./lib/logger.js";
@@ -203,6 +203,16 @@ function imageQuotaExceededResponse(used: number): { en: string; ar: string } {
   };
 }
 
+/** ✅ ROOT-CURE (2026-11-13): bilingual notice for the LIVE SCREEN lane —
+ * the screen-teacher frames ride their own 60/day bucket, so this message
+ * names frames (not "صور") and reminds the user the allowance renews daily. */
+function screenQuotaExceededResponse(used: number): { en: string; ar: string } {
+  return {
+    en: `I'm really sorry 🙏 only ${DAILY_SCREEN_FRAME_LIMIT} live screen frames per day are available to preserve the live-reading quota (you've used ${used}/${DAILY_SCREEN_FRAME_LIMIT} today) — it renews tomorrow, and meanwhile I'm fully ready to answer any text question!`,
+    ar: `أعتذر منك جداً 🙏 المتاح فقط ${DAILY_SCREEN_FRAME_LIMIT} لقطة شاشة حية يومياً حفاظاً على كوتة القراءة الحية (استهلكت ${used}/${DAILY_SCREEN_FRAME_LIMIT} اليوم) — تتجدد غداً، وحتى ذلك الحين أنا جاهز تماماً للرد على أي سؤال نصي!`,
+  };
+}
+
 // ── Chat-history persistence helpers (logged-in users only) ──
 // The assistant reply is only persisted on SUCCESS so error banners and
 // quota warnings never pollute the restored history.
@@ -309,10 +319,14 @@ chatbotRouter.post("/", async (c) => {
     }
 
     // Vision quota — enforced BEFORE dispatch so no provider call is wasted.
+    // ✅ ROOT-CURE (2026-11-13): live screen frames ride their own 60/day lane
+    // (visionQuotaLane) — the 5/day attachment cap can no longer kill an
+    // ongoing screen-teacher session after five frames.
+    const quotaLane = visionQuotaLane(screenCapture, ip);
     if (vision) {
-      const used = await getImageQuotaUsed(ip);
-      if (used + imageCount > DAILY_IMAGE_LIMIT) {
-        const msg = imageQuotaExceededResponse(used);
+      const used = await getImageQuotaUsed(quotaLane.key);
+      if (used + imageCount > quotaLane.limit) {
+        const msg = quotaLane.screen ? screenQuotaExceededResponse(used) : imageQuotaExceededResponse(used);
         const lang = resolveChatLanguage(body.language, messages);
         return errorResponse(c, "QUOTA_EXCEEDED", { lang: lang === "en" ? "en" : "ar", chatId: body.chatId, message: lang === "ar" ? msg.ar : msg.en });
       }
@@ -371,8 +385,9 @@ chatbotRouter.post("/", async (c) => {
     }
 
     if (result.success) {
-      // Quota is only consumed by SUCCESSFUL image analysis.
-      if (vision) await incrementImageQuota(ip, imageCount);
+      // Quota is only consumed by SUCCESSFUL image analysis — in the SAME
+      // lane the pre-dispatch check used (screen frames ≠ attachments).
+      if (vision) await incrementImageQuota(quotaLane.key, imageCount);
       // ✅ ARCH-AUDIT FIX (unified egress pipeline): the reply now goes
       // through the ONE shared finalizeReply contract (think-strip → sanitize
       // → leak gate → deterministic truncation policy) — the same pipeline
@@ -502,10 +517,13 @@ chatbotRouter.post("/stream", async (c) => {
   }
 
   // Vision quota — enforced BEFORE dispatch so no provider call is wasted.
+  // ✅ ROOT-CURE (2026-11-13): live screen frames ride their own 60/day lane
+  // (visionQuotaLane) — same contract as the non-stream endpoint above.
+  const quotaLane = visionQuotaLane(screenCapture, ip);
   if (vision) {
-    const used = await getImageQuotaUsed(ip);
-    if (used + imageCount > DAILY_IMAGE_LIMIT) {
-      const msg = imageQuotaExceededResponse(used);
+    const used = await getImageQuotaUsed(quotaLane.key);
+    if (used + imageCount > quotaLane.limit) {
+      const msg = quotaLane.screen ? screenQuotaExceededResponse(used) : imageQuotaExceededResponse(used);
       const lang = resolveChatLanguage(body.language, messages);
       return errorResponse(c, "QUOTA_EXCEEDED", { lang: lang === "en" ? "en" : "ar", chatId: body.chatId, message: lang === "ar" ? msg.ar : msg.en });
     }
@@ -800,7 +818,8 @@ chatbotRouter.post("/stream", async (c) => {
             served = true;
             // Quota is only consumed by SUCCESSFUL image analysis — a dud
             // stream that delivered nothing must not burn the user's quota.
-            if (vision) await incrementImageQuota(ip, imageCount);
+            // ✅ ROOT-CURE (2026-11-13): same lane as the pre-dispatch check.
+            if (vision) await incrementImageQuota(quotaLane.key, imageCount);
             // ✅ AUDIT RUN-2 FIX: persist the OPAQUE model key (same contract
             // as the non-stream persist — the raw provider tag never lands
             // in chatMessages.metadata).
