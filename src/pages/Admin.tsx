@@ -1689,29 +1689,29 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                     <div className="rounded-xl border border-accent-secondary/30 bg-primary p-5">
                       <div className="grid gap-3 sm:grid-cols-2">
                         <div>
-                          <label className="text-xs text-text-muted">{isRTL ? "الاسم *" : "Name *"}</label>
-                          <input value={testimonialForm.name} onChange={(e) => setTestimonialForm({ ...testimonialForm, name: e.target.value })} className="mt-1 w-full rounded-lg border border-[#1f2d44] bg-background p-2.5 text-sm text-foreground outline-none focus:border-accent-secondary" />
+                          <label htmlFor="testimonial-name" className="text-xs text-text-muted">{isRTL ? "الاسم *" : "Name *"}</label>
+                          <input id="testimonial-name" value={testimonialForm.name} onChange={(e) => setTestimonialForm({ ...testimonialForm, name: e.target.value })} className="mt-1 w-full rounded-lg border border-[#1f2d44] bg-background p-2.5 text-sm text-foreground outline-none focus:border-accent-secondary" />
                         </div>
                         <div>
-                          <label className="text-xs text-text-muted">{isRTL ? "رقم الشهادة (للتحقق)" : "Certificate number (for verification)"}</label>
-                          <input value={testimonialForm.certificateNumber} onChange={(e) => setTestimonialForm({ ...testimonialForm, certificateNumber: e.target.value })} placeholder="ELB-2026-..." className="mt-1 w-full rounded-lg border border-[#1f2d44] bg-background p-2.5 font-mono text-sm text-foreground outline-none focus:border-accent-secondary" />
+                          <label htmlFor="testimonial-cert" className="text-xs text-text-muted">{isRTL ? "رقم الشهادة (للتحقق)" : "Certificate number (for verification)"}</label>
+                          <input id="testimonial-cert" value={testimonialForm.certificateNumber} onChange={(e) => setTestimonialForm({ ...testimonialForm, certificateNumber: e.target.value })} placeholder="ELB-2026-..." className="mt-1 w-full rounded-lg border border-[#1f2d44] bg-background p-2.5 font-mono text-sm text-foreground outline-none focus:border-accent-secondary" />
                         </div>
                         <div>
-                          <label className="text-xs text-text-muted">{isRTL ? "الوظيفة" : "Title"}</label>
-                          <input value={testimonialForm.title} onChange={(e) => setTestimonialForm({ ...testimonialForm, title: e.target.value })} className="mt-1 w-full rounded-lg border border-[#1f2d44] bg-background p-2.5 text-sm text-foreground outline-none focus:border-accent-secondary" />
+                          <label htmlFor="testimonial-title" className="text-xs text-text-muted">{isRTL ? "الوظيفة" : "Title"}</label>
+                          <input id="testimonial-title" value={testimonialForm.title} onChange={(e) => setTestimonialForm({ ...testimonialForm, title: e.target.value })} className="mt-1 w-full rounded-lg border border-[#1f2d44] bg-background p-2.5 text-sm text-foreground outline-none focus:border-accent-secondary" />
                         </div>
                         <div>
-                          <label className="text-xs text-text-muted">{isRTL ? "جهة العمل" : "Company"}</label>
-                          <input value={testimonialForm.company} onChange={(e) => setTestimonialForm({ ...testimonialForm, company: e.target.value })} className="mt-1 w-full rounded-lg border border-[#1f2d44] bg-background p-2.5 text-sm text-foreground outline-none focus:border-accent-secondary" />
+                          <label htmlFor="testimonial-company" className="text-xs text-text-muted">{isRTL ? "جهة العمل" : "Company"}</label>
+                          <input id="testimonial-company" value={testimonialForm.company} onChange={(e) => setTestimonialForm({ ...testimonialForm, company: e.target.value })} className="mt-1 w-full rounded-lg border border-[#1f2d44] bg-background p-2.5 text-sm text-foreground outline-none focus:border-accent-secondary" />
                         </div>
                         <div className="sm:col-span-2">
-                          <label className="text-xs text-text-muted">{isRTL ? "نص الرأي *" : "Content *"}</label>
-                          <textarea value={testimonialForm.content} onChange={(e) => setTestimonialForm({ ...testimonialForm, content: e.target.value })} rows={3} className="mt-1 w-full resize-none rounded-lg border border-[#1f2d44] bg-background p-2.5 text-sm text-foreground outline-none focus:border-accent-secondary" />
+                          <label htmlFor="testimonial-content" className="text-xs text-text-muted">{isRTL ? "نص الرأي *" : "Content *"}</label>
+                          <textarea id="testimonial-content" value={testimonialForm.content} onChange={(e) => setTestimonialForm({ ...testimonialForm, content: e.target.value })} rows={3} className="mt-1 w-full resize-none rounded-lg border border-[#1f2d44] bg-background p-2.5 text-sm text-foreground outline-none focus:border-accent-secondary" />
                         </div>
                         <div className="flex items-center gap-4">
                           <div>
-                            <label className="text-xs text-text-muted">{isRTL ? "التقييم" : "Rating"}</label>
-                            <select value={testimonialForm.rating} onChange={(e) => setTestimonialForm({ ...testimonialForm, rating: Number(e.target.value) })} className="mt-1 rounded-lg border border-[#1f2d44] bg-background p-2.5 text-sm text-foreground outline-none focus:border-accent-secondary">
+                            <label htmlFor="testimonial-rating" className="text-xs text-text-muted">{isRTL ? "التقييم" : "Rating"}</label>
+                            <select id="testimonial-rating" value={testimonialForm.rating} onChange={(e) => setTestimonialForm({ ...testimonialForm, rating: Number(e.target.value) })} className="mt-1 rounded-lg border border-[#1f2d44] bg-background p-2.5 text-sm text-foreground outline-none focus:border-accent-secondary">
                               {[5, 4, 3, 2, 1].map((r) => <option key={r} value={r}>{r} ★</option>)}
                             </select>
                           </div>

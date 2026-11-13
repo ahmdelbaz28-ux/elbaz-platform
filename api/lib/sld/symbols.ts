@@ -98,7 +98,8 @@ export function paintSymbol(p: PlacedElement, t: Theme): string {
   <line x1="${cx - 7}" y1="${cy + 1}" x2="${cx + 7}" y2="${cy + 1}" stroke="${t.stroke}" stroke-width="2"/>
   <line x1="${cx - 3}" y1="${cy + 6}" x2="${cx + 3}" y2="${cy + 6}" stroke="${t.stroke}" stroke-width="2"/>`;
     }
-    case "junction":
+    // "junction" and any unknown type share the dot symbol — default covers
+    // both, so a redundant case label is intentionally omitted.
     default:
       return `
   <circle cx="${cx}" cy="${cy}" r="4" fill="${t.stroke}"/>`;

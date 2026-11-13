@@ -80,12 +80,12 @@ self.addEventListener('notificationclick', (event) => {
     const parsed = new URL(target, self.location.origin);
     const sameOrigin = parsed.origin === self.location.origin;
     if (!sameOrigin && !/^https?:$/.test(parsed.protocol)) {
-      target = self.location.origin + '/';
+      target = `${self.location.origin}/`;
     } else if (sameOrigin) {
       target = parsed.href;
     }
   } catch {
-    target = self.location.origin + '/';
+    target = `${self.location.origin}/`;
   }
 
   event.waitUntil(

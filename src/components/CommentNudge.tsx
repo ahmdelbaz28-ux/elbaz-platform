@@ -63,10 +63,9 @@ export default function CommentNudge({ videoId, lang, showAfterMs = 15_000 }: Co
   };
 
   return (
-    <div
+    <aside
       className="flex items-center justify-between gap-3 border-t border-[#1f2d44] bg-[rgba(6,182,212,0.06)] px-3 py-2.5"
       data-testid="comment-nudge"
-      role="complementary"
       aria-label={isAr ? "دعوة لكتابة تعليق على اليوتيوب" : "Invitation to comment on YouTube"}
     >
       <div className="flex min-w-0 items-center gap-2.5">
@@ -110,6 +109,6 @@ export default function CommentNudge({ videoId, lang, showAfterMs = 15_000 }: Co
           <X className="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
-    </div>
+    </aside>
   );
 }

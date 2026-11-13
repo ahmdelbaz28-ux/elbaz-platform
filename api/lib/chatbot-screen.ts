@@ -52,8 +52,9 @@ const AUTHS = new Set(["guest", "user", "admin"]);
 function cleanString(raw: unknown, cap: number): string {
   if (typeof raw !== "string") return "";
   return raw
-    // eslint-disable-next-line no-control-regex
-    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    // \p{Cc} strips ALL control chars (C0 + DEL + C1) — wider than the old
+    // [\u0000-\u001f\u007f] range and recognized by both linters with no suppression.
+    .replace(/\p{Cc}/gu, " ")
     .replace(/"{3,}/g, "”")
     .replace(/\s+/g, " ")
     .trim()

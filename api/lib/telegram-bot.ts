@@ -193,7 +193,7 @@ export function splitForTelegram(text: string, cap = TELEGRAM_TEXT_CAP): string[
       current = rest;
       continue;
     }
-    if ((current + "\n\n" + para).trim().length > cap) pushCurrent();
+    if ((`${current}\n\n${para}`).trim().length > cap) pushCurrent();
     current = current ? `${current}\n\n${para}` : para;
   }
   pushCurrent();

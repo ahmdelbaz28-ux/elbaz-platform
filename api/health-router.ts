@@ -366,7 +366,7 @@ async function probeAuthChat(name: string, key: string | undefined, baseUrl: str
   }
 }
 
-async function probeAuthGet(name: string, key: string | undefined, url: string, describe?: (body: unknown) => string): Promise<ProviderProbeRow> {
+async function probeAuthGet(name: string, key: string | undefined, url: string, describeBody?: (body: unknown) => string): Promise<ProviderProbeRow> {
   if (!key?.trim()) return { name, configured: false, status: "MISSING", latency_ms: 0, detail: "key not configured" };
   const started = Date.now();
   try {
@@ -383,7 +383,7 @@ async function probeAuthGet(name: string, key: string | undefined, url: string, 
       } catch {
         // body shape drift — describe falls back to plain accepted
       }
-      return { name, configured: true, status: "HEALTHY", latency_ms: latency, detail: describe?.(parsed) ?? `HTTP ${res.status}` };
+      return { name, configured: true, status: "HEALTHY", latency_ms: latency, detail: describeBody?.(parsed) ?? `HTTP ${res.status}` };
     }
     const msg = probeJsonMessage(text);
     return { name, configured: true, status: "UNHEALTHY", latency_ms: latency, detail: `HTTP ${res.status}${msg ? ` — ${msg}` : ""}` };

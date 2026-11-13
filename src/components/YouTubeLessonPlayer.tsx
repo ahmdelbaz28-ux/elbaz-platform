@@ -121,6 +121,7 @@ export default function YouTubeLessonPlayer({
   // ── Player lifecycle: create once on mount, destroy on unmount ──
   // The parent mounts this component with key={videoId} — a new video always
   // remounts fresh (React's endorsed pattern), so no in-effect state resets.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: one-shot per mount by design (key={videoId} remount) — listing courseId/mutation/callbacks would tear down and rebuild the live YT player mid-playback
   useEffect(() => {
     let cancelled = false;
 
@@ -209,15 +210,22 @@ export default function YouTubeLessonPlayer({
   }, [videoId]);
 
   // Auto-resume from the saved position (same >5s rule as the R2 player).
+  // ✅ ROOT-CURE (resume race): the old effect listed only [ready, lessonId],
+  // so when the progress query resolved AFTER the player became ready (slow
+  // network / cold cache) the effect never re-ran and the lesson silently
+  // restarted from 0:00. Guarded by resumedLessonRef, the effect now runs
+  // exactly ONCE per lesson with whatever data is present — first of
+  // (ready ∧ progress) wins, later refetches never re-seek mid-playback.
+  const resumedLessonRef = useRef<number | undefined>(undefined);
   useEffect(() => {
-    if (!ready || !savedProgress?.lastPosition) return;
-    const resume = savedProgress.lastPosition;
-    if (resume > 5) {
+    if (!ready) return;
+    if (resumedLessonRef.current === lessonId) return;
+    resumedLessonRef.current = lessonId;
+    const resume = savedProgress?.lastPosition;
+    if (resume && resume > 5) {
       playerRef.current?.seekTo(Math.max(0, resume - 3), true);
     }
-    // Only on first ready per lesson — resumePosition is stable afterwards.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, lessonId]);
+  }, [ready, lessonId, savedProgress?.lastPosition]);
 
   // Tab hidden → pause + final heartbeat (same integrity rule as R2 path).
   useEffect(() => {

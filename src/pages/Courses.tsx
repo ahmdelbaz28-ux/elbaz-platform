@@ -110,6 +110,7 @@ export default function Courses() {
 
   // Reset to page 1 whenever filters/search change so users never land on an
   // out-of-range page after narrowing results.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: page/searchParams deliberately excluded — they would delete ?page=N on every navigation and break pagination; only filter changes may fire this reset
   useEffect(() => {
     if (page !== 1) {
       const next = new URLSearchParams(searchParams);

@@ -776,6 +776,7 @@ const MessageBubble = memo(function MessageBubble({ msg, lang, copied, onCopy, o
   // swaps the broken-image icon for an explicit, localized note. The node is
   // built with createElement + textContent ONLY — no model content passes
   // through (same invariant as the renderer above).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: msg.content is deliberately listed — streamed appends inject NEW <img> nodes into the DOM and the error listeners must re-attach for each render change
   useEffect(() => {
     const span = sldBodyRef.current;
     if (!span || msg.role !== "assistant" || msg.isError) return undefined;
@@ -867,7 +868,7 @@ const MessageBubble = memo(function MessageBubble({ msg, lang, copied, onCopy, o
 
         {/* 👍/👎 feedback (assistant replies) — fuels the prompt evolution loop */}
         {msg.role === "assistant" && !msg.isError && msg.id !== "welcome" && (
-          <div className="mt-1.5 ms-1 flex items-center gap-1.5" role="group" aria-label={lang === "ar" ? "تقييم الرد" : "Rate reply"}>
+          <fieldset className="mt-1.5 ms-1 flex items-center gap-1.5 border-0 p-0 m-0 min-w-0" aria-label={lang === "ar" ? "تقييم الرد" : "Rate reply"}>
             <button
               onClick={() => onFeedback(msg.id, "up")}
               disabled={msg.feedback !== undefined}
@@ -893,7 +894,7 @@ const MessageBubble = memo(function MessageBubble({ msg, lang, copied, onCopy, o
             {msg.feedback && (
               <span className="text-[10px] text-slate-500">{lang === "ar" ? "شكراً لتقييمك" : "Thanks for the feedback"}</span>
             )}
-          </div>
+          </fieldset>
         )}
 
         {/* 📐 Draw-now chip — the reply promised a diagram but delivered none

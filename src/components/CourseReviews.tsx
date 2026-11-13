@@ -45,10 +45,11 @@ const PAGE_SIZE = 5;
 
 function Stars({ value, size = "h-4 w-4" }: { value: number; size?: string }) {
   return (
-    <div className="flex items-center gap-0.5" aria-label={`${value}/5`}>
+    <div className="flex items-center gap-0.5" role="img" aria-label={`${value}/5`}>
       {[1, 2, 3, 4, 5].map((s) => (
         <Star
           key={s}
+          aria-hidden="true"
           className={`${size} ${s <= value ? "fill-[#f59e0b] text-[#f59e0b]" : "text-[#475569]"}`}
         />
       ))}
@@ -158,30 +159,35 @@ export default function CourseReviews({ courseId, averageRating }: { readonly co
             }}
             className="mt-5 rounded-lg border border-[#1f2d44] bg-[rgba(10,14,23,0.6)] p-4"
           >
-            <label className="text-sm font-medium text-[#f0f4f8]">
+            <span className="text-sm font-medium text-[#f0f4f8]">
               {lang === "ar" ? "تقييمك" : "Your rating"}
-            </label>
+            </span>
             <div className="mt-2 flex items-center gap-1" role="radiogroup" aria-label={lang === "ar" ? "اختر عدد النجوم" : "Choose a star rating"}>
               {[1, 2, 3, 4, 5].map((s) => (
-                <button
+                <label
                   key={s}
-                  type="button"
-                  role="radio"
-                  aria-checked={draftRating === s}
-                  aria-label={`${s} ${lang === "ar" ? "نجوم" : "stars"}`}
                   onMouseEnter={() => setHoverRating(s)}
                   onMouseLeave={() => setHoverRating(0)}
-                  onClick={() => setDraftRating(s)}
-                  className="rounded p-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#06b6d4]"
+                  className="cursor-pointer rounded p-0.5 focus-within:outline-none focus-within:ring-2 focus-within:ring-[#06b6d4]"
                 >
+                  <input
+                    type="radio"
+                    name="course-review-rating"
+                    value={s}
+                    checked={draftRating === s}
+                    onChange={() => setDraftRating(s)}
+                    aria-label={`${s} ${lang === "ar" ? "نجوم" : "stars"}`}
+                    className="sr-only"
+                  />
                   <Star
+                    aria-hidden="true"
                     className={`h-6 w-6 transition-colors ${
                       s <= (hoverRating || draftRating)
                         ? "fill-[#f59e0b] text-[#f59e0b]"
                         : "text-[#475569] hover:text-[#f59e0b]/60"
                     }`}
                   />
-                </button>
+                </label>
               ))}
             </div>
             <textarea

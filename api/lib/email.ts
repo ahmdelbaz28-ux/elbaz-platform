@@ -232,7 +232,7 @@ export async function initiatePasswordReset(email: string, headers?: Headers): P
     // knows a user's email to trigger a reset and immediately receive the live
     // reset token in the JSON response — a complete account-takeover primitive.
     // The reset link is now ONLY delivered via email.
-    logger.warn("[Email/Recovery] Password reset email FAILED — a reset token was minted and is valid for " + RESET_TOKEN_EXPIRY_MINUTES + " minutes (token hash prefix logged for correlation only)", { to: maskEmail(user.email), tokenHashPrefix: tokenHash.slice(0, 8) });
+    logger.warn(`[Email/Recovery] Password reset email FAILED — a reset token was minted and is valid for ${RESET_TOKEN_EXPIRY_MINUTES} minutes (token hash prefix logged for correlation only)`, { to: maskEmail(user.email), tokenHashPrefix: tokenHash.slice(0, 8) });
     return {
       success: true,
       message: genericMessage,
@@ -407,7 +407,7 @@ export async function initiateEmailVerification(userId: number, newEmail?: strin
     // ✅ SECURITY FIX (pre-launch audit run-2, logs.verify-token): same rule as
     // the reset link — never log the live verification URL. Hash prefix only.
     logger.error("[Email] Failed to send verification email", { to: maskEmail(targetEmail), reason: sendResult.reason });
-    logger.warn("[Email/Recovery] Verification email FAILED — a verification token was minted and is valid for " + EMAIL_VERIFICATION_EXPIRY_MINUTES + " minutes (token hash prefix logged for correlation only)", { to: maskEmail(targetEmail), userId, tokenHashPrefix: tokenHash.slice(0, 8) });
+    logger.warn(`[Email/Recovery] Verification email FAILED — a verification token was minted and is valid for ${EMAIL_VERIFICATION_EXPIRY_MINUTES} minutes (token hash prefix logged for correlation only)`, { to: maskEmail(targetEmail), userId, tokenHashPrefix: tokenHash.slice(0, 8) });
     return { success: false, message: "Could not send verification email. Please try again later." };
   }
 

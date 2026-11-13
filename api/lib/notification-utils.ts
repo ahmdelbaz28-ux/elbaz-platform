@@ -116,21 +116,21 @@ const VIDEO_ID_RE = /^[\w-]{11}$/;
 
 /** Pull the Arabic-first title out of a lockup/playlist renderer node. */
 function titleFromNode(node: Record<string, unknown>): string {
-  const title = node["title"];
+  const title = node.title;
   if (typeof title === "string") return title;
   if (title && typeof title === "object") {
     const t = title as Record<string, unknown>;
-    if (typeof t["content"] === "string") return t["content"];
-    if (Array.isArray(t["runs"])) {
-      return (t["runs"] as unknown[])
-        .map((run) => (run && typeof run === "object" ? String((run as Record<string, unknown>)["text"] ?? "") : ""))
+    if (typeof t.content === "string") return t.content;
+    if (Array.isArray(t.runs)) {
+      return (t.runs as unknown[])
+        .map((run) => (run && typeof run === "object" ? String((run as Record<string, unknown>).text ?? "") : ""))
         .join("");
     }
   }
   // lockupViewModel nests the title one level deeper
-  const metadata = node["metadata"];
+  const metadata = node.metadata;
   if (metadata && typeof metadata === "object") {
-    const lockupMeta = (metadata as Record<string, unknown>)["lockupMetadataViewModel"];
+    const lockupMeta = (metadata as Record<string, unknown>).lockupMetadataViewModel;
     if (lockupMeta && typeof lockupMeta === "object") {
       return titleFromNode(lockupMeta as Record<string, unknown>);
     }
@@ -179,25 +179,25 @@ export function parseInnertubeBrowse(payload: unknown): ParsedVideo[] {
     if (!node || typeof node !== "object") return;
     const obj = node as Record<string, unknown>;
 
-    const lockup = obj["lockupViewModel"];
+    const lockup = obj.lockupViewModel;
     if (lockup && typeof lockup === "object") {
       const lv = lockup as Record<string, unknown>;
-      let videoId = lv["contentId"];
+      let videoId = lv.contentId;
       // Robustness: when contentId is absent the videoId still lives in the
       // thumbnail URL (same trick as the HTML lockup parser).
       if (typeof videoId !== "string" || !VIDEO_ID_RE.test(videoId)) {
-        const thumbUrl = /\/vi\/([\w-]{11})\//.exec(JSON.stringify(lv["contentImage"] ?? ""))?.[1];
+        const thumbUrl = /\/vi\/([\w-]{11})\//.exec(JSON.stringify(lv.contentImage ?? ""))?.[1];
         videoId = thumbUrl;
       }
       pushVideo(out, seen, videoId, titleFromNode(lv));
     }
-    const renderer = obj["playlistVideoRenderer"];
+    const renderer = obj.playlistVideoRenderer;
     if (renderer && typeof renderer === "object") {
       const pr = renderer as Record<string, unknown>;
-      pushVideo(out, seen, pr["videoId"], titleFromNode(pr));
+      pushVideo(out, seen, pr.videoId, titleFromNode(pr));
     }
-    if (typeof obj["videoId"] === "string" && VIDEO_ID_RE.test(obj["videoId"] as string)) {
-      loose.push(obj["videoId"] as string);
+    if (typeof obj.videoId === "string" && VIDEO_ID_RE.test(obj.videoId as string)) {
+      loose.push(obj.videoId as string);
     }
     for (const value of Object.values(obj)) walk(value);
   };

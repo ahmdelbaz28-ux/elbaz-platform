@@ -73,8 +73,9 @@ const CAPS = {
 export function sanitizeScreenText(raw: unknown, cap: number): string {
   if (typeof raw !== "string") return "";
   const cleaned = raw
-    // eslint-disable-next-line no-control-regex
-    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    // \p{Cc} strips ALL control chars (C0 + DEL + C1) — wider than the old
+    // [\u0000-\u001f\u007f] range and recognized by both linters with no suppression.
+    .replace(/\p{Cc}/gu, " ")
     .replace(/"{3,}/g, "”") // the prompt block uses """ delimiters — never let data forge them
     .replace(/\s+/g, " ")
     .trim();
@@ -170,6 +171,7 @@ export function useScreenDetails(details: ScreenDetails | null): void {
   const key = details
     ? `${sanitizeScreenText(details.title, CAPS.title)}|${sanitizeScreenText(details.meta, CAPS.meta)}|${details.kind ?? ""}`
     : "";
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the serialized `key` — re-registering on every re-render (new object identity, same content) would churn register/unregister for no benefit
   useEffect(() => {
     registerScreenDetails(details);
     return () => registerScreenDetails(null);
