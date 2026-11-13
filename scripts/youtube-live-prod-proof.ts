@@ -56,14 +56,15 @@ async function trpcCall(
   method: "GET" | "POST" = "GET",
 ): Promise<{ status: number; json: unknown }> {
   // ✅ S8476 (root cure): proc is an internal constant at every call site —
-  // the tRPC procedure-name shape is enforced so no forged URL can ever be
-  // built from it.
+  // the tRPC procedure-name shape is enforced, and the name is URL-encoded
+  // into its own path component so no forged URL can ever be built from it.
   if (!/^[a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)*$/.test(proc)) {
     throw new Error(`invalid procedure name: ${proc}`);
   }
+  const procSafe = encodeURIComponent(proc);
   const url = method === "GET" && input !== undefined
-    ? `${BASE}/api/trpc/${proc}?batch=1&input=${encodeURIComponent(JSON.stringify({ "0": { json: input } }))}`
-    : `${BASE}/api/trpc/${proc}?batch=1`;
+    ? `${BASE}/api/trpc/${procSafe}?batch=1&input=${encodeURIComponent(JSON.stringify({ "0": { json: input } }))}`
+    : `${BASE}/api/trpc/${procSafe}?batch=1`;
   const res = await fetch(url, {
     method,
     headers: { ...H, ...(jar.length ? { Cookie: jar.join("; ") } : {}) },
