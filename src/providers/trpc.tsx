@@ -6,7 +6,7 @@ import type { AppRouter } from "../../api/router";
 import type { ReactNode } from "react";
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
-import { isNativePlatform, getStoredToken, setStoredToken, removeStoredToken, clearAuthFlagCookie } from "@/lib/auth-storage";
+import { isNativePlatform, getStoredToken, setStoredToken, removeStoredToken, clearAuthFlagCookie, hasStoredAuth } from "@/lib/auth-storage";
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const trpc = createTRPCReact<AppRouter>();
@@ -24,6 +24,17 @@ export const trpc = createTRPCReact<AppRouter>();
  * every isAuthenticated consumer flips to logged-out. Component-level handlers
  * (e.g. the payment modal) add their own friendly message + redirect on top.
  *
+ * ✅ ROOT-CURE (2026-11-13, "logged out every time despite Remember this
+ * device"): the net used to DESTROY the stored session (flag cookie / native
+ * token) on the FIRST UNAUTHORIZED from ANY procedure. A single authed call
+ * failing 401 — while auth.me still held a perfectly valid session — wiped a
+ * 30-day login. Destruction is now gated on the SESSION ORACLE: only auth.me
+ * itself being rejected counts as a confirmed session death. Any other 401
+ * triggers exactly ONE silent re-verification of auth.me; if that recheck is
+ * also rejected, auth.me's own error path performs the confirmed destruction
+ * (no loops — the recheck never triggers another recheck). If the recheck
+ * succeeds, the session was alive and stays intact.
+ *
  * ✅ FIX (chatbot dead click): park auth.me in a TERMINAL error state instead
  * of queryClient.removeQueries(). removeQueries() inside the cache's onError
  * recreates the query for its still-subscribed observers (enabled has not
@@ -34,11 +45,23 @@ export const trpc = createTRPCReact<AppRouter>();
  * WITHOUT removal → no recreation → no refetch. useAuth's error effect then
  * disables the query (storedAuth=false) so nothing fires again.
  */
-function handleGlobalAuthFailure(err: unknown): void {
-  const code = err instanceof TRPCClientError
-    ? (err.data as { code?: string } | null)?.code
-    : undefined;
-  if (code !== "UNAUTHORIZED") return;
+function isAuthMeQueryKey(key: unknown): boolean {
+  return (
+    Array.isArray(key) &&
+    Array.isArray(key[0]) &&
+    (key[0] as unknown[])[0] === "auth" &&
+    (key[0] as unknown[])[1] === "me"
+  );
+}
+
+function findAuthMeQuery() {
+  return queryClient
+    .getQueryCache()
+    .getAll()
+    .find((q) => isAuthMeQueryKey(q.queryKey));
+}
+
+function destroyStoredSession(): void {
   removeStoredToken(); // native only
   clearAuthFlagCookie(); // web — drop the flag that outlived the session
   // ✅ SECURITY FIX (audit run-1, auth.query-cache-persist): a revoked session
@@ -46,24 +69,51 @@ function handleGlobalAuthFailure(err: unknown): void {
   // logout path did, so the next account on the profile rehydrated the
   // previous account's private data for up to 24h.
   try { localStorage.removeItem("ELBAZ_QUERY_CACHE"); } catch { /* ignore */ }
-  const meQuery = queryClient
-    .getQueryCache()
-    .getAll()
-    .find((q) => {
-      const k = q.queryKey as unknown[];
-      return Array.isArray(k?.[0]) && k[0][0] === "auth" && k[0][1] === "me";
+}
+
+function handleGlobalAuthFailure(err: unknown, failingKey?: unknown): void {
+  const code = err instanceof TRPCClientError
+    ? (err.data as { code?: string } | null)?.code
+    : undefined;
+  if (code !== "UNAUTHORIZED") return;
+
+  // ✅ ROOT-CURE: auth.me rejection = CONFIRMED session death (the server
+  // verified the token cryptographically AND against the DB). Destroy the
+  // stored session and park the query so nothing refires.
+  if (failingKey !== undefined && isAuthMeQueryKey(failingKey)) {
+    destroyStoredSession();
+    const meQuery = findAuthMeQuery();
+    meQuery?.setState({
+      data: undefined,
+      dataUpdatedAt: 0,
+      status: "error",
+      fetchStatus: "idle",
+      error: err instanceof Error ? err : new Error("UNAUTHORIZED"),
     });
-  meQuery?.setState({
-    data: undefined,
-    dataUpdatedAt: 0,
-    status: "error",
-    fetchStatus: "idle",
-    error: err instanceof Error ? err : new Error("UNAUTHORIZED"),
-  });
+    return;
+  }
+
+  // ✅ ROOT-CURE: a 401 from ANY OTHER authed procedure (or a mutation) no
+  // longer destroys the session outright — one transient/retryable hiccup
+  // must never kill a 30-day login. Re-verify the session oracle exactly
+  // once; destruction (if the session is really dead) then happens through
+  // the confirmed auth.me path above. No session stored → nothing to save.
+  if (!hasStoredAuth()) return;
+  const meQuery = findAuthMeQuery();
+  if (meQuery && meQuery.state.status !== "pending" && meQuery.state.fetchStatus !== "fetching") {
+    // fetch() re-runs the oracle even while it sits in an error state. Its
+    // failure lands back here with the auth.me key → confirmed path. Its
+    // success silently restores confidence — the session was never dead.
+    void meQuery.fetch().catch(() => { /* handled by the cache onError */ });
+  }
 }
 
 const queryClient = new QueryClient({
-  queryCache: new QueryCache({ onError: handleGlobalAuthFailure }),
+  // ✅ ROOT-CURE: pass the failing query key into the auth-failure handler so
+  // it can distinguish the session oracle (auth.me) from any other procedure.
+  queryCache: new QueryCache({
+    onError: (err, query) => handleGlobalAuthFailure(err, query?.queryKey),
+  }),
   mutationCache: new MutationCache({ onError: handleGlobalAuthFailure }),
   defaultOptions: {
     queries: {

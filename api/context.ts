@@ -1,4 +1,5 @@
 import type { FetchCreateContextFnOptions } from "@trpc/server/adapters/fetch";
+import { TRPCError } from "@trpc/server";
 import type { User } from "@db/schema";
 import { verifyToken, verifyExpiredToken, createToken, getTokenRemainingSeconds, type TokenPayload } from "./lib/jwt";
 import { getDb } from "./queries/connection";
@@ -58,13 +59,19 @@ const SLIDING_REFRESH_THRESHOLD_S = 2 * 60 * 60; // 2 hours
 // carrying a signature-valid token that expired within this window is treated
 // like the sliding refresh: DB user + tokenVersion are re-verified (revocation
 // still enforced) and a fresh 30-day cookie pair is minted transparently.
-// ✅ SECURITY FIX (pre-launch audit): the window was AUTH_COOKIE_MAX_AGE
-// (30 days), giving a stolen-but-signature-valid token an effective lifetime
-// of TTL + 30d ≈ 37 days with no device binding. 24h keeps the legitimate
-// "returned after a short break" flow seamless (total tolerance ≈ 8 days)
-// while cutting the attacker window by ~80%. Logout/password-reset still
-// revoke instantly via tokenVersion.
-const EXPIRED_TOKEN_GRACE_S = 24 * 60 * 60; // 24 hours
+// ✅ ROOT-CURE (2026-11-13, "logged out every time despite Remember this
+// device"): the window was tightened to 24h in a pre-launch audit, which
+// silently BROKE the 30-day "Remember this device" promise — a user idle for
+// more than TTL + 24h (≈ 8 days) got a hard 401 on their next visit, the
+// client destroyed the stored session, and the app demanded a fresh login
+// EVERY time. The window is now AUTH_COOKIE_MAX_AGE (30 days) so the
+// renewable lifetime matches the cookie lifetime the user was promised:
+// a signature-valid token is accepted and transparently renewed for exactly
+// as long as its cookie could still legitimately exist. Revocation semantics
+// are UNCHANGED — the renewal path re-checks tokenVersion against the DB, so
+// logout / password-reset / admin revoke still kill the session on the very
+// next request regardless of this window.
+const EXPIRED_TOKEN_GRACE_S = 30 * 24 * 60 * 60; // 30 days — matches AUTH_COOKIE_MAX_AGE
 
 /**
  * ✅ SESSION PERSISTENCE FIX: renew a session carried by a token that failed
@@ -93,7 +100,11 @@ async function renewExpiredTokenSession(
   const expiredAgoS = expS > 0 ? Math.floor(Date.now() / 1000) - expS : Number.POSITIVE_INFINITY;
   if (expiredAgoS > EXPIRED_TOKEN_GRACE_S) return null;
 
-  const safeUser = await loadUserFromDb(stale, `${stale.userId}:${stale.tokenVersion}`);
+  // ✅ ROOT-CURE (2026-11-13): loadUserFromDbWithRetry propagates DB/infra
+  // failures as a retryable INTERNAL_SERVER_ERROR instead of silently
+  // returning null (which used to masquerade an infra outage as "guest" and
+  // produced the false-401 that destroyed the client session).
+  const safeUser = await loadUserFromDbWithRetry(stale, `${stale.userId}:${stale.tokenVersion}`);
   if (!safeUser) return null;
 
   const renewed = await createToken({
@@ -204,6 +215,53 @@ export function evictUserAuthCache(userId: number): void {
   }
 }
 
+/**
+ * ✅ ROOT-CURE (2026-11-13, "logged out every time despite Remember this
+ * device"): a transient database failure inside the auth pipeline used to be
+ * swallowed by createContext's blanket catch, leaving ctx.user undefined for
+ * a request that carried a perfectly valid session — requireAuth then threw
+ * UNAUTHORIZED, and the client's auth-failure handler DESTROYED the stored
+ * session (flag cookie / native token). One brief MySQL hiccup — e.g. the HF
+ * Space waking up, a free-tier DB connection reset, a cold-start race — was
+ * therefore enough to permanently log the user out. This wrapper:
+ *  1. retries the DB load once after a short delay (covers micro-outages and
+ *     pool-reconnect windows without meaningfully slowing real failures),
+ *  2. converts a persistent DB failure into a retryable 5xx
+ *     (INTERNAL_SERVER_ERROR) instead of letting it become a guest-401.
+ * The client keeps the session on 5xx and React-Query's retry picks the
+ * request back up — the session is only ever destroyed by a REAL auth
+ * rejection (invalid signature / revoked tokenVersion / expired beyond the
+ * grace window).
+ */
+const DB_LOAD_RETRY_DELAY_MS = 300;
+
+async function loadUserFromDbWithRetry(
+  payload: TokenPayload,
+  cacheKey: string,
+): Promise<SafeUser | null> {
+  try {
+    return await loadUserFromDb(payload, cacheKey);
+  } catch (err) {
+    logger.warn("[Auth] DB load failed — retrying once before failing auth as 5xx", {
+      userId: payload.userId,
+      error: (err as Error)?.message,
+    });
+  }
+  await new Promise((res) => setTimeout(res, DB_LOAD_RETRY_DELAY_MS));
+  try {
+    return await loadUserFromDb(payload, cacheKey);
+  } catch (err) {
+    logger.error("[Auth] DB load failed twice — failing the request as retryable 5xx (session preserved client-side)", {
+      userId: payload.userId,
+      error: (err as Error)?.message,
+    });
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Session verification is temporarily unavailable. Please try again in a moment.",
+    });
+  }
+}
+
 async function loadUserFromDb(
   payload: TokenPayload,
   cacheKey: string,
@@ -248,8 +306,21 @@ export async function resolveOptionalUser(req: Request): Promise<SafeUser | null
   try {
     const extracted = extractAuthToken(req);
     if (!extracted) return null;
-    const payload = await verifyToken(extracted.token);
-    if (!payload) return null;
+    let payload = await verifyToken(extracted.token);
+    if (!payload) {
+      // ✅ ROOT-CURE (2026-11-13): keep REST routes (chatbot, notifications…)
+      // consistent with the tRPC pipeline — a signature-valid token that only
+      // expired within the grace window still resolves to its user, so a
+      // returning user is never degraded to anonymous on these endpoints.
+      // No cookie renewal here: this helper has no response headers to write.
+      const stale = await verifyExpiredToken(extracted.token);
+      if (!stale) return null;
+      const exp = (stale as unknown as Record<string, unknown>).exp;
+      const expS = typeof exp === "number" && Number.isFinite(exp) ? exp : 0;
+      const expiredAgoS = expS > 0 ? Math.floor(Date.now() / 1000) - expS : Number.POSITIVE_INFINITY;
+      if (expiredAgoS > EXPIRED_TOKEN_GRACE_S) return null;
+      payload = stale;
+    }
     const cacheKey = `${payload.userId}:${payload.tokenVersion}`;
     const cached = userCache.get(cacheKey);
     if (cached && cached.expiry > Date.now()) return cached.user;
@@ -295,14 +366,25 @@ export async function createContext(
       return ctx;
     }
 
-    const safeUser = await loadUserFromDb(payload, cacheKey);
+    // ✅ ROOT-CURE (2026-11-13): DB/infra failures now propagate as a retryable
+    // 5xx (see loadUserFromDbWithRetry) instead of collapsing into "guest" —
+    // a guest context made requireAuth throw UNAUTHORIZED and the client
+    // destroyed a perfectly valid session on that false 401.
+    const safeUser = await loadUserFromDbWithRetry(payload, cacheKey);
     if (!safeUser) return ctx;
     ctx.user = safeUser;
 
     // ✅ SLIDING SESSION: Auto-refresh token if < 2h remaining
     await maybeRefreshToken(payload, opts.req.headers, ctx.resHeaders, extracted.source);
-  } catch {
-    // Authentication is optional
+  } catch (err) {
+    // ✅ ROOT-CURE (2026-11-13): rethrow auth-pipeline infra failures so the
+    // client sees a retryable 5xx, never a session-destroying 401. Only
+    // genuinely non-auth problems (malformed cookie edge cases etc.) fall
+    // back to the optional-guest behavior.
+    if (err instanceof TRPCError) throw err;
+    logger.warn("[Auth] createContext non-TRPC error — treating request as guest", {
+      error: (err as Error)?.message,
+    });
   }
 
   return ctx;

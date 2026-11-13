@@ -81,6 +81,13 @@ export function useAuth() {
       // every ChatBot FAB click ("no reaction" bug).
       removeStoredToken(); // native only — web session lives in an HttpOnly cookie
       clearAuthFlagCookie(); // web — drop the flag that outlived the session
+      // ✅ ROOT-CURE (2026-11-13): purge the persisted React-Query cache here
+      // too (the global auth-failure net does the same on the auth.me path) —
+      // idempotent belt-and-braces so the next account can never rehydrate
+      // this account's private data from localStorage.
+      try {
+        localStorage.removeItem("ELBAZ_QUERY_CACHE");
+      } catch { /* ignore */ }
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setStoredAuth(false); // disable the auth.me query — nothing fires again
     }
