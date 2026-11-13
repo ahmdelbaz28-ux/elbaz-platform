@@ -27,12 +27,15 @@ const H: Record<string, string> = {
 let pass = 0;
 let fail = 0;
 function check(label: string, ok: boolean, detail = ""): void {
+  // ✅ S5145 (root cure): detail may carry server-provided text — control
+  // characters are stripped so a hostile response can never forge log lines.
+  const safeDetail = detail.replace(/\p{Cc}+/gu, " ");
   if (ok) {
     pass++;
-    console.log(`  ✓ ${label}${detail ? ` — ${detail}` : ""}`);
+    console.log(`  ✓ ${label}${safeDetail ? ` — ${safeDetail}` : ""}`);
   } else {
     fail++;
-    console.log(`  ✗ ${label}${detail ? ` — ${detail}` : ""}`);
+    console.log(`  ✗ ${label}${safeDetail ? ` — ${safeDetail}` : ""}`);
   }
 }
 
@@ -52,6 +55,12 @@ async function trpcCall(
   jar: string[],
   method: "GET" | "POST" = "GET",
 ): Promise<{ status: number; json: unknown }> {
+  // ✅ S8476 (root cure): proc is an internal constant at every call site —
+  // the tRPC procedure-name shape is enforced so no forged URL can ever be
+  // built from it.
+  if (!/^[a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)*$/.test(proc)) {
+    throw new Error(`invalid procedure name: ${proc}`);
+  }
   const url = method === "GET" && input !== undefined
     ? `${BASE}/api/trpc/${proc}?batch=1&input=${encodeURIComponent(JSON.stringify({ "0": { json: input } }))}`
     : `${BASE}/api/trpc/${proc}?batch=1`;
@@ -134,18 +143,29 @@ async function main(): Promise<void> {
 
   // ── 5) oEmbed verdict for the served id
   if (video?.youtubeId) {
-    try {
-      const res = await fetch(
-        `https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${video.youtubeId}`)}&format=json`,
-        { signal: AbortSignal.timeout(15_000) },
-      );
-      check("served video oEmbed verdict = ok (200)", res.ok, `HTTP ${res.status}`);
-      if (res.ok) {
-        const meta = (await res.json()) as { title?: string; author_name?: string };
-        console.log(`  └─ oEmbed: "${meta.title}" — ${meta.author_name}`);
+    // ✅ S8476 (root cure): youtubeId comes from the API response — it must
+    // match the YouTube id shape before it is ever embedded into a fetch URL.
+    const oembedId = video.youtubeId;
+    if (!/^[A-Za-z0-9_-]{8,16}$/.test(oembedId)) {
+      check("served video oEmbed verdict = ok (200)", false, "id failed the YouTube shape check");
+    } else {
+      try {
+        const res = await fetch(
+          `https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${oembedId}`)}&format=json`,
+          { signal: AbortSignal.timeout(15_000) },
+        );
+        check("served video oEmbed verdict = ok (200)", res.ok, `HTTP ${res.status}`);
+        if (res.ok) {
+          const meta = (await res.json()) as { title?: string; author_name?: string };
+          // ✅ S5145 (root cure): provider-supplied strings are sanitized
+          // before they reach the log.
+          const title = (meta.title ?? "").replace(/\p{Cc}+/gu, " ").slice(0, 120);
+          const author = (meta.author_name ?? "").replace(/\p{Cc}+/gu, " ").slice(0, 80);
+          console.log(`  └─ oEmbed: "${title}" — ${author}`);
+        }
+      } catch (err) {
+        check("served video oEmbed verdict = ok (200)", false, String(err));
       }
-    } catch (err) {
-      check("served video oEmbed verdict = ok (200)", false, String(err));
     }
   }
 

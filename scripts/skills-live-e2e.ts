@@ -23,7 +23,10 @@ const H: Record<string, string> = {
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ""): void {
-  console.log(`${ok ? "  ✓" : "  ✗ FAIL"} ${name}${detail ? ` — ${detail}` : ""}`);
+  // ✅ S5145 (root cure): detail may carry server-provided text — control
+  // characters are stripped so a hostile response can never forge log lines.
+  const safeDetail = detail.replace(/\p{Cc}+/gu, " ");
+  console.log(`${ok ? "  ✓" : "  ✗ FAIL"} ${name}${safeDetail ? ` — ${safeDetail}` : ""}`);
   if (!ok) failures++;
 }
 

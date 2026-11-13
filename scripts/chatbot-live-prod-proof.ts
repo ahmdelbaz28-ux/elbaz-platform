@@ -24,12 +24,15 @@ const H: Record<string, string> = {
 let pass = 0;
 let fail = 0;
 function check(label: string, ok: boolean, detail = ""): void {
+  // ✅ S5145 (root cure): detail may carry server-provided text — control
+  // characters are stripped so a hostile response can never forge log lines.
+  const safeDetail = detail.replace(/\p{Cc}+/gu, " ");
   if (ok) {
     pass++;
-    console.log(`  ✓ ${label}${detail ? ` — ${detail}` : ""}`);
+    console.log(`  ✓ ${label}${safeDetail ? ` — ${safeDetail}` : ""}`);
   } else {
     fail++;
-    console.log(`  ✗ ${label}${detail ? ` — ${detail}` : ""}`);
+    console.log(`  ✗ ${label}${safeDetail ? ` — ${safeDetail}` : ""}`);
   }
 }
 
