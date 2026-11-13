@@ -22,7 +22,9 @@ import {
   MonitorX,
   ThumbsUp,
   ThumbsDown,
+  Square,
 } from "lucide-react";
+import { resolveAfterAttempts, shouldAttemptNext, type StreamAttemptOutcome } from "@/lib/chat-stop-flow";
 import {
   captureScreenFrame,
   captureScreenPreview,
@@ -395,7 +397,7 @@ interface ChatInputHandle {
 }
 
 interface ChatInputAreaProps {
-  // Sonar S6767 FP: all five props are consumed inside the memo(forwardRef())
+  // Sonar S6767 FP: all six props are consumed inside the memo(forwardRef())
   // component below — the analyzer loses prop tracking through the
   // forwardRef wrapper, hence the inline suppressions on each property.
   lang: string; // NOSONAR: destructured + used in the component body (toast, labels)
@@ -403,6 +405,7 @@ interface ChatInputAreaProps {
   kbOpen: boolean; // NOSONAR: destructured + used in the footer hint visibility
   isMobileViewport: boolean; // NOSONAR: destructured + used in the safe-area style
   onSend: (text: string, image: AttachedImage | null) => void; // NOSONAR: destructured + called in doSend
+  onStop: () => void; // NOSONAR: destructured + forwarded to ComposerRow (stop button)
 }
 
 /** Attachment preview / compressing indicator row (extracted for clarity). */
@@ -453,7 +456,7 @@ function AttachmentArea({ attachment, compressing, lang, onRemove }: Readonly<{
 }
 
 /** Attach + screen-share buttons, textarea, send button (extracted for clarity). */
-function ComposerRow({ value, onValueChange, onKeyDown, taRef, fileInputRef, onPickFile, onFilePicked, canSend, isLoading, compressing, doSend, lang, screenSupported, screenActive, screenStarting, onToggleScreenShare }: Readonly<{
+function ComposerRow({ value, onValueChange, onKeyDown, taRef, fileInputRef, onPickFile, onFilePicked, canSend, isLoading, compressing, doSend, onStop, lang, screenSupported, screenActive, screenStarting, onToggleScreenShare }: Readonly<{
   value: string;
   onValueChange: (v: string) => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
@@ -465,6 +468,7 @@ function ComposerRow({ value, onValueChange, onKeyDown, taRef, fileInputRef, onP
   isLoading: boolean;
   compressing: boolean;
   doSend: () => void;
+  onStop: () => void;
   lang: string;
   screenSupported: boolean;
   screenActive: boolean;
@@ -528,24 +532,36 @@ function ComposerRow({ value, onValueChange, onKeyDown, taRef, fileInputRef, onP
           style={{ minHeight: "40px", maxHeight: "120px" }}
         />
       </div>
-      <button
-        onClick={doSend}
-        disabled={!canSend}
-        className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white transition-all hover:shadow-lg hover:shadow-cyan-500/25 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:shadow-none"
-        aria-label={lang === "ar" ? "إرسال" : "Send"}
-      >
-        {isLoading ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
+      {isLoading ? (
+        /* ⏹ STOP (owner request, 2026-11-14): the send button transforms the
+           moment a message is sent. Pressing it aborts the in-flight request
+           for real — the fetch dies, the server's stream cancel() propagates
+           the disconnect into the provider walk (no quota keeps burning) —
+           and whatever text already streamed in is frozen as the reply. */
+        <button
+          onClick={onStop}
+          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-red-500 to-rose-600 text-white transition-all hover:shadow-lg hover:shadow-red-500/25 active:scale-95"
+          title={lang === "ar" ? "إيقاف رد المساعد" : "Stop the assistant's response"}
+          aria-label={lang === "ar" ? "إيقاف رد المساعد" : "Stop the assistant's response"}
+        >
+          <Square className="h-3.5 w-3.5 fill-current" />
+        </button>
+      ) : (
+        <button
+          onClick={doSend}
+          disabled={!canSend}
+          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white transition-all hover:shadow-lg hover:shadow-cyan-500/25 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:shadow-none"
+          aria-label={lang === "ar" ? "إرسال" : "Send"}
+        >
           <Send className="h-4 w-4" />
-        )}
-      </button>
+        </button>
+      )}
     </div>
   );
 }
 
 const ChatInputArea = memo(forwardRef<ChatInputHandle, ChatInputAreaProps>(function ChatInputArea(
-  { lang, isLoading, kbOpen, isMobileViewport, onSend },
+  { lang, isLoading, kbOpen, isMobileViewport, onSend, onStop },
   ref,
 ) {
   const [value, setValue] = useState("");
@@ -729,6 +745,7 @@ const ChatInputArea = memo(forwardRef<ChatInputHandle, ChatInputAreaProps>(funct
         isLoading={isLoading}
         compressing={compressing}
         doSend={() => { void doSend(); }}
+        onStop={onStop}
         lang={lang}
         screenSupported={screenSupported}
         screenActive={screenActive}
@@ -1044,13 +1061,19 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
       setStreamingContent((prev) => prev + pending.slice(0, step));
     }, 30);
   }, []);
-  /** Resolve once the reveal caught up with everything received (bounded). */
-  const drainReveal = useCallback(async (maxMs = 10_000) => {
+  /**
+   * Resolve once the reveal caught up with everything received (bounded).
+   * ✅ STOP BUTTON (2026-11-14): `shouldAbort` lets a user stop interrupt the
+   * cosmetic typewriter too — pressing stop freezes the reply INSTANTLY
+   * instead of waiting for the adaptive reveal to finish (up to 45s for long
+   * replies). The full received text is committed by the caller either way.
+   */
+  const drainReveal = useCallback(async (maxMs = 10_000, shouldAbort?: () => boolean) => {
     const deadline = Date.now() + maxMs;
     // Timed poll by design: the reveal ticker runs on its own 30ms interval,
     // so draining means “wake up every 30ms and check” — not a batch of
     // parallel awaits. NOSONAR
-    while (pendingTextRef.current && Date.now() < deadline) {
+    while (pendingTextRef.current && Date.now() < deadline && !(shouldAbort?.() ?? false)) {
       await new Promise((r) => setTimeout(r, 30)); // NOSONAR: deliberate 30ms poll — see comment above.
     }
   }, []);
@@ -1399,6 +1422,17 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
 
     // Create abort controller
     abortControllerRef.current = new AbortController();
+    // ⏹ STOP BUTTON (owner request, 2026-11-14): the stop button aborts THIS
+    // controller WITHOUT bumping the generation (only clearChat bumps it).
+    // The signal is captured as a local so every decision gate below reads a
+    // stable value even after the finally block nulls the ref. Distinguishing
+    // the stop from a clear is what makes "stop" actually stop: without it
+    // the silent-retry chain would classify the abort as "unreachable" and
+    // resurrect the request — the non-stream fallback would even launch a
+    // brand-new fetch (a listener attached to an already-aborted signal
+    // never fires).
+    const stopSignal = abortControllerRef.current.signal;
+    const isUserStopped = () => !isStale() && stopSignal.aborted;
     const apiOrigin = globalThis.Capacitor?.isNativePlatform()
       ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io")
       : "";
@@ -1424,14 +1458,35 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
       setStreamingContent("");
     };
 
-    /** One silent retry attempt — returns "ok" | "failed" | "unreachable". */
-    const tryStreamOnce = async (): Promise<"ok" | "failed" | "unreachable"> => {
-      // Per-attempt controller: chained to the main abort (clearChat) AND to
-      // a liveness watchdog. The server emits `: ping` keepalives every 4s —
-      // TOTAL silence for 45s means the transport is dead (dying server /
-      // stalled proxy / black-holed connection). Without this watchdog a
-      // half-dead connection used to hold the user on "thinking…" forever;
-      // now the attempt aborts and the silent retry loop takes over.
+    // Every assistant commit funnels through ONE once-guarded helper — a stop
+    // can commit from several sites (mid-stream catch, post-reveal, after the
+    // loop) and the guard makes a double commit structurally impossible.
+    let assistantCommitted = false;
+    const commitAssistantText = (content: string, model?: string) => {
+      const text = content.trim();
+      if (!text || assistantCommitted) return;
+      assistantCommitted = true;
+      setMessages((prev) => [...prev, {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: text,
+        timestamp: new Date(),
+        model,
+      }]);
+    };
+
+    /** One silent retry attempt — outcome contract lives in chat-stop-flow.ts. */
+    const tryStreamOnce = async (): Promise<StreamAttemptOutcome> => {
+      // ⏹ STOP: if the user already pressed stop (abort during the backoff
+      // sleep between attempts), refuse to launch anything new.
+      if (isUserStopped()) return "stopped";
+      // Per-attempt controller: chained to the main abort (clearChat / stop
+      // button) AND to a liveness watchdog. The server emits `: ping`
+      // keepalives every 4s — TOTAL silence for 45s means the transport is
+      // dead (dying server / stalled proxy / black-holed connection). Without
+      // this watchdog a half-dead connection used to hold the user on
+      // "thinking…" forever; now the attempt aborts and the silent retry
+      // loop takes over.
       const attemptCtrl = new AbortController();
       const mainSignal = abortControllerRef.current?.signal ?? null;
       const onMainAbort = () => attemptCtrl.abort();
@@ -1440,6 +1495,8 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
       const watchdog = setInterval(() => {
         if (Date.now() - lastByteAt > 45_000) attemptCtrl.abort();
       }, 5_000);
+      // Hoisted so the stop path (catch) can commit with the model identity.
+      let receivedModel = "";
       try {
         const streamResponse = await fetch(`${apiOrigin}/api/chatbot/stream`, {
           method: "POST",
@@ -1452,7 +1509,6 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
         if (!reader) return "unreachable";
 
         let receivedAny = false;
-        let receivedModel = "";
 
         const consumePayload = (payload: string) => {
           if (payload === "[DONE]") return;
@@ -1498,23 +1554,29 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
           // exact text the user watched being typed. The cap scales with the
           // backlog: even a 6k-char reply reveals ≲10s — the deadline exists
           // only as a pathological-case safety net (never a mid-commit jump).
-          await drainReveal(45_000);
+          // ⏹ STOP: the stop button interrupts the cosmetic reveal too — the
+          // FULL received text is committed instantly (ChatGPT-style freeze).
+          await drainReveal(45_000, isUserStopped);
           if (isStale()) return "ok";
-          const botMessage: Message = {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            content: accumulatedRef.current.trim(),
-            timestamp: new Date(),
-            model: receivedModel || undefined,
-          };
-          setMessages((prev) => [...prev, botMessage]);
+          if (isUserStopped()) {
+            commitAssistantText(accumulatedRef.current, receivedModel || undefined);
+            return "stopped";
+          }
+          commitAssistantText(accumulatedRef.current, receivedModel || undefined);
           return "ok";
         }
         return "failed"; // no content — server walk exhausted; retry silently
       } catch {
-        // Aborted (clearChat, liveness watchdog) or the network layer itself
-        // failed — the loop distinguishes via isStale; otherwise treat as
-        // unreachable so the silent retry chain continues.
+        // Aborted (stop button, clearChat, liveness watchdog) or the network
+        // layer itself failed.
+        // ⏹ STOP: a mid-stream user stop freezes what the user already saw —
+        // the accumulated text is committed ONCE (the helper guards against
+        // the post-loop commit repeating it) and "stopped" ends the loop
+        // before any silent retry can resurrect the killed request.
+        if (isUserStopped()) {
+          commitAssistantText(accumulatedRef.current, receivedModel || undefined);
+          return "stopped";
+        }
         return "unreachable";
       } finally {
         clearInterval(watchdog);
@@ -1524,9 +1586,16 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
 
     /** Non-streaming fallback — used when the stream transport is unreachable. */
     const tryNonStreamOnce = async (): Promise<boolean> => {
+      // ⏹ STOP: never launch a new request after the user pressed stop. This
+      // guard is the deepest part of the root cure: the old chaining below
+      // attaches a listener to the main signal — a listener added AFTER the
+      // signal already aborted never fires — so without this pre-check a stop
+      // pressed during the stream phase ended up HERE with a brand-new fetch
+      // (the user pressed stop and the bot silently started over).
+      if (isUserStopped()) return false;
       // Same per-attempt protection as the stream: chained to the main abort
-      // (clearChat) + a hard 60s cap — a black-holed non-stream request must
-      // never park the silent retry chain forever.
+      // (clearChat / stop) + a hard 60s cap — a black-holed non-stream request
+      // must never park the silent retry chain forever.
       const attemptCtrl = new AbortController();
       const mainSignal = abortControllerRef.current?.signal ?? null;
       const onMainAbort = () => attemptCtrl.abort();
@@ -1546,16 +1615,13 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
           accumulatedRef.current = data.reply;
           pendingTextRef.current += data.reply;
           startReveal();
-          await drainReveal(60_000);
+          await drainReveal(60_000, isUserStopped);
           if (isStale()) return true;
-          const botMsg: Message = {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            content: data.reply,
-            timestamp: new Date(),
-            model: data.model || undefined,
-          };
-          setMessages((prev) => [...prev, botMsg]);
+          if (isUserStopped()) {
+            commitAssistantText(accumulatedRef.current, data.model || undefined);
+            return true;
+          }
+          commitAssistantText(data.reply, data.model || undefined);
           return true;
         }
         // Specific product notices (image quota / rate limit — localized by
@@ -1585,16 +1651,25 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     try {
       let handled = false;
       let attempt = 0;
-      while (attempt < MAX_STREAM_ATTEMPTS && !handled && !isStale()) {
+      // ⏹ STOP: the loop gate is the unit-tested decision table — a user stop
+      // (abort WITHOUT a generation bump) ends the chain exactly like a clear
+      // does; nothing may resurrect the killed request.
+      while (shouldAttemptNext({
+        attempt,
+        maxAttempts: MAX_STREAM_ATTEMPTS,
+        handled,
+        stale: isStale(),
+        userStopped: isUserStopped(),
+      })) {
         attempt++;
         if (attempt > 1) resetAttemptBuffers();
         const outcome = await tryStreamOnce();
         if (outcome === "ok") { handled = true; break; }
-        if (isStale()) break;
+        if (outcome === "stopped" || isStale() || isUserStopped()) break;
         if (outcome === "unreachable") {
           // Transport-level failure — try the non-stream endpoint once.
           handled = await tryNonStreamOnce();
-          if (handled || isStale()) break;
+          if (handled || isStale() || isUserStopped()) break;
           // Serial backoff between silent retries BY DESIGN — parallel
           // retries would hammer a struggling server. NOSONAR
           await sleep(2500); // NOSONAR: intentional retry backoff, see comment above.
@@ -1603,10 +1678,32 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
         // "failed" — the server exhausted its own persistence deadline.
         // Brief pause (cooldown rotation benefits) then retry silently.
         // Serial backoff by design (same contract as above). NOSONAR
-        if (attempt < MAX_STREAM_ATTEMPTS) await sleep(attempt === 1 ? 1500 : 4000); // NOSONAR: intentional retry backoff.
+        if (shouldAttemptNext({
+          attempt,
+          maxAttempts: MAX_STREAM_ATTEMPTS,
+          handled,
+          stale: isStale(),
+          userStopped: isUserStopped(),
+        })) {
+          await sleep(attempt === 1 ? 1500 : 4000); // NOSONAR: intentional retry backoff.
+        }
       }
 
-      if (!handled && !isStale()) {
+      // ⏹ STOP: the after-loop decision table (pure, unit-tested module).
+      // A user stop with received text freezes that text; a user stop with
+      // nothing received stays silent; only a genuine all-attempts failure
+      // (no stop, no clear) shows the calm soft-busy note.
+      const after = resolveAfterAttempts({
+        handled,
+        stale: isStale(),
+        userStopped: isUserStopped(),
+        partialText: accumulatedRef.current,
+      });
+      if (after.kind === "commit-partial") {
+        // Freeze exactly what the user watched being typed (the once-guarded
+        // helper no-ops when the attempt already committed richer context).
+        commitAssistantText(after.text);
+      } else if (after.kind === "soft-busy") {
         // Every silent attempt everywhere failed — one calm note styled as a
         // normal assistant message (never a red error screen).
         // ✅ ARCH-AUDIT FIX (SOFT_BUSY bubble replayed into provider history):
@@ -1695,6 +1792,17 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
       fetch(`${API_BASE}/api/chatbot/history`, { method: "DELETE" }).catch(() => { /* best-effort */ });
     }
   };
+
+  // ─── ⏹ Stop button (owner request, 2026-11-14) ───
+  // The send button transforms into a stop button the moment a message is
+  // sent; pressing it aborts the in-flight request WITHOUT bumping the
+  // generation (unlike clearChat): the fetch dies, the server's stream
+  // cancel() propagates the disconnect into the provider walk — no tokens
+  // keep burning server-side — and the client freezes whatever text the user
+  // already watched being typed (decision table: src/lib/chat-stop-flow.ts).
+  const stopGeneration = useCallback(() => {
+    abortControllerRef.current?.abort();
+  }, []);
 
   // ─── Toggle chat mode (Thinking/Instant) ───
   const toggleChatMode = useCallback((mode: ChatMode) => {
@@ -2124,6 +2232,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                   kbOpen={kb.open}
                   isMobileViewport={isMobileViewport}
                   onSend={sendMessage}
+                  onStop={stopGeneration}
                 />
               </>
             )}
