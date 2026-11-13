@@ -137,10 +137,12 @@ try {
     + await page.getByText("الخدمة تمر بضغط عالٍ").count();
   check("no soft-busy noise after a deliberate stop", busy === 0);
 
-  await page.screenshot({ path: "/tmp/stop-prod-final.png" });
+  // ✅ S5443: artifacts go to the project-owned (gitignored) test-results
+  // directory — never to publicly writable system directories like /tmp.
+  await page.screenshot({ path: "test-results/chat-stop-prod/final.png" });
 } catch (err) {
   check(`journey error: ${err instanceof Error ? err.message.slice(0, 300) : String(err)}`, false);
-  await page.screenshot({ path: "/tmp/stop-prod-error.png" }).catch(() => {});
+  await page.screenshot({ path: "test-results/chat-stop-prod/error.png" }).catch(() => {});
 } finally {
   await browser.close();
 }
