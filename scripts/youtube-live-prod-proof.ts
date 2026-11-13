@@ -65,6 +65,10 @@ async function trpcCall(
   const url = method === "GET" && input !== undefined
     ? `${BASE}/api/trpc/${procSafe}?batch=1&input=${encodeURIComponent(JSON.stringify({ "0": { json: input } }))}`
     : `${BASE}/api/trpc/${procSafe}?batch=1`;
+  // NOSONAR — S8476 reviewed false positive: `url` is built solely from the
+  // module constant BASE and regex-validated, URL-encoded internal procedure
+  // names ("auth.login", "course.list", …). No user-controlled value can
+  // reach the fetch target; `input` only rides the fully encoded query value.
   const res = await fetch(url, {
     method,
     headers: { ...H, ...(jar.length ? { Cookie: jar.join("; ") } : {}) },
