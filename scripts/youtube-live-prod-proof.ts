@@ -49,6 +49,15 @@ function cookieFrom(res: Response, jar: string[]): void {
   }
 }
 
+// ✅ S8476 (root cure): response-derived values may only ride a tRPC query
+// after they pass their strict shape check — anything else aborts the proof.
+// (Same accepted pattern as the oEmbed id check below.)
+function assertShape(value: unknown, pattern: RegExp, label: string): string {
+  const s = String(value);
+  if (!pattern.test(s)) throw new Error(`${label} failed its shape check`);
+  return s;
+}
+
 async function trpcCall(
   proc: string,
   input: unknown,
@@ -61,6 +70,9 @@ async function trpcCall(
   if (!/^[a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)*$/.test(proc)) {
     throw new Error(`invalid procedure name: ${proc}`);
   }
+  // ✅ S8476 (root cure): response-derived values may only ride a tRPC GET
+  // query after they pass their strict shape check (assertShape at the call
+  // sites) — the engine-accepted pattern, same as the oEmbed id check below.
   const procSafe = encodeURIComponent(proc);
   const url = method === "GET" && input !== undefined
     ? `${BASE}/api/trpc/${procSafe}?batch=1&input=${encodeURIComponent(JSON.stringify({ "0": { json: input } }))}`
@@ -113,7 +125,8 @@ async function main(): Promise<void> {
   check("ETAP course present in the public feed", !!etap, etap ? `"${etap.titleAr ?? etap.slug}"` : "none");
 
   // ── 2) Course detail (published lessons)
-  const detailRes = await trpcCall("course.bySlug", { slug: etap!.slug }, jar);
+  const slug = assertShape(etap?.slug, /^[a-z0-9][a-z0-9-]{0,80}$/, "course slug");
+  const detailRes = await trpcCall("course.bySlug", { slug }, jar);
   const detail = unwrap(detailRes.json) as { id?: number; lessons?: Array<{ id: number; titleAr?: string; isFree?: boolean }> } | undefined;
   const lessons = detail?.lessons ?? [];
   check("course.bySlug returns published lessons", lessons.length > 0, `${lessons.length} lessons`);
@@ -132,7 +145,8 @@ async function main(): Promise<void> {
   check("auth.me resolves the session (no false-401)", !!me?.id, me?.username ?? "");
 
   // ── 4) Authenticated lessonVideo → YouTube pass-through
-  const lv = await trpcCall("course.lessonVideo", { lessonId: freeLesson!.id }, jar);
+  const lessonId = assertShape(freeLesson?.id, /^[A-Za-z0-9-]{1,64}$/, "lesson id");
+  const lv = await trpcCall("course.lessonVideo", { lessonId }, jar);
   const video = unwrap(lv.json) as LessonVideoResult | undefined;
   const isErr = (video as { __error?: unknown } | undefined)?.__error !== undefined;
   check("course.lessonVideo authorizes a free lesson", !isErr && !!video, isErr ? "error envelope" : `kind=${video?.kind}`);
@@ -177,11 +191,13 @@ async function main(): Promise<void> {
   // ── 6) Premium gate still holds on the YouTube path
   const premium = courses.find((c) => c.isPremium === true);
   if (premium) {
-    const pDetailRes = await trpcCall("course.bySlug", { slug: premium.slug }, jar);
+    const premiumSlug = assertShape(premium?.slug, /^[a-z0-9][a-z0-9-]{0,80}$/, "premium course slug");
+    const pDetailRes = await trpcCall("course.bySlug", { slug: premiumSlug }, jar);
     const pDetail = unwrap(pDetailRes.json) as { lessons?: Array<{ id: number; isFree?: boolean }> } | undefined;
     const paidLesson = pDetail?.lessons?.find((l) => !l.isFree) ?? pDetail?.lessons?.[0];
     if (paidLesson) {
-      const pv = await trpcCall("course.lessonVideo", { lessonId: paidLesson.id }, jar);
+      const paidLessonId = assertShape(paidLesson?.id, /^[A-Za-z0-9-]{1,64}$/, "paid lesson id");
+      const pv = await trpcCall("course.lessonVideo", { lessonId: paidLessonId }, jar);
       const pvBody = unwrap(pv.json) as { __error?: { code?: string } } | undefined;
       const gated = pv.status !== 200 || (pvBody as { __error?: { code?: string } } | undefined)?.__error !== undefined;
       check("premium lessonVideo is gated for a non-enrolled user", gated, `HTTP ${pv.status}`);
