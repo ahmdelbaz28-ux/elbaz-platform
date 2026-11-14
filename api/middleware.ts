@@ -109,13 +109,19 @@ const auditAdmin = t.middleware(async (opts) => {
   try {
     const user = opts.ctx.user;
     if (!user) return result;
+    // tRPC v11 exposes the call's raw input via getRawInput() (async, parses
+    // lazily) — NOT opts.rawInput (CI's strict typecheck rejects the latter).
+    let rawInput: unknown = undefined;
+    try {
+      rawInput = await opts.getRawInput();
+    } catch { /* input unavailable — audit without it */ }
     await getDb().insert(adminAuditLog).values({
       actorId: user.id,
       actorUsername: user.username,
       procedure: opts.path,
       kind: opts.type,
       status: result.ok ? "ok" : "error",
-      inputSummary: auditInputSummary(opts.rawInput),
+      inputSummary: auditInputSummary(rawInput),
       ip: opts.ctx.req?.headers ? getClientIpFromHeaders(opts.ctx.req.headers) : "unknown",
     });
   } catch {
