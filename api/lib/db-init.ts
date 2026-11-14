@@ -1336,6 +1336,13 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
           const phase = Array.isArray(phaseRows) && phaseRows.length > 0
             ? String((phaseRows[0] as { value?: unknown }).value ?? "")
             : "";
+          // ✅ DIAGNOSTIC (2026-11-15 lockout-recovery forensics): log the lever
+          // STATE — never the value — so a silent skip is observable. phase is
+          // one of '' | 'claimed' | 'restored'; kind masks the value class.
+          const kind = recoveryValue === "restore" || recoveryValue === "done" || recoveryValue === "reset2fa"
+            ? recoveryValue
+            : "password";
+          logger.info("[DB] admin recovery lever present", { kind, phase });
 
           if (recoveryValue !== "restore" && recoveryValue !== "done" && recoveryValue !== "reset2fa" && (phase === "" || phase === "claimed")) {
             const [adminRows] = await conn.execute(
