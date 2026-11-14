@@ -54,7 +54,16 @@ const PROTECTED_PATHS = ["/dashboard", "/profile", "/support", "/wishlist", "/jo
 
 async function auditPage(page, path) {
   const errors = [], badRequests = [];
-  const onConsole = (msg) => { if (msg.type() === "error" && !NOISE.some((r) => r.test(msg.location()?.url || ""))) errors.push("console: " + msg.text().slice(0, 200)); };
+  const onConsole = (msg) => {
+    if (msg.type() !== "error") return;
+    const url = msg.location()?.url || "";
+    const text = msg.text();
+    // Match noise by BOTH the source URL and the message text — artifact
+    // errors (font CORS, script redirect, probe 401) report the PAGE as
+    // their location, not the third-party origin.
+    if (NOISE.some((r) => r.test(url) || r.test(text))) return;
+    errors.push("console: " + text.slice(0, 200));
+  };
   const onPageError = (err) => errors.push("pageerror: " + String(err).slice(0, 200));
   const onResponse = (res) => {
     const u = res.url();
@@ -145,6 +154,8 @@ try {
   await fresh.goto(BASE + "/", { waitUntil: "load", timeout: 45000 });
   await fresh.waitForSelector("#main-content", { timeout: 30000 });
   await fresh.waitForSelector("button.chatbot-fab", { timeout: 30000 }).catch(() => {});
+  // The banner has a deliberate 800ms entrance delay — WAIT for it.
+  await fresh.waitForSelector("[data-testid='cookie-consent-banner']", { timeout: 10000 }).catch(() => {});
   const bannerVisible = await fresh.getByTestId("cookie-consent-backdrop").count();
   ok("first visit: cookie consent banner appears", bannerVisible > 0, `count=${bannerVisible}`);
   if (bannerVisible) {
