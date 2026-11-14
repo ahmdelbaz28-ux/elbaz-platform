@@ -779,12 +779,9 @@ interface MessageBubbleProps {
   /** 📐 draw-now chip: this assistant reply promised a diagram but carried none. */
   showDrawNow: boolean;
   onDrawNow: (msgId: string) => void;
-  /** ↻ regenerate chip: this is the LAST assistant reply and the chat is idle. */
-  showRegenerate: boolean;
-  onRegenerate: (msgId: string) => void;
 }
 
-const MessageBubble = memo(function MessageBubble({ msg, lang, copied, onCopy, onRetry, onFeedback, showDrawNow, onDrawNow, showRegenerate, onRegenerate }: MessageBubbleProps) {
+const MessageBubble = memo(function MessageBubble({ msg, lang, copied, onCopy, onRetry, onFeedback, showDrawNow, onDrawNow }: MessageBubbleProps) {
   const sldBodyRef = useRef<HTMLSpanElement | null>(null);
   const errorBubbleClass = msg.isError
     ? "bg-red-500/10 border border-red-500/30 text-red-300 rounded-ss-md"
@@ -942,20 +939,6 @@ const MessageBubble = memo(function MessageBubble({ msg, lang, copied, onCopy, o
           >
             <RotateCcw className="h-3 w-3" />
             {lang === "ar" ? "إعادة المحاولة" : "Retry"}
-          </button>
-        )}
-
-        {/* ↻ Regenerate chip (LAST assistant reply, chat idle) — one tap asks
-            the same question (text + image) again for a fresh answer. */}
-        {showRegenerate && (
-          <button
-            onClick={() => onRegenerate(msg.id)}
-            className="mt-2 ms-1 inline-flex items-center gap-1.5 self-start rounded-full border border-slate-500/30 bg-slate-500/10 px-3 py-1.5 text-[11.5px] font-medium text-slate-300 transition-colors hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-300"
-            title={lang === "ar" ? "اطلب رداً جديداً على نفس السؤال" : "Ask the same question again for a fresh answer"}
-            aria-label={lang === "ar" ? "إعادة توليد الرد" : "Regenerate reply"}
-          >
-            <RotateCcw className="h-3 w-3" />
-            {lang === "ar" ? "إعادة توليد الرد" : "Regenerate reply"}
           </button>
         )}
       </div>
@@ -1786,18 +1769,6 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     return detectUnfulfilledDiagramPromise(last.content) ? last.id : "";
   })();
 
-  // ─── ↻ Regenerate chip target ───
-  // ONLY the last message, ONLY a real (non-error, non-welcome) assistant
-  // reply, ONLY while idle — identical gating contract to the draw-now chip
-  // above, so the chip can never race an active stream or expose itself on
-  // old replies where the question snapshot is no longer directly above.
-  const regenMsgId = (() => {
-    if (isLoading || messages.length === 0) return "";
-    const last = messages[messages.length - 1];
-    if (!last || last.role !== "assistant" || last.isError || last.id === "welcome") return "";
-    return last.id;
-  })();
-
   // ─── Persist messages to localStorage when they change ───
   useEffect(() => {
     if (messages.length > 0 && !isLoading) {
@@ -1957,37 +1928,6 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
       return withoutError;
     });
   }, [sendMessage]);
-
-  // ─── Regenerate handler (professional parity with ChatGPT/Gemini/Claude) ───
-  // A reply the user is not happy with (NOT an error bubble — errors already
-  // have the retry button) can be regenerated in one tap: the last reply and
-  // its question are removed from the conversation and the exact question is
-  // re-sent — text AND attached image, same root-cure contract as the retry
-  // above. Only the LAST assistant reply exposes the chip, and only while
-  // idle, so a regeneration can never race an active stream.
-  const handleRegenerate = useCallback((regenMsgId: string) => {
-    if (isLoading) return;
-    setMessages((prev) => {
-      const target = prev.find((m) => m.id === regenMsgId);
-      if (!target || target.role !== "assistant" || target.isError || target.id === "welcome") return prev;
-      const withoutReply = prev.filter((m) => m.id !== regenMsgId);
-      let lastUserMsg: Message | null = null;
-      for (let i = withoutReply.length - 1; i >= 0; i--) {
-        const m = withoutReply[i];
-        if (m && m.role === "user") { lastUserMsg = m; break; }
-      }
-      if (!lastUserMsg) return prev; // nothing to re-ask — keep the reply
-      const filtered = withoutReply.filter((m) => m.id !== lastUserMsg!.id);
-      const img = lastUserMsg.image;
-      const imageForApi: AttachedImage | null = (img?.dataUrl || img?.thumb)
-        ? { dataUrl: img!.dataUrl || img!.thumb!, thumb: img?.thumb || img?.dataUrl || "", name: img?.name, source: img?.source }
-        : null;
-      setTimeout(() => {
-        sendMessage(lastUserMsg!.content, imageForApi);
-      }, 100);
-      return filtered;
-    });
-  }, [isLoading, sendMessage]);
 
   // ─── Unread count (assistant messages received while chat was closed) ───
   const [lastSeenCount, setLastSeenCount] = useState(messages.length);
@@ -2201,8 +2141,6 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                       onFeedback={handleFeedback}
                       showDrawNow={msg.id === drawNowMsgId}
                       onDrawNow={handleDrawNow}
-                      showRegenerate={msg.id === regenMsgId}
-                      onRegenerate={handleRegenerate}
                     />
                   ))}
 

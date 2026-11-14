@@ -21,7 +21,7 @@ const chatStream = {
   chunksSent: 0,
   lastText: "",
   mode: "normal", // "normal" | "silent-delay" | "all-fail"
-  // Request-body telemetry (regenerate/type-ahead/vision E2E): what did the
+  // Request-body telemetry (type-ahead/vision E2E): what did the
   // LAST /api/chatbot/stream request actually carry?
   lastBodyText: "",
   lastBodyHasImage: false,

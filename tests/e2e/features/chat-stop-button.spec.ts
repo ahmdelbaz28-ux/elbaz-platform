@@ -160,19 +160,17 @@ test("stop during the thinking phase: no reply, no busy note, no retry resurrect
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
-// ↻ Regenerate + type-ahead + vision retry (proactive professional audit,
+// Type-ahead + vision retry (proactive professional audit,
 // 2026-11-14 — owner directive "do what YOU see is missing"):
 //   5. type-ahead — the composer stays editable while the reply streams;
 //      Enter mid-stream is swallowed by the guard, never a second request.
-//   6. regenerate — one tap on the LAST reply re-asks the EXACT question
-//      (same text) as a brand-new request; the old pair is removed, the
-//      fresh reply streams, and exactly one regenerate chip remains.
-//   7. vision retry — an attached image that survived an all-fail outage is
+//   6. vision retry — an attached image that survived an all-fail outage is
 //      CARRIED BACK on the retry request (root-cure: the retry used to drop
 //      the image and answer a vision question blindly).
+//   (The regenerate chip was REMOVED per owner directive 2026-11-14: no
+//   "Regenerate reply" control may appear in the chat UI anymore.)
 // ═════════════════════════════════════════════════════════════════════════════
 
-const REGEN_LABEL = "Regenerate reply";
 const FULL_REPLY_END = "قبل اكتمال الرد بالكامل.";
 const FOLLOW_UP = "How about short circuit analysis?";
 const VISION_QUESTION = "What do you see in this diagram?";
@@ -216,33 +214,6 @@ test("type-ahead: the composer stays editable mid-stream and sends afterwards", 
   state = await serverState(request);
   expect(state.requests).toBe(2);
   expect(state.lastBodyText).toBe(FOLLOW_UP);
-});
-
-test("regenerate: one tap re-asks the exact question and the fresh reply streams", async ({ page, request }) => {
-  await openChatAndSend(page);
-  await expect(page.getByText(FULL_REPLY_END).first()).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByRole("button", { name: SEND_LABEL })).toBeVisible();
-
-  // The chip shows on the last reply — exactly one instance.
-  const regen = page.getByRole("button", { name: REGEN_LABEL });
-  await expect(regen).toBeVisible();
-  await expect(regen).toHaveCount(1);
-
-  await regen.click();
-
-  // The old question+reply pair is REPLACED, not duplicated.
-  await expect(page.getByText(QUESTION)).toHaveCount(1);
-  const stop = page.getByRole("button", { name: STOP_LABEL });
-  await expect(stop).toBeVisible({ timeout: 3_000 });
-
-  // The re-request carries the exact same question text.
-  const state = await serverState(request);
-  expect(state.requests).toBe(2);
-  expect(state.lastBodyText).toBe(QUESTION);
-
-  // The fresh reply streams to completion and hosts the (single) chip again.
-  await expect(page.getByText(FULL_REPLY_END).first()).toBeVisible({ timeout: 20_000 });
-  await expect(regen).toHaveCount(1);
 });
 
 test("vision retry: the attached image rides the retry request after a full outage", async ({ page, request }) => {
