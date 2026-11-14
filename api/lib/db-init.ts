@@ -1312,13 +1312,21 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
       // db-init.admin-password-env-sync documents the lockout lever: "update
       // the row directly with a one-time bootstrap". This is that lever,
       // codeified and made safe: a marker-gated state machine in siteSettings
-      // (can never run twice), hash-only writes, the recovery value itself is
-      // never logged. Driven by the ADMIN_RECOVERY env value:
-      //   <a real password> + no phase → CLAIM: back up the current admin hash
-      //       into siteSettings, set the recovery hash, mark phase=claimed.
-      //   "restore" + phase=claimed   → RESTORE: put the original hash back,
-      //       mark phase=restored, clear the backup.
-      //   "done" / unset / anything else → inert forever.
+      // (hash-only writes, the recovery value itself is never logged). Driven
+      // by the ADMIN_RECOVERY env value:
+      //   <a real password> + phase empty|claimed → CLAIM: back up the current
+      //       admin hash into siteSettings, set the recovery hash, mark
+      //       phase=claimed. ✅ RE-CLAIM (2026-11-15): a claimed lever may be
+      //       re-claimed with a NEW password — the previous session that
+      //       minted the first recovery password can die before anyone saves
+      //       it (exactly what happened in production), so claim must be a
+      //       rotation-capable lever, not a single-shot gun. "restore" then
+      //       always restores the hash that was current at the LAST claim.
+      //   "restore" + phase=claimed   → RESTORE: put the last-backed-up hash
+      //       back, mark phase=restored, clear the backup.
+      //   "reset2fa"                  → clear the admin's TOTP enrolment once
+      //       (lost-authenticator lockout).
+      //   "done" / unset / anything else → inert.
       if (env.ADMIN_RECOVERY) {
         try {
           const recoveryValue = env.ADMIN_RECOVERY;
@@ -1329,7 +1337,7 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
             ? String((phaseRows[0] as { value?: unknown }).value ?? "")
             : "";
 
-          if (recoveryValue !== "restore" && recoveryValue !== "done" && phase === "") {
+          if (recoveryValue !== "restore" && recoveryValue !== "done" && recoveryValue !== "reset2fa" && (phase === "" || phase === "claimed")) {
             const [adminRows] = await conn.execute(
               `SELECT passwordHash FROM users WHERE username = 'admin' LIMIT 1`
             );
@@ -1353,7 +1361,7 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
                  VALUES ('adminRecovery', 'phase', 'claimed', 'text', 0)
                  ON DUPLICATE KEY UPDATE value = VALUES(value)`
               );
-              logger.info("[DB] admin recovery: claimed — original hash backed up, recovery hash active");
+              logger.info("[DB] admin recovery: claimed — current hash backed up, recovery hash active");
             }
           } else if (recoveryValue === "restore" && phase === "claimed") {
             const [backupRows] = await conn.execute(
