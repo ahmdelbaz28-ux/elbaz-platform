@@ -76,6 +76,23 @@ export default function CookieConsent() {
     setTimeout(() => setVisible(false), 400);
   };
 
+  // ── Escape closes the banner from ANYWHERE on the page ──
+  // ROOT CURE (prod audit tour 2026-11-15): the backdrop button's onKeyDown
+  // only fires while that button holds focus — and nothing focuses it on
+  // page load, so Escape was dead for every keyboard user (and for the
+  // SonarCloud S1082 intent). A window-level listener works regardless of
+  // focus, while the banner is visible.
+  useEffect(() => {
+    if (!visible) return undefined;
+    const onEscape = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      handleAcceptNecessary();
+    };
+    window.addEventListener("keydown", onEscape);
+    return () => window.removeEventListener("keydown", onEscape);
+  }, [visible]);
+
   const handleSavePreferences = () => {
     saveConsent(prefs);
     // Grant or revoke consent based on analytics preference
@@ -106,21 +123,14 @@ export default function CookieConsent() {
           : "opacity-0 pointer-events-none"
       }`}
     >
-      {/* Backdrop — clickable to dismiss; also keyboard-accessible via
-          Escape so screen-reader users can close the banner without a
-          mouse (SonarCloud S1082). */}
+      {/* Backdrop — clickable to dismiss; Escape works page-wide via the
+          window-level listener above (works without focus). */}
       <button
         type="button"
         data-testid="cookie-consent-backdrop"
         className="absolute inset-0 w-full h-full bg-black/50 backdrop-blur-sm cursor-default"
         aria-label="Dismiss cookie consent banner"
         onClick={handleAcceptNecessary}
-        onKeyDown={(e) => {
-          if (e.key === "Escape" || e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            handleAcceptNecessary();
-          }
-        }}
       />
 
       {/* Banner */}
