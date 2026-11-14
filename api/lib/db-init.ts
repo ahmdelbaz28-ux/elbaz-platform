@@ -1344,7 +1344,14 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
             : "password";
           logger.info("[DB] admin recovery lever present", { kind, phase });
 
-          if (recoveryValue !== "restore" && recoveryValue !== "done" && recoveryValue !== "reset2fa" && (phase === "" || phase === "claimed")) {
+          if (recoveryValue !== "restore" && recoveryValue !== "done" && recoveryValue !== "reset2fa") {
+            // ✅ CLAIM FROM ANY PHASE (2026-11-15 forensics fix): production
+            // ended in phase="restored" — the lever was claimed, then RESTORED
+            // by an earlier session, and the original claim branch (phase ===
+            // "" || phase === "claimed") skipped SILENTLY from that state
+            // forever. A password value now re-claims from ANY phase: it backs
+            // up the hash current at this moment and installs the new one.
+            // "restore" semantics stay untouched (last backup wins).
             const [adminRows] = await conn.execute(
               `SELECT passwordHash FROM users WHERE username = 'admin' LIMIT 1`
             );
