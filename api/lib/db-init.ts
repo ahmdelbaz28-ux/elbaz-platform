@@ -1375,6 +1375,31 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
               );
               logger.info("[DB] admin recovery: original hash restored, backup cleared");
             }
+          } else if (recoveryValue === "reset2fa") {
+            // ── One-time 2FA lockout recovery ──
+            // Password recovery alone is NOT enough when the admin account has
+            // TOTP enabled and the authenticator device is lost: login demands
+            // a code nobody can produce. This branch clears the TOTP enrolment
+            // for the admin account so username+password work again, and the
+            // owner can re-enrol 2FA from their profile afterwards.
+            // Gated by its own marker (twofaReset) → can only run ONCE ever,
+            // and like the password lever it requires Space-secret write
+            // access (owner-level). The cleared value is never logged.
+            const [doneRows] = await conn.execute(
+              `SELECT value FROM siteSettings WHERE section = 'adminRecovery' AND \`key\` = 'twofaReset' LIMIT 1`
+            );
+            const alreadyDone = Array.isArray(doneRows) && doneRows.length > 0;
+            if (!alreadyDone) {
+              await conn.execute(
+                `UPDATE users SET totpSecret = NULL, totpEnabled = FALSE, totpBackupCodes = NULL, updatedAt = NOW() WHERE username = 'admin'`
+              );
+              await conn.execute(
+                `INSERT INTO siteSettings (section, \`key\`, value, type, sortOrder)
+                 VALUES ('adminRecovery', 'twofaReset', 'done', 'text', 0)
+                 ON DUPLICATE KEY UPDATE value = VALUES(value)`
+              );
+              logger.info("[DB] admin recovery: 2FA reset complete — log in with username+password, re-enrol 2FA from the profile");
+            }
           }
         } catch (err) {
           logger.warn("[DB] admin recovery warning", { error: (err as Error).message });
