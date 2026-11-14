@@ -3,7 +3,7 @@
  */
 import { z } from "zod";
 import { desc, eq, sql } from "drizzle-orm";
-import { createRouter, publicQuery, publicMutation, adminMutation } from "./middleware";
+import { createRouter, publicQuery, publicMutation, adminMutation, adminQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { faqEntries } from "@db/schema";
 
@@ -48,6 +48,17 @@ export const faqRouter = createRouter({
       .from(faqEntries)
       .where(eq(faqEntries.isPublished, true));
     return rows.map((r) => r.category).filter(Boolean) as string[];
+  }),
+
+  // Admin list — ALL entries (published AND drafts) so nothing can be lost
+  // in the dashboard; the public list filters isPublished itself.
+  adminList: adminQuery.query(async () => {
+    const db = getDb();
+    const items = await db
+      .select()
+      .from(faqEntries)
+      .orderBy(faqEntries.sortOrder, desc(faqEntries.createdAt));
+    return { items, total: items.length };
   }),
 
   incrementView: publicMutation

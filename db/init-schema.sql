@@ -717,3 +717,23 @@ CREATE TABLE IF NOT EXISTS `notificationPreferences` (
 -- Re-enable FK checks
 -- ============================================================================
 SET FOREIGN_KEY_CHECKS = 1;
+
+-- ============================================================================
+-- Admin Audit Log — accountability for every admin.* procedure call
+-- (written through the auditAdmin middleware; no FK — audit survives deletion)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS `adminAuditLog` (
+  `id`            BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `actorId`       BIGINT UNSIGNED  NULL,
+  `actorUsername` VARCHAR(100)     NOT NULL,
+  `procedure`     VARCHAR(200)     NOT NULL,
+  `kind`          VARCHAR(20)      NOT NULL DEFAULT 'query',
+  `status`        VARCHAR(20)      NOT NULL DEFAULT 'ok',
+  `inputSummary`  TEXT             NULL,
+  `ip`            VARCHAR(64)      NULL,
+  `createdAt`     TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `audit_created_idx` (`createdAt`),
+  INDEX `audit_actor_idx` (`actorId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+

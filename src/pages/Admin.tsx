@@ -11,7 +11,7 @@ import {
   LogOut, ArrowUpRight, Shield, PlayCircle, Newspaper, X, Menu, MessageSquareText, ThumbsUp, ThumbsDown, Download,
   Youtube, Loader2, ListVideo,
   CalendarDays, ExternalLink, RefreshCw, ImageOff,
-  FolderTree, ListChecks, UserPlus, UserMinus, RotateCcw, GraduationCap,
+  FolderTree, ListChecks, UserPlus, UserMinus, RotateCcw, GraduationCap, HelpCircle, ShieldCheck, Star,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -134,6 +134,8 @@ const SIDEBAR_ITEMS = [
   { id: "users", icon: Users, labelEn: "Users", labelAr: "المستخدمين" },
   { id: "courses", icon: BookOpen, labelEn: "Courses", labelAr: "الكورسات" },
   { id: "articles", icon: Newspaper, labelEn: "Articles", labelAr: "المقالات" },
+  { id: "faq", icon: HelpCircle, labelEn: "FAQ", labelAr: "الأسئلة الشائعة" },
+  { id: "moderation", icon: Eye, labelEn: "Moderation", labelAr: "الإشراف" },
   { id: "tickets", icon: Headphones, labelEn: "Tickets", labelAr: "التذاكر" },
   { id: "payments", icon: DollarSign, labelEn: "Payments", labelAr: "المدفوعات" },
   { id: "ai", icon: Bot, labelEn: "AI Models", labelAr: "النماذج الذكية" },
@@ -145,14 +147,16 @@ const SIDEBAR_ITEMS = [
   { id: "promotions", icon: Megaphone, labelEn: "Promotions", labelAr: "العروض" },
   { id: "testimonials", icon: Quote, labelEn: "Testimonials", labelAr: "آراء الطلاب" },
   { id: "notifications", icon: Bell, labelEn: "Notifications", labelAr: "الإشعارات" },
+  { id: "audit", icon: ShieldCheck, labelEn: "Audit Log", labelAr: "سجل العمليات" },
 ];
 
-// Sidebar sections — grouped nav so 14 entries don't read as one flat wall.
+// Sidebar sections — grouped nav so the entries don't read as one flat wall.
 const SIDEBAR_GROUPS: { labelAr: string; labelEn: string; ids: string[] }[] = [
   { labelAr: "عام", labelEn: "Overview", ids: ["dashboard"] },
-  { labelAr: "الإدارة", labelEn: "Management", ids: ["users", "courses", "articles", "tickets", "payments"] },
+  { labelAr: "الإدارة", labelEn: "Management", ids: ["users", "courses", "articles", "faq", "tickets", "payments"] },
   { labelAr: "المنصة", labelEn: "Platform", ids: ["ai", "chatbot", "contact", "cms", "themes"] },
   { labelAr: "التسويق", labelEn: "Marketing", ids: ["promos", "promotions", "notifications"] },
+  { labelAr: "الأمن والرقابة", labelEn: "Safety & Oversight", ids: ["moderation", "audit"] },
 ];
 
 // Avatar colour cycle for the dashboard's newest-users list.
@@ -213,6 +217,28 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
   const { data: paymentsData } = trpc.admin.payments.useQuery(undefined, { enabled: !!isAdmin && (activeTab === "payments" || activeTab === "dashboard") });
   const { data: manualPayDetails, refetch: refetchManualPayDetails } = trpc.payment.manualDetails.useQuery(undefined, { enabled: !!isAdmin && activeTab === "payments" });
   const { data: paymobStatusAdmin } = trpc.payment.isConfigured.useQuery(undefined, { enabled: !!isAdmin && activeTab === "payments" });
+
+  // ── FAQ tab ──
+  const { data: faqAdminData, isLoading: faqLoading } = trpc.faq.adminList.useQuery(undefined, { enabled: !!isAdmin && activeTab === "faq" });
+  const [faqForm, setFaqForm] = useState({ id: 0, questionEn: "", questionAr: "", answerEn: "", answerAr: "", category: "general", sortOrder: 0, isPublished: true });
+  const [showFaqForm, setShowFaqForm] = useState(false);
+  const upsertFaq = trpc.faq.create.useMutation({ onSuccess: () => { utils.faq.adminList.invalidate(); utils.faq.list.invalidate(); setShowFaqForm(false); toast.success(isRTL ? "تم إضافة السؤال" : "FAQ added"); }, onError: (err) => toast.error(err.message) });
+  const updateFaq = trpc.faq.update.useMutation({ onSuccess: () => { utils.faq.adminList.invalidate(); utils.faq.list.invalidate(); setShowFaqForm(false); toast.success(isRTL ? "تم تحديث السؤال" : "FAQ updated"); }, onError: (err) => toast.error(err.message) });
+  const deleteFaq = trpc.faq.delete.useMutation({ onSuccess: () => { utils.faq.adminList.invalidate(); utils.faq.list.invalidate(); toast.success(isRTL ? "تم حذف السؤال" : "FAQ deleted"); }, onError: (err) => toast.error(err.message) });
+
+  // ── Moderation tab (course reviews + lesson comments) ──
+  const [modReviewPage, setModReviewPage] = useState(1);
+  const [modCommentPage, setModCommentPage] = useState(1);
+  const { data: modReviews } = trpc.review.adminList.useQuery({ page: modReviewPage, limit: 20 }, { enabled: !!isAdmin && activeTab === "moderation" });
+  const { data: modComments } = trpc.comments.adminList.useQuery({ page: modCommentPage, limit: 20 }, { enabled: !!isAdmin && activeTab === "moderation" });
+  const toggleReviewPublish = trpc.review.adminTogglePublish.useMutation({ onSuccess: () => { utils.review.adminList.invalidate(); toast.success(isRTL ? "تم تحديث حالة المراجعة" : "Review updated"); }, onError: (err) => toast.error(err.message) });
+  const toggleCommentHide = trpc.comments.hide.useMutation({ onSuccess: () => { utils.comments.adminList.invalidate(); toast.success(isRTL ? "تم تحديث حالة التعليق" : "Comment updated"); }, onError: (err) => toast.error(err.message) });
+  const toggleCommentPin = trpc.comments.pin.useMutation({ onSuccess: () => { utils.comments.adminList.invalidate(); toast.success(isRTL ? "تم تحديث التثبيت" : "Pin updated"); }, onError: (err) => toast.error(err.message) });
+  const deleteComment = trpc.comments.delete.useMutation({ onSuccess: () => { utils.comments.adminList.invalidate(); toast.success(isRTL ? "تم حذف التعليق" : "Comment deleted"); }, onError: (err) => toast.error(err.message) });
+
+  // ── Audit log tab (append-only accountability trail) ──
+  const [auditPage, setAuditPage] = useState(1);
+  const { data: auditData } = trpc.admin.auditLog.useQuery({ page: auditPage, limit: 50 }, { enabled: !!isAdmin && activeTab === "audit" });
 
   const updateTicket = trpc.admin.updateTicketStatus.useMutation({ onSuccess: () => { utils.admin.tickets.invalidate(); toast.success(lang === "en" ? "Ticket updated" : "تم تحديث التذكرة"); }, onError: (err) => toast.error(err.message) });
   const [replyText, setReplyText] = useState("");
@@ -1309,6 +1335,194 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                   </div>
                 </div>
               )}
+              {/* ═══════════════════ FAQ ═══════════════════ */}
+              {activeTab === "faq" && (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-lg font-bold text-foreground">{isRTL ? "إدارة الأسئلة الشائعة" : "Manage FAQ"}</h2>
+                      <p className="text-xs text-text-muted mt-1">{isRTL ? "كل ما يظهر في صفحة /faq — إضافة وتعديل ونشر وحذف" : "Everything shown on /faq — create, edit, publish, delete"}</p>
+                    </div>
+                    <Button onClick={() => { setFaqForm({ id: 0, questionEn: "", questionAr: "", answerEn: "", answerAr: "", category: "general", sortOrder: 0, isPublished: true }); setShowFaqForm(true); }} className="bg-[#06b6d4] text-background"><Plus className="h-4 w-4 mr-1" />{isRTL ? "سؤال جديد" : "New Question"}</Button>
+                  </div>
+                  {faqLoading && (
+                    <p className="text-sm text-text-muted flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> {isRTL ? "جارٍ التحميل..." : "Loading..."}</p>
+                  )}
+                  {!faqLoading && (faqAdminData?.items ?? []).length === 0 && (
+                    <p className="text-sm text-text-muted text-center py-10">{isRTL ? "لا توجد أسئلة بعد — اضغط سؤال جديد" : "No FAQ entries yet — click New Question"}</p>
+                  )}
+                  <div className="grid gap-3">
+                    {(faqAdminData?.items ?? []).map((f) => (
+                      <div key={f.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-primary p-4">
+                        <div className="flex-1 min-w-[220px]">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-semibold text-foreground">{f.questionAr}</p>
+                            <Badge variant="outline" className="border-border text-[10px] text-text-muted">{f.category}</Badge>
+                            <Badge className={f.isPublished ? "bg-[rgba(16,185,129,0.15)] text-emerald-500 text-[10px]" : "bg-[rgba(245,158,11,0.15)] text-amber-500 text-[10px]"}>{f.isPublished ? (isRTL ? "منشور" : "Published") : (isRTL ? "مسودة" : "Draft")}</Badge>
+                          </div>
+                          <p className="text-xs text-text-muted mt-1">{f.questionEn} · {f.viewCount} {isRTL ? "مشاهدة" : "views"} · #{f.sortOrder}</p>
+                        </div>
+                        <div className="flex gap-1">
+                          <Button size="sm" variant="ghost" className="h-8 text-xs text-accent-secondary" onClick={() => updateFaq.mutate({ id: f.id, isPublished: !f.isPublished })}>{f.isPublished ? (isRTL ? "إلغاء النشر" : "Unpublish") : (isRTL ? "نشر" : "Publish")}</Button>
+                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-accent-secondary" onClick={() => { setFaqForm({ id: f.id, questionEn: f.questionEn, questionAr: f.questionAr, answerEn: f.answerEn, answerAr: f.answerAr, category: f.category, sortOrder: f.sortOrder, isPublished: f.isPublished }); setShowFaqForm(true); }}><Pencil className="h-3.5 w-3.5" /></Button>
+                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive" onClick={() => { if (window.confirm(isRTL ? "حذف هذا السؤال؟" : "Delete this FAQ entry?")) deleteFaq.mutate({ id: f.id }); }}><Trash2 className="h-3.5 w-3.5" /></Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <Dialog open={showFaqForm} onOpenChange={setShowFaqForm}>
+                    <DialogContent className="max-w-2xl bg-[#0d1420] border-border max-h-[85vh] overflow-y-auto">
+                      <DialogHeader>
+                        <DialogTitle className="text-foreground">{faqForm.id ? (isRTL ? "تعديل السؤال" : "Edit FAQ") : (isRTL ? "سؤال جديد" : "New FAQ")}</DialogTitle>
+                      </DialogHeader>
+                      <div className="grid gap-3">
+                        <div className="grid gap-1.5"><Label className="text-text-muted">{isRTL ? "السؤال (عربي)" : "Question (AR)"}</Label><Input value={faqForm.questionAr} onChange={(e) => setFaqForm({ ...faqForm, questionAr: e.target.value })} className="bg-background border-border text-foreground" /></div>
+                        <div className="grid gap-1.5"><Label className="text-text-muted">{isRTL ? "السؤال (إنجليزي)" : "Question (EN)"}</Label><Input value={faqForm.questionEn} onChange={(e) => setFaqForm({ ...faqForm, questionEn: e.target.value })} dir="ltr" className="bg-background border-border text-foreground" /></div>
+                        <div className="grid gap-1.5"><Label className="text-text-muted">{isRTL ? "الإجابة (عربي)" : "Answer (AR)"}</Label><Textarea rows={4} value={faqForm.answerAr} onChange={(e) => setFaqForm({ ...faqForm, answerAr: e.target.value })} className="bg-background border-border text-foreground" /></div>
+                        <div className="grid gap-1.5"><Label className="text-text-muted">{isRTL ? "الإجابة (إنجليزي)" : "Answer (EN)"}</Label><Textarea rows={4} dir="ltr" value={faqForm.answerEn} onChange={(e) => setFaqForm({ ...faqForm, answerEn: e.target.value })} className="bg-background border-border text-foreground" /></div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="grid gap-1.5"><Label className="text-text-muted">{isRTL ? "التصنيف" : "Category"}</Label><Input value={faqForm.category} onChange={(e) => setFaqForm({ ...faqForm, category: e.target.value })} className="bg-background border-border text-foreground" /></div>
+                          <div className="grid gap-1.5"><Label className="text-text-muted">{isRTL ? "ترتيب العرض" : "Sort order"}</Label><Input type="number" value={faqForm.sortOrder} onChange={(e) => setFaqForm({ ...faqForm, sortOrder: Number(e.target.value) || 0 })} className="bg-background border-border text-foreground" /></div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Switch checked={faqForm.isPublished} onCheckedChange={(v) => setFaqForm({ ...faqForm, isPublished: v })} />
+                          <span className="text-sm text-text-muted">{isRTL ? "منشور للجمهور" : "Published to the public"}</span>
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button variant="ghost" onClick={() => setShowFaqForm(false)} className="text-text-muted">{t("cancel")}</Button>
+                        <Button
+                          disabled={!faqForm.questionAr.trim() || !faqForm.questionEn.trim() || !faqForm.answerAr.trim() || !faqForm.answerEn.trim() || upsertFaq.isPending || updateFaq.isPending}
+                          onClick={() => {
+                            const payload = { questionEn: faqForm.questionEn.trim(), questionAr: faqForm.questionAr.trim(), answerEn: faqForm.answerEn.trim(), answerAr: faqForm.answerAr.trim(), category: faqForm.category.trim() || "general", sortOrder: faqForm.sortOrder, isPublished: faqForm.isPublished };
+                            if (faqForm.id) updateFaq.mutate({ id: faqForm.id, ...payload });
+                            else upsertFaq.mutate(payload);
+                          }}
+                          className="bg-[#06b6d4] text-background"
+                        >
+                          <Save className="h-4 w-4 mr-1" />{t("save")}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              )}
+
+              {/* ═══════════════════ MODERATION ═══════════════════ */}
+              {activeTab === "moderation" && (
+                <div className="space-y-8">
+                  {/* Course reviews */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-lg font-bold text-foreground">{isRTL ? "مراجعات الكورسات" : "Course Reviews"}</h2>
+                      <span className="text-xs text-text-muted">{modReviews?.total ?? 0}</span>
+                    </div>
+                    {(modReviews?.items ?? []).length === 0 && <p className="text-sm text-text-muted py-6 text-center">{isRTL ? "لا توجد مراجعات" : "No reviews yet"}</p>}
+                    <div className="grid gap-3">
+                      {(modReviews?.items ?? []).map((r) => (
+                        <div key={r.id} className="flex flex-wrap items-start gap-3 rounded-xl border border-border bg-primary p-4">
+                          <div className="flex-1 min-w-[220px]">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-semibold text-foreground">{r.userName || r.userUsername || `#${r.userId}`}</span>
+                              <span className="flex" aria-label={`${r.rating}/5`}>
+                                {Array.from({ length: 5 }).map((_, i) => (
+                                  <Star key={i} className={`h-3.5 w-3.5 ${i < r.rating ? "fill-amber-400 text-amber-400" : "text-slate-600"}`} />
+                                ))}
+                              </span>
+                              <Badge className={r.isPublished ? "bg-[rgba(16,185,129,0.15)] text-emerald-500 text-[10px]" : "bg-[rgba(244,63,94,0.15)] text-rose-500 text-[10px]"}>{r.isPublished ? (isRTL ? "منشور" : "Published") : (isRTL ? "مخفي" : "Hidden")}</Badge>
+                            </div>
+                            <p className="text-xs text-text-muted mt-0.5">{isRTL ? (r.courseTitle || "—") : (r.courseTitle || "—")}</p>
+                            {r.comment && <p className="mt-1.5 text-sm text-text-muted line-clamp-3">{r.comment}</p>}
+                          </div>
+                          <Button size="sm" variant="ghost" className="h-8 text-xs text-accent-secondary" onClick={() => toggleReviewPublish.mutate({ id: r.id })}>{r.isPublished ? (isRTL ? "إخفاء" : "Hide") : (isRTL ? "إظهار" : "Show")}</Button>
+                        </div>
+                      ))}
+                    </div>
+                    {(modReviews?.total ?? 0) > 20 && (
+                      <div className="flex items-center justify-center gap-3 pt-1">
+                        <Button size="sm" variant="outline" disabled={modReviewPage <= 1} onClick={() => setModReviewPage((p) => Math.max(1, p - 1))} className="h-8 border-border"><ChevronRight className="h-3.5 w-3.5" />{isRTL ? "السابق" : "Prev"}</Button>
+                        <span className="text-xs text-text-muted">{modReviewPage}</span>
+                        <Button size="sm" variant="outline" disabled={modReviewPage * 20 >= (modReviews?.total ?? 0)} onClick={() => setModReviewPage((p) => p + 1)} className="h-8 border-border">{isRTL ? "التالي" : "Next"}<ChevronLeft className="h-3.5 w-3.5" /></Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Lesson comments */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-lg font-bold text-foreground">{isRTL ? "تعليقات الدروس" : "Lesson Comments"}</h2>
+                      <span className="text-xs text-text-muted">{modComments?.total ?? 0}</span>
+                    </div>
+                    {(modComments?.items ?? []).length === 0 && <p className="text-sm text-text-muted py-6 text-center">{isRTL ? "لا توجد تعليقات" : "No comments yet"}</p>}
+                    <div className="grid gap-3">
+                      {(modComments?.items ?? []).map((c) => (
+                        <div key={c.id} className="flex flex-wrap items-start gap-3 rounded-xl border border-border bg-primary p-4">
+                          <div className="flex-1 min-w-[220px]">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-semibold text-foreground">{c.name || c.username || `#${c.userId}`}</span>
+                              {c.isHidden && <Badge className="bg-[rgba(244,63,94,0.15)] text-rose-500 text-[10px]">{isRTL ? "مخفي" : "Hidden"}</Badge>}
+                              {c.isPinned && <Badge className="bg-[rgba(6,182,212,0.15)] text-cyan-400 text-[10px]">{isRTL ? "مثبت" : "Pinned"}</Badge>}
+                              <span className="text-xs text-text-faint">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ""}</span>
+                            </div>
+                            <p className="text-xs text-text-muted mt-0.5">{isRTL ? (c.courseTitle || "—") + " ← " + (c.lessonTitle || "—") : `${c.lessonTitleEn || c.lessonTitle || "—"}`}</p>
+                            <p className="mt-1.5 text-sm text-text-muted line-clamp-3">{c.content}</p>
+                          </div>
+                          <div className="flex gap-1">
+                            <Button size="sm" variant="ghost" className="h-8 text-xs text-accent-secondary" onClick={() => toggleCommentHide.mutate({ id: c.id, isHidden: !c.isHidden })}>{c.isHidden ? (isRTL ? "إظهار" : "Show") : (isRTL ? "إخفاء" : "Hide")}</Button>
+                            <Button size="sm" variant="ghost" className="h-8 text-xs text-accent-secondary" onClick={() => toggleCommentPin.mutate({ id: c.id, isPinned: !c.isPinned })}>{c.isPinned ? (isRTL ? "إلغاء التثبيت" : "Unpin") : (isRTL ? "تثبيت" : "Pin")}</Button>
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive" onClick={() => { if (window.confirm(isRTL ? "حذف هذا التعليق؟" : "Delete this comment?")) deleteComment.mutate({ id: c.id }); }}><Trash2 className="h-3.5 w-3.5" /></Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {(modComments?.total ?? 0) > 20 && (
+                      <div className="flex items-center justify-center gap-3 pt-1">
+                        <Button size="sm" variant="outline" disabled={modCommentPage <= 1} onClick={() => setModCommentPage((p) => Math.max(1, p - 1))} className="h-8 border-border"><ChevronRight className="h-3.5 w-3.5" />{isRTL ? "السابق" : "Prev"}</Button>
+                        <span className="text-xs text-text-muted">{modCommentPage}</span>
+                        <Button size="sm" variant="outline" disabled={modCommentPage * 20 >= (modComments?.total ?? 0)} onClick={() => setModCommentPage((p) => p + 1)} className="h-8 border-border">{isRTL ? "التالي" : "Next"}<ChevronLeft className="h-3.5 w-3.5" /></Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ═══════════════════ AUDIT LOG ═══════════════════ */}
+              {activeTab === "audit" && (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-lg font-bold text-foreground">{isRTL ? "سجل العمليات الإدارية" : "Admin Audit Log"}</h2>
+                      <p className="text-xs text-text-muted mt-1">{isRTL ? "كل عملية إدارية تُسجَّل تلقائياً: من فعل ماذا ومتى ومن أي IP — سجل للقراءة فقط" : "Every admin action is recorded automatically: who, what, when, from where — append-only"}</p>
+                    </div>
+                    <Badge variant="outline" className="border-border text-xs text-text-muted">{isRTL ? `إجمالي: ${auditData?.total ?? 0}` : `Total: ${auditData?.total ?? 0}`}</Badge>
+                  </div>
+                  {(auditData?.items ?? []).length === 0 && (
+                    <p className="text-sm text-text-muted text-center py-10">{isRTL ? "السجل فارغ — ستظهر العمليات هنا تلقائياً" : "Empty — admin actions will appear here automatically"}</p>
+                  )}
+                  <div className="grid gap-2">
+                    {(auditData?.items ?? []).map((row) => (
+                      <div key={row.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-primary px-3 py-2 text-xs">
+                        <span className="text-text-faint shrink-0">{row.createdAt ? new Date(row.createdAt).toLocaleString() : "—"}</span>
+                        <Badge variant="outline" className="border-border text-[10px] text-accent-secondary shrink-0">{row.actorUsername}</Badge>
+                        <span dir="ltr" className="font-mono text-[11px] text-foreground shrink-0">{row.procedure}</span>
+                        <Badge className={row.status === "ok" ? "bg-[rgba(16,185,129,0.15)] text-emerald-500 text-[10px]" : "bg-[rgba(244,63,94,0.15)] text-rose-500 text-[10px]"}>{row.status}</Badge>
+                        <Badge variant="outline" className="border-border text-[10px] text-text-faint shrink-0">{row.kind}</Badge>
+                        {row.inputSummary && <span dir="ltr" className="font-mono text-[10px] text-text-faint truncate flex-1 min-w-[140px]" title={row.inputSummary}>{row.inputSummary}</span>}
+                        <span dir="ltr" className="text-[10px] text-text-faint shrink-0 ms-auto">{row.ip}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {(auditData?.total ?? 0) > 50 && (
+                    <div className="flex items-center justify-center gap-3">
+                      <Button size="sm" variant="outline" disabled={auditPage <= 1} onClick={() => setAuditPage((p) => Math.max(1, p - 1))} className="h-8 border-border"><ChevronRight className="h-3.5 w-3.5" />{isRTL ? "السابق" : "Prev"}</Button>
+                      <span className="text-xs text-text-muted">{auditPage}</span>
+                      <Button size="sm" variant="outline" disabled={auditPage * 50 >= (auditData?.total ?? 0)} onClick={() => setAuditPage((p) => p + 1)} className="h-8 border-border">{isRTL ? "التالي" : "Next"}<ChevronLeft className="h-3.5 w-3.5" /></Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {activeTab === "tickets" && (
                 <div className="space-y-6">
                   <div>

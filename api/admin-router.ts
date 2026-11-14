@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { createRouter, adminMutation } from "./middleware";
+import { createRouter, adminMutation, adminQuery } from "./middleware";
+import { desc, count } from "drizzle-orm";
+import { getDb } from "./queries/connection";
+import { adminAuditLog } from "@db/schema";
 import { adminUsersProcedures } from "./admin-users";
 import { adminTicketsProcedures } from "./admin-tickets";
 import { adminCoursesProcedures } from "./admin-courses";
@@ -40,6 +43,33 @@ export const adminRouter = createRouter({
   ...quizAdminProcedures,
   ...enrollmentAdminProcedures,
   ...adminTestimonialsProcedures,
+
+  // ─── Admin audit trail reader (Audit tab) ───
+  // Latest-first, paginated view of every admin.* call recorded by the
+  // auditAdmin middleware. Read-only — the trail is append-only by design.
+  auditLog: adminQuery
+    .input(
+      z.object({
+        page: z.number().int().min(1).default(1),
+        limit: z.number().int().min(1).max(100).default(50),
+      }).optional()
+    )
+    .query(async ({ input }) => {
+      const db = getDb();
+      const page = input?.page ?? 1;
+      const limit = input?.limit ?? 50;
+      const offset = (page - 1) * limit;
+      const [[{ total }], items] = await Promise.all([
+        db.select({ total: count() }).from(adminAuditLog),
+        db
+          .select()
+          .from(adminAuditLog)
+          .orderBy(desc(adminAuditLog.createdAt), desc(adminAuditLog.id))
+          .limit(limit)
+          .offset(offset),
+      ]);
+      return { items, total: total ?? 0 };
+    }),
 
   // ─── Manual broadcast (Admin → Notifications tab) ───
   // Stores ONE broadcast row — every registered user sees it in their bell.

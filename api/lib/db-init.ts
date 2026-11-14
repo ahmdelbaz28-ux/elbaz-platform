@@ -143,6 +143,28 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
           description: "engine-level replay guard: UNIQUE(userId, metadata.idempotencyKey)",
           run: (c) => migratePaymentsIdempotencyUnique(c),
         },
+        {
+          id: "v17-admin-audit-log",
+          description: "admin accountability: every admin.* call recorded (actor/action/status/input)",
+          run: async (c) => {
+            await c.execute(
+              `CREATE TABLE IF NOT EXISTS \`adminAuditLog\` (
+                 \`id\`            BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+                 \`actorId\`       BIGINT UNSIGNED  NULL,
+                 \`actorUsername\` VARCHAR(100)     NOT NULL,
+                 \`procedure\`     VARCHAR(200)     NOT NULL,
+                 \`kind\`          VARCHAR(20)      NOT NULL DEFAULT 'query',
+                 \`status\`        VARCHAR(20)      NOT NULL DEFAULT 'ok',
+                 \`inputSummary\`  TEXT             NULL,
+                 \`ip\`            VARCHAR(64)      NULL,
+                 \`createdAt\`     TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                 PRIMARY KEY (\`id\`),
+                 KEY \`audit_created_idx\` (\`createdAt\`),
+                 KEY \`audit_actor_idx\` (\`actorId\`)
+               ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+            );
+          },
+        },
       ];
       await runMigrations(conn, MIGRATIONS);
 

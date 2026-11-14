@@ -3,8 +3,8 @@
  */
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { desc, eq, sql, and } from "drizzle-orm";
-import { createRouter, publicQuery, authMutation, adminMutation } from "./middleware";
+import { desc, eq, sql, and, count } from "drizzle-orm";
+import { createRouter, publicQuery, authMutation, adminMutation, adminQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { lessonComments, commentLikes, users, lessons, courses, enrollments } from "@db/schema";
 import { activeEnrollmentWhere } from "./lib/enrollment.js";
@@ -163,6 +163,50 @@ export const commentsRouter = createRouter({
         .set({ isPinned: input.isPinned })
         .where(eq(lessonComments.id, input.id));
       return { success: true };
+    }),
+
+  // Admin moderation list — ALL lesson comments (hidden included) across the
+  // platform, newest first, with lesson/course/user context. The public list
+  // filters isHidden itself; this is the dashboard's control surface.
+  adminList: adminQuery
+    .input(
+      z.object({
+        page: z.number().int().min(1).default(1),
+        limit: z.number().int().min(1).max(100).default(30),
+      }).optional()
+    )
+    .query(async ({ input }) => {
+      const db = getDb();
+      const page = input?.page ?? 1;
+      const limit = input?.limit ?? 30;
+      const offset = (page - 1) * limit;
+      const [[{ total }], items] = await Promise.all([
+        db.select({ total: count() }).from(lessonComments),
+        db
+          .select({
+            id: lessonComments.id,
+            lessonId: lessonComments.lessonId,
+            userId: lessonComments.userId,
+            content: lessonComments.content,
+            isPinned: lessonComments.isPinned,
+            isHidden: lessonComments.isHidden,
+            likeCount: lessonComments.likeCount,
+            createdAt: lessonComments.createdAt,
+            username: users.username,
+            name: users.name,
+            lessonTitle: lessons.titleAr,
+            lessonTitleEn: lessons.titleEn,
+            courseTitle: courses.titleAr,
+          })
+          .from(lessonComments)
+          .innerJoin(users, eq(lessonComments.userId, users.id))
+          .innerJoin(lessons, eq(lessonComments.lessonId, lessons.id))
+          .innerJoin(courses, eq(lessons.courseId, courses.id))
+          .orderBy(desc(lessonComments.createdAt))
+          .limit(limit)
+          .offset(offset),
+      ]);
+      return { items, total: total ?? 0 };
     }),
 
   hide: adminMutation

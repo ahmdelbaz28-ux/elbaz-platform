@@ -408,3 +408,32 @@ export const emailDripLog = mysqlTable(
 );
 
 export type EmailDripLogRow = typeof emailDripLog.$inferSelect;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin Audit Log — accountability for EVERY admin.* tRPC procedure call
+// ─────────────────────────────────────────────────────────────────────────────
+// Written through the auditAdmin middleware (api/middleware.ts) — one row per
+// admin call: who, what procedure, ok/error, redacted input summary, IP.
+// NO foreign key on purpose: an audit trail must survive user deletion.
+// Sensitive input values (password/token/secret/key/hash) are redacted by the
+// writer before they ever reach this table.
+export const adminAuditLog = mysqlTable(
+  "adminAuditLog",
+  {
+    id: bigint("id", { mode: "number", unsigned: true }).primaryKey().autoincrement(),
+    actorId: bigint("actorId", { mode: "number", unsigned: true }),
+    actorUsername: varchar("actorUsername", { length: 100 }).notNull(),
+    procedure: varchar("procedure", { length: 200 }).notNull(),
+    kind: varchar("kind", { length: 20 }).notNull().default("query"),
+    status: varchar("status", { length: 20 }).notNull().default("ok"),
+    inputSummary: text("inputSummary"),
+    ip: varchar("ip", { length: 64 }),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("audit_created_idx").on(table.createdAt),
+    index("audit_actor_idx").on(table.actorId),
+  ]
+);
+
+export type AdminAuditLogRow = typeof adminAuditLog.$inferSelect;

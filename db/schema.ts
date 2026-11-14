@@ -71,6 +71,7 @@ export {
   notifications,
   pushSubscriptions,
   emailDripLog,
+  adminAuditLog,
   // Shared types
   type FaqEntry,
   type ReferenceFile,
@@ -80,6 +81,7 @@ export {
   type NotificationRow,
   type PushSubscriptionRow,
   type EmailDripLogRow,
+  type AdminAuditLogRow,
 } from "./schema/shared.js";
 
 export {

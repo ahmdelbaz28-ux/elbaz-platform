@@ -146,6 +146,11 @@ export const reviewRouter = createRouter({
   // 🔒 SECURITY FIX (Task ID 6): Changed authQuery → adminQuery.
   // Previously any logged-in user could list all reviews across all courses
   // (information disclosure of user names + review content + moderation status).
+  // ✅ MODERATION FIX (dashboard audit tour 2026-11-15): the list previously
+  // filtered isPublished=true — a review hidden by a moderator VANISHED from
+  // the admin list, so it could never be found and re-published again. The
+  // admin moderation list shows ALL reviews (published AND hidden) with the
+  // flag surfaced so the UI can offer the correct toggle action.
   adminList: adminQuery
     .input(z.object({ page: z.number().int().min(1).default(1), limit: z.number().int().min(1).max(100).default(20), courseId: z.number().optional() }))
     .query(async ({ input }) => {
@@ -153,7 +158,7 @@ export const reviewRouter = createRouter({
       const page = input.page;
       const limit = input.limit;
       const offset = (page - 1) * limit;
-      const conditions = [eq(reviews.isPublished, true)];
+      const conditions = [];
       if (input.courseId) conditions.push(eq(reviews.courseId, input.courseId));
 
       const [[{ total }], items] = await Promise.all([
