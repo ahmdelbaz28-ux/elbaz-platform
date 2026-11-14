@@ -514,22 +514,6 @@ body {
   -webkit-backdrop-filter: blur(20px);
 }
 
-/* ── WhatsApp FAB animations ── */
-.whatsapp-fab {
-  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
-}
-.whatsapp-fab:active {
-  transform: scale(0.92);
-}
-.whatsapp-pulse {
-  animation: whatsappPulse 2s ease-out infinite;
-  pointer-events: none;
-}
-@keyframes whatsappPulse {
-  0% { transform: scale(1); opacity: 0.6; }
-  100% { transform: scale(1.6); opacity: 0; }
-}
-
 /* ── Notification toast entrance/exit ── */
 .notification-toast {
   will-change: transform, opacity;
@@ -679,11 +663,11 @@ button, a, [role="button"] {
 }
 
 /* ── Floating action buttons — compact bottom-corner stack ───────────
-   All three FABs (WhatsApp, chatbot, scroll-top) form ONE tidy vertical
-   column hugging the bottom edge: smaller on mobile (40px) so they cover
+   The two FABs (chatbot, scroll-top) form ONE tidy vertical column
+   hugging the bottom edge: smaller on mobile (40px) so they cover
    minimal reading space, and thumb-reachable. Step = 40px btn + 10px gap
    = 3.125rem. Desktop (md+) uses full-size buttons in the real corners:
-   WhatsApp + scroll-top stacked bottom-left, chatbot bottom-right. */
+   scroll-top bottom-left, chatbot bottom-right. */
 :root {
   --fab-edge: max(env(safe-area-inset-bottom, 0px) + 0.75rem, 0.75rem);
 }
@@ -692,34 +676,21 @@ button, a, [role="button"] {
 .scroll-top-fab {
   right: 0.75rem;
   left: auto;
-  bottom: calc(var(--fab-edge) + 6.25rem);
+  bottom: calc(var(--fab-edge) + 3.125rem);
 }
 @media (min-width: 768px) {
   .scroll-top-fab {
-    bottom: calc(max(env(safe-area-inset-bottom, 0px) + 1.5rem, 1.5rem) + 4.25rem);
-    left: 1.5rem;
-    right: auto;
-  }
-}
-
-/* WhatsApp: bottom-most on mobile (primary contact, best reach). */
-.whatsapp-fab-wrap {
-  right: 0.75rem;
-  bottom: var(--fab-edge);
-}
-@media (min-width: 768px) {
-  .whatsapp-fab-wrap {
-    right: auto;
-    left: 1.5rem;
     bottom: max(env(safe-area-inset-bottom, 0px) + 1.5rem, 1.5rem);
+    left: 1.5rem;
+    right: auto;
   }
 }
 
-/* Chatbot FAB: middle of the mobile column, bottom-right corner on md+. */
+/* Chatbot FAB: bottom-most on mobile (primary assistant, best reach). */
 .chatbot-fab {
   overflow: visible;
   right: 0.75rem;
-  bottom: calc(var(--fab-edge) + 3.125rem);
+  bottom: var(--fab-edge);
 }
 @media (min-width: 768px) {
   .chatbot-fab {
@@ -731,7 +702,7 @@ button, a, [role="button"] {
 /* Minimized chat bubble lands exactly in the chatbot FAB slot. */
 .chatbot-min {
   right: 0.75rem;
-  bottom: calc(var(--fab-edge) + 3.125rem);
+  bottom: var(--fab-edge);
 }
 @media (min-width: 768px) {
   .chatbot-min {
@@ -744,7 +715,6 @@ button, a, [role="button"] {
    they are 40px on mobile by design (still comfortable tap targets). */
 @media (pointer: coarse) {
   button.chatbot-fab,
-  button.whatsapp-fab,
   button.scroll-top-fab {
     min-height: 0;
     min-width: 0;
@@ -773,68 +743,14 @@ button, a, [role="button"] {
 /* ── YouTube-style scroll behavior (useFabScrollVisibility) ─────────────
    While the user scrolls DOWN the FABs dip below the screen edge so they
    never cover the text being read; scrolling UP or pausing reveals them
-   again. The 130% offset guarantees the button + pulse ring fully clear
-   the edge. !important beats the WhatsApp entrance keyframes (both fills). */
+   again. The 130% offset guarantees the button fully clears the edge. */
 .fab-scroll-hidden {
   transform: translateY(calc(130% + 2rem)) scale(0.8) !important;
   opacity: 0 !important;
   pointer-events: none !important;
 }
-.whatsapp-fab-wrap,
 .scroll-top-fab {
   transition: transform 0.3s ease-out, opacity 0.3s ease-out;
-}
-
-/* Gentle 3s entrance for the WhatsApp FAB — let the page settle first,
-   then glide the button in with a soft overshoot to catch the eye. */
-@keyframes whatsapp-fab-enter {
-  0% {
-    transform: translateY(1.5rem) scale(0.5);
-    opacity: 0;
-  }
-  60% {
-    transform: translateY(-0.25rem) scale(1.06);
-    opacity: 1;
-  }
-  100% {
-    transform: translateY(0) scale(1);
-    opacity: 1;
-  }
-}
-.whatsapp-fab-enter {
-  animation: whatsapp-fab-enter 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-@media (prefers-reduced-motion: reduce) {
-  .whatsapp-fab-enter {
-    animation: none;
-  }
-}
-
-/* Proactive WhatsApp welcome bubble — pops in shortly after the FAB
-   entrance with the custom greeting, anchored to the button. */
-@keyframes wa-welcome-in {
-  0% {
-    opacity: 0;
-    transform: translateY(0.5rem) scale(0.92);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-.wa-welcome-bubble {
-  animation: wa-welcome-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
-  transform-origin: bottom right;
-}
-@media (min-width: 768px) {
-  .wa-welcome-bubble {
-    transform-origin: bottom left;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .wa-welcome-bubble {
-    animation: none;
-  }
 }
 
 /* ── Mobile fullscreen chat (owner request) ──────────────────────────────
@@ -898,7 +814,6 @@ button, a, [role="button"] {
   .animate-float-slow,
   .animate-float-icon,
   .animate-pulse-glow,
-  .whatsapp-pulse,
   .logo-3d-container {
     animation: none !important;
   }
@@ -1461,12 +1376,6 @@ img[loading="lazy"] {
 /* ── Software logo background in light mode ── */
 [data-theme="light"] .bg-\[\#1a2233\] {
   background-color: #f1f5f9 !important;
-}
-
-/* ── WhatsApp FAB in light mode ── */
-[data-theme="light"] .whatsapp-fab {
-  background-color: #25D366 !important;
-  box-shadow: 0 4px 14px rgba(37, 211, 102, 0.3) !important;
 }
 
 /* ── INVERTED: Loading spinner in light mode ── */

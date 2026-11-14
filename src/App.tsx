@@ -4,7 +4,6 @@ import { MotionConfig } from "framer-motion";
 import { Toaster } from "sonner";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import WhatsAppButton from "@/components/WhatsAppButton";
 import CookieConsent from "@/components/CookieConsent";
 import ScrollToTop from "@/components/ScrollToTop";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -221,7 +220,6 @@ function Layout({ children }: { readonly children: React.ReactNode }) {
       <ScrollToTop />
       <main id="main-content" tabIndex={-1}><Suspense fallback={<PageLoader />}>{children}</Suspense></main>
       {!isAuthPage && !isAdminPage && <Footer />}
-      {!isAdminPage && <WhatsAppButton />}
       {/* 🚀 PERFORMANCE: ChatBot wrapped in Suspense — downloaded only during idle time */}
       {!isAdminPage && <Suspense fallback={null}><DeferredChatBot /></Suspense>}
       <CookieConsent />

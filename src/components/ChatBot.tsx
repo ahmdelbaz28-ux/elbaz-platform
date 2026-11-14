@@ -2042,7 +2042,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
             )}
           </div>
           {/* Pulse ring — only when there are unread messages: a constant
-              ping next to the WhatsApp pulse was visual noise (declutter). */}
+              ping on every idle FAB was visual noise (declutter). */}
           {unreadCount > 0 && (
             <span className="absolute inset-0 rounded-full bg-cyan-400/30 animate-ping" />
           )}

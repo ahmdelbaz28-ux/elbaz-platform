@@ -58,7 +58,6 @@ export default {
         "hero-float": "heroFloat 4s ease-in-out infinite",
         "hero-glow-pulse": "heroGlowPulse 3s ease-in-out infinite",
         "hero-shimmer": "heroShimmer 4s ease-in-out infinite",
-        "whatsapp-pulse": "whatsappPulse 2s ease-out infinite",
         "notification-slide-in": "notificationSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards",
         "float-up": "floatUp 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards",
         "float-down": "floatDown 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards",
@@ -103,10 +102,6 @@ export default {
           "0%": { transform: "translateX(-100%)" },
           "50%": { transform: "translateX(100%)" },
           "100%": { transform: "translateX(-100%)" },
-        },
-        whatsappPulse: {
-          "0%": { transform: "scale(1)", opacity: "0.6" },
-          "100%": { transform: "scale(1.6)", opacity: "0" },
         },
         notificationSlideIn: {
           from: { transform: "translateY(12px) scale(0.95)", opacity: "0" },

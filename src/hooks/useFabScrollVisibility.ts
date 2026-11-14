@@ -18,7 +18,7 @@ import { useEffect, useState } from "react";
  * the `.fab-scroll-hidden` CSS class when this is true (see index.css).
  *
  * @param disabled when true the hook always reports visible — used while the
- *        WhatsApp tooltip or the chat window is open (never hide an open UI).
+ *        chat window is open (never hide an open UI).
  */
 const SHOW_NEAR_TOP_PX = 120; // always visible near the top of the page
 const STOP_REVEAL_MS = 220; // reveal debounce once scrolling stops
