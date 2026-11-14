@@ -17,7 +17,7 @@ TOKEN_V2 = "eyJhbGciOiJIUzI1NiJ9.v2.renewed.sig"   # token minted by renewal
 
 # behaviour toggles (set by the test through /__control)
 mode = {"renew": "off"}   # "off" | "cookie" | "header"
-state = {"logged_out": False}
+state = {"logged_out": False, "auth_me_calls": 0}
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -57,7 +57,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             q = urllib.parse.parse_qs(parsed.query)
             if "renew" in q:
                 mode["renew"] = q["renew"][0]
-            self._send(200, {"mode": mode})
+            if "logged_out" in q:
+                state["logged_out"] = q["logged_out"][0] == "1"
+            if "reset_calls" in q:
+                state["auth_me_calls"] = 0
+            self._send(200, {"mode": mode, "auth_me_calls": state["auth_me_calls"]})
             return
 
         if path in ("/api/version", "/api/env", "/api/health"):
@@ -70,6 +74,37 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         name = path.split("/api/trpc/")[1].split("?")[0]
         if name == "auth.me":
+            state["auth_me_calls"] += 1
+            # ✅ FAITHFUL GUEST CONTRACT (2026-11-14): production extractAuthToken
+            # requires a non-empty elbaz_auth cookie value OR a Bearer header —
+            # anything else is a GUEST and authedQuery answers 401 UNAUTHORIZED.
+            # The mock used to answer 200 for everyone, which masked the guest
+            # path (W8). Mirror the production rule exactly.
+            raw_cookie = self.headers.get("cookie") or ""
+            has_cookie_session = any(
+                p.strip().startswith("elbaz_auth=") and p.strip() != "elbaz_auth="
+                for p in raw_cookie.split(";")
+            )
+            has_bearer_session = bool(
+                (self.headers.get("authorization") or "").replace("Bearer ", "").strip()
+                or (self.headers.get("x-auth-token") or "").strip()
+            )
+            if not (has_cookie_session or has_bearer_session):
+                body = json.dumps({
+                    "error": {"json": {
+                        "message": "UNAUTHORIZED",
+                        "code": -32001,
+                        "data": {"code": "UNAUTHORIZED", "httpStatus": 401, "path": "auth.me"},
+                    }}
+                }).encode()
+                self.send_response(401)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Credentials", "true")
+                self.end_headers()
+                self.wfile.write(body)
+                return
             # Production contract: auth.logout REVOKES the session server-side,
             # so an auth.me racing the logout (logout onSuccess invalidate())
             # comes back 401 UNAUTHORIZED — no user, and CRUCIALLY no
@@ -99,7 +134,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 # x-renewed-token header (native Bearer clients).
                 headers.append(("X-Renewed-Token", TOKEN_V2))
                 headers.append(("Set-Cookie", f"elbaz_auth={TOKEN_V2}; Max-Age=2592000; Path=/; SameSite=None; Secure; HttpOnly"))
-                headers.append(("Set-Cookie", "elbaz_auth_flag=1; Max-Age=2592000; Path=/; SameSite=None; Secure"))
+            # ✅ ROOT-CURE (2026-11-14): auth.me SUCCESS now ALWAYS re-sets the
+            # JS-readable flag cookie (production me() does this unconditionally
+            # — the flag can never drift apart from the live session again).
+            headers.append(("Set-Cookie", "elbaz_auth_flag=1; Max-Age=2592000; Path=/; SameSite=None; Secure"))
             self._send(200, {"result": {"data": {"json": USER}}}, headers)
             return
 

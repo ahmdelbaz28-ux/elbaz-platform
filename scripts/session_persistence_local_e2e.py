@@ -30,6 +30,19 @@ W6  Explicit logout         : MOBILE flow — hamburger drawer ("Toggle menu")
                               → plain "Sign Out" button (the desktop
                               aria-label="User menu" dropdown does not render
                               below the md breakpoint) → token cleared.
+
+✅ ROOT-CURE additions (2026-11-14, "Remember this device still asks for
+login" — three chained server/client defects):
+W7  Zombie-HttpOnly heal    : context holds ONLY the HttpOnly session cookie
+                              (the JS-readable flag cookie is gone — privacy
+                              tools / past false-401s). The boot probe fires
+                              ONCE, the server restores the session and re-sets
+                              the flag → logged in with NO login page.
+W8  Guest probe discipline  : no cookies at all → exactly ONE auth.me call
+                              (the probe), lands on /login, NO loop
+                              (call count stays 1 after another wait wave).
+W9  Dead zombie cookie      : HttpOnly cookie present but server-revoked →
+                              probe gets 401 exactly once → /login, count 1.
 """
 import http.client, json, os, re, subprocess, sys, threading, http.server, socketserver, urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -38,8 +51,8 @@ from playwright.sync_api import sync_playwright
 
 PORT = 4173
 BASE = f"http://127.0.0.1:{PORT}"
-DIST = "/home/z/my-project/work/elbaz-platform/dist/public"
-OUT = "/home/z/my-project/work/elbaz-platform/scripts/shots_session"
+DIST = "/home/z/my-project/elbaz-platform/dist/public"
+OUT = "/home/z/my-project/elbaz-platform/scripts/shots_session"
 
 # Shared literals (SonarCloud S1192: no duplicated string literals).
 JSON_CT = "application/json"
@@ -146,6 +159,15 @@ _mock = start_mock_server()   # faithful tRPC mock (multi Set-Cookie / headers)
 
 def set_renew(on: bool):
     urllib.request.urlopen(f"{MOCK_BASE}/__control?renew={'on' if on else 'off'}").read()
+
+def set_logged_out(v: bool):
+    urllib.request.urlopen(f"{MOCK_BASE}/__control?logged_out={'1' if v else '0'}").read()
+
+def reset_me_calls():
+    urllib.request.urlopen(f"{MOCK_BASE}/__control?reset_calls=1").read()
+
+def me_calls() -> int:
+    return json.loads(urllib.request.urlopen(f"{MOCK_BASE}/__control").read())["auth_me_calls"]
 
 fails = []
 def check(name, cond, detail=""):
@@ -357,6 +379,75 @@ with sync_playwright() as p:
         pass
     ctx.close()
 
+    # ═══ W7: zombie-HttpOnly heal — flag cookie gone, real session alive ══
+    # ✅ ROOT-CURE: privacy tools / a past false-401 can clear the JS-readable
+    # flag while the HttpOnly session cookie survives. The old client NEVER
+    # asked the server again → permanent login wall. The boot probe now fires
+    # ONCE, the server restores the session and re-sets the flag.
+    set_renew(False)
+    set_logged_out(False)
+    ctx = browser.new_context(viewport={"width": 1280, "height": 900}, base_url=BASE)
+    ctx.add_init_script(CONSENT_SHIM)
+    ctx.add_cookies([
+        # ONLY the HttpOnly session cookie — NO elbaz_auth_flag
+        {"name": "elbaz_auth", "value": TOKEN_V1, "url": BASE, "httpOnly": True},
+    ])
+    pg = ctx.new_page()
+    proxy_trpc(pg)
+    reset_me_calls()
+    open_app(pg)
+    check("W7 zombie session HEALED — logged in without login page", logged_in(pg), pg.url)
+    check("W7 probe restored the flag cookie (self-healing)",
+          AUTH_FLAG_COOKIE in (pg.evaluate(GET_COOKIES_JS) or ""),
+          pg.evaluate(GET_COOKIES_JS))
+    check("W7 probe fired exactly once (no loop)", me_calls() == 1, f"auth.me calls={me_calls()}")
+    # ── and the heal persists across an app restart (flag now present) ──
+    pg2 = ctx.new_page()
+    proxy_trpc(pg2)
+    open_app(pg2)
+    check("W7 heal persists across restart (flag-gated path)", logged_in(pg2), pg2.url)
+    try:
+        pg.screenshot(path=f"{OUT}/W7_zombie_heal.png")
+    except Exception:
+        pass
+    ctx.close()
+
+    # ═══ W8: guest probe discipline — exactly ONE probe, then /login ═════
+    set_logged_out(False)
+    ctx = browser.new_context(viewport={"width": 1280, "height": 900}, base_url=BASE)
+    ctx.add_init_script(CONSENT_SHIM)
+    pg = ctx.new_page()
+    proxy_trpc(pg)
+    reset_me_calls()
+    open_app(pg)
+    check("W8 guest lands on /login", LOGIN in pg.url, pg.url)
+    check("W8 exactly ONE auth.me probe (no storm)", me_calls() == 1, f"auth.me calls={me_calls()}")
+    pg.wait_for_timeout(2500)
+    check("W8 no re-probe after settle (still 1 call)", me_calls() == 1, f"auth.me calls={me_calls()}")
+    ctx.close()
+
+    # ═══ W9: dead zombie cookie — probe rejected exactly once ════════════
+    set_logged_out(True)   # server-side session revoked
+    ctx = browser.new_context(viewport={"width": 1280, "height": 900}, base_url=BASE)
+    ctx.add_init_script(CONSENT_SHIM)
+    ctx.add_cookies([
+        {"name": "elbaz_auth", "value": TOKEN_V1, "url": BASE, "httpOnly": True},
+    ])
+    pg = ctx.new_page()
+    proxy_trpc(pg)
+    reset_me_calls()
+    open_app(pg)
+    check("W9 revoked zombie session → login page", LOGIN in pg.url, pg.url)
+    check("W9 probe fired exactly once (no loop on dead cookie)", me_calls() == 1, f"auth.me calls={me_calls()}")
+    pg.wait_for_timeout(2500)
+    check("W9 still no re-probe after settle", me_calls() == 1, f"auth.me calls={me_calls()}")
+    try:
+        pg.screenshot(path=f"{OUT}/W9_dead_zombie.png")
+    except Exception:
+        pass
+    ctx.close()
+    set_logged_out(False)
+
     browser.close()
 
 print("\n=== RESULT ===")
@@ -364,4 +455,4 @@ if fails:
     print("FAILURES:")
     for f in fails: print(" -", f)
     sys.exit(1)
-print("ALL SESSION-PERSISTENCE CHECKS PASSED (W1–W6) ✓")
+print("ALL SESSION-PERSISTENCE CHECKS PASSED (W1–W9) ✓")

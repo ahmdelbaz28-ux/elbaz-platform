@@ -3,7 +3,45 @@ import { useCallback, useMemo, useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { identifyUser } from "@/lib/clarity";
-import { hasStoredAuth, removeStoredToken, clearAuthFlagCookie } from "@/lib/auth-storage";
+import {
+  hasStoredAuth,
+  removeStoredToken,
+  clearAuthFlagCookie,
+  markSessionProbeDone,
+  isSessionProbeDone,
+  isNativePlatform,
+} from "@/lib/auth-storage";
+
+/**
+ * ✅ ROOT-CURE (remember-device): the boot probe phase, SHARED by every
+ * useAuth instance in the tab (ProtectedRoute, Navbar, Dashboard, ChatBot…).
+ *
+ * Why module-level: several components call useAuth() simultaneously. If the
+ * probe decision were per-instance state, an instance mounting a moment AFTER
+ * the probe started would see "probe attempted" and conclude "no session" —
+ * its ProtectedRoute would bounce to /login WHILE another instance was still
+ * restoring the session (the exact race the first cut hit in W7).
+ *
+ * Decision table (web only):
+ *   flag cookie present        → "idle"   (normal flag-gated flow)
+ *   native platform            → "idle"   (localStorage token, own renewal)
+ *   flag missing, no mark      → "active" (join/lead the ONE shared probe)
+ *   flag missing, mark present → "done"   (probe already concluded — dead end)
+ *
+ * The mark is written ONLY when the probe CONCLUDES (success or UNAUTHORIZED
+ * rejection), never when it starts — that is what lets late joiners mount
+ * into "active" and ride the same shared auth.me fetch. React-Query
+ * deduplicates the shared key, so all instances observe ONE request; the
+ * conclusion effects below (success → done, 401 → done) write the mark.
+ */
+type ProbePhase = "idle" | "active" | "done";
+
+function computeProbePhase(): ProbePhase {
+  if (hasStoredAuth()) return "idle";
+  if (isNativePlatform()) return "idle";
+  if (isSessionProbeDone()) return "done";
+  return "active";
+}
 
 
 export function useAuth() {
@@ -13,6 +51,11 @@ export function useAuth() {
   
   const [hasMounted, setHasMounted] = useState(false);
   const [storedAuth, setStoredAuth] = useState(false);
+  // ✅ ROOT-CURE (remember-device): shared boot probe — see computeProbePhase().
+  // While ANY instance is in "active", the auth.me query stays enabled for ALL
+  // of them and protected routes keep showing the spinner — never a login-page
+  // flash, never a mid-probe bounce.
+  const [probePhase, setProbePhase] = useState<ProbePhase>(computeProbePhase);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -40,7 +83,7 @@ export function useAuth() {
     error,
     refetch,
   } = trpc.auth.me.useQuery(undefined, {
-    enabled: hasMounted && storedAuth,
+    enabled: hasMounted && (storedAuth || probePhase === "active"),
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 10,
     retry: false,
@@ -81,6 +124,12 @@ export function useAuth() {
       // every ChatBot FAB click ("no reaction" bug).
       removeStoredToken(); // native only — web session lives in an HttpOnly cookie
       clearAuthFlagCookie(); // web — drop the flag that outlived the session
+      // ✅ ROOT-CURE: the probe came back rejected too — the session is really
+      // dead. Record the conclusion so nothing probes again in this tab, and
+      // stop probing so the query gate falls back to storedAuth only.
+      markSessionProbeDone();
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setProbePhase("done");
       // ✅ ROOT-CURE (2026-11-13): purge the persisted React-Query cache here
       // too (the global auth-failure net does the same on the auth.me path) —
       // idempotent belt-and-braces so the next account can never rehydrate
@@ -88,10 +137,32 @@ export function useAuth() {
       try {
         localStorage.removeItem("ELBAZ_QUERY_CACHE");
       } catch { /* ignore */ }
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+       
       setStoredAuth(false); // disable the auth.me query — nothing fires again
+    } else if (hasMounted && probePhase === "active") {
+      // ✅ ROOT-CURE: a NON-auth error (network hiccup, HF Space cold start,
+      // 5xx) is NOT a definitive answer about the session. Conclude the probe
+      // for THIS load (no infinite spinner) but do NOT write the conclusion
+      // mark — the next full load probes again and self-heals if the session
+      // was alive all along. The stored session is never touched on 5xx.
+       
+      setProbePhase("done");
     }
-  }, [error, hasMounted]);
+  }, [error, hasMounted, probePhase]);
+
+  // ✅ ROOT-CURE: the probe resolved successfully — the session was alive all
+  // along and the server re-set the flag cookie on this very response. Record
+  // the conclusion, re-read the flag (now present) so the query gate falls
+  // back to the normal storedAuth path, and stop probing.
+  useEffect(() => {
+    if (user && probePhase === "active") {
+      markSessionProbeDone();
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setProbePhase("done");
+       
+      setStoredAuth(hasStoredAuth());
+    }
+  }, [user, probePhase]);
 
   // Auto-identify user in Clarity — only ONCE per session
   useEffect(() => {

@@ -450,17 +450,22 @@ export const localAuthRouter = createRouter({
         }
       }
 
-      // ✅ SECURITY: Increment tokenVersion on every login (Single Device Policy)
-      // This forces a "Single Session" rule: when a user logs in on a new device,
-      // all previous sessions are immediately invalidated. This is critical for 
-      // LMS business models to prevent account sharing.
-      const newTokenVersion = user.tokenVersion + 1;
-
+      // ✅ ROOT-CURE (2026-11-14, "Remember this device still asks for login"):
+      // tokenVersion is a REVOCATION counter, not a session counter. Bumping it
+      // on every ordinary login (the old "Single Device Policy") invalidated
+      // every OTHER device's remembered session: a user signing in on the phone
+      // force-logged-out the laptop and vice versa — and each forced re-login
+      // bumped the counter again, cascading "why does it ask me to log in?!"
+      // on devices the user never logged out of. The remembered-device promise
+      // now wins: a fresh login NO LONGER revokes existing sessions.
+      // Revocation semantics are UNCHANGED — every REAL revocation event still
+      // bumps the counter and is honored by the auth boundary on its very next
+      // request: logout (below), password change (updateProfile section),
+      // password reset (lib/email.ts), admin/session revoke (sessions-router).
       await db
         .update(users)
-        .set({ 
+        .set({
           lastSignInAt: new Date(),
-          tokenVersion: newTokenVersion 
         })
         .where(eq(users.id, user.id));
 
@@ -468,7 +473,7 @@ export const localAuthRouter = createRouter({
         userId: user.id,
         username: user.username,
         role: user.role,
-        tokenVersion: newTokenVersion,
+        tokenVersion: user.tokenVersion,
       });
 
       // ✅ Clear rate limit on success
@@ -503,7 +508,19 @@ export const localAuthRouter = createRouter({
       return loginData;
     }),
 
-   me: authedQuery.query(({ ctx }) => ctx.user),
+   me: authedQuery.query(({ ctx }) => {
+    // ✅ ROOT-CURE (remember-device, 2026-11-14): keep the JS-readable flag
+    // cookie in sync with the live session on EVERY successful auth.me. The
+    // client gates auth.me on this flag; if the flag ever dies while the
+    // HttpOnly session cookie lives (privacy tooling, a past false-401, cookie
+    // eviction quirks), the app used to show the login page forever with a
+    // perfectly valid session sitting in the browser and no way to recover.
+    // Re-setting it here makes the flag self-healing: one successful auth.me
+    // (including the client's one-time zombie probe) restores it for 30 more
+    // days, so the session gate and the real session can never drift apart.
+    ctx.resHeaders.append("set-cookie", serializeAuthFlagCookie(ctx.req.headers));
+    return ctx.user;
+  }),
 
   updateProfile: authedQuery
     .input(

@@ -73,3 +73,41 @@ export function hasStoredAuth(): boolean {
   // On native, check localStorage for the JWT
   return !!getStoredToken();
 }
+
+// ✅ ROOT-CURE (remember-device, 2026-11-14): one-time zombie-session probe.
+//
+// The web auth gate reads the JS-readable `elbaz_auth_flag` cookie, but the
+// REAL session lives in the HttpOnly `elbaz_auth` cookie that JS can neither
+// read nor check. If the flag ever dies while the real session cookie survives
+// (privacy tools, per-cookie eviction quirks, a stale 401 from an older build),
+// the app never asked the server again — it showed the login page forever with
+// a perfectly valid session sitting in the browser, no matter how many times
+// "Remember me" was checked. The probe lets the boot sequence ask the server
+// ONCE per tab when the flag is missing: a live session is restored silently
+// (and the server re-set the flag on that success), a dead one costs exactly
+// one request.
+//
+// The sessionStorage key records the CONCLUSION (probe settled — success or
+// rejection), never the attempt. That distinction is what lets every useAuth
+// instance mounted LATER during an in-flight probe (Navbar, ProtectedRoute,
+// lazily-loaded ChatBot) join the probe instead of wrongly concluding "no
+// session" and bouncing to /login — the exact W7 race the first cut had.
+// Guests pay at most one 401 per fresh tab.
+const SESSION_PROBE_KEY = "elbaz_session_probe_v1";
+
+export function markSessionProbeDone(): void {
+  try {
+    sessionStorage.setItem(SESSION_PROBE_KEY, "1");
+  } catch {
+    // sessionStorage unavailable (private mode) — probe still runs, the guard
+    // simply cannot persist; the query parking below prevents loops anyway.
+  }
+}
+
+export function isSessionProbeDone(): boolean {
+  try {
+    return sessionStorage.getItem(SESSION_PROBE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
