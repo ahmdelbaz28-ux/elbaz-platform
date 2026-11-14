@@ -20,8 +20,33 @@ const chatStream = {
   lastCompleted: false,
   chunksSent: 0,
   lastText: "",
-  mode: "normal", // "normal" | "silent-delay"
+  mode: "normal", // "normal" | "silent-delay" | "all-fail"
+  // Request-body telemetry (regenerate/type-ahead/vision E2E): what did the
+  // LAST /api/chatbot/stream request actually carry?
+  lastBodyText: "",
+  lastBodyHasImage: false,
+  lastBodyImageSource: null,
 };
+
+/** Record the last stream request's user turn: text + image part presence. */
+function recordStreamBody(raw) {
+  try {
+    const parsed = JSON.parse(raw);
+    const msgs = Array.isArray(parsed?.messages) ? parsed.messages : [];
+    const lastUser = [...msgs].reverse().find((m) => m?.role === "user");
+    const content = lastUser?.content;
+    chatStream.lastBodyText = typeof content === "string"
+      ? content
+      : (Array.isArray(content)
+        ? (content.find((p) => p?.type === "text")?.text ?? "")
+        : "");
+    const imagePart = Array.isArray(content)
+      ? content.find((p) => p?.type === "image_url")
+      : undefined;
+    chatStream.lastBodyHasImage = Boolean(imagePart?.image_url?.url);
+    chatStream.lastBodyImageSource = imagePart?.source ?? null;
+  } catch { /* unparsable body — telemetry stays stale */ }
+}
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -129,6 +154,16 @@ const server = http.createServer((req, res) => {
     chatStream.lastAborted = false;
     chatStream.lastCompleted = false;
     chatStream.chunksSent = 0;
+    let rawBody = "";
+    req.on("data", (c) => { rawBody += c; });
+    req.on("end", () => recordStreamBody(rawBody));
+    if (chatStream.mode === "all-fail") {
+      // Soft-busy shape the client's retry chain treats as retryable — used by
+      // the vision-retry E2E to reach the error bubble + retry button.
+      res.writeHead(503, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ success: false, error: "The service is under heavy load right now" }));
+      return;
+    }
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
@@ -174,16 +209,27 @@ const server = http.createServer((req, res) => {
         i += 1;
       }, 600);
     }
-    req.on("close", () => {
-      if (finished) return; // response ended normally — not an abort
+    // ✅ Client-disconnect detection — MUST watch the RESPONSE stream, not
+    // the request: since the request body is consumed for telemetry, Node
+    // fires `req.close` the moment the body completes (a normal POST), which
+    // the old handler misread as an abort and destroyed the SSE response
+    // right after the first event (ERR_INCOMPLETE_CHUNKED_ENCODING → the
+    // client silently fell back to the non-stream endpoint).
+    // `res.close` with `writableEnded === false` is a REAL premature close.
+    res.on("close", () => {
+      if (finished || res.writableEnded) return; // response completed normally
       if (timer) { clearInterval(timer); timer = null; }
       chatStream.aborted += 1;
       chatStream.lastAborted = true;
-      try { res.destroy(); } catch { /* already dead */ }
     });
     return;
   }
   if (path === "/api/chatbot" && req.method === "POST") {
+    if (chatStream.mode === "all-fail") {
+      res.writeHead(503, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ success: false, error: "The service is under heavy load right now" }));
+      return;
+    }
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ success: true, reply: "رد كامل من الطرف غير المتدفق (fallback).", model: "e2e-model" }));
     return;
@@ -210,6 +256,9 @@ const server = http.createServer((req, res) => {
     chatStream.lastCompleted = false;
     chatStream.chunksSent = 0;
     chatStream.lastText = "";
+    chatStream.lastBodyText = "";
+    chatStream.lastBodyHasImage = false;
+    chatStream.lastBodyImageSource = null;
     chatStream.mode = "normal";
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true }));

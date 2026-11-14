@@ -158,3 +158,125 @@ test("stop during the thinking phase: no reply, no busy note, no retry resurrect
   expect(state.requests).toBe(1);
   expect(state.lastAborted).toBe(true);
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ↻ Regenerate + type-ahead + vision retry (proactive professional audit,
+// 2026-11-14 — owner directive "do what YOU see is missing"):
+//   5. type-ahead — the composer stays editable while the reply streams;
+//      Enter mid-stream is swallowed by the guard, never a second request.
+//   6. regenerate — one tap on the LAST reply re-asks the EXACT question
+//      (same text) as a brand-new request; the old pair is removed, the
+//      fresh reply streams, and exactly one regenerate chip remains.
+//   7. vision retry — an attached image that survived an all-fail outage is
+//      CARRIED BACK on the retry request (root-cure: the retry used to drop
+//      the image and answer a vision question blindly).
+// ═════════════════════════════════════════════════════════════════════════════
+
+const REGEN_LABEL = "Regenerate reply";
+const FULL_REPLY_END = "قبل اكتمال الرد بالكامل.";
+const FOLLOW_UP = "How about short circuit analysis?";
+const VISION_QUESTION = "What do you see in this diagram?";
+// 1x1 PNG — compressImageFile re-encodes it through canvas; the stub only
+// asserts an image_url part EXISTED in the request body.
+const TINY_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+test("type-ahead: the composer stays editable mid-stream and sends afterwards", async ({ page, request }) => {
+  await openChatAndSend(page);
+
+  // Scope text assertions to the MESSAGES LOG: Playwright's getByText also
+  // matches a <textarea>'s current VALUE — the prepared follow-up lives there
+  // by design, so the raw page locator would false-positive on it.
+  const log = page.getByRole("log", { name: "Chat messages" });
+
+  // Mid-stream (stop button visible): the composer must accept typing.
+  const stop = page.getByRole("button", { name: STOP_LABEL });
+  await expect(stop).toBeVisible({ timeout: 3_000 });
+  const input = page.getByLabel("Type your message");
+  await input.fill(FOLLOW_UP);
+  await expect(input).toHaveValue(FOLLOW_UP);
+
+  // Enter mid-stream is swallowed by the send guard — no second request and
+  // no follow-up MESSAGE bubble (only the composer value).
+  await input.press("Enter");
+  await page.waitForTimeout(1_500);
+  let state = await serverState(request);
+  expect(state.requests).toBe(1);
+  await expect(log.getByText(FOLLOW_UP)).toHaveCount(0);
+
+  // The reply completes untouched; the prepared follow-up is still in the box.
+  await expect(page.getByRole("button", { name: SEND_LABEL })).toBeVisible({ timeout: 20_000 });
+  await expect(input).toHaveValue(FOLLOW_UP);
+
+  // And it sends normally as the NEXT message.
+  await page.getByRole("button", { name: SEND_LABEL }).click();
+  await expect(log.getByText(FOLLOW_UP)).toHaveCount(1);
+  state = await serverState(request);
+  expect(state.requests).toBe(2);
+  expect(state.lastBodyText).toBe(FOLLOW_UP);
+});
+
+test("regenerate: one tap re-asks the exact question and the fresh reply streams", async ({ page, request }) => {
+  await openChatAndSend(page);
+  await expect(page.getByText(FULL_REPLY_END).first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("button", { name: SEND_LABEL })).toBeVisible();
+
+  // The chip shows on the last reply — exactly one instance.
+  const regen = page.getByRole("button", { name: REGEN_LABEL });
+  await expect(regen).toBeVisible();
+  await expect(regen).toHaveCount(1);
+
+  await regen.click();
+
+  // The old question+reply pair is REPLACED, not duplicated.
+  await expect(page.getByText(QUESTION)).toHaveCount(1);
+  const stop = page.getByRole("button", { name: STOP_LABEL });
+  await expect(stop).toBeVisible({ timeout: 3_000 });
+
+  // The re-request carries the exact same question text.
+  const state = await serverState(request);
+  expect(state.requests).toBe(2);
+  expect(state.lastBodyText).toBe(QUESTION);
+
+  // The fresh reply streams to completion and hosts the (single) chip again.
+  await expect(page.getByText(FULL_REPLY_END).first()).toBeVisible({ timeout: 20_000 });
+  await expect(regen).toHaveCount(1);
+});
+
+test("vision retry: the attached image rides the retry request after a full outage", async ({ page, request }) => {
+  // Every attempt (stream + fallback) fails with the retryable soft-busy
+  // shape → after the silent chain exhausts, the error bubble + Retry appear.
+  await request.get("/api/__e2e/stream-mode?mode=all-fail");
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open AI Assistant" }).click();
+
+  const input = page.getByLabel("Type your message");
+  await input.fill(VISION_QUESTION);
+
+  // Attach the image through the hidden file input.
+  const chooserPromise = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Attach an image for analysis" }).click();
+  const chooser = await chooserPromise;
+  await chooser.setFiles({ name: "sld.png", mimeType: "image/png", buffer: TINY_PNG });
+
+  await page.getByRole("button", { name: SEND_LABEL }).click();
+
+  // Silent chain exhausts (3 stream attempts + 3 fallbacks ≈ 8s) → soft note.
+  const retry = page.getByRole("button", { name: "Retry" });
+  await expect(retry).toBeVisible({ timeout: 20_000 });
+  const failedState = await serverState(request);
+  expect(failedState.requests).toBe(3); // three dead stream attempts
+  expect(failedState.lastBodyHasImage).toBe(true); // even the failed sends carried it
+
+  // Back to healthy, then RETRY — the image MUST ride again (root-cure).
+  await request.get("/api/__e2e/stream-mode?mode=normal");
+  await retry.click();
+  await expect(page.getByText(FULL_REPLY_END).first()).toBeVisible({ timeout: 20_000 });
+
+  const state = await serverState(request);
+  expect(state.requests).toBe(4);
+  expect(state.lastBodyHasImage).toBe(true);
+  expect(state.completed).toBe(1);
+});
