@@ -2,6 +2,10 @@
 import { chromium } from "playwright";
 
 const BASE = process.env.BASE_URL || "http://localhost:4173";
+// Production canonicalization: the shield 302-redirects raw *.hf.space
+// navigations to ahmedelbaz.qzz.io (Cloudflare-challenged). Live checks go
+// through the Space with the forwarded-host header instead.
+const fwd = process.env.FWD_HOST ? { "X-Forwarded-Host": process.env.FWD_HOST, "X-Forwarded-Proto": "https" } : undefined;
 const results = [];
 const ok = (name, pass, detail) => {
   results.push({ name, pass, detail });
@@ -11,9 +15,10 @@ const ok = (name, pass, detail) => {
 const browser = await chromium.launch();
 try {
   // ── Desktop ──
-  const desktop = await browser.newPage({ viewport: { width: 1280, height: 800 } });
-  await desktop.goto(BASE + "/", { waitUntil: "networkidle" });
-  await desktop.waitForTimeout(4000); // old FAB had a 3s entrance delay — give UI time to settle
+  const desktop = await browser.newPage({ viewport: { width: 1280, height: 800 }, extraHTTPHeaders: fwd });
+  await desktop.goto(BASE + "/", { waitUntil: "load", timeout: 60000 });
+  await desktop.waitForSelector("#main-content", { timeout: 60000 });
+  await desktop.waitForSelector("button.chatbot-fab", { timeout: 60000 }).catch(() => {});
 
   const waDesktop = await desktop.locator(".whatsapp-fab, .whatsapp-fab-wrap, [aria-label*='WhatsApp' i], [aria-label*='واتساب']").count();
   ok("desktop: no WhatsApp FAB in DOM", waDesktop === 0, `count=${waDesktop}`);
@@ -36,9 +41,10 @@ try {
   await desktop.screenshot({ path: "/tmp/fab-desktop.png" });
 
   // ── Mobile ──
-  const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
-  await mobile.goto(BASE + "/", { waitUntil: "networkidle" });
-  await mobile.waitForTimeout(4000);
+  const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, extraHTTPHeaders: fwd });
+  await mobile.goto(BASE + "/", { waitUntil: "load", timeout: 60000 });
+  await mobile.waitForSelector("#main-content", { timeout: 60000 });
+  await mobile.waitForSelector("button.chatbot-fab", { timeout: 60000 }).catch(() => {});
 
   const waMobile = await mobile.locator(".whatsapp-fab, .whatsapp-fab-wrap, [aria-label*='WhatsApp' i], [aria-label*='واتساب']").count();
   ok("mobile: no WhatsApp FAB in DOM", waMobile === 0, `count=${waMobile}`);
