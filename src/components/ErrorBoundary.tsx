@@ -27,6 +27,27 @@ class ErrorBoundary extends Component<Props, State> {
 
   override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
+    // 🛡️ SELF-HEAL (2026-11-16 desktop-recovery): a route chunk that vanished
+    // after a deploy reaches THIS boundary — React lazy() rejections surface
+    // here, not as window errors — so the boundary is the last line that can
+    // still trigger the automatic cache/SW clear + reload. Delegates to the
+    // recovery owner (cache-nuke.js), whose per-session loop cap makes this
+    // safe: at most 2 automatic reloads, then a guidance banner instead.
+    const msg = String(error.message || "").toLowerCase();
+    const isChunkFailure =
+      msg.includes("chunk") ||
+      msg.includes("dynamically imported module") ||
+      msg.includes("importing a module script failed");
+    if (isChunkFailure) {
+      const recover = (globalThis as {
+        __nukeAndReload?: (reason: string) => void;
+      }).__nukeAndReload;
+      try {
+        recover?.("react_boundary_chunk_failure");
+      } catch {
+        // Recovery is best-effort — the fallback UI below still renders.
+      }
+    }
   }
 
   private readonly handleReset = () => {

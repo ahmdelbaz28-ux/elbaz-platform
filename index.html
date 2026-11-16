@@ -81,16 +81,54 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Elbaz Courses" />
 
-    <!-- 🛡️ Elite Self-Healing: Catch ChunkLoadErrors early -->
+    <!-- 🛡️ Elite Self-Healing: Catch ChunkLoadErrors early (hardened 2026-11-16).
+         The original handler matched only exception MESSAGES containing
+         "chunk"/"loading" — it never fired for the two most common
+         stale-deploy failure shapes:
+           1) <script src=/assets/index-OLD.js> 404 → a RESOURCE error event
+              whose target is the element itself (no e.message at all);
+           2) React.lazy dynamic-import rejection → unhandledrejection.
+         Both now funnel into the ONE recovery owner (cache-nuke.js
+         __nukeAndReload): cache/SW clear + single reload, with a per-session
+         loop cap and a user-facing fallback banner. -->
     <script>
-      globalThis.addEventListener('error', function(e) {
-        var msg = (e.message || "").toLowerCase();
-        var isChunkError = msg.includes('chunk') || msg.includes('loading');
-        if (isChunkError && typeof globalThis.__nukeAndReload === 'function') {
-          console.error('[Self-Healing] Asset failed to load. Triggering recovery...');
-          globalThis.__nukeAndReload('asset_load_failure', 'automatic recovery');
+      (function () {
+        function recover(kind) {
+          if (typeof globalThis.__nukeAndReload === 'function') {
+            console.error('[Self-Healing] ' + kind + ' — triggering recovery');
+            globalThis.__nukeAndReload(kind);
+          }
         }
-      }, true);
+        function looksLikeChunkFailure(text) {
+          var msg = String(text || '').toLowerCase();
+          return msg.includes('chunk') ||
+            msg.includes('dynamically imported module') ||
+            msg.includes('importing a module script failed');
+        }
+        globalThis.addEventListener('error', function (e) {
+          try {
+            var target = e.target;
+            var failedAsset = target && target !== globalThis &&
+              (target.tagName === 'SCRIPT' || target.tagName === 'LINK') &&
+              /\/assets\/|\/src\/|main\.tsx/.test(String(target.src || target.href || ''));
+            if (failedAsset) {
+              recover('asset_load_failure:' + String(target.src || target.href).split('/').pop());
+              return;
+            }
+            if (looksLikeChunkFailure(e.message)) recover('chunk_error');
+          } catch (_) { /* the recovery handler itself must never break the page */ }
+        }, true);
+        globalThis.addEventListener('unhandledrejection', function (e) {
+          try {
+            var reason = e.reason;
+            var text = (reason && (reason.message || reason)) || '';
+            if (looksLikeChunkFailure(text)) {
+              e.preventDefault();
+              recover('chunk_rejection');
+            }
+          } catch (_) { /* ignore */ }
+        });
+      })();
     </script>
 
     <!-- Google Identity Services — loaded only when needed by auth pages via globalThis.__loadGsi() -->
@@ -230,12 +268,35 @@
         </div>
       </div>
     </div>
-    <!-- Boot splash failsafe: if JS never boots (network stall), drop the
-         splash after 10s so the user never stares at an eternal spinner. -->
+    <!-- Boot splash failsafe: if JS never boots (network stall / blocked
+         chunks), the splash used to just disappear after 10s into a DARK
+         EMPTY page — the exact "مش بيحمل" the owner reported on desktop.
+         Now it swaps to a friendly message + retry button instead (CSP-safe:
+         addEventListener, no inline onclick). If React booted, the splash is
+         already gone and this is a no-op. -->
     <script>
       setTimeout(function () {
         var s = document.getElementById('boot-splash');
-        if (s) s.remove();
+        if (!s) return;
+        s.innerHTML = '';
+        var box = document.createElement('div');
+        box.setAttribute('dir', 'rtl');
+        box.style.cssText = 'text-align:center;color:#f0f4f8;font-family:system-ui,Tahoma,sans-serif;max-width:420px;padding:0 24px;';
+        var title = document.createElement('div');
+        title.style.cssText = 'font-size:15px;margin-bottom:10px;font-weight:600;';
+        title.textContent = 'الصفحة بتاخد وقت أطول من المعتاد';
+        var hint = document.createElement('div');
+        hint.style.cssText = 'font-size:13px;color:#94a3b8;margin-bottom:16px;line-height:1.8;';
+        hint.textContent = 'لو استمرت المشكلة: عطّل مانع الإعلانات أو VPN، أو جرّب متصفح آخر.';
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = 'إعادة المحاولة';
+        btn.style.cssText = 'background:#06b6d4;color:#0a0e17;border:0;border-radius:8px;padding:10px 22px;font-weight:700;font-size:14px;cursor:pointer;';
+        btn.addEventListener('click', function () { window.location.reload(); });
+        box.appendChild(title);
+        box.appendChild(hint);
+        box.appendChild(btn);
+        s.appendChild(box);
       }, 10000);
     </script>
     <style>

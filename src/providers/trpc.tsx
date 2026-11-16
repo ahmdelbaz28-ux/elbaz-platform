@@ -147,6 +147,49 @@ function getApiBaseUrl(): string {
 }
 
 /**
+ * 🛡️ EDGE-CHALLENGE DETECTOR (root cause of the 2026-11-16 "desktop won't
+ * load" incident — see DEPLOYMENT.md §9):
+ *
+ * The domain's Cloudflare edge (qzz.io provider infra, OUTSIDE our control)
+ * answers clients it scores as bots with `403 + cf-mitigated: challenge`.
+ * The DOCUMENT challenge auto-solves on navigation, but API XHRs can NEVER
+ * solve an interactive challenge — every tRPC call then dies with 403 while
+ * the shell still renders, so the site looks permanently broken ("the page
+ * won't load") for exactly those visitors, while clean networks (e.g. the
+ * owner's mobile) pass untouched.
+ *
+ * Detection: a 403 with `cf-mitigated: challenge`, or a 403 whose
+ * content-type is HTML — tRPC errors are ALWAYS application/json, and legit
+ * 403s (e.g. the subscribe gate's SUBSCRIBE_REQUIRED) never come back as
+ * HTML, so this cannot misfire on API-level rejections.
+ *
+ * Reaction: dispatch `elbaz:edge-challenge` ONCE per page load.
+ * cache-nuke.js owns the response — one full navigation reload (a solved
+ * page challenge mints cf_clearance which API calls then carry); if the
+ * challenge persists across that reload, it renders the guidance banner
+ * instead of looping. Reloads are capped per session — loops are impossible
+ * by construction.
+ */
+let edgeChallengeSeen = false;
+function detectEdgeChallenge(response: Response): void {
+  if (response.status !== 403 || edgeChallengeSeen) return;
+  let challenged = false;
+  try {
+    const mitigated = response.headers.get("cf-mitigated");
+    const contentType = response.headers.get("content-type") ?? "";
+    challenged = mitigated === "challenge" || contentType.includes("text/html");
+  } catch {
+    return; // headers unreadable — never guess
+  }
+  if (!challenged) return;
+  edgeChallengeSeen = true;
+  console.error(
+    "[Edge] provider challenge is blocking API calls — dispatching recovery (elbaz:edge-challenge)"
+  );
+  window.dispatchEvent(new CustomEvent("elbaz:edge-challenge"));
+}
+
+/**
  * FIX: Changed from httpBatchLink to httpLink
  *
  * Root cause: httpBatchLink sends ALL requests as POST, including queries.
@@ -183,7 +226,12 @@ const trpcClient = trpc.createClient({
             credentials: isNative ? "omit" : "include",
             headers,
           });
-          if (!isNative) return request;
+          if (!isNative) {
+            return request.then((response) => {
+              detectEdgeChallenge(response);
+              return response;
+            });
+          }
           // ✅ SESSION PERSISTENCE FIX (native sliding sessions): native clients
           // authenticate via the localStorage JWT (credentials "omit"), so the
           // server's cookie-based renewal never reached them — the stored token
@@ -195,6 +243,7 @@ const trpcClient = trpc.createClient({
           // idle period the grace window renews it on the first request.
           // Web keeps the HttpOnly cookie as its only token channel (XSS).
           return request.then((response) => {
+            detectEdgeChallenge(response);
             const renewed = response.headers.get("x-renewed-token");
             if (renewed) setStoredToken(renewed);
             return response;
