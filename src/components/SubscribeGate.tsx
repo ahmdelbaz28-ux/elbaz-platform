@@ -20,9 +20,12 @@ import { useState } from "react";
 import { BellRing, Youtube } from "lucide-react";
 import {
   buildSubscribeUrl,
+  getDeviceSubject,
   hasPressedSubscribe,
   markSubscribePressed,
+  storeSubscribeTicket,
 } from "@/lib/subscribe-gate";
+import { trpc } from "@/providers/trpc";
 import { trackEvent } from "@/lib/clarity";
 
 interface SubscribeGateProps {
@@ -42,6 +45,18 @@ export default function SubscribeGate({ lang, channelUrl, days, onUnlocked }: Su
   const [visitedChannel, setVisitedChannel] = useState(() => hasPressedSubscribe());
   const isAr = lang === "ar";
 
+  // ── Server-anchored unlock (fail-closed) ──
+  // The confirm step is ONLY valid when the server issues a signed unlock
+  // ticket: no ticket ⇒ no lessonVideo/previewVideo response ⇒ no playback.
+  // The gate stays open (with a friendly retry note) if the issue fails.
+  const issueTicket = trpc.course.completeSubscribeUnlock.useMutation({
+    onSuccess: (res) => {
+      storeSubscribeTicket(res.ticket);
+      trackEvent("subscribe_gate_unlock", { via: "subscribe-flow", days });
+      onUnlocked();
+    },
+  });
+
   const openChannel = () => {
     trackEvent("subscribe_gate_open_channel", { channelUrl });
     globalThis.open(buildSubscribeUrl(channelUrl), "_blank", "noopener,noreferrer");
@@ -50,9 +65,11 @@ export default function SubscribeGate({ lang, channelUrl, days, onUnlocked }: Su
   };
 
   const confirmSubscribed = () => {
-    trackEvent("subscribe_gate_unlock", { via: "subscribe-flow", days });
-    onUnlocked();
+    issueTicket.mutate({ deviceId: getDeviceSubject() });
   };
+
+  const unlockPending = issueTicket.isPending;
+  const unlockFailed = issueTicket.isError;
 
   return (
     <div
@@ -91,14 +108,25 @@ export default function SubscribeGate({ lang, channelUrl, days, onUnlocked }: Su
           <button
             type="button"
             onClick={confirmSubscribed}
-            className="inline-flex min-h-11 w-full animate-in fade-in slide-in-from-bottom-2 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#06b6d4] to-[#0891b2] px-4 py-2.5 text-sm font-bold text-[#04121c] transition-transform hover:scale-[1.02] active:scale-[0.99]"
+            disabled={unlockPending}
+            className="inline-flex min-h-11 w-full animate-in fade-in slide-in-from-bottom-2 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#06b6d4] to-[#0891b2] px-4 py-2.5 text-sm font-bold text-[#04121c] transition-transform hover:scale-[1.02] active:scale-[0.99] disabled:cursor-wait disabled:opacity-70"
             data-testid="subscribe-gate-unlock"
           >
             <BellRing className="h-4 w-4" aria-hidden="true" />
-            {isAr ? "اشتركت — افتح الفيديوهات" : "Done — open the videos"}
+            {isAr
+              ? (unlockPending ? "جاري التحقق..." : "اشتركت — افتح الفيديوهات")
+              : (unlockPending ? "Verifying..." : "Done — open the videos")}
           </button>
         )}
       </div>
+
+      {unlockFailed && (
+        <p className="mt-2 max-w-xs text-xs font-medium text-[#f87171]" role="alert">
+          {isAr
+            ? "تعذّر إتمام الفتح الآن — اتأكد من الاتصال وجرّب تاني."
+            : "Couldn't complete the unlock — check your connection and try again."}
+        </p>
+      )}
 
       <p className="mt-4 text-[10px] leading-relaxed text-[#5b6b85]">
         {isAr

@@ -13,6 +13,8 @@ import { getDb } from "./queries/connection";
 import { courses, categories, lessons, testimonials } from "@db/schema";
 import { getCache, CACHE_TTL, cacheKeys } from "./lib/cache";
 import { getSecureVideoUrl } from "./lib/video-protection";
+import { getSubscribeGateConfig } from "./lib/subscribe-gate-config";
+import { verifySubscribeTicket } from "./lib/subscribe-ticket";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -245,7 +247,13 @@ export const courseBrowseProcedures = {
   // first lesson, and tomorrow for any paid course where the instructor marks
   // a lesson isFree as its public trailer. Watermarked as "guest-preview".
   previewVideo: publicQuery
-    .input(z.object({ lessonId: z.number().int().positive() }))
+    .input(z.object({
+      lessonId: z.number().int().positive(),
+      // Signed unlock proof (device-bound ticket) from the SubscribeGate —
+      // required whenever the subscribe gate is enabled. The guest preview
+      // is ALSO channel-gated: free does not mean subscribe-optional.
+      subTicket: z.string().max(2048).optional(),
+    }))
     .query(async ({ input }) => {
       const db = getDb();
       const [lesson] = await db
@@ -267,6 +275,18 @@ export const courseBrowseProcedures = {
       if (!lesson.isFree) {
         // Never leak premium content through the guest path — fail closed.
         throw new TRPCError({ code: "FORBIDDEN", message: "This lesson is not a free preview" });
+      }
+
+      // ── Subscribe-to-the-channel gate (HARD, server-side) ──
+      // Same contract as course.lessonVideo: no valid signed unlock ticket
+      // ⇒ no playback data, even for the free guest preview.
+      const gate = await getSubscribeGateConfig();
+      if (gate.enabled && !verifySubscribeTicket(input.subTicket)) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            "SUBSCRIBE_REQUIRED: subscribe to the YouTube channel first — lesson videos stay locked until the subscribe flow is done.",
+        });
       }
 
       return await getSecureVideoUrl({

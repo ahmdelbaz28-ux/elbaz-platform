@@ -90,7 +90,161 @@ function serveFile(res, filePath, withRange = false, rangeHeader = "") {
   createReadStream(filePath).pipe(res);
 }
 
-const server = http.createServer((req, res) => {
+// ── Subscribe-gate tRPC stubs (subscribe-gate E2E) ──────────────────────────
+// Mirrors the REAL server contract: while the gate is enabled, lessonVideo/
+// previewVideo answer 403 SUBSCRIBE_REQUIRED unless a ticket is presented,
+// and completeSubscribeUnlock issues the ticket. Telemetry records what the
+// client actually sent so the test can pin the wire contract:
+//   • pre-unlock ⇒ ZERO video fetches (the client must not even ask)
+//   • post-unlock ⇒ every video fetch carries the ticket
+const trpcStub = {
+gateMode: "enabled", // "enabled" | "disabled"
+previewVideoCalls: [], // { hasTicket, ticket }
+lessonVideoCalls: [],
+unlockCalls: 0,
+};
+
+const STUB_COURSE = {
+id: 1,
+slug: "etap-basics",
+titleAr: "أساسيات ETAP",
+titleEn: "ETAP Basics",
+descriptionAr: "كورس أساسيات ETAP التجريبي",
+descriptionEn: "Stub ETAP basics course",
+learningOutcomesAr: null,
+learningOutcomesEn: null,
+thumbnail: null,
+price: "0",
+originalPrice: null,
+isPremium: false,
+isPublished: true,
+rating: "5",
+studentCount: 10,
+durationHours: 2,
+category: { nameEn: "Electrical", nameAr: "كهربية" },
+lessons: [
+    {
+      id: 101,
+      titleAr: "مقدمة في ETAP",
+      titleEn: "Intro to ETAP",
+      isFree: true,
+      durationMinutes: 12,
+      videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      type: "video",
+    },
+],
+};
+
+const STUB_VIDEO = {
+videoUrl: "https://www.youtube.com/embed/dQw4w9WgXcQ?origin=http://localhost:4173",
+hlsUrl: null,
+expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+watermarkToken: "e2e-watermark",
+kind: "youtube",
+youtubeId: "dQw4w9WgXcQ",
+};
+
+function trpcSend(res, payload) {
+res.writeHead(200, { "Content-Type": "application/json" });
+res.end(JSON.stringify({ result: { data: { json: payload } } }));
+}
+
+function trpcError(res, status, code, message, path) {
+res.writeHead(status, { "Content-Type": "application/json" });
+res.end(JSON.stringify({
+    error: {
+      json: {
+        message,
+        code: -32001,
+        data: { code, httpStatus: status, path },
+      },
+    },
+}));
+}
+
+function readTrpcInput(url, rawBody) {
+try {
+    if (rawBody !== null && rawBody !== undefined) {
+      const parsed = JSON.parse(rawBody);
+      return parsed?.json ?? parsed;
+    }
+    const inputRaw = url.searchParams.get("input");
+    if (!inputRaw) return {};
+    return JSON.parse(inputRaw)?.json ?? {};
+} catch {
+    return {};
+}
+}
+
+async function handleTrpcStub(req, res, pathName, url) {
+// Procedure path after /api/trpc/ (httpLink ⇒ one procedure per request).
+const proc = pathName.slice("/api/trpc/".length).split("/").pop() || "";
+const method = req.method || "GET";
+let rawBody = null;
+if (method === "POST") {
+    rawBody = "";
+    await new Promise((resolve) => {
+      req.on("data", (c) => { rawBody += c; });
+      req.on("end", resolve);
+      req.on("error", resolve);
+    });
+}
+const input = readTrpcInput(url, rawBody);
+
+switch (proc) {
+    case "settings.getSection": {
+      if (input?.section !== "subscribeGate") {
+        trpcSend(res, {});
+        return true;
+      }
+      trpcSend(res, {
+        enabled: trpcStub.gateMode === "disabled" ? "false" : "true",
+        days: "30",
+        channelUrl: "https://www.youtube.com/@AhmedElbazEng",
+      });
+      return true;
+    }
+    case "course.bySlug": {
+      trpcSend(res, STUB_COURSE);
+      return true;
+    }
+    case "course.checkEnrollment": {
+      trpcSend(res, { enrolled: true, isCompleted: false });
+      return true;
+    }
+    case "course.previewVideo": {
+      trpcStub.previewVideoCalls.push({ hasTicket: !!input?.subTicket, ticket: input?.subTicket ?? null });
+      if (trpcStub.gateMode === "enabled" && !input?.subTicket) {
+        trpcError(res, 403, "FORBIDDEN",
+          "SUBSCRIBE_REQUIRED: subscribe to the YouTube channel first — lesson videos stay locked until the subscribe flow is done.",
+          "course.previewVideo");
+        return true;
+      }
+      trpcSend(res, STUB_VIDEO);
+      return true;
+    }
+    case "course.lessonVideo": {
+      trpcStub.lessonVideoCalls.push({ hasTicket: !!input?.subTicket, ticket: input?.subTicket ?? null });
+      if (trpcStub.gateMode === "enabled" && !input?.subTicket) {
+        trpcError(res, 403, "FORBIDDEN",
+          "SUBSCRIBE_REQUIRED: subscribe to the YouTube channel first — lesson videos stay locked until the subscribe flow is done.",
+          "course.lessonVideo");
+        return true;
+      }
+      trpcSend(res, STUB_VIDEO);
+      return true;
+    }
+    case "course.completeSubscribeUnlock": {
+      trpcStub.unlockCalls += 1;
+      trpcSend(res, { ticket: "e2e-signed-ticket.stubsig", days: 30 });
+      return true;
+    }
+    default:
+      return false; // not stubbed here — fall through to the generic 404
+}
+}
+
+const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = decodeURIComponent(url.pathname);
 
@@ -111,11 +265,29 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // ── Auth stub (chat stop-button E2E): tRPC auth.me over superjson ──
-  // The client enables the query only when the `elbaz_auth_flag` cookie is
-  // set (set by the test); this stub answers the identity so the chat FAB
-  // opens instead of redirecting to /login.
+  // ── Auth stub (chat stop-button + subscribe-gate E2E): tRPC auth.me ──
+  // Mirrors the REAL server contract: NO elbaz_auth_flag cookie ⇒ 401
+  // UNAUTHORIZED. Answering success unconditionally used to flip EVERY
+  // guest into "authenticated" through the zombie-session probe — which
+  // rerouted the video flow through lessonVideo and made the guest gate
+  // path (previewVideo) unreachable in tests.
   if (path === "/api/trpc/auth.me") {
+    const hasFlag = (req.headers.cookie || "")
+      .split(";")
+      .some((c) => c.trim().startsWith("elbaz_auth_flag="));
+    if (!hasFlag) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        error: {
+          json: {
+            message: "Not authenticated",
+            code: -32001,
+            data: { code: "UNAUTHORIZED", httpStatus: 401, path: "auth.me" },
+          },
+        },
+      }));
+      return;
+    }
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({
       result: {
@@ -260,13 +432,35 @@ const server = http.createServer((req, res) => {
     chatStream.lastBodyHasImage = false;
     chatStream.lastBodyImageSource = null;
     chatStream.mode = "normal";
+    trpcStub.gateMode = "enabled";
+    trpcStub.previewVideoCalls = [];
+    trpcStub.lessonVideoCalls = [];
+    trpcStub.unlockCalls = 0;
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true }));
     return;
   }
 
+  // ── Subscribe-gate stub telemetry + controls (subscribe-gate E2E) ──
+  if (path === "/api/__e2e/trpc-state") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(trpcStub));
+    return;
+  }
+  if (path === "/api/__e2e/gate-mode") {
+    const nextMode = url.searchParams.get("mode") === "disabled" ? "disabled" : "enabled";
+    trpcStub.gateMode = nextMode;
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true, gateMode: trpcStub.gateMode }));
+    return;
+  }
+
   // Unmatched API route — JSON 404 (never the SPA document; code parsing
   // JSON must not choke on HTML).
+  if (path.startsWith("/api/trpc/") && url.pathname.startsWith("/api/trpc/")) {
+    const handled = await handleTrpcStub(req, res, path, url);
+    if (handled) return;
+  }
   if (path.startsWith("/api/")) {
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "not stubbed" }));

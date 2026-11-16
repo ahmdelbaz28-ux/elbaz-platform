@@ -8,16 +8,44 @@
 import { z } from "zod";
 import { eq, and, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
-import { authedQuery } from "./middleware";
+import { authedQuery, publicMutation } from "./middleware";
 import { getDb } from "./queries/connection";
 import { lessons, enrollments, lessonProgress } from "@db/schema";
 import { recalcEnrollmentProgress, markLessonWatched } from "./lib/progress";
 import { getSecureVideoUrl } from "./lib/video-protection";
 import { activeEnrollmentWhere } from "./lib/enrollment";
+import { getSubscribeGateConfig } from "./lib/subscribe-gate-config";
+import { issueSubscribeTicket, verifySubscribeTicket } from "./lib/subscribe-ticket";
+
+/**
+ * Owner contract (2026): subscribing to the YouTube channel is a HARD
+ * prerequisite for opening ANY lesson video. The client shows the
+ * SubscribeGate; THIS check makes it real at the API boundary — no valid
+ * signed unlock ticket ⇒ no playback data, even for hand-crafted requests.
+ * The error message carries the SUBSCRIBE_REQUIRED marker the client uses
+ * to re-lock the gate (expired/rotated/forged ticket ⇒ gate re-appears).
+ */
+function assertSubscribeUnlock(
+  ticket: string | undefined,
+  opts: { userId?: number } = {},
+): void {
+  if (!verifySubscribeTicket(ticket, opts)) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message:
+        "SUBSCRIBE_REQUIRED: subscribe to the YouTube channel first — lesson videos stay locked until the subscribe flow is done.",
+    });
+  }
+}
 
 export const courseWatchingProcedures = {
   lessonVideo: authedQuery
-    .input(z.object({ lessonId: z.number().int().positive() }))
+    .input(z.object({
+      lessonId: z.number().int().positive(),
+      // Signed unlock proof from course.completeSubscribeUnlock — required
+      // whenever the subscribe gate is enabled (server-side enforcement).
+      subTicket: z.string().max(2048).optional(),
+    }))
     .query(async ({ ctx, input }) => {
       const db = getDb();
 
@@ -31,6 +59,14 @@ export const courseWatchingProcedures = {
         .limit(1);
 
       if (!lesson) throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+
+      // ── Subscribe-to-the-channel gate (HARD, server-side) ──
+      // Checked BEFORE the free/enrolled branches: it applies to EVERY
+      // lesson video, free preview or paid curriculum alike.
+      const gate = await getSubscribeGateConfig();
+      if (gate.enabled) {
+        assertSubscribeUnlock(input.subTicket, { userId: ctx.user.id });
+      }
 
       // Free lessons — anyone authenticated can watch
       if (lesson.isFree) {
@@ -64,6 +100,31 @@ export const courseWatchingProcedures = {
         lessonId: lesson.id,
         username: ctx.user.username,
       });
+    }),
+
+  // ─── Subscribe-gate unlock — the server-anchored confirm step ───
+  // Called when the viewer presses «اشتركت — افتح الفيديوهات» on the
+  // SubscribeGate. Issues a signed ticket (account- or device-bound) that
+  // lessonVideo/previewVideo verify. Fail-closed by design: the client only
+  // unlocks on a SUCCESSFUL issue — no ticket, no playback, ever.
+  completeSubscribeUnlock: publicMutation
+    .input(z.object({
+      // The device subject (d<uuid>) built by the client lib — REQUIRED for
+      // anonymous viewers so their ticket is bound to this device; ignored
+      // for authenticated viewers (account-bound subject wins).
+      deviceId: z.string().regex(/^d[0-9a-zA-Z-]{6,64}$/).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.user && !input.deviceId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "SUBSCRIBE_REQUIRED: deviceId is required to unlock for this device.",
+        });
+      }
+      const gate = await getSubscribeGateConfig();
+      const subject = ctx.user ? `u${ctx.user.id}` : (input.deviceId as string);
+      const ticket = issueSubscribeTicket(subject, gate.days);
+      return { ticket, days: gate.days };
     }),
 
   markWatched: authedQuery

@@ -5,7 +5,13 @@ import { trpc } from "@/providers/trpc";
 import YouTubeLessonPlayer from "@/components/YouTubeLessonPlayer";
 import SubscribeGate from "@/components/SubscribeGate";
 import CourseReviews from "@/components/CourseReviews";
-import { isSubscribeUnlocked, unlockSubscribe } from "@/lib/subscribe-gate";
+import {
+  clearSubscribeTicket,
+  clearSubscribeUnlock,
+  getStoredSubscribeTicket,
+  isSubscribeUnlocked,
+  unlockSubscribe,
+} from "@/lib/subscribe-gate";
 import { useScreenDetails } from "@/lib/screen-context";
 import { useState, useRef, useEffect, useCallback, useImperativeHandle, forwardRef, lazy, Suspense } from 'react';
 import { useWatchTracker } from "@/hooks/useWatchTracker";
@@ -790,11 +796,6 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
   const isEnrolled = enrollmentStatus?.enrolled ?? false;
   const isCourseCompleted = enrollmentStatus?.isCompleted ?? false;
 
-  const { data: authedVideoData, isLoading: authedVideoLoading } = trpc.course.lessonVideo.useQuery(
-    { lessonId: activeLesson || 0 },
-    { enabled: !!activeLesson && isAuthenticated }
-  );
-
   // ── Subscribe-to-the-channel gate (HARD gate before any playback) ───────
   // Owner contract (2026): NO video opens until the viewer completes the
   // subscribe flow — the gate has no skip button (see SubscribeGate.tsx).
@@ -802,6 +803,11 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
   //   enabled: "true"|"false" · channelUrl · days (unlock window).
   // Defaults keep the gate ON with the channel's known handle so the feature
   // works even before the owner opens the settings panel.
+  //
+  // SERVER-ANCHORED (2026): the unlock is a server-signed ticket issued by
+  // course.completeSubscribeUnlock; lessonVideo/previewVideo verify it and
+  // answer SUBSCRIBE_REQUIRED otherwise. While gated the client never even
+  // ASKS for the video — no URL, no id, no presigned link in the network tab.
   const { data: subGateCfg } = trpc.settings.getSection.useQuery(
     { section: "subscribeGate" },
     { staleTime: 5 * 60_000 },
@@ -811,9 +817,12 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
   const gateDays = Number.isFinite(gateDaysRaw) && gateDaysRaw >= 1 ? gateDaysRaw : 30;
   const gateChannel = subGateCfg?.channelUrl?.trim() || "https://www.youtube.com/@AhmedElbazEng";
   const [gateUnlocked, setGateUnlocked] = useState(() => isSubscribeUnlocked());
+  const [subTicket, setSubTicketState] = useState(() => getStoredSubscribeTicket());
   const subscribeGateActive = gateEnabled && !gateUnlocked;
   const handleGateUnlocked = useCallback(() => {
     unlockSubscribe(gateDays);
+    // The gate stored the server-issued ticket right before calling us.
+    setSubTicketState(getStoredSubscribeTicket());
     setGateUnlocked(true);
   }, [gateDays]);
 
@@ -821,10 +830,46 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
   // lessons explicitly flagged isFree). Zero auth — the watch-before-you-pay
   // funnel for any future paid course.
   const activeLessonIsFree = !!course?.lessons?.some((l) => l.id === activeLesson && l.isFree);
-  const { data: previewData, isLoading: previewLoading } = trpc.course.previewVideo.useQuery(
-    { lessonId: activeLesson || 0 },
-    { enabled: !!activeLesson && !isAuthenticated && activeLessonIsFree, retry: false }
+
+  const { data: authedVideoData, isLoading: authedVideoLoading, error: lessonVideoError } = trpc.course.lessonVideo.useQuery(
+    { lessonId: activeLesson || 0, subTicket: subTicket ?? undefined },
+    {
+      enabled: !!activeLesson && isAuthenticated && !subscribeGateActive,
+      // A SUBSCRIBE_REQUIRED rejection is a state, not a hiccup — no retry:
+      // the self-heal below re-locks the device immediately.
+      retry: (failureCount, error) =>
+        !String(error?.message || "").includes("SUBSCRIBE_REQUIRED") && failureCount < 2,
+    },
   );
+
+  const { data: previewData, isLoading: previewLoading, error: previewError } = trpc.course.previewVideo.useQuery(
+    { lessonId: activeLesson || 0, subTicket: subTicket ?? undefined },
+    {
+      enabled: !!activeLesson && !isAuthenticated && activeLessonIsFree && !subscribeGateActive,
+      retry: false,
+    },
+  );
+
+  // ── Self-heal: the server is the source of truth for the unlock ──
+  // If the server rejects the presented ticket (expired / rotated secret /
+  // forged localStorage marker), the device re-locks immediately and the
+  // gate takes the video slot again. No reload needed.
+  const subscribeRequired =
+    String(lessonVideoError?.message || "").includes("SUBSCRIBE_REQUIRED") ||
+    String(previewError?.message || "").includes("SUBSCRIBE_REQUIRED");
+  useEffect(() => {
+    if (!subscribeRequired) return;
+    // Storage purge is plain I/O; the two setState calls below are the
+    // sanctioned escape hatch (same pattern as Admin.tsx): react-query v5
+    // removed per-query onError, and "re-lock on external rejection" is
+    // exactly the documented external-store case — an effect is the only
+    // hook that sees the query error without re-render loops.
+    clearSubscribeUnlock(); // clears marker AND ticket
+    clearSubscribeTicket();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSubTicketState(null);
+    setGateUnlocked(false);
+  }, [subscribeRequired]);
 
   const videoData = isAuthenticated ? authedVideoData : previewData;
   const videoLoading = isAuthenticated ? authedVideoLoading : previewLoading;
@@ -1422,7 +1467,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                     </div>
                   )}
 
-                  {isVideoReady && subscribeGateActive && (
+                  {subscribeGateActive && activeLesson && !!activeLessonData && canAccessLesson(activeLessonData) && (
                     /* NOT aspect-video: combined with min-height, the ratio
                        transfers 400px→711px width on phones (panel wider than
                        the screen). The gate is a panel, not a screen — plain
@@ -1489,7 +1534,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                     </div>
                   )}
 
-                  {activeLesson && !!activeLessonData && canAccessLesson(activeLessonData) && !videoLoading && !videoData?.videoUrl && (
+                  {activeLesson && !!activeLessonData && canAccessLesson(activeLessonData) && !subscribeGateActive && !videoLoading && !videoData?.videoUrl && (
                     isAuthenticated ? (
                       <div className="flex aspect-video items-center justify-center bg-gradient-to-br from-[#0f172a] to-[#1e293b]">
                         <div className="text-center">

@@ -11,6 +11,18 @@ test.describe("Login page", () => {
   let login: LoginPage;
 
   test.beforeEach(async ({ page }) => {
+    // ✅ ROOT-CURE (flaky clicks): the cookie banner (800ms entrance + full-
+    // screen backdrop) raced the first click whenever page load was slow —
+    // "element intercepts pointer events" timeouts at ~1-in-4. Pre-accept
+    // consent so the banner never mounts; same pattern as the chat specs.
+    await page.addInitScript(() => {
+      try {
+        localStorage.setItem(
+          "elbaz_cookie_consent",
+          JSON.stringify({ necessary: true, analytics: false, marketing: false }),
+        );
+      } catch { /* storage unavailable — the banner is dismissible anyway */ }
+    });
     login = new LoginPage(page);
     await login.goto();
   });

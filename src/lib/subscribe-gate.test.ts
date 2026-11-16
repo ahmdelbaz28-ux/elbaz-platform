@@ -1,17 +1,22 @@
 /**
  * Subscribe-gate unit tests — device unlock state machine + URL builder.
  * Covers: locked default, unlock/expiry, extend-not-shorten, clear, the
- * private-browsing (throwing localStorage) safety path, and the
- * ?sub_confirmation=1 URL construction on all channel-URL shapes.
+ * private-browsing (throwing localStorage) safety path, the
+ * ?sub_confirmation=1 URL construction on all channel-URL shapes, and the
+ * server-ticket storage + device subject used by the server-anchored gate.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildSubscribeUrl,
   clearSubscribeFlow,
+  clearSubscribeTicket,
   clearSubscribeUnlock,
+  getDeviceSubject,
+  getStoredSubscribeTicket,
   hasPressedSubscribe,
   isSubscribeUnlocked,
   markSubscribePressed,
+  storeSubscribeTicket,
   subscribeUnlockUntil,
   unlockSubscribe,
 } from "./subscribe-gate";
@@ -180,5 +185,76 @@ describe("buildSubscribeUrl", () => {
 
   it("falls back to the channel handle when the URL is empty", () => {
     expect(buildSubscribeUrl("   ")).toBe("https://www.youtube.com/@AhmedElbazEng?sub_confirmation=1");
+  });
+});
+
+describe("server-signed unlock ticket storage", () => {
+  it("starts with no ticket", () => {
+    vi.stubGlobal("localStorage", fakeLocalStorage());
+    expect(getStoredSubscribeTicket()).toBeNull();
+  });
+
+  it("stores and returns the issued ticket", () => {
+    vi.stubGlobal("localStorage", fakeLocalStorage());
+    storeSubscribeTicket("ticket-body.sig");
+    expect(getStoredSubscribeTicket()).toBe("ticket-body.sig");
+  });
+
+  it("clearSubscribeTicket forgets ONLY the ticket (marker survives)", () => {
+    const store = fakeLocalStorage();
+    vi.stubGlobal("localStorage", store);
+    unlockSubscribe(7, now);
+    storeSubscribeTicket("ticket-body.sig");
+    clearSubscribeTicket();
+    expect(getStoredSubscribeTicket()).toBeNull();
+    expect(isSubscribeUnlocked(now)).toBe(true); // UI marker intact
+  });
+
+  it("clearSubscribeUnlock forgets BOTH marker and ticket (self-heal/reset)", () => {
+    vi.stubGlobal("localStorage", fakeLocalStorage());
+    unlockSubscribe(7, now);
+    storeSubscribeTicket("ticket-body.sig");
+    clearSubscribeUnlock();
+    expect(getStoredSubscribeTicket()).toBeNull();
+    expect(isSubscribeUnlocked(now)).toBe(false);
+  });
+
+  it("ignores empty tickets and never throws in private mode", () => {
+    vi.stubGlobal("localStorage", fakeLocalStorage());
+    storeSubscribeTicket("");
+    expect(getStoredSubscribeTicket()).toBeNull();
+
+    vi.stubGlobal("localStorage", throwingLocalStorage());
+    expect(() => storeSubscribeTicket("t.s")).not.toThrow();
+    expect(() => clearSubscribeTicket()).not.toThrow();
+    expect(getStoredSubscribeTicket()).toBeNull();
+  });
+});
+
+describe("device subject (guest ticket binding)", () => {
+  it("builds a d<uuid> subject and persists it stably", () => {
+    vi.stubGlobal("localStorage", fakeLocalStorage());
+    const first = getDeviceSubject();
+    expect(first).toMatch(/^d[0-9a-zA-Z-]{6,64}$/);
+    expect(getDeviceSubject()).toBe(first); // same subject across calls
+    expect(getDeviceSubject()).toBe(first); // and across more calls
+  });
+
+  it("keeps an existing stored subject instead of rotating", () => {
+    vi.stubGlobal("localStorage", fakeLocalStorage({ "elbaz-sub-gate-device": "dexisting-subject-42" }));
+    expect(getDeviceSubject()).toBe("dexisting-subject-42");
+  });
+
+  it("replaces an INVALID stored subject with a fresh one", () => {
+    vi.stubGlobal("localStorage", fakeLocalStorage({ "elbaz-sub-gate-device": "garbage" }));
+    const subject = getDeviceSubject();
+    expect(subject).toMatch(/^d[0-9a-zA-Z-]{6,64}$/);
+    expect(subject).not.toBe("garbage");
+  });
+
+  it("returns an ephemeral subject without throwing in private mode", () => {
+    vi.stubGlobal("localStorage", throwingLocalStorage());
+    expect(() => getDeviceSubject()).not.toThrow();
+    expect(getDeviceSubject()).toMatch(/^d[0-9a-zA-Z-]{6,64}$/);
   });
 });

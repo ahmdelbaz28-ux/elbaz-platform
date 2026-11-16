@@ -23,6 +23,10 @@
 const STORAGE_KEY = "elbaz-sub-gate-unlock";
 /** sessionStorage marker for "viewer pressed the subscribe button" (tab-scoped). */
 const FLOW_KEY = "elbaz-sub-gate-flow";
+/** Server-signed unlock ticket (localStorage) — the API-level proof. */
+const TICKET_KEY = "elbaz-sub-gate-ticket";
+/** Stable per-browser device subject `d<uuid>` (guest ticket binding). */
+const DEVICE_KEY = "elbaz-sub-gate-device";
 /** How long a pressed-subscribe marker stays valid (survives back-navigation). */
 export const SUBSCRIBE_FLOW_TTL_MS = 60 * 60 * 1000;
 
@@ -77,12 +81,69 @@ export function unlockSubscribe(
   }
 }
 
-/** Forget this device's unlock (admin/reset/test lever). */
+/** Forget this device's unlock AND its ticket (admin/reset/self-heal lever). */
 export function clearSubscribeUnlock(): void {
   try {
     globalThis.localStorage?.removeItem(STORAGE_KEY);
+    globalThis.localStorage?.removeItem(TICKET_KEY);
   } catch {
     // nothing to clear
+  }
+}
+
+// ── Server-signed unlock ticket (the API-level proof) ────────────────────
+// The UI marker above decides what the SCREEN shows; the ticket decides what
+// the SERVER answers. lessonVideo/previewVideo verify the HMAC ticket — a
+// forged marker yields an empty gate-less UI until the server answers
+// SUBSCRIBE_REQUIRED and the caller re-locks (self-heal).
+
+/** The stored server-signed ticket, or null (never throws). */
+export function getStoredSubscribeTicket(): string | null {
+  try {
+    return globalThis.localStorage?.getItem(TICKET_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Persist the ticket issued by course.completeSubscribeUnlock. */
+export function storeSubscribeTicket(token: string): void {
+  try {
+    if (token) globalThis.localStorage?.setItem(TICKET_KEY, token);
+  } catch {
+    // Private mode — the server will re-lock on the next video fetch.
+  }
+}
+
+/** Forget ONLY the ticket (self-heal path — marker cleared alongside). */
+export function clearSubscribeTicket(): void {
+  try {
+    globalThis.localStorage?.removeItem(TICKET_KEY);
+  } catch {
+    // nothing to clear
+  }
+}
+
+/**
+ * Stable per-browser device subject `d<uuid>` — binds a GUEST's ticket to
+ * this device (authenticated viewers get account-bound `u<id>` subjects
+ * server-side regardless). Persisted so re-unlocks keep the same subject.
+ */
+export function getDeviceSubject(): string {
+  try {
+    const existing = globalThis.localStorage?.getItem(DEVICE_KEY);
+    if (existing && /^d[0-9a-zA-Z-]{6,64}$/.test(existing)) return existing;
+    const uuid =
+      globalThis.crypto?.randomUUID?.() ??
+      `fallback-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+    const subject = `d${uuid}`;
+    globalThis.localStorage?.setItem(DEVICE_KEY, subject);
+    return subject;
+  } catch {
+    // No storage — ephemeral subject (the ticket simply won't outlive reload).
+    const uuid =
+      globalThis.crypto?.randomUUID?.() ?? `ephemeral-${Date.now().toString(36)}`;
+    return `d${uuid}`;
   }
 }
 
