@@ -725,10 +725,15 @@ export const localAuthRouter = createRouter({
     // 🩺 OWNER DIAGNOSTIC (2026-11-16): the owner reported "the verification
     // email never arrives" while the provider was silently refusing every
     // send. For ADMINS ONLY, augment the failure with the exact provider
-    // reason so the root cause is visible in the owner's own UI (regular
-    // users keep the generic message — no operational intel leaks).
-    if (!result.success && ctx.user.role === "admin") {
-      return { ...result, message: augmentAdminEmailMessage(result.message, result.providerReason) };
+    // reason so the root cause is visible in the owner's own UI. Regular
+    // users get a CLEANED result — no message augmentation AND no
+    // diagnostics fields (zero operational intel leaves the server).
+    if (!result.success) {
+      if (ctx.user.role === "admin") {
+        return { ...result, message: augmentAdminEmailMessage(result.message, result.providerReason) };
+      }
+      const { needsDomainVerification: _ndv, providerReason: _pr, ...clean } = result;
+      return clean;
     }
     return result;
   }),
