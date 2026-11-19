@@ -168,6 +168,15 @@ async function main() {
     `status=${bogusReset.status} msg="${bogusMsg.slice(0, 60)}"`
   );
 
+  // ── 6. admin gate on the self-test (non-admin must be refused) ──────────
+  const selfTest = await trpcCall("auth.sendEmailSelfTest");
+  const selfTestErr = selfTest?.body?.error?.json?.message ?? "";
+  check(
+    "sendEmailSelfTest is admin-only (FORBIDDEN for regular users)",
+    selfTest.status >= 400 && /admin/i.test(selfTestErr),
+    `status=${selfTest.status} msg="${selfTestErr.slice(0, 50)}"`
+  );
+
   await browser.close();
   console.log(`\n== EMAIL FLOW PROBE: ${fails} failing check(s) ==`);
   process.exit(fails === 0 ? 0 : 1);
