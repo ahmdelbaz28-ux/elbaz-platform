@@ -116,11 +116,18 @@ export async function sendEmailWithDiagnostics(message: EmailMessage): Promise<S
       response.status === 403 &&
       (errBody.includes("testing emails") || errBody.includes("verify a domain"));
 
+    // 🩺 ADMIN DIAGNOSTICS (2026-11-16: live probe captured `422`): include a
+    // SHORT, sanitized slice of the provider's own error message so the
+    // admin self-test shows the exact validation cause (e.g. "Invalid from
+    // field"). Bounded + whitespace-flattened — never a raw dump, and it is
+    // rendered to the ADMIN only.
+    const bodySnippet = errBody.replace(/\s+/g, " ").trim().slice(0, 200);
+
     return {
       ok: false,
       reason: isSandboxBlock
         ? "Resend domain not verified — sandbox mode only allows sending to the account owner's email."
-        : `Resend API error ${response.status}`,
+        : `Resend API error ${response.status}${bodySnippet ? `: ${bodySnippet}` : ""}`,
       needsDomainVerification: isSandboxBlock,
     };
   }

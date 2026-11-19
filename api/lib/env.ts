@@ -73,14 +73,17 @@ const envSchema = z.object({
 
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM_EMAIL: z.string().default("noreply@ahmedelbaz.qzz.io").transform(v => {
-    // Email format check — anchored, no overlapping quantifiers, no nested
-    // quantifiers that can match the same character. The `[^\\s@.]+` class
-    // excludes `.` so each dot-segment is a single label and the engine
-    // has exactly one way to split local-part vs. domain
-    // (SonarCloud S5852 / S8786).
+    // 🩺 NORMALIZE (2026-11-16: "emails never arrive" — live probe captured
+    // `Resend API error 422`): the secret may arrive as a full header value
+    // like "Ahmed Elbaz <noreply@…>" — email.ts wraps it AGAIN into
+    // `Ahmed Elbaz Platform <${value}>`, producing an invalid nested from
+    // that Resend rejects with 422 on EVERY send. Extract the bare address
+    // from any display-name wrapping, then validate.
+    const angled = /<([^>]+)>/.exec(v);
+    const candidate = (angled ? angled[1] : v).trim();
     const emailRegex = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
-    if (!v || !emailRegex.test(v)) return "noreply@ahmedelbaz.qzz.io";
-    return v;
+    if (!candidate || !emailRegex.test(candidate)) return "noreply@ahmedelbaz.qzz.io";
+    return candidate;
   }),
 
   // Admin initial password (set on first deploy — auto-generated if empty)
