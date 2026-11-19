@@ -7,12 +7,13 @@ import { createRouter, publicQuery, authedQuery, checkRateLimit, clearRateLimit,
 import { getDb } from "./queries/connection";
 import { hashPassword, verifyPassword } from "./lib/password";
 import { createToken } from "./lib/jwt";
-import { initiatePasswordReset, completePasswordReset, initiateEmailVerification, completeEmailVerification } from "./lib/email";
+import { initiatePasswordReset, completePasswordReset, initiateEmailVerification, completeEmailVerification, sendEmailWithDiagnostics, augmentAdminEmailMessage } from "./lib/email";
 // ✅ SECURITY FIX: Import auth cookie helpers for httpOnly cookie auth
 import { serializeAuthCookie, serializeAuthFlagCookie, clearAuthCookies, AUTH_COOKIE_NAME } from "./lib/cookies";
 import { parse as parseCookieHeader } from "cookie";
 import { logger, maskEmail } from "./lib/logger";
 import { getClientIpFromHeaders } from "./lib/client-ip";
+import { env } from "./lib/env";
 // ✅ SECURITY FIX (pre-launch audit run-2): instant auth-cache eviction on
 // every revocation site (logout / password change) — closes the 30s window.
 import { evictUserAuthCache } from "./context.js";
@@ -721,7 +722,56 @@ export const localAuthRouter = createRouter({
     await checkRateLimit(ip, "sendVerification");
 
     const result = await initiateEmailVerification(ctx.user.id, undefined, ctx.req.headers);
+    // 🩺 OWNER DIAGNOSTIC (2026-11-16): the owner reported "the verification
+    // email never arrives" while the provider was silently refusing every
+    // send. For ADMINS ONLY, augment the failure with the exact provider
+    // reason so the root cause is visible in the owner's own UI (regular
+    // users keep the generic message — no operational intel leaks).
+    if (!result.success && ctx.user.role === "admin") {
+      return { ...result, message: augmentAdminEmailMessage(result.message, result.providerReason) };
+    }
     return result;
+  }),
+
+  // 🩺 OWNER TOOL: one-click live probe of the email provider (Resend).
+  // Sends a real email to the admin's own address and returns the raw
+  // delivery verdict — key configured? from address? ok? exact reason?
+  // Answers "why do emails never arrive" from the owner's own UI without
+  // any server-log access.
+  sendEmailSelfTest: authedQuery.mutation(async ({ ctx }) => {
+    if (ctx.user.role !== "admin") {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Admin only" });
+    }
+    const ip = getClientIpFromHeaders(ctx.req.headers);
+    await checkRateLimit(ip, "sendVerification");
+
+    const configured = !!env.RESEND_API_KEY;
+    const fromEmail = env.RESEND_FROM_EMAIL;
+    const to = ctx.user.email;
+    if (!to) {
+      return {
+        ok: false,
+        configured,
+        fromEmail,
+        to: null,
+        needsDomainVerification: false,
+        reason: "This admin account has no email address to send the self-test to.",
+      };
+    }
+    const result = await sendEmailWithDiagnostics({
+      to,
+      subject: "Email Delivery Self-Test — Ahmed Elbaz Platform",
+      html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;"><h2 style="color: #06b6d4;">Email delivery self-test</h2><p>If you received this email, the platform's email provider is delivering successfully.</p><p style="color:#64748b;font-size:12px;">Triggered from the admin profile at ${new Date().toISOString()}.</p></div>`,
+      text: `Email delivery self-test — if you received this, the provider is delivering. (${new Date().toISOString()})`,
+    });
+    return {
+      ok: result.ok,
+      configured,
+      fromEmail,
+      to: maskEmail(to),
+      needsDomainVerification: result.needsDomainVerification ?? false,
+      reason: result.reason ?? null,
+    };
   }),
 
   // Step 2: Anyone with a valid token completes verification (e.g. from email link)

@@ -246,6 +246,17 @@ export async function initiatePasswordReset(email: string, headers?: Headers): P
 }
 
 /**
+ * 🩺 Admin-only message augmentation: appends the safe, curated provider
+ * failure reason to the generic user-facing message. Regular users NEVER see
+ * the provider reason (no operational intel leaks); the admin — who must be
+ * able to fix delivery — does.
+ */
+export function augmentAdminEmailMessage(baseMessage: string, providerReason?: string): string {
+  if (!providerReason) return baseMessage;
+  return `${baseMessage} [provider: ${providerReason}]`;
+}
+
+/**
  * Verify a password reset token and update the user's password.
  */
 export async function completePasswordReset(
@@ -317,6 +328,12 @@ export async function completePasswordReset(
 export async function initiateEmailVerification(userId: number, newEmail?: string, headers?: Headers): Promise<{
   success: boolean;
   message: string;
+  /** True when the provider refused because the sending domain is not
+   *  verified (Resend sandbox). Surfaced so the UI can tell the truth. */
+  needsDomainVerification?: boolean;
+  /** Safe, curated provider-failure reason (never a raw upstream body).
+   *  Rendered ONLY to admins — regular users get the generic message. */
+  providerReason?: string;
 }> {
   const db = getDb();
 
@@ -408,7 +425,16 @@ export async function initiateEmailVerification(userId: number, newEmail?: strin
     // the reset link — never log the live verification URL. Hash prefix only.
     logger.error("[Email] Failed to send verification email", { to: maskEmail(targetEmail), reason: sendResult.reason });
     logger.warn(`[Email/Recovery] Verification email FAILED — a verification token was minted and is valid for ${EMAIL_VERIFICATION_EXPIRY_MINUTES} minutes (token hash prefix logged for correlation only)`, { to: maskEmail(targetEmail), userId, tokenHashPrefix: tokenHash.slice(0, 8) });
-    return { success: false, message: "Could not send verification email. Please try again later." };
+    return {
+      success: false,
+      message: "Could not send verification email. Please try again later.",
+      // 🩺 OWNER DIAGNOSTIC (2026-11-16: "verification email never arrives"):
+      // classify the provider failure so the UI can be truthful and the
+      // ADMIN can see the exact cause (invalid API key vs unverified domain
+      // vs provider outage) instead of a dead-end generic message.
+      needsDomainVerification: sendResult.needsDomainVerification ?? false,
+      providerReason: sendResult.reason ?? "unknown provider error",
+    };
   }
 
   return { success: true, message: "Verification email sent. Please check your inbox." };

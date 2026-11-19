@@ -106,8 +106,40 @@ export default function Profile() {
 
   const sendVerificationMutation = trpc.auth.sendVerificationEmail.useMutation({
     onSuccess: (data) => {
-      toast.success(data.message || (lang === "en" ? "Verification email sent!" : "تم إرسال بريد التحقق!"));
-      setCooldown(60);
+      // 🩺 TRUTHFUL FEEDBACK (2026-11-16: "the verification email never
+      // arrives"): the endpoint returns success:false (NO throw) when the
+      // provider refuses the send — showing that as a green success toast
+      // HID the outage. Failure must be an error toast, and the 60s
+      // cooldown must NOT start (retry has to stay possible).
+      if (data.success) {
+        toast.success(data.message || (lang === "en" ? "Verification email sent!" : "تم إرسال بريد التحقق!"));
+        setCooldown(60);
+      } else {
+        toast.error(data.message || (lang === "en" ? "Could not send the verification email." : "تعذر إرسال بريد التحقق."));
+      }
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  // 🩺 ADMIN TOOL: live email-provider self-test — sends a real email to the
+  // admin's own address and returns the raw provider verdict (key? from?
+  // ok? exact reason?). Renders only for user.role === "admin".
+  const [selfTestResult, setSelfTestResult] = useState<{
+    ok: boolean;
+    configured: boolean;
+    fromEmail: string;
+    to: string | null;
+    needsDomainVerification: boolean;
+    reason: string | null;
+  } | null>(null);
+  const sendEmailSelfTestMutation = trpc.auth.sendEmailSelfTest.useMutation({
+    onSuccess: (data) => {
+      setSelfTestResult(data);
+      if (data.ok) {
+        toast.success(lang === "en" ? "Self-test email sent — check your inbox." : "تم إرسال إيميل الاختبار — تحقق من بريدك.");
+      } else {
+        toast.error(lang === "en" ? "Email delivery FAILED — see the diagnosis below." : "فشل إرسال البريد — انظر التشخيص أدناه.");
+      }
     },
     onError: (err) => toast.error(err.message),
   });
@@ -236,6 +268,33 @@ export default function Profile() {
                 </Button>
               )}
             </div>
+          </div>
+        )}
+
+        {user.role === "admin" && (
+          <div className="mb-6 rounded-xl border border-accent-secondary/30 bg-primary p-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-medium text-foreground">{lang === "en" ? "Email Delivery Self-Test (admin)" : "اختبار إرسال البريد (للمسؤول)"}</p>
+                <p className="mt-0.5 text-xs text-text-muted">{lang === "en" ? "Sends a real test email to your own address and reports the provider verdict — answers 'why do emails never arrive'." : "يرسل إيميل اختبار حقيقي لعنوانك ويعرض نتيجة المزوّد بدقة — يجيب على سؤال «ليه الإيميلات مش بتوصل»."}</p>
+              </div>
+              <Button onClick={() => sendEmailSelfTestMutation.mutate()} disabled={sendEmailSelfTestMutation.isPending} className="gap-2 shrink-0 bg-gradient-to-r from-accent-secondary to-accent-secondary/80 text-background font-semibold">
+                {sendEmailSelfTestMutation.isPending ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" /> : <Send className="h-4 w-4" />}
+                {lang === "en" ? "Run self-test" : "تشغيل الاختبار"}
+              </Button>
+            </div>
+            {selfTestResult && (
+              <div className="mt-4 rounded-lg border border-border bg-background/40 p-4 text-xs text-text-muted" data-testid="email-selftest-result">
+                <p><span className="font-semibold">{lang === "en" ? "API key configured" : "مفتاح المزوّد مضبوط"}:</span> {selfTestResult.configured ? "yes" : "NO"}</p>
+                <p><span className="font-semibold">{lang === "en" ? "From address" : "عنوان المُرسِل"}:</span> {selfTestResult.fromEmail}</p>
+                <p><span className="font-semibold">{lang === "en" ? "Sent to" : "أُرسل إلى"}:</span> {selfTestResult.to ?? "—"}</p>
+                <p><span className="font-semibold">{lang === "en" ? "Delivered" : "التسليم"}:</span> <span className={selfTestResult.ok ? "text-emerald-500" : "text-red-400"}>{selfTestResult.ok ? "OK" : "FAILED"}</span></p>
+                {selfTestResult.needsDomainVerification && (
+                  <p className="mt-2 text-amber-500">{lang === "en" ? "The sending domain is NOT verified in the provider account — verify it (DNS records) to deliver to anyone." : "نطاق الإرسال غير موثّق في حساب المزوّد — وثّقه (سجلات DNS) ليصل البريد للجميع."}</p>
+                )}
+                {selfTestResult.reason && <p className="mt-2 break-words">{lang === "en" ? "Provider reason" : "سبب المزوّد"}: {selfTestResult.reason}</p>}
+              </div>
+            )}
           </div>
         )}
 
