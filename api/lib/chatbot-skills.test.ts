@@ -30,13 +30,13 @@ const MOCK_CATALOG = [
   "- تنسيق الحماية العملي | Practical Protection Coordination — المستوى/Level: متقدم | السعر/Price: مجاني / Free — داخل المنصة (on-platform path): /courses/protection-coordination",
 ].join("\n");
 
-// Markers that must exist in the THINKING prompt (full skill set)
+// Markers that must exist in the THINKING prompt (v3.8.1 size-guarded contract:
+// identity cores + Saadat + SLD always ride; domain packs appear when their
+// signal routes them — see the routed-pack companion test below)
 const THINKING_MARKERS = [
   "قاعدة وعي الإصدار",                          // versionRuleAr
   "بروتوكول البحث والتوجيه للمصادر",            // researchSkillAr
-  "DIgSILENT POWERFACTORY KNOWLEDGE CORE",       // pfCore
-  "SKM PTW (POWER*TOOLS) KNOWLEDGE CORE",        // skmCore
-  "PVSYST KNOWLEDGE CORE",                       // pvsystCore
+  "حزمة العمق الكهربائي",                        // electrical-depth-pack (always-on)
   "مرافق تعليمي للطالب",                         // mentorProtocolAr
   "الجنيه المصري (EGP)",                         // platformCoreAr
   "قاعدة السلامة الكهربائية",                    // safetyRuleAr
@@ -49,6 +49,15 @@ describe("getSystemPrompt — thinking mode", () => {
     for (const marker of THINKING_MARKERS) {
       expect(p).toContain(marker);
     }
+  });
+
+  it("guard-dropped domain packs return when their signal routes them (v3.8.1)", () => {
+    const pfPrompt = getSystemPrompt("ar", "thinking", undefined, false, undefined, undefined, false, "عايز أتعلم DIgSILENT PowerFactory من الصفر");
+    expect(pfPrompt).toContain("DIgSILENT POWERFACTORY KNOWLEDGE CORE");
+    const skmPrompt = getSystemPrompt("en", "thinking", undefined, false, undefined, undefined, false, "how do I run a SKM PTW short circuit study");
+    expect(skmPrompt).toContain("SKM PTW (POWER*TOOLS) KNOWLEDGE CORE");
+    const pvPrompt = getSystemPrompt("en", "thinking", undefined, false, undefined, undefined, false, "PVsyst shading and losses design question");
+    expect(pvPrompt).toContain("PVSYST KNOWLEDGE CORE");
   });
 
   it("composes the full skill set in English thinking prompt", () => {

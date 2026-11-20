@@ -453,6 +453,7 @@ export const SKILL_REGISTRY: SkillDefinition[] = [
     version: "1.0.0",
     phrases: [
       "saadat", "سعدت", "solution manual", "دليل الحلول", "حل المسألة", "حل المساله",
+      "المسألتين", "مسألتين", "مسالتين",
       "per unit", "بير ويت", "بير يونت", "ybus", "zbus", "شبكه الممانعه",
       "معادله التارجح", "معادله التأرجح", "المكونات المتماثله", "symmetrical components",
       "تدفق الأحمال", "تدفق الاحمال", "power flow", "load flow",
@@ -460,7 +461,7 @@ export const SKILL_REGISTRY: SkillDefinition[] = [
       "تصحيح معامل القدره", "ثوابت abcd", "خطوط النقل", "الاله التزامنيه",
     ],
     keywords: [
-      "saadat", "manual", "textbook", "كتاب", "مساله", "مسائل", "تمرين", "تمارين",
+      "saadat", "manual", "textbook", "كتاب", "مساله", "مسائل", "مسالتين", "تمرين", "تمارين",
       "exercise", "problem", "منهجيه", "خطوات الحل", "per-unit", "perunit", "pu",
       "base value", "y-bus", "z-bus", "admittance", "gauss-seidel", "newton raphson",
       "newton-raphson", "fast decoupled", "slack", "pv bus", "pq bus",

@@ -128,7 +128,24 @@ import {
  *          exercise real CJK code points at runtime). The stable prefix
  *          remains byte-identical to v3.7.0/v3.6.0; prefix caching unaffected.
  */
-export const PROMPT_VERSION = "3.8.0";
+export const PROMPT_VERSION = "3.8.1";
+
+// ── v3.8.1 full-fallback size guard constants ──
+// Mirrors the evolution meter's THINKING_CHAR_CEILING: the degenerate
+// no-signal superset must never exceed the ceiling, with ~2.2k headroom for
+// runtime blocks (lite catalog + rolling summary; the empty-signal case can
+// never trigger course intent, so it never pays for the full catalog).
+const THINKING_PROMPT_CEILING = 40_000;
+const FULL_FALLBACK_GUARD_TARGET = THINKING_PROMPT_CEILING - 2_200;
+// Never dropped by the guard: the always-on identity cores, the Saadat
+// academic methodology contract, and the SLD drawing skill (zone B).
+const FULL_FALLBACK_PROTECTED_SKILLS = new Set([
+  "caveman-conciseness",
+  "etap-expert-core",
+  "electrical-depth-pack",
+  "saadat-academic-core",
+  "sld-drawing-skill",
+]);
 
 export type ChatbotMode = "thinking" | "instant";
 
@@ -793,8 +810,7 @@ You are a highly professional, balanced, and interactive technical assistant. Do
   }
 
   // ── thinking (default) ──
-  if (language === "ar") {
-    return `أنت المساعد الذكي الرسمي لمنصة "الباز" (Elbaz Platform) المتخصصة في الكورسات الهندسية.
+  const composeThinkingAr = (zA: string, zB: string) => `أنت المساعد الذكي الرسمي لمنصة "الباز" (Elbaz Platform) المتخصصة في الكورسات الهندسية.
 أنت مساعد تقني محترف، متزن، وتفاعلي. لا تتخذ لنفسك اسماً شخصياً، بل عرف نفسك كمساعد ذكي للمنصة.
 
 📌 تخصصك:
@@ -812,9 +828,8 @@ You are a highly professional, balanced, and interactive technical assistant. Do
 🚫 محظورات:
 - لا تخترع روابط (URLs) غير موجودة.
 - لا تذكر أبداً أنك ذكاء اصطناعي أو نموذج لغوي أو من أي مزود مثل OpenRouter. ولا تذكر أسماء مزودين أو شركات تقنية حتى في النفي («لست مثل كذا») — إن سُئلت عن هويتك أو مزودك قل فقط: «أنا مساعد منصة الباز ولا أرتبط بأي جهة تقنية أخرى» دون تسمية أي اسم.
-- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${thinkingModeAr}${expertPositioningAr}${reasoningGuard}${langAndFormatRuleAr}${versionRuleAr}${mentorProtocolAr}${researchSkillAr}${accuracyContractAr}${guidedNavigationAr}${platformCoreAr}${supportProtocolAr}${officialChannelsAr}${safetyRuleAr}${webGroundingAr}${evidenceModelAr}${routedZoneA}${routedZoneB}${visionBlockAr}${summaryBlock}${catalogBlock}${screenBlock}${saadatBlock}`;
-  }
-  return `You are the official AI Assistant of the "Elbaz Platform" (specializing in engineering courses).
+- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${thinkingModeAr}${expertPositioningAr}${reasoningGuard}${langAndFormatRuleAr}${versionRuleAr}${mentorProtocolAr}${researchSkillAr}${accuracyContractAr}${guidedNavigationAr}${platformCoreAr}${supportProtocolAr}${officialChannelsAr}${safetyRuleAr}${webGroundingAr}${evidenceModelAr}${zA}${zB}${visionBlockAr}${summaryBlock}${catalogBlock}${screenBlock}${saadatBlock}`;
+  const composeThinkingEn = (zA: string, zB: string) => `You are the official AI Assistant of the "Elbaz Platform" (specializing in engineering courses).
 You are a highly professional, balanced, and interactive technical assistant. Do NOT take a personal name; introduce yourself only as the platform's smart assistant.
 
 📌 Your Expertise:
@@ -832,5 +847,56 @@ You are a highly professional, balanced, and interactive technical assistant. Do
 🚫 Rules:
 - Do NOT hallucinate fake URLs.
 - NEVER mention you are an AI, a language model, or from OpenRouter or any other provider. Never name providers or tech companies even in negations ("I am not like X") — if asked about your identity or provider, say only: "I am the Elbaz Platform assistant, not affiliated with any other tech company" without naming any name.
-- If asked about non-engineering topics, politely decline and state your expertise.${thinkingModeEn}${expertPositioningEn}${reasoningGuard}${langAndFormatRuleEn}${versionRuleEn}${mentorProtocolEn}${researchSkillEn}${accuracyContractEn}${guidedNavigationEn}${platformCoreEn}${supportProtocolEn}${officialChannelsEn}${safetyRuleEn}${webGroundingEn}${evidenceModelEn}${routedZoneA}${routedZoneB}${visionBlockEn}${summaryBlock}${catalogBlock}${screenBlock}${saadatBlock}`;
+- If asked about non-engineering topics, politely decline and state your expertise.${thinkingModeEn}${expertPositioningEn}${reasoningGuard}${langAndFormatRuleEn}${versionRuleEn}${mentorProtocolEn}${researchSkillEn}${accuracyContractEn}${guidedNavigationEn}${platformCoreEn}${supportProtocolEn}${officialChannelsEn}${safetyRuleEn}${webGroundingEn}${evidenceModelEn}${zA}${zB}${visionBlockEn}${summaryBlock}${catalogBlock}${screenBlock}${saadatBlock}`;
+
+  // ── v3.8.1 FULL-FALLBACK SIZE GUARD (token conservation, measured 2026-11-20) ──
+  // The no-signal case (image-only messages, doctor scripts, tests) used to
+  // inject EVERY skill: 41,130 (ar) / 42,716 (en) chars — OVER the 40k thinking
+  // ceiling (evolution-meter integrity FAIL), and every image-only request paid
+  // ~11k tokens of never-consulted pack text. Deterministic guard for the
+  // degenerate superset ONLY: identity cores + saadat-academic-core + the SLD
+  // skill always ride; the remaining packs are dropped SMALLEST-FIRST (least
+  // unique content lost per char saved) until the composed base fits the
+  // guarded target (ceiling − 2.2k headroom for runtime catalog/summary blocks;
+  // the empty-signal case can never trigger course intent, so its catalog is
+  // lite). Routed prompts (any real signal) are never guarded.
+  let routedZoneAFinal = routedZoneA;
+  // No usable signal → routeSkills returned null (the superset case) OR an
+  // explicit full-fallback decision; both mean "everything included".
+  if (!routingDecision || routingDecision.strategy === "full-fallback") {
+    const emptyLen = (skillLang === "ar" ? composeThinkingAr("", "") : composeThinkingEn("", "")).length;
+    const overBy = emptyLen + routedZoneA.length + routedZoneB.length - FULL_FALLBACK_GUARD_TARGET;
+    if (overBy > 0) {
+      const zoneASkills = SKILL_REGISTRY.filter((s) => s.id !== "sld-drawing-skill" && s.modes.includes(mode));
+      const droppable = zoneASkills
+        .filter((s) => !FULL_FALLBACK_PROTECTED_SKILLS.has(s.id))
+        .map((s) => ({ id: s.id, block: s.build(skillLang, mode) }))
+        .sort((a, b) => a.block.length - b.block.length);
+      const dropped = new Set<string>();
+      let remaining = overBy;
+      for (const d of droppable) {
+        if (remaining <= 0) break;
+        dropped.add(d.id);
+        remaining -= d.block.length;
+      }
+      if (dropped.size > 0) {
+        routedZoneAFinal = zoneASkills
+          .filter((s) => !dropped.has(s.id))
+          .map((s) => s.build(skillLang, mode))
+          .join("");
+        logSkillRouting({
+          strategy: "full-fallback",
+          selected: zoneASkills.filter((s) => !dropped.has(s.id) || FULL_FALLBACK_PROTECTED_SKILLS.has(s.id)).map((s) => ({ id: s.id, label: s.label, score: 0, reasons: ["size-guard kept"] })),
+          dropped: zoneASkills.filter((s) => dropped.has(s.id)).map((s) => ({ id: s.id, label: s.label })),
+          matchedSoftware: [],
+          savedChars: routedZoneA.length - routedZoneAFinal.length,
+          savedTokensEstimate: Math.round((routedZoneA.length - routedZoneAFinal.length) / 4),
+        }, { lane: mode });
+      }
+    }
+  }
+  return skillLang === "ar"
+    ? composeThinkingAr(routedZoneAFinal, routedZoneB)
+    : composeThinkingEn(routedZoneAFinal, routedZoneB);
+
 }

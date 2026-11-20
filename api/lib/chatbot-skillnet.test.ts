@@ -257,18 +257,25 @@ describe("routeSkills — edge cases", () => {
 // ─── FAILURE MODE: fallback superset + lean prompt keeps every always-on ────
 
 describe("prompt composition — fallback and lean guarantees", () => {
-  it("no signal → full-fallback prompt is a SUPERSET of every domain core + pack", () => {
+  it("no signal → full-fallback is CEILING-GUARDED: cores + Saadat + SLD ride, smallest packs dropped first (v3.8.1)", () => {
     const p = getSystemPrompt("ar", "thinking");
+    // Protected set always present
     expect(p).toContain("ETAP EXPERT SYSTEM");
-    expect(p).toContain("DIgSILENT POWERFACTORY KNOWLEDGE CORE");
-    expect(p).toContain("SKM PTW (POWER*TOOLS) KNOWLEDGE CORE");
-    expect(p).toContain("PVSYST KNOWLEDGE CORE");
     expect(p).toContain("حزمة العمق الكهربائي");
-    expect(p).toContain("حزمة تخصص: دراسات Arc Flash");
-    expect(p).toContain("حزمة تخصص: تنسيق الحماية");
-    expect(p).toContain("حزمة تخصص: Load Flow");
-    expect(p).toContain("حزمة تخصص: أنظمة الطاقة الشمسية");
     expect(p).toContain("قاعدة التنفيذ الفوري"); // sld skill intact
+    expect(p).toContain("SAADAT"); // saadat-academic-core intact
+    // Smallest-first drops actually applied (measured: ar drops pvsyst/skm/solar-pv/powerfactory/find-skills)
+    expect(p).not.toContain("PVSYST KNOWLEDGE CORE");
+    expect(p).not.toContain("SKM PTW (POWER*TOOLS) KNOWLEDGE CORE");
+    expect(p).not.toContain("حزمة تخصص: أنظمة الطاقة الشمسية");
+    // Ceiling respected with headroom
+    expect(p.length).toBeLessThanOrEqual(37_800);
+  });
+
+  it("size guard never fires for routed prompts (real signal keeps its packs)", () => {
+    const p = getSystemPrompt("ar", "thinking", undefined, false, undefined, undefined, false, "كيف أعمل دراسة arc flash في ETAP؟");
+    expect(p).toContain("ETAP EXPERT SYSTEM");
+    expect(p).toContain("حزمة تخصص: دراسات Arc Flash");
   });
 
   it("routed ETAP/arc-flash prompt drops the PF/SKM/PVSyst cores", () => {
