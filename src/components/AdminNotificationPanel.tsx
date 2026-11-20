@@ -1,5 +1,4 @@
-import { visualRandom } from "@/lib/random";
-import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, type ReactNode } from "react";
 import {
   Bell,
   BellRing,
@@ -11,36 +10,27 @@ import {
   BookOpen,
   Gift,
   Sparkles,
-  Megaphone,
   Users,
-  GraduationCap,
-  UserCheck,
-  ShieldCheck,
   Check,
   AlertCircle,
   Loader2,
   Timer,
-  Trash2,
-  CalendarClock,
   ArrowDownUp,
   RotateCcw,
+  FileText,
+  Download,
+  Youtube,
+  ExternalLink,
 } from "lucide-react";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useShowNotification } from "@/components/NotificationCenter";
+import { trpc } from "@/providers/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { bilingual } from "@/lib/i18n";
 import {
   Card,
@@ -54,42 +44,55 @@ import {
 // Types
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/**
+ * ✅ ROOT FIX (dashboard audit): the old composer offered "enrollment" /
+ * "update" / "custom" notification types — the backend `admin.sendBroadcast`
+ * z.enum REJECTS all three ("promo" | "system" | "lesson" | "file" |
+ * "software" | "youtube"), which is exactly why Admin.tsx used to hardcode
+ * `type: "promo"` and silently ignore whatever the admin picked. The composer
+ * now speaks the SERVER's vocabulary, so the selected type actually lands in
+ * the stored notification.
+ */
+type NotificationType =
+  | "promo"
+  | "system"
+  | "lesson"
+  | "file"
+  | "software"
+  | "youtube";
+
+export type BroadcastType = NotificationType;
+
 export interface AdminNotificationPanelProps {
+  /**
+   * Ship the composed notification to the server. ROOT FIX: this is now
+   * awaited — the success toast / history refresh only happen once the
+   * backend CONFIRMS the broadcast. The old panel showed "sent successfully"
+   * immediately, even when the mutation failed.
+   */
   readonly onSend?: (notification: {
-    type: string;
-    title: string;
-    message: string;
-    recipientFilter: string;
-    scheduledAt?: Date;
-    /** Bilingual extras (sent to the server so both languages persist). */
-    titleAr?: string;
-    titleEn?: string;
-    messageAr?: string;
-    messageEn?: string;
-  }) => void;
+    readonly type: NotificationType;
+    readonly title: string;
+    readonly message: string;
+    /** Optional click-through target (relative path or http(s) URL). */
+    readonly url?: string;
+    readonly titleAr?: string;
+    readonly titleEn?: string;
+    readonly messageAr?: string;
+    readonly messageEn?: string;
+  }) => Promise<unknown> | void;
 }
 
-type NotificationType = "enrollment" | "promo" | "update" | "custom";
-
-type RecipientFilter =
-  | "all"
-  | "enrolled"
-  | "course"
-  | "role_admin"
-  | "role_student";
-
-interface SentNotificationRecord {
-  id: string;
-  type: NotificationType;
-  titleEn: string;
-  titleAr: string;
-  messageEn: string;
-  messageAr: string;
-  recipientFilter: RecipientFilter;
-  recipientLabel: string;
-  scheduledAt: string | null;
-  sentAt: number;
-  status: "sent" | "scheduled" | "failed";
+/** One broadcast row as stored by the server (notifications table). */
+interface BroadcastRecord {
+  readonly id: string;
+  readonly type: NotificationType;
+  readonly titleAr: string;
+  readonly titleEn: string;
+  readonly messageAr: string;
+  readonly messageEn: string;
+  readonly url: string | null;
+  readonly sentAt: number;
 }
 
 interface FormErrors {
@@ -97,7 +100,7 @@ interface FormErrors {
   titleAr?: string;
   messageEn?: string;
   messageAr?: string;
-  scheduledDate?: string;
+  url?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -108,9 +111,9 @@ const TITLE_MIN = 3;
 const TITLE_MAX = 120;
 const MESSAGE_MIN = 10;
 const MESSAGE_MAX = 500;
+/** Mirrors the server's `url` refine: relative path or http(s) only. */
+const URL_MAX = 700;
 const DEFAULT_COOLDOWN = 60;
-const HISTORY_KEY = "elbaz_admin_notification_history";
-const MAX_HISTORY = 50;
 
 const NOTIFICATION_TYPE_CONFIG: Record<
   NotificationType,
@@ -125,88 +128,79 @@ const NOTIFICATION_TYPE_CONFIG: Record<
     toastType: "enrollment" | "promo" | "update" | "info";
   }
 > = {
-  enrollment: {
-    icon: <BookOpen className="h-4 w-4" />,
-    color: "text-[#06b6d4]",
-    bg: "bg-[rgba(6,182,212,0.1)]",
-    labelEn: "Enrollment Alert",
-    labelAr: "تنبيه تسجيل",
-    descriptionEn: "Notify users about new enrollments or course availability",
-    descriptionAr: "إخطار المستخدمين حول التسجيلات الجديدة أو توافر الكورسات",
-    toastType: "enrollment",
-  },
   promo: {
     icon: <Gift className="h-4 w-4" />,
     color: "text-[#f59e0b]",
     bg: "bg-[rgba(245,158,11,0.1)]",
-    labelEn: "Promo / Discount",
-    labelAr: "عرض / خصم",
-    descriptionEn: "Send promotional offers and discount notifications",
-    descriptionAr: "إرسال عروض ترويجية وإشعارات خصم",
+    labelEn: "Promo / Announcement",
+    labelAr: "عرض / إعلان",
+    descriptionEn: "Promotional offers and general announcements",
+    descriptionAr: "العروض الترويجية والإعلانات العامة",
     toastType: "promo",
   },
-  update: {
+  system: {
     icon: <Sparkles className="h-4 w-4" />,
     color: "text-[#10b981]",
     bg: "bg-[rgba(16,185,129,0.1)]",
-    labelEn: "System Update",
-    labelAr: "تحديث النظام",
-    descriptionEn: "Announce platform updates, maintenance, or new features",
-    descriptionAr: "إعلان تحديثات المنصة أو الصيانة أو الميزات الجديدة",
+    labelEn: "System Notice",
+    labelAr: "إشعار نظامي",
+    descriptionEn: "Platform updates, maintenance windows, new features",
+    descriptionAr: "تحديثات المنصة أو الصيانة أو الميزات الجديدة",
     toastType: "update",
   },
-  custom: {
-    icon: <Megaphone className="h-4 w-4" />,
-    color: "text-[#e8f0fe]",
-    bg: "bg-[rgba(232,240,254,0.08)]",
-    labelEn: "Custom Message",
-    labelAr: "رسالة مخصصة",
-    descriptionEn: "Send a custom message to selected recipients",
-    descriptionAr: "إرسال رسالة مخصصة للمستلمين المحددين",
+  lesson: {
+    icon: <BookOpen className="h-4 w-4" />,
+    color: "text-[#06b6d4]",
+    bg: "bg-[rgba(6,182,212,0.1)]",
+    labelEn: "New Lesson",
+    labelAr: "درس جديد",
+    descriptionEn: "New course episode just landed",
+    descriptionAr: "إضافة درس جديد لأحد الكورسات",
+    toastType: "enrollment",
+  },
+  file: {
+    icon: <FileText className="h-4 w-4" />,
+    color: "text-[#818cf8]",
+    bg: "bg-[rgba(129,140,248,0.1)]",
+    labelEn: "New File",
+    labelAr: "ملف جديد",
+    descriptionEn: "New reference / library file available",
+    descriptionAr: "توافر ملف أو مرجع جديد في المكتبة",
+    toastType: "info",
+  },
+  software: {
+    icon: <Download className="h-4 w-4" />,
+    color: "text-[#a78bfa]",
+    bg: "bg-[rgba(167,139,250,0.1)]",
+    labelEn: "New Software",
+    labelAr: "برنامج جديد",
+    descriptionEn: "New software entry in the downloads section",
+    descriptionAr: "إضافة برنامج جديد في قسم التحميلات",
+    toastType: "info",
+  },
+  youtube: {
+    icon: <Youtube className="h-4 w-4" />,
+    color: "text-[#f87171]",
+    bg: "bg-[rgba(248,113,113,0.1)]",
+    labelEn: "YouTube Video",
+    labelAr: "فيديو يوتيوب",
+    descriptionEn: "New episode detected on the YouTube channel",
+    descriptionAr: "فيديو جديد على قناة يوتيوب",
     toastType: "info",
   },
 };
 
-const RECIPIENT_FILTER_CONFIG: Record<
-  RecipientFilter,
-  { icon: ReactNode; labelEn: string; labelAr: string }
-> = {
-  all: {
-    icon: <Users className="h-4 w-4" />,
-    labelEn: "All Users",
-    labelAr: "جميع المستخدمين",
-  },
-  enrolled: {
-    icon: <GraduationCap className="h-4 w-4" />,
-    labelEn: "Enrolled Only",
-    labelAr: "المسجلين فقط",
-  },
-  course: {
-    icon: <BookOpen className="h-4 w-4" />,
-    labelEn: "Specific Course",
-    labelAr: "كورس محدد",
-  },
-  role_admin: {
-    icon: <ShieldCheck className="h-4 w-4" />,
-    labelEn: "Admins Only",
-    labelAr: "المديرين فقط",
-  },
-  role_student: {
-    icon: <UserCheck className="h-4 w-4" />,
-    labelEn: "Students Only",
-    labelAr: "الطلاب فقط",
-  },
-};
+const NOTIFICATION_TYPES = Object.keys(NOTIFICATION_TYPE_CONFIG) as NotificationType[];
+
+function isNotificationType(value: unknown): value is NotificationType {
+  return typeof value === "string" && (NOTIFICATION_TYPES as string[]).includes(value);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function generateId(): string {
-  return `admin-notif-${Date.now()}-${visualRandom().toString(36).slice(2, 8)}`;
-}
-
-function formatDateTime(iso: string, lang: "en" | "ar"): string {
+function formatDateTime(iso: string | number, lang: "en" | "ar"): string {
   try {
     const d = new Date(iso);
     return d.toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US", {
@@ -217,32 +211,44 @@ function formatDateTime(iso: string, lang: "en" | "ar"): string {
       minute: "2-digit",
     });
   } catch {
-    return iso;
+    return String(iso);
   }
 }
 
-function getMinScheduledDate(): string {
-  const now = new Date();
-  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-  return now.toISOString().slice(0, 16);
+/**
+ * Map a server broadcast row (admin.broadcastHistory → notifications table)
+ * into the component's record shape. Arabic is the primary display (matches
+ * pushNotification: `title`/`message` are Arabic-first, English lives in
+ * data.en).
+ */
+function mapServerBroadcast(row: {
+  eventId: string;
+  type: unknown;
+  title: string;
+  message: string;
+  url: string | null;
+  en: { title?: string; message?: string } | null;
+  createdAt: string | Date;
+}): BroadcastRecord | null {
+  if (!isNotificationType(row.type)) return null;
+  return {
+    id: row.eventId,
+    type: row.type,
+    titleAr: row.title,
+    titleEn: row.en?.title || row.title,
+    messageAr: row.message,
+    messageEn: row.en?.message || "",
+    url: row.url ?? null,
+    sentAt:
+      row.createdAt instanceof Date
+        ? row.createdAt.getTime()
+        : new Date(row.createdAt).getTime(),
+  };
 }
 
-function loadHistory(): SentNotificationRecord[] {
-  try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    if (!raw) return [];
-    return JSON.parse(raw);
-  } catch {
-    return [];
-  }
-}
-
-function persistHistory(records: SentNotificationRecord[]) {
-  try {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(records.slice(0, MAX_HISTORY)));
-  } catch {
-    // quota exceeded — silently ignore
-  }
+/** Server-side validation twin: relative path or http(s) URL. */
+function isValidLinkUrl(value: string): boolean {
+  return value.startsWith("/") || /^https?:\/\//i.test(value);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -381,7 +387,7 @@ function NotificationPreview({
       {/* Content */}
       <div className="min-w-0 flex-1">
         <p className="text-[13px] font-semibold text-[#e8f0fe]">
-          {title || (type === "custom" ? "Custom Message" : cfg.labelEn)}
+          {title || cfg.labelEn}
         </p>
         <p className="mt-1 text-[12px] leading-relaxed text-[#94a3b8]">
           {message || "Notification preview will appear here..."}
@@ -399,33 +405,16 @@ function NotificationPreview({
   );
 }
 
-/** Single row in the history list. */
+/** Single row in the history list (server-backed — read-only audit trail). */
 function HistoryRow({
   record,
   lang,
-  onDelete,
 }: {
-  readonly record: SentNotificationRecord;
+  readonly record: BroadcastRecord;
   readonly lang: "en" | "ar";
-  readonly onDelete: (id: string) => void;
 }) {
   const isRTL = lang === "ar";
   const cfg = NOTIFICATION_TYPE_CONFIG[record.type];
-  const isScheduled = record.status === "scheduled";
-  const isFailed = record.status === "failed";
-
-  const innerStatusColor = isScheduled
-    ? "bg-[rgba(245,158,11,0.12)] text-[#f59e0b]"
-    : "bg-[rgba(16,185,129,0.12)] text-[#10b981]";
-  const statusColor = isFailed
-    ? "bg-[rgba(248,113,113,0.12)] text-[#f87171]"
-    : innerStatusColor;
-
-  const failedLabel = isRTL ? "فشل" : "Failed";
-  const notFailedLabel = isScheduled
-    ? bilingual("مجدول", "Scheduled", isRTL)
-    : bilingual("تم الإرسال", "Sent", isRTL);
-  const statusLabel = isFailed ? failedLabel : notFailedLabel;
 
   return (
     <div className="group flex items-start gap-3 rounded-lg border border-[#1e2d3d] bg-[#0d1420] px-4 py-3 transition-colors hover:border-[#2d3f52]">
@@ -442,8 +431,8 @@ function HistoryRow({
           <p className="truncate text-[13px] font-semibold text-[#e8f0fe]">
             {isRTL ? record.titleAr : record.titleEn}
           </p>
-          <Badge className={`${statusColor} border-0 text-[10px]`}>
-            {statusLabel}
+          <Badge className="border-0 bg-[rgba(16,185,129,0.12)] text-[10px] text-[#10b981]">
+            {bilingual("تم الإرسال", "Sent", isRTL)}
           </Badge>
         </div>
         <p className="mt-0.5 line-clamp-1 text-[12px] text-[#64748b]">
@@ -452,36 +441,36 @@ function HistoryRow({
         <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-[#475569]">
           <span className="flex items-center gap-1">
             <Users className="h-3 w-3" />
-            {record.recipientLabel}
+            {bilingual("جميع المستخدمين", "All Users", isRTL)}
           </span>
           <span>•</span>
           <span className="flex items-center gap-1">
             <Clock className="h-3 w-3" />
-            {formatDateTime(
-              isScheduled && record.scheduledAt
-                ? record.scheduledAt
-                : new Date(record.sentAt).toISOString(),
-              lang,
-            )}
+            {formatDateTime(record.sentAt, lang)}
           </span>
+          {record.url && (
+            <>
+              <span>•</span>
+              <span className="flex max-w-[220px] items-center gap-1 truncate" dir="ltr">
+                <ExternalLink className="h-3 w-3 shrink-0" />
+                {record.url}
+              </span>
+            </>
+          )}
         </div>
       </div>
-
-      {/* Delete */}
-      <button
-        type="button"
-        onClick={() => onDelete(record.id)}
-        aria-label={isRTL ? "حذف" : "Delete"}
-        className="shrink-0 rounded-md p-1.5 text-[#475569] opacity-0 transition-all hover:bg-[rgba(248,113,113,0.1)] hover:text-[#f87171] group-hover:opacity-100"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </button>
     </div>
   );
 }
 
 /** Empty state for history. */
-function EmptyHistory({ lang }: { readonly lang: "en" | "ar" }) {
+function EmptyHistory({
+  lang,
+  error,
+}: {
+  readonly lang: "en" | "ar";
+  readonly error?: boolean;
+}) {
   const isRTL = lang === "ar";
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -489,12 +478,22 @@ function EmptyHistory({ lang }: { readonly lang: "en" | "ar" }) {
         <History className="h-7 w-7 text-[#475569]" />
       </div>
       <p className="text-[14px] font-semibold text-[#94a3b8]">
-        {isRTL ? "لا توجد إشعارات مرسلة" : "No notifications sent"}
+        {error
+          ? isRTL
+            ? "تعذر تحميل السجل من السيرفر"
+            : "Could not load history from the server"
+          : isRTL
+            ? "لا توجد إشعارات مرسلة"
+            : "No notifications sent"}
       </p>
       <p className="mt-1 max-w-[260px] text-[12px] text-[#475569]">
-        {isRTL
-          ? "ستظهر الإشعارات التي ترسلها هنا"
-          : "Notifications you send will appear here"}
+        {error
+          ? isRTL
+            ? "تأكد من الاتصال ثم أعد المحاولة"
+            : "Check connectivity and try again"
+          : isRTL
+            ? "كل إشعار تبثه يظهر هنا مباشرة من السيرفر"
+            : "Every broadcast you send appears here straight from the server"}
       </p>
     </div>
   );
@@ -504,24 +503,20 @@ function EmptyHistory({ lang }: { readonly lang: "en" | "ar" }) {
 // Main Component
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export default function AdminNotificationPanel({ // NOSONAR — complex function, refactoring would risk breaking critical behavior
+export default function AdminNotificationPanel({ // NOSONAR — admin broadcast composer; the form state is tightly coupled to the honest-send flow
   onSend,
-}: AdminNotificationPanelProps) { // NOSONAR — large admin form component with many tightly-coupled state hooks (refs, mutation, scheduling); extraction would require prop-drilling 10+ state values
+}: AdminNotificationPanelProps) {
   const { lang } = useTranslation();
   const { showNotification } = useShowNotification();
   const isRTL = lang === "ar";
 
   // ─── Form state ───
-  const [type, setType] = useState<NotificationType>("custom");
+  const [type, setType] = useState<NotificationType>("promo");
   const [titleEn, setTitleEn] = useState("");
   const [titleAr, setTitleAr] = useState("");
   const [messageEn, setMessageEn] = useState("");
   const [messageAr, setMessageAr] = useState("");
-  const [recipientFilter, setRecipientFilter] =
-    useState<RecipientFilter>("all");
-  const [courseName, setCourseName] = useState("");
-  const [isScheduled, setIsScheduled] = useState(false);
-  const [scheduledDate, setScheduledDate] = useState("");
+  const [url, setUrl] = useState("");
   const [previewActive, setPreviewActive] = useState(false);
 
   // ─── Cooldown state ───
@@ -537,11 +532,26 @@ export default function AdminNotificationPanel({ // NOSONAR — complex function
   const [activeTab, setActiveTab] = useState("compose");
 
   // ─── History state ───
-  const [history, setHistory] = useState<SentNotificationRecord[]>(loadHistory);
   const [historyFilter, setHistoryFilter] = useState<NotificationType | "all">("all");
 
   // ─── Settings state ───
   const [settingCooldown, setSettingCooldown] = useState(DEFAULT_COOLDOWN);
+
+  /**
+   * ✅ ROOT FIX: the History tab now reads SERVER truth
+   * (notifications table via admin.broadcastHistory) instead of a
+   * localStorage list that claimed "sent/scheduled" without the backend
+   * ever confirming anything. Broadcasts persist ~30 days server-side.
+   */
+  const broadcastHistory = trpc.admin.broadcastHistory.useQuery(undefined);
+
+  const records = useMemo<BroadcastRecord[]>(
+    () =>
+      (broadcastHistory.data ?? [])
+        .map(mapServerBroadcast)
+        .filter((r): r is BroadcastRecord => r !== null),
+    [broadcastHistory.data],
+  );
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Cooldown timer
@@ -581,7 +591,7 @@ export default function AdminNotificationPanel({ // NOSONAR — complex function
   // Validation
   // ═══════════════════════════════════════════════════════════════════════════
 
-  const validate = useCallback((): boolean => { // NOSONAR — complex function, refactoring would risk breaking critical behavior
+  const validate = useCallback((): boolean => {
     const next: FormErrors = {};
     let valid = true;
 
@@ -633,43 +643,38 @@ export default function AdminNotificationPanel({ // NOSONAR — complex function
       tooLong: isRTL ? `يجب ألا تتجاوز الرسالة ${MESSAGE_MAX} حرفًا` : `Message must not exceed ${MESSAGE_MAX} characters`,
     }, MESSAGE_MIN, MESSAGE_MAX);
 
-    // Course name required when filter is "course"
-    if (recipientFilter === "course" && !courseName.trim()) {
-      next.scheduledDate =
-        isRTL ? "اسم الكورس مطلوب" : "Course name is required";
-      valid = false;
-    }
-
-    // Schedule date must be in the future
-    if (isScheduled && scheduledDate) {
-      const selectedDate = new Date(scheduledDate);
-      if (selectedDate <= new Date()) {
-        next.scheduledDate =
-          isRTL
-            ? "يجب أن يكون الموعد في المستقبل"
-            : "Schedule time must be in the future";
+    // Optional link — mirrors the server's z.refine exactly so the admin
+    // never hits a server rejection the form could have caught locally.
+    const trimmedUrl = url.trim();
+    if (trimmedUrl) {
+      if (trimmedUrl.length > URL_MAX) {
+        next.url = isRTL
+          ? `يجب ألا يتجاوز الرابط ${URL_MAX} حرفًا`
+          : `Link must not exceed ${URL_MAX} characters`;
+        valid = false;
+      } else if (!isValidLinkUrl(trimmedUrl)) {
+        next.url = isRTL
+          ? "الرابط يجب أن يكون مسارًا داخليًا يبدأ بـ / أو رابط http(s)"
+          : "Link must be a relative path starting with / or an http(s) URL";
         valid = false;
       }
     }
 
     setErrors(next);
     return valid;
-  }, [titleEn, titleAr, messageEn, messageAr, recipientFilter, courseName, isScheduled, scheduledDate, isRTL]);
+  }, [titleEn, titleAr, messageEn, messageAr, url, isRTL]);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Reset form
   // ═══════════════════════════════════════════════════════════════════════════
 
   const resetForm = useCallback(() => {
-    setType("custom");
+    setType("promo");
     setTitleEn("");
     setTitleAr("");
     setMessageEn("");
     setMessageAr("");
-    setRecipientFilter("all");
-    setCourseName("");
-    setIsScheduled(false);
-    setScheduledDate("");
+    setUrl("");
     setErrors({});
     setSuccessMessage("");
     setPreviewActive(false);
@@ -697,82 +702,73 @@ export default function AdminNotificationPanel({ // NOSONAR — complex function
   }, [type, titleEn, titleAr, messageEn, messageAr, isRTL, showNotification, cooldownRemaining]);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // Send notification
+  // Send notification — HONEST flow: success only after the server confirms
   // ═══════════════════════════════════════════════════════════════════════════
 
-  const handleSend = useCallback(async () => {
+  const handleSend = useCallback(async () => { // NOSONAR — one honest send path: validate → await server → feedback
     if (cooldownRemaining > 0) return;
     if (!validate()) return;
 
     setIsSending(true);
     setSuccessMessage("");
 
-    // Simulate a brief send delay
-    await new Promise((resolve) => setTimeout(resolve, 800));
-
-    const recipientLabel =
-      RECIPIENT_FILTER_CONFIG[recipientFilter][isRTL ? "labelAr" : "labelEn"];
-
-    const record: SentNotificationRecord = {
-      id: generateId(),
+    const trimmedUrl = url.trim();
+    const payload = {
       type,
-      titleEn: titleEn.trim(),
+      title: isRTL ? titleAr.trim() : titleEn.trim(),
+      message: isRTL ? messageAr.trim() : messageEn.trim(),
+      url: trimmedUrl || undefined,
       titleAr: titleAr.trim(),
-      messageEn: messageEn.trim(),
+      titleEn: titleEn.trim(),
       messageAr: messageAr.trim(),
-      recipientFilter,
-      recipientLabel:
-        recipientFilter === "course" ? courseName.trim() : recipientLabel,
-      scheduledAt: isScheduled ? scheduledDate : null,
-      sentAt: Date.now(),
-      status: isScheduled ? "scheduled" : "sent",
+      messageEn: messageEn.trim(),
     };
 
-    // Update history
-    setHistory((prev) => {
-      const updated = [record, ...prev].slice(0, MAX_HISTORY);
-      persistHistory(updated);
-      return updated;
-    });
+    try {
+      // ✅ ROOT FIX: the send is now genuinely awaited. The old panel fired
+      // "تم الإرسال بنجاح" unconditionally — even when the mutation failed.
+      await onSend?.(payload);
 
-    // Fire callback
-    onSend?.({
-      type,
-      title: isRTL ? record.titleAr : record.titleEn,
-      message: isRTL ? record.messageAr : record.messageEn,
-      recipientFilter,
-      scheduledAt: record.scheduledAt ? new Date(record.scheduledAt) : undefined,
-      titleAr: record.titleAr,
-      titleEn: record.titleEn,
-      messageAr: record.messageAr,
-      messageEn: record.messageEn,
-    });
+      // Server confirmed — only NOW is success shown anywhere.
+      const cfg = NOTIFICATION_TYPE_CONFIG[type];
+      showNotification({
+        type: cfg.toastType,
+        title: isRTL ? "تم الإرسال بنجاح" : "Notification Sent",
+        message: isRTL
+          ? `تم بث "${payload.titleAr}" لكل المستخدمين المسجلين`
+          : `"${payload.titleEn}" broadcast to all registered users`,
+        duration: 4000,
+      });
 
-    // Show a toast confirmation to the admin
-    const cfg = NOTIFICATION_TYPE_CONFIG[type];
-    showNotification({
-      type: cfg.toastType,
-      title: isRTL ? "تم الإرسال بنجاح" : "Notification Sent",
-      message: isRTL
-        ? `تم إرسال "${record.titleAr}" إلى ${record.recipientLabel}`
-        : `"${record.titleEn}" sent to ${record.recipientLabel}`,
-      duration: 4000,
-    });
+      // Start cooldown
+      const cooldown = settingCooldown || DEFAULT_COOLDOWN;
+      setCooldownTotal(cooldown);
+      setCooldownRemaining(cooldown);
+      lastSentRef.current = Date.now();
 
-    // Start cooldown
-    const cooldown = settingCooldown || DEFAULT_COOLDOWN;
-    setCooldownTotal(cooldown);
-    setCooldownRemaining(cooldown);
-    lastSentRef.current = Date.now();
+      setSuccessMessage(
+        isRTL ? "تم إرسال الإشعار بنجاح!" : "Notification sent successfully!",
+      );
 
-    setSuccessMessage(
-      isRTL ? "تم إرسال الإشعار بنجاح!" : "Notification sent successfully!",
-    );
+      // Refresh the server-backed history so the row appears immediately.
+      void broadcastHistory.refetch();
 
-    setIsSending(false);
-
-    // Reset form after short delay so user sees the success
-    setTimeout(() => resetForm(), 2000);
+      // Reset form after short delay so user sees the success
+      setTimeout(() => resetForm(), 2000);
+    } catch (err) {
+      showNotification({
+        type: "info",
+        title: isRTL ? "فشل إرسال الإشعار" : "Send failed",
+        message: err instanceof Error && err.message
+          ? err.message
+          : isRTL
+            ? "حدث خطأ غير متوقع — لم يتم الإرسال"
+            : "Unexpected error — nothing was sent",
+        duration: 6000,
+      });
+    } finally {
+      setIsSending(false);
+    }
   }, [
     cooldownRemaining,
     validate,
@@ -781,28 +777,14 @@ export default function AdminNotificationPanel({ // NOSONAR — complex function
     titleAr,
     messageEn,
     messageAr,
-    recipientFilter,
-    courseName,
-    isScheduled,
-    scheduledDate,
+    url,
     isRTL,
     onSend,
     showNotification,
     settingCooldown,
+    broadcastHistory,
     resetForm,
   ]);
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Delete from history
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  const handleDeleteHistory = useCallback((id: string) => {
-    setHistory((prev) => {
-      const updated = prev.filter((r) => r.id !== id);
-      persistHistory(updated);
-      return updated;
-    });
-  }, []);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Save settings
@@ -828,11 +810,10 @@ export default function AdminNotificationPanel({ // NOSONAR — complex function
   // ═══════════════════════════════════════════════════════════════════════════
 
   const typeConfig = NOTIFICATION_TYPE_CONFIG[type];
-  const recipientConfig = RECIPIENT_FILTER_CONFIG[recipientFilter];
   const filteredHistory =
     historyFilter === "all"
-      ? history
-      : history.filter((r) => r.type === historyFilter);
+      ? records
+      : records.filter((r) => r.type === historyFilter);
   const isOnCooldown = cooldownRemaining > 0;
   const isFormEmpty =
     !titleEn && !titleAr && !messageEn && !messageAr;
@@ -844,12 +825,9 @@ export default function AdminNotificationPanel({ // NOSONAR — complex function
   ) : (
     <Send className={`h-4 w-4 ${isRTL ? "ml-1.5" : "mr-1.5"}`} />
   );
-  const scheduledSendLabel = isScheduled
-    ? bilingual("جدولة الإرسال", "Schedule Send", isRTL)
-    : bilingual("إرسال الإشعار", "Send Notification", isRTL);
   const idleSendLabel = isOnCooldown
     ? `${cooldownRemaining}s`
-    : scheduledSendLabel;
+    : bilingual("إرسال الإشعار", "Send Notification", isRTL);
   const sendingLabel = isRTL ? "جاري الإرسال..." : "Sending...";
   const sendButtonLabel = isSending ? sendingLabel : idleSendLabel;
 
@@ -897,15 +875,15 @@ export default function AdminNotificationPanel({ // NOSONAR — complex function
           </h2>
           <p className="text-[13px] text-[#64748b]">
             {isRTL
-              ? "إرسال وإدارة الإشعارات للمستخدمين"
-              : "Send and manage notifications for users"}
+              ? "بث إشعارات حقيقية لكل المستخدمين — تسجيل من السيرفر"
+              : "Broadcast real notifications to all users — server-backed log"}
           </p>
         </div>
         <Badge
           variant="outline"
           className="border-[rgba(6,182,212,0.25)] text-[12px] text-[#06b6d4]"
         >
-          {history.length}{" "}
+          {records.length}{" "}
           {isRTL ? "إشعار مرسل" : "sent"}
         </Badge>
       </div>
@@ -969,42 +947,41 @@ export default function AdminNotificationPanel({ // NOSONAR — complex function
                   </CardTitle>
                   <CardDescription className="text-[12px]">
                     {isRTL
-                      ? "اختر نوع الإشعار المناسب"
-                      : "Choose the appropriate notification type"}
+                      ? "النوع يُحفظ في الإشعار نفسه ويحدد شكله عند المستخدم"
+                      : "The type is stored on the notification and shapes how users see it"}
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="grid grid-cols-2 gap-2 pt-4 sm:grid-cols-4">
-                  {(Object.keys(NOTIFICATION_TYPE_CONFIG) as NotificationType[]).map(
-                    (nt) => {
-                      const cfg = NOTIFICATION_TYPE_CONFIG[nt];
-                      const isSelected = type === nt;
-                      return (
-                        <button
-                          key={nt}
-                          type="button"
-                          onClick={() => setType(nt)}
-                          className={`flex flex-col items-center gap-2 rounded-xl border px-3 py-3 text-center transition-all ${
-                            isSelected
-                              ? "border-[#06b6d4] bg-[rgba(6,182,212,0.08)] ring-1 ring-[rgba(6,182,212,0.2)]"
-                              : "border-[#1e2d3d] bg-[#0d1420] hover:border-[#2d3f52]"
+                <CardContent className="grid grid-cols-2 gap-2 pt-4 sm:grid-cols-3">
+                  {NOTIFICATION_TYPES.map((nt) => {
+                    const cfg = NOTIFICATION_TYPE_CONFIG[nt];
+                    const isSelected = type === nt;
+                    return (
+                      <button
+                        key={nt}
+                        type="button"
+                        onClick={() => setType(nt)}
+                        data-testid={`notif-type-${nt}`}
+                        className={`flex flex-col items-center gap-2 rounded-xl border px-3 py-3 text-center transition-all ${
+                          isSelected
+                            ? "border-[#06b6d4] bg-[rgba(6,182,212,0.08)] ring-1 ring-[rgba(6,182,212,0.2)]"
+                            : "border-[#1e2d3d] bg-[#0d1420] hover:border-[#2d3f52]"
+                        }`}
+                      >
+                        <div
+                          className={`flex h-9 w-9 items-center justify-center rounded-lg ${cfg.bg}`}
+                        >
+                          <span className={cfg.color}>{cfg.icon}</span>
+                        </div>
+                        <span
+                          className={`text-[11px] font-medium ${
+                            isSelected ? "text-[#06b6d4]" : "text-[#94a3b8]"
                           }`}
                         >
-                          <div
-                            className={`flex h-9 w-9 items-center justify-center rounded-lg ${cfg.bg}`}
-                          >
-                            <span className={cfg.color}>{cfg.icon}</span>
-                          </div>
-                          <span
-                            className={`text-[11px] font-medium ${
-                              isSelected ? "text-[#06b6d4]" : "text-[#94a3b8]"
-                            }`}
-                          >
-                            {isRTL ? cfg.labelAr : cfg.labelEn}
-                          </span>
-                        </button>
-                      );
-                    },
-                  )}
+                          {isRTL ? cfg.labelAr : cfg.labelEn}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </CardContent>
               </Card>
 
@@ -1142,165 +1119,60 @@ export default function AdminNotificationPanel({ // NOSONAR — complex function
                 </div>
               </div>
 
-              {/* ── Recipient Filter ── */}
+              {/* ── Optional click-through link ── */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-[#94a3b8]">
+                    {isRTL ? "رابط الإشعار (اختياري)" : "Notification Link (optional)"}
+                  </Label>
+                  <CharCounter
+                    current={url.trim().length}
+                    min={0}
+                    max={URL_MAX}
+                  />
+                </div>
+                <Input
+                  value={url}
+                  onChange={(e) => {
+                    setUrl(e.target.value);
+                    setErrors((prev) => ({ ...prev, url: undefined }));
+                    setSuccessMessage("");
+                  }}
+                  placeholder={isRTL ? "/courses/etap أو https://..." : "/courses/etap or https://..."}
+                  dir="ltr"
+                  className={`border-[#1e2d3d] bg-[#0d1420] text-[#e8f0fe] placeholder:text-[#475569] ${
+                    errors.url ? "border-[#f87171] focus-visible:border-[#f87171] focus-visible:ring-[#f87171]/30" : ""
+                  }`}
+                />
+                <FieldError message={errors.url} />
+                <p className="text-[11px] text-[#475569]">
+                  {isRTL
+                    ? "عند ضغط المستخدم على الإشعار يفتح هذا الرابط — مسار داخلي يبدأ بـ / أو رابط http(s)"
+                    : "Clicking the notification opens this link — a relative path starting with / or an http(s) URL"}
+                </p>
+              </div>
+
+              {/* ── Recipients (honest contract) ── */}
               <Card className="border-[#1e2d3d] bg-[#111827] py-4">
-                <CardHeader className="pb-0">
-                  <CardTitle className="text-[14px] text-[#e8f0fe]">
-                    {isRTL ? "المستلمون" : "Recipients"}
-                  </CardTitle>
-                  <CardDescription className="text-[12px]">
-                    {isRTL
-                      ? "اختر من سيستلم هذا الإشعار"
-                      : "Choose who will receive this notification"}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="pt-4">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-1.5">
-                      <Label className="text-[#94a3b8]">
-                        {isRTL ? "تصنيف المستلمين" : "Recipient Filter"}
-                      </Label>
-                      <Select
-                        value={recipientFilter}
-                        onValueChange={(val) =>
-                          setRecipientFilter(val as RecipientFilter)
-                        }
-                      >
-                        <SelectTrigger className="w-full border-[#1e2d3d] bg-[#0d1420] text-[#e8f0fe]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="border-[#1e2d3d] bg-[#111827]">
-                          {(
-                            Object.keys(RECIPIENT_FILTER_CONFIG) as RecipientFilter[]
-                          ).map((rf) => {
-                            const cfg = RECIPIENT_FILTER_CONFIG[rf];
-                            return (
-                              <SelectItem
-                                key={rf}
-                                value={rf}
-                                className="text-[#e8f0fe] focus:bg-[#1e2d3d]"
-                              >
-                                <span className="flex items-center gap-2">
-                                  {cfg.icon}
-                                  {isRTL ? cfg.labelAr : cfg.labelEn}
-                                </span>
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Course name (conditional) */}
-                    {recipientFilter === "course" && (
-                      <div className="space-y-1.5">
-                        <Label className="text-[#94a3b8]">
-                          {isRTL ? "اسم الكورس" : "Course Name"}
-                          <span className="ml-1 text-[#f87171]">*</span>
-                        </Label>
-                        <Input
-                          value={courseName}
-                          onChange={(e) => {
-                            setCourseName(e.target.value);
-                            setErrors((prev) => ({
-                              ...prev,
-                              scheduledDate: undefined,
-                            }));
-                          }}
-                          placeholder={
-                            isRTL
-                              ? "أدخل اسم الكورس..."
-                              : "Enter course name..."
-                          }
-                          className={`border-[#1e2d3d] bg-[#0d1420] text-[#e8f0fe] placeholder:text-[#475569] ${
-                            errors.scheduledDate
-                              ? "border-[#f87171]"
-                              : ""
-                          }`}
-                        />
-                        <FieldError message={errors.scheduledDate} />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Recipient summary */}
-                  <div className="mt-3 flex items-center gap-2 rounded-lg border border-[rgba(6,182,212,0.15)] bg-[rgba(6,182,212,0.05)] px-3 py-2">
-                    <span className={typeConfig.color}>{recipientConfig.icon}</span>
+                <CardContent className="pt-0">
+                  <div className="flex items-center gap-3 rounded-lg border border-[rgba(6,182,212,0.15)] bg-[rgba(6,182,212,0.05)] px-3 py-2.5">
+                    <span className="text-[#06b6d4]">
+                      <Users className="h-4 w-4" />
+                    </span>
                     <span className="text-[12px] text-[#94a3b8]">
-                      {isRTL ? "سيتم الإرسال إلى: " : "Will send to: "}
+                      {isRTL ? "سيتم البث إلى: " : "Will broadcast to: "}
                       <span className="font-semibold text-[#06b6d4]">
                         {isRTL
-                          ? RECIPIENT_FILTER_CONFIG[recipientFilter].labelAr
-                          : RECIPIENT_FILTER_CONFIG[recipientFilter].labelEn}
-                        {recipientFilter === "course" && courseName.trim()
-                          ? ` — ${courseName.trim()}`
-                          : ""}
+                          ? "جميع المستخدمين المسجلين"
+                          : "All registered users"}
+                      </span>
+                      <span className="ms-1 text-[#64748b]">
+                        {isRTL
+                          ? "— داخل التطبيق + Web Push + قناة تليجرام"
+                          : "— in-app bell + Web Push + Telegram channel"}
                       </span>
                     </span>
                   </div>
-                </CardContent>
-              </Card>
-
-              {/* ── Schedule ── */}
-              <Card className="border-[#1e2d3d] bg-[#111827] py-4">
-                <CardContent className="pt-0">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[rgba(245,158,11,0.1)]">
-                        <CalendarClock className="h-4 w-4 text-[#f59e0b]" />
-                      </div>
-                      <div>
-                        <p className="text-[13px] font-medium text-[#e8f0fe]">
-                          {isRTL ? "جدولة الإرسال" : "Schedule Delivery"}
-                        </p>
-                        <p className="text-[11px] text-[#64748b]">
-                          {isRTL
-                            ? "اختر وقتًا محددًا لإرسال الإشعار"
-                            : "Set a specific time to send the notification"}
-                        </p>
-                      </div>
-                    </div>
-                    <Switch
-                      checked={isScheduled}
-                      onCheckedChange={setIsScheduled}
-                      className="data-[state=checked]:bg-[#f59e0b]"
-                    />
-                  </div>
-
-                  {isScheduled && (
-                    <div className="mt-4 space-y-1.5">
-                      <Label className="text-[#94a3b8]">
-                        {isRTL ? "التاريخ والوقت" : "Date & Time"}
-                      </Label>
-                      <Input
-                        type="datetime-local"
-                        value={scheduledDate}
-                        min={getMinScheduledDate()}
-                        onChange={(e) => {
-                          setScheduledDate(e.target.value);
-                          setErrors((prev) => ({
-                            ...prev,
-                            scheduledDate: undefined,
-                          }));
-                          setSuccessMessage("");
-                        }}
-                        dir="ltr"
-                        className={`w-full border-[#1e2d3d] bg-[#0d1420] text-[#e8f0fe] ${
-                          errors.scheduledDate
-                            ? "border-[#f87171] focus-visible:border-[#f87171] focus-visible:ring-[#f87171]/30"
-                            : ""
-                        }`}
-                      />
-                      <FieldError message={errors.scheduledDate} />
-                      {scheduledDate && !errors.scheduledDate && (
-                        <p className="mt-1 text-[11px] text-[#10b981]">
-                          {isRTL
-                            ? `سيتم الإرسال في: ${formatDateTime(scheduledDate, lang)}`
-                            : `Scheduled for: ${formatDateTime(scheduledDate, lang)}`}
-                        </p>
-                      )}
-                    </div>
-                  )}
                 </CardContent>
               </Card>
 
@@ -1332,6 +1204,7 @@ export default function AdminNotificationPanel({ // NOSONAR — complex function
                     type="button"
                     onClick={handleSend}
                     disabled={isOnCooldown || isSending}
+                    data-testid="notif-send"
                     className="bg-[#06b6d4] text-[#070b12] hover:bg-[#22d3ee] disabled:opacity-50"
                   >
                     {isSending ? (
@@ -1363,9 +1236,7 @@ export default function AdminNotificationPanel({ // NOSONAR — complex function
                 {/* Type description */}
                 <div className="rounded-lg border border-[#1e2d3d] bg-[#070b12] p-3">
                   <p className="text-[11px] text-[#64748b]">
-                    {isRTL
-                      ? "يظهر الإشعار للمستخدمين بالشكل التالي"
-                      : "The notification will appear to users as follows"}
+                    {isRTL ? typeConfig.descriptionAr : typeConfig.descriptionEn}
                   </p>
                 </div>
 
@@ -1398,10 +1269,10 @@ export default function AdminNotificationPanel({ // NOSONAR — complex function
                         {isRTL ? "المستلمون" : "Recipients"}
                       </span>
                       <span className="flex items-center gap-1 text-[#94a3b8]">
-                        {recipientConfig.icon}
+                        <Users className="h-3 w-3" />
                         {isRTL
-                          ? RECIPIENT_FILTER_CONFIG[recipientFilter].labelAr
-                          : RECIPIENT_FILTER_CONFIG[recipientFilter].labelEn}
+                          ? "جميع المستخدمين المسجلين"
+                          : "All registered users"}
                       </span>
                     </div>
 
@@ -1409,26 +1280,11 @@ export default function AdminNotificationPanel({ // NOSONAR — complex function
                       <span className="text-[#64748b]">
                         {isRTL ? "التوقيت" : "Timing"}
                       </span>
-                      <span
-                        className={`flex items-center gap-1 ${
-                          isScheduled ? "text-[#f59e0b]" : "text-[#10b981]"
-                        }`}
-                      >
+                      <span className="flex items-center gap-1 text-[#10b981]">
                         <Clock className="h-3 w-3" />
-                        {isScheduled ? bilingual("مجدول", "Scheduled", isRTL) : bilingual("فوري", "Immediate", isRTL)}
+                        {bilingual("فوري", "Immediate", isRTL)}
                       </span>
                     </div>
-
-                    {isScheduled && scheduledDate && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[#64748b]">
-                          {isRTL ? "التاريخ" : "Date"}
-                        </span>
-                        <span className="text-[#94a3b8]">
-                          {formatDateTime(scheduledDate, lang)}
-                        </span>
-                      </div>
-                    )}
 
                     <div className="border-t border-[#1e2d3d] pt-2">
                       <div className="flex items-center justify-between">
@@ -1446,7 +1302,7 @@ export default function AdminNotificationPanel({ // NOSONAR — complex function
         </TabsContent>
 
         {/* ═══════════════════════════════════════════════════════════════════
-            TAB 2 — History
+            TAB 2 — History (server truth)
         ═══════════════════════════════════════════════════════════════════ */}
         <TabsContent value="history" className="mt-6">
           <div className="space-y-4">
@@ -1454,80 +1310,64 @@ export default function AdminNotificationPanel({ // NOSONAR — complex function
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h3 className="text-[15px] font-semibold text-[#e8f0fe]">
-                  {isRTL ? "سجل الإشعارات المرسلة" : "Notification History"}
+                  {isRTL ? "سجل البث (من السيرفر)" : "Broadcast History (server)"}
                 </h3>
                 <p className="text-[12px] text-[#64748b]">
                   {isRTL
-                    ? `${history.length} إشعار مرسل`
-                    : `${history.length} notifications sent`}
+                    ? `${records.length} إشعار مُبث — يُحفظ على السيرفر حوالي 30 يومًا`
+                    : `${records.length} broadcasts — stored server-side for ~30 days`}
                 </p>
               </div>
 
               <div className="flex items-center gap-2">
                 {/* Filter */}
-                <Select
+                <select
                   value={historyFilter}
-                  onValueChange={(val) =>
-                    setHistoryFilter(val as NotificationType | "all")
+                  onChange={(e) =>
+                    setHistoryFilter(e.target.value as NotificationType | "all")
                   }
+                  aria-label={isRTL ? "تصفية حسب النوع" : "Filter by type"}
+                  className="h-9 w-[160px] rounded-md border border-[#1e2d3d] bg-[#111827] px-2 text-[12px] text-[#e8f0fe]"
                 >
-                  <SelectTrigger className="w-[160px] border-[#1e2d3d] bg-[#111827] text-[#e8f0fe]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="border-[#1e2d3d] bg-[#111827]">
-                    <SelectItem
-                      value="all"
-                      className="text-[#e8f0fe] focus:bg-[#1e2d3d]"
-                    >
-                      {isRTL ? "الكل" : "All Types"}
-                    </SelectItem>
-                    {(
-                      Object.keys(NOTIFICATION_TYPE_CONFIG) as NotificationType[]
-                    ).map((nt) => (
-                      <SelectItem
-                        key={nt}
-                        value={nt}
-                        className="text-[#e8f0fe] focus:bg-[#1e2d3d]"
-                      >
-                        {isRTL
-                          ? NOTIFICATION_TYPE_CONFIG[nt].labelAr
-                          : NOTIFICATION_TYPE_CONFIG[nt].labelEn}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                {/* Clear all */}
-                {history.length > 0 && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setHistory([]);
-                      persistHistory([]);
-                    }}
-                    className="border border-[#1e2d3d] text-[#f87171] hover:bg-[rgba(248,113,113,0.1)]"
-                  >
-                    <Trash2 className={`h-3.5 w-3.5 ${isRTL ? "ml-1.5" : "mr-1.5"}`} />
-                    {isRTL ? "مسح الكل" : "Clear All"}
-                  </Button>
-                )}
+                  <option value="all">{isRTL ? "الكل" : "All Types"}</option>
+                  {NOTIFICATION_TYPES.map((nt) => (
+                    <option key={nt} value={nt}>
+                      {isRTL
+                        ? NOTIFICATION_TYPE_CONFIG[nt].labelAr
+                        : NOTIFICATION_TYPE_CONFIG[nt].labelEn}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
             {/* List */}
-            {filteredHistory.length === 0 ? (
+            {broadcastHistory.isLoading ? (
+              <div className="flex items-center justify-center gap-2 rounded-xl border border-[#1e2d3d] bg-[#070b12] py-16 text-[13px] text-[#94a3b8]">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {isRTL ? "جاري تحميل السجل..." : "Loading history..."}
+              </div>
+            ) : broadcastHistory.isError ? (
+              <div className="rounded-xl border border-[rgba(248,113,113,0.3)] bg-[rgba(248,113,113,0.05)]">
+                <EmptyHistory lang={lang} error />
+                <div className="flex justify-center pb-6">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void broadcastHistory.refetch()}
+                    className="border-[#1e2d3d] text-[#94a3b8] hover:bg-[#1e2d3d]"
+                  >
+                    {isRTL ? "إعادة المحاولة" : "Retry"}
+                  </Button>
+                </div>
+              </div>
+            ) : filteredHistory.length === 0 ? (
               <EmptyHistory lang={lang} />
             ) : (
               <div className="max-h-[520px] space-y-2 overflow-y-auto rounded-xl border border-[#1e2d3d] bg-[#070b12] p-2">
                 {filteredHistory.map((record) => (
-                  <HistoryRow
-                    key={record.id}
-                    record={record}
-                    lang={lang}
-                    onDelete={handleDeleteHistory}
-                  />
+                  <HistoryRow key={record.id} record={record} lang={lang} />
                 ))}
               </div>
             )}
@@ -1656,18 +1496,18 @@ export default function AdminNotificationPanel({ // NOSONAR — complex function
                   {/* Info rows */}
                   {[
                     {
-                      icon: <BookOpen className="h-4 w-4 text-[#06b6d4]" />,
+                      icon: <Gift className="h-4 w-4 text-[#f59e0b]" />,
                       labelEn: "Default Type",
                       labelAr: "النوع الافتراضي",
-                      valueEn: "Custom Message",
-                      valueAr: "رسالة مخصصة",
+                      valueEn: "Promo / Announcement",
+                      valueAr: "عرض / إعلان",
                     },
                     {
                       icon: <Users className="h-4 w-4 text-[#94a3b8]" />,
                       labelEn: "Default Recipients",
                       labelAr: "المستلمون الافتراضيون",
-                      valueEn: "All Users",
-                      valueAr: "جميع المستخدمين",
+                      valueEn: "All registered users",
+                      valueAr: "جميع المستخدمين المسجلين",
                     },
                     {
                       icon: <Clock className="h-4 w-4 text-[#f59e0b]" />,
@@ -1723,22 +1563,12 @@ export default function AdminNotificationPanel({ // NOSONAR — complex function
                 </div>
               </CardHeader>
               <CardContent className="pt-4">
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="grid grid-cols-2 gap-3">
                   {[
                     {
-                      label: isRTL ? "إجمالي المرسل" : "Total Sent",
-                      value: history.filter((r) => r.status === "sent").length,
+                      label: isRTL ? "إجمالي المبثق (سيرفر)" : "Total Broadcasts (server)",
+                      value: records.length,
                       color: "#10b981",
-                    },
-                    {
-                      label: isRTL ? "مجدول" : "Scheduled",
-                      value: history.filter((r) => r.status === "scheduled").length,
-                      color: "#f59e0b",
-                    },
-                    {
-                      label: isRTL ? "فاشل" : "Failed",
-                      value: history.filter((r) => r.status === "failed").length,
-                      color: "#f87171",
                     },
                     {
                       label: isRTL ? "فترة الانتظار" : "Cooldown",

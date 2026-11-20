@@ -6,7 +6,7 @@
 
 import { z } from "zod";
 import { desc, eq, sql, and, count } from "drizzle-orm";
-import { adminQuery } from "./middleware";
+import { adminQuery, adminMutation } from "./middleware";
 import { getDb, withTransaction } from "./queries/connection";
 import { users, payments, enrollments, courses, supportTickets, lessons } from "@db/schema";
 import { TRPCError } from "@trpc/server";
@@ -60,7 +60,7 @@ export const adminPaymentsProcedures = {
    *    01/39, CVV 123) and watch the webhook enroll nothing (SELFTEST ref is
    *    intentionally not a payment row) while still confirming the callback.
    */
-  paymobSelfTest: adminQuery.mutation(async () => {
+  paymobSelfTest: adminMutation.mutation(async () => {
     const cfg = await resolvePaymobRuntimeConfig();
     const missing = summarizePaymobConfig(cfg);
     // The Public Key is only needed to BUILD the hosted-checkout URL — the
@@ -196,7 +196,7 @@ export const adminPaymentsProcedures = {
    * course access. Idempotent: approving an already-approved payment is a no-op
    * success instead of an error (dashboard double-clicks, retries).
    */
-  approveManual: adminQuery
+  approveManual: adminMutation
     .input(z.object({ paymentId: z.number().int().positive() }))
     .mutation(async ({ input }) => {
       return await withTransaction(async (tx) => {
@@ -267,7 +267,7 @@ export const adminPaymentsProcedures = {
    * Only pending manual payments can be rejected; already-completed ones must
    * go through a refund flow instead.
    */
-  rejectManual: adminQuery
+  rejectManual: adminMutation
     .input(z.object({ paymentId: z.number().int().positive(), reason: z.string().max(500).optional() }))
     .mutation(async ({ input }) => {
       return await withTransaction(async (tx) => {

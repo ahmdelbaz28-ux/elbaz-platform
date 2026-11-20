@@ -602,10 +602,11 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
   });
 
   // 🔔 Manual broadcast — fires a real notification to every registered user.
-  const sendBroadcast = trpc.admin.sendBroadcast.useMutation({
-    onSuccess: () => toast.success(isRTL ? "تم بث الإشعار لكل المستخدمين ✅" : "Notification broadcast to all users ✅"),
-    onError: (err) => toast.error(isRTL ? `فشل إرسال الإشعار: ${err.message}` : `Broadcast failed: ${err.message}`),
-  });
+  // ✅ ROOT FIX (dashboard audit): feedback now lives in AdminNotificationPanel,
+  // which awaits this promise — success toast only after the server confirms,
+  // error toast on failure. Duplicating toasts here masked the panel's honest
+  // flow (both fired at once, and the panel's fired even on failure).
+  const sendBroadcast = trpc.admin.sendBroadcast.useMutation();
   const createPromo = trpc.promo.create.useMutation({ onSuccess: () => { utils.promo.list.invalidate(); setShowPromoForm(false); toast.success(lang === "en" ? "Promo created" : "تم إنشاء الكود"); }, onError: (err) => toast.error(err.message) });
   const updatePromo = trpc.promo.update.useMutation({ onSuccess: () => { utils.promo.list.invalidate(); setShowPromoForm(false); toast.success(lang === "en" ? "Promo updated" : "تم تحديث الكود"); }, onError: (err) => toast.error(err.message) });
   const deletePromo = trpc.promo.delete.useMutation({ onSuccess: () => { utils.promo.list.invalidate(); toast.success(lang === "en" ? "Promo deleted" : "تم حذف الكود"); }, onError: (err) => toast.error(err.message) });
@@ -2085,15 +2086,22 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                     </p>
                   </div>
                   <AdminNotificationPanel
-                    onSend={(n) => {
-                      sendBroadcast.mutate({
-                        type: "promo",
+                    onSend={(n) =>
+                      // ✅ ROOT FIX: forward the composer's REAL type (the old
+                      // code hardcoded "promo" and ignored the picked type —
+                      // the other values weren't even in the server enum) plus
+                      // the optional click-through link, and return the
+                      // promise so the panel can only claim success after the
+                      // backend confirms.
+                      sendBroadcast.mutateAsync({
+                        type: n.type,
                         title: n.titleAr || n.title,
                         message: n.messageAr || n.message,
                         titleEn: n.titleEn || undefined,
                         messageEn: n.messageEn || undefined,
-                      });
-                    }}
+                        url: n.url || undefined,
+                      })
+                    }
                   />
                 </div>
               )}

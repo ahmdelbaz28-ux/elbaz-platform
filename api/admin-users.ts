@@ -7,7 +7,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { desc, eq, count } from "drizzle-orm";
-import { adminQuery } from "./middleware";
+import { adminQuery, adminMutation } from "./middleware";
 import { getDb } from "./queries/connection";
 import { users } from "@db/schema";
 import type { SafeUser } from "./context";
@@ -46,7 +46,7 @@ export const adminUsersProcedures = {
       return { items: allUsers as SafeUser[], total: total ?? 0 };
     }),
 
-  updateUserRole: adminQuery
+  updateUserRole: adminMutation
     .input(z.object({ userId: z.number().int().positive(), role: z.enum(["user", "admin"]) }))
     .mutation(async ({ input }) => {
       const db = getDb();

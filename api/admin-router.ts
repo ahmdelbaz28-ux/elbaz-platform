@@ -12,7 +12,7 @@ import { adminAiProcedures } from "./admin-ai-providers";
 import { adminChatbotProcedures } from "./admin-chatbot";
 import { categoryProcedures, quizAdminProcedures, enrollmentAdminProcedures } from "./admin-learning";
 import { adminTestimonialsProcedures } from "./admin-testimonials";
-import { pushNotification } from "./lib/notification-broadcast.js";
+import { pushNotification, recentBroadcasts } from "./lib/notification-broadcast.js";
 
 /**
  * ADMIN ROUTER — Composite router merging sub-domain procedure objects
@@ -69,6 +69,34 @@ export const adminRouter = createRouter({
           .offset(offset),
       ]);
       return { items, total: total ?? 0 };
+    }),
+
+  // ─── Broadcast history reader (Admin → Notifications tab → History) ───
+  // ✅ ROOT FIX (dashboard audit): the panel's History tab previously kept a
+  // localStorage-only list that claimed "sent/scheduled" without the backend
+  // confirming anything. This returns SERVER truth — the actual broadcast
+  // rows in the notifications table (targetUserId IS NULL), newest first,
+  // same source the users' bells read from. `en` carries the English copy
+  // stored by sendBroadcast in `data.en`.
+  broadcastHistory: adminQuery
+    .input(
+      z.object({
+        limit: z.number().int().min(1).max(200).default(50),
+      }).optional()
+    )
+    .query(async ({ input }) => {
+      const rows = await recentBroadcasts(input?.limit ?? 50);
+      return rows.map((r) => ({
+        eventId: r.eventId,
+        type: r.type as "promo" | "system" | "lesson" | "file" | "software" | "youtube",
+        title: r.title,
+        message: r.message,
+        url: r.url,
+        en:
+          (r.data as { en?: { title?: string; message?: string } } | null)?.en ??
+          null,
+        createdAt: r.createdAt,
+      }));
     }),
 
   // ─── Manual broadcast (Admin → Notifications tab) ───

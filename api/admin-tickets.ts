@@ -7,7 +7,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { desc, eq, and } from "drizzle-orm";
-import { adminQuery } from "./middleware";
+import { adminQuery, adminMutation } from "./middleware";
 import { getDb } from "./queries/connection";
 import { supportTickets, ticketReplies } from "@db/schema";
 
@@ -42,7 +42,7 @@ export const adminTicketsProcedures = {
     }),
 
   // Update ticket status (trpc.admin.updateTicketStatus.useMutation)
-  updateTicketStatus: adminQuery
+  updateTicketStatus: adminMutation
     .input(z.object({ id: z.number(), status: z.enum(["open", "in_progress", "resolved", "closed"]) }))
     .mutation(async ({ input }) => {
       const db = getDb();
@@ -62,7 +62,7 @@ export const adminTicketsProcedures = {
     }),
 
   // Admin reply to ticket (trpc.admin.replyTicket.useMutation)
-  replyTicket: adminQuery
+  replyTicket: adminMutation
     .input(z.object({ ticketId: z.number(), message: z.string().min(1).max(5000) }))
     .mutation(async ({ ctx, input }) => {
       const db = getDb();

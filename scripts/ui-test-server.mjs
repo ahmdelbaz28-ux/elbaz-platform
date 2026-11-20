@@ -102,6 +102,9 @@ gateMode: "enabled", // "enabled" | "disabled"
 previewVideoCalls: [], // { hasTicket, ticket }
 lessonVideoCalls: [],
 unlockCalls: 0,
+dashboardMode: "normal", // "normal" | "empty" — student-dashboard dataset mode
+lastBroadcast: null, // last admin.sendBroadcast body the stub observed
+broadcastCount: 0,
 };
 
 const STUB_COURSE = {
@@ -143,6 +146,110 @@ watermarkToken: "e2e-watermark",
 kind: "youtube",
 youtubeId: "dQw4w9WgXcQ",
 };
+
+// ── Student-dashboard stubs (dashboard E2E) ──────────────────────────────────
+// Shape mirrors the real procedures: course.enrollments (rows with course
+// summary + string progress), certificate.myCertificates, payment.history
+// (one completed + one failed row so the Total Spent contract is pinned:
+// failed payments must NOT count), course.myWatchTime.
+const STUB_ENROLLMENTS = [
+  {
+    id: "enr-1",
+    courseId: 1,
+    progress: "45",
+    lastAccessedAt: "2026-11-18T09:30:00.000Z",
+    course: { slug: "etap-basics", titleAr: "أساسيات ETAP", titleEn: "ETAP Basics" },
+  },
+  {
+    id: "enr-2",
+    courseId: 2,
+    progress: "100",
+    lastAccessedAt: "2026-11-15T14:00:00.000Z",
+    course: { slug: "power-systems", titleAr: "تحليل أنظمة القدرة", titleEn: "Power Systems Analysis" },
+  },
+];
+
+const STUB_CERTIFICATES = [
+  {
+    id: 7,
+    certificateNumber: "CERT-E2E-2026-001",
+    courseName: "تحليل أنظمة القدرة",
+    grade: "Distinction",
+  },
+];
+
+const STUB_PAYMENTS = [
+  {
+    id: 501,
+    amount: "1500",
+    currency: "EGP",
+    status: "completed",
+    paymentMethod: "paymob_card",
+    createdAt: "2026-11-10T12:00:00.000Z",
+  },
+  {
+    id: 502,
+    amount: "500",
+    currency: "EGP",
+    status: "failed",
+    paymentMethod: "vodafone_cash",
+    createdAt: "2026-11-12T16:00:00.000Z",
+  },
+];
+
+// ── Admin-dashboard stubs (admin E2E) ────────────────────────────────────────
+const STUB_ADMIN_USERS = {
+  items: [
+    {
+      id: 2, username: "mohamed", name: "محمد أحمد", email: "mohamed@test.local",
+      avatar: null, role: "user", preferredLanguage: "ar",
+      createdAt: "2026-11-18T08:00:00.000Z", updatedAt: null, lastSignInAt: null,
+    },
+    {
+      id: 3, username: "sara", name: "سارة علي", email: "sara@test.local",
+      avatar: null, role: "admin", preferredLanguage: "en",
+      createdAt: "2026-11-17T10:00:00.000Z", updatedAt: null, lastSignInAt: null,
+    },
+  ],
+  total: 2,
+};
+
+const STUB_ADMIN_PAYMENTS = {
+  items: [
+    {
+      id: 501, userId: 2, courseId: 1, amount: "1500.00", currency: "EGP",
+      status: "completed", provider: "paymob", paymentMethod: "card",
+      createdAt: "2026-11-10T12:00:00.000Z", updatedAt: null,
+    },
+  ],
+  total: 1,
+};
+
+const STUB_AUDIT = {
+  items: [
+    {
+      id: 9, actorId: 1, actorUsername: "admin", procedure: "admin.sendBroadcast",
+      kind: "mutation", status: "ok", inputSummary: '{"type":"system"}',
+      ip: "10.0.0.1", createdAt: "2026-11-19T10:00:00.000Z",
+    },
+  ],
+  total: 1,
+};
+
+const STUB_BROADCASTS = [
+  {
+    eventId: "e2e-evt-seed-1", type: "promo",
+    title: "خصم 20% على كورس ETAP", message: "عرض محدود لطلاب المنصة — سارع بالتسجيل.",
+    url: "/courses/etap-basics", en: { title: "20% off ETAP course", message: "Limited offer — enroll now." },
+    createdAt: "2026-11-15T09:00:00.000Z",
+  },
+  {
+    eventId: "e2e-evt-seed-2", type: "lesson",
+    title: "درس جديد: دراسة القصر", message: "تمت إضافة درس جديد إلى كورس ETAP.",
+    url: null, en: null,
+    createdAt: "2026-11-12T11:00:00.000Z",
+  },
+];
 
 function trpcSend(res, payload) {
 res.writeHead(200, { "Content-Type": "application/json" });
@@ -239,6 +346,64 @@ switch (proc) {
       trpcSend(res, { ticket: "e2e-signed-ticket.stubsig", days: 30 });
       return true;
     }
+
+    // ── Student dashboard (dashboard E2E) ──
+    case "course.enrollments": {
+      trpcSend(res, trpcStub.dashboardMode === "empty" ? [] : STUB_ENROLLMENTS);
+      return true;
+    }
+    case "course.myWatchTime": {
+      trpcSend(res, { seconds: 19320, formatted: "5h 22m" });
+      return true;
+    }
+    case "certificate.myCertificates": {
+      trpcSend(res, trpcStub.dashboardMode === "empty" ? [] : STUB_CERTIFICATES);
+      return true;
+    }
+    case "payment.history": {
+      trpcSend(res, trpcStub.dashboardMode === "empty" ? [] : STUB_PAYMENTS);
+      return true;
+    }
+
+    // ── Admin dashboard (admin E2E) ──
+    case "admin.stats": {
+      trpcSend(res, { totalUsers: 128, totalCourses: 9, totalEnrollments: 312, openTickets: 4, totalRevenue: 45750 });
+      return true;
+    }
+    case "admin.analytics": {
+      trpcSend(res, {
+        newUsers30d: 18, newEnrollments30d: 42, revenue30d: 5300, totalLessons: 86,
+        revenueByDay: [
+          { date: "2026-11-01", amount: 250 },
+          { date: "2026-11-02", amount: 400 },
+        ],
+      });
+      return true;
+    }
+    case "admin.users": {
+      trpcSend(res, STUB_ADMIN_USERS);
+      return true;
+    }
+    case "admin.payments": {
+      trpcSend(res, STUB_ADMIN_PAYMENTS);
+      return true;
+    }
+    case "admin.auditLog": {
+      trpcSend(res, STUB_AUDIT);
+      return true;
+    }
+    case "admin.broadcastHistory": {
+      trpcSend(res, STUB_BROADCASTS);
+      return true;
+    }
+    case "admin.sendBroadcast": {
+      // Wire-contract telemetry: records EXACTLY what the client posted so
+      // the E2E can pin the ROOT FIX (real composer type, optional url).
+      trpcStub.lastBroadcast = input ?? null;
+      trpcStub.broadcastCount += 1;
+      trpcSend(res, { success: true, eventId: `e2e-evt-${trpcStub.broadcastCount}` });
+      return true;
+    }
     default:
       return false; // not stubbed here — fall through to the generic 404
 }
@@ -272,9 +437,11 @@ const server = http.createServer(async (req, res) => {
   // rerouted the video flow through lessonVideo and made the guest gate
   // path (previewVideo) unreachable in tests.
   if (path === "/api/trpc/auth.me") {
-    const hasFlag = (req.headers.cookie || "")
+    const cookiePairs = (req.headers.cookie || "")
       .split(";")
-      .some((c) => c.trim().startsWith("elbaz_auth_flag="));
+      .map((c) => c.trim())
+      .filter(Boolean);
+    const hasFlag = cookiePairs.some((c) => c.startsWith("elbaz_auth_flag="));
     if (!hasFlag) {
       res.writeHead(401, { "Content-Type": "application/json" });
       res.end(JSON.stringify({
@@ -288,15 +455,21 @@ const server = http.createServer(async (req, res) => {
       }));
       return;
     }
+    // Admin E2E: elbaz_e2e_role=admin upgrades the stubbed identity so
+    // ProtectedRoute(requireAdmin) lets the test through. Default stays "user"
+    // — existing specs rely on the plain-user contract.
+    const roleCookie = cookiePairs.find((c) => c.startsWith("elbaz_e2e_role="));
+    const role = roleCookie && roleCookie.split("=").slice(1).join("=").trim() === "admin" ? "admin" : "user";
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({
       result: {
         data: {
           json: {
             id: "e2e-user-1",
-            username: "e2e-tester",
-            email: "e2e@test.local",
-            role: "user",
+            username: role === "admin" ? "admin" : "e2e-tester",
+            name: role === "admin" ? "أحمد الباز" : "مستخدم تجريبي",
+            email: role === "admin" ? "admin@ahmedelbaz.qzz.io" : "e2e@test.local",
+            role,
           },
         },
       },
@@ -436,6 +609,9 @@ const server = http.createServer(async (req, res) => {
     trpcStub.previewVideoCalls = [];
     trpcStub.lessonVideoCalls = [];
     trpcStub.unlockCalls = 0;
+    trpcStub.dashboardMode = "normal";
+    trpcStub.lastBroadcast = null;
+    trpcStub.broadcastCount = 0;
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true }));
     return;
@@ -452,6 +628,13 @@ const server = http.createServer(async (req, res) => {
     trpcStub.gateMode = nextMode;
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true, gateMode: trpcStub.gateMode }));
+    return;
+  }
+  if (path === "/api/__e2e/dashboard-mode") {
+    const nextMode = url.searchParams.get("mode") === "empty" ? "empty" : "normal";
+    trpcStub.dashboardMode = nextMode;
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true, dashboardMode: trpcStub.dashboardMode }));
     return;
   }
 

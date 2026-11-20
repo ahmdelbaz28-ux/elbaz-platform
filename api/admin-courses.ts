@@ -59,7 +59,7 @@ export const adminCoursesProcedures = {
       return { items, total: total ?? 0 };
     }),
 
-  updateCourse: adminQuery
+  updateCourse: adminMutation
     .input(z.object({
       id: z.number().int().positive(),
       titleEn: z.string().max(500).optional(),

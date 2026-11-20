@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { eq, desc } from "drizzle-orm";
-import { createRouter, adminQuery } from "./middleware";
+import { createRouter, adminQuery, adminMutation } from "./middleware";
 import { getDb } from "./queries/connection";
 import { promoCodes } from "@db/schema";
 import { TRPCError } from "@trpc/server";
@@ -50,7 +50,7 @@ export const promoRouter = createRouter({
   // ═══════════════════════════════════════════════
   // ADMIN: Create a promo code
   // ═══════════════════════════════════════════════
-  create: adminQuery
+  create: adminMutation
     .input(
       z.object({
         code: z.string().min(2).max(50),
@@ -99,7 +99,7 @@ export const promoRouter = createRouter({
   // ═══════════════════════════════════════════════
   // ADMIN: Update a promo code
   // ═══════════════════════════════════════════════
-  update: adminQuery
+  update: adminMutation
     .input(
       z.object({
         id: z.number(),
@@ -143,7 +143,7 @@ export const promoRouter = createRouter({
   // ═══════════════════════════════════════════════
   // ADMIN: Soft-delete a promo code (set isActive=false)
   // ═══════════════════════════════════════════════
-  delete: adminQuery
+  delete: adminMutation
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const db = getDb();

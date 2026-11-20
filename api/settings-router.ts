@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { eq, and, sql, desc } from "drizzle-orm";
-import { createRouter, adminQuery, publicQuery } from "./middleware";
+import { createRouter, adminQuery, adminMutation, publicQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { siteSettings, themes, promotions } from "@db/schema";
 import { TRPCError } from "@trpc/server";
@@ -48,7 +48,7 @@ export const settingsRouter = createRouter({
   // ═══════════════════════════════════════════════
   // ADMIN: Update/Create a setting
   // ═══════════════════════════════════════════════
-  upsert: adminQuery
+  upsert: adminMutation
     .input(z.object({
       section: z.string().min(1).max(100),
       key: z.string().min(1).max(255),
@@ -69,7 +69,7 @@ export const settingsRouter = createRouter({
     }),
 
   // Bulk update settings for a section
-  bulkUpsert: adminQuery
+  bulkUpsert: adminMutation
     .input(z.object({
       section: z.string().min(1).max(100),
       settings: z.array(z.object({
@@ -114,7 +114,7 @@ export const settingsRouter = createRouter({
   }),
 
   // Seed default themes (including Detego)
-  seedThemes: adminQuery.mutation(async () => {
+  seedThemes: adminMutation.mutation(async () => {
     const db = getDb();
     const [existing] = await db.select({ id: themes.id }).from(themes).limit(1);
     if (existing) return { success: true, message: "Themes already exist" };
@@ -151,7 +151,7 @@ export const settingsRouter = createRouter({
   }),
 
   // Create theme
-  createTheme: adminQuery
+  createTheme: adminMutation
     .input(z.object({
       name: z.string().min(1).max(100),
       slug: z.string().min(1).max(100),
@@ -174,7 +174,7 @@ export const settingsRouter = createRouter({
     }),
 
   // Activate a theme (deactivates all others — transactional for atomicity)
-  activateTheme: adminQuery
+  activateTheme: adminMutation
     .input(z.object({ id: z.number().int().positive() }))
     .mutation(async ({ input }) => {
       const { withTransaction } = await import("./queries/connection");
@@ -191,7 +191,7 @@ export const settingsRouter = createRouter({
     }),
 
   // Update theme
-  updateTheme: adminQuery
+  updateTheme: adminMutation
     .input(z.object({
       id: z.number().int().positive(),
       name: z.string().max(100).optional(),
@@ -218,7 +218,7 @@ export const settingsRouter = createRouter({
     }),
 
   // Delete theme
-  deleteTheme: adminQuery
+  deleteTheme: adminMutation
     .input(z.object({ id: z.number().int().positive() }))
     .mutation(async ({ input }) => {
       const db = getDb();
@@ -265,7 +265,7 @@ export const settingsRouter = createRouter({
   }),
 
   // Create promotion
-  createPromotion: adminQuery
+  createPromotion: adminMutation
     .input(z.object({
       titleEn: z.string().min(1).max(500),
       titleAr: z.string().min(1).max(500),
@@ -296,7 +296,7 @@ export const settingsRouter = createRouter({
     }),
 
   // Update promotion
-  updatePromotion: adminQuery
+  updatePromotion: adminMutation
     .input(z.object({
       id: z.number().int().positive(),
       titleEn: z.string().max(500).optional(),
@@ -332,7 +332,7 @@ export const settingsRouter = createRouter({
     }),
 
   // Delete promotion
-  deletePromotion: adminQuery
+  deletePromotion: adminMutation
     .input(z.object({ id: z.number().int().positive() }))
     .mutation(async ({ input }) => {
       const db = getDb();
