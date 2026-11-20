@@ -1,4 +1,5 @@
 import { createMiddleware } from "hono/factory";
+import { timingSafeEqual } from "node:crypto";
 import { getClientIpFromHono as getClientIp } from "../lib/client-ip.js";
 import { logger } from "../lib/logger.js";
 
@@ -96,6 +97,51 @@ function cleanupRateLimitMap(): void {
   }
 }
 
+// ── v1.1.3 origin-gate hardening helpers ────────────────────────────────────
+
+/**
+ * Timing-safe operator Bearer check for the host gate. Reads the secret from
+ * process.env directly (same source the zod env schema validates) so the gate
+ * stays testable without import-order coupling to env.ts. Unset/short secret
+ * → the lane never opens (fail-closed, byte-identical behavior for everyone).
+ * Same disguise contract as health-router's operator gate: mismatched secret
+ * is indistinguishable from "no lane" — nothing about its existence leaks.
+ */
+export function isOperatorBearer(authHeader: string | undefined): boolean {
+  const secret = process.env.EDGE_ORIGIN_SECRET;
+  if (!secret || secret.length < 32) return false;
+  const presented = (authHeader ?? "").startsWith("Bearer ")
+    ? (authHeader ?? "").slice(7).trim()
+    : "";
+  if (!presented) return false;
+  const a = Buffer.from(presented, "utf8");
+  const b = Buffer.from(secret, "utf8");
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+// Throttled spoof-detection warn: direct-origin probes can spam, so cap the
+// log noise at 5 lines/minute while still recording every distinct burst.
+const SPOOF_LOG_MAX_PER_MIN = 5;
+let spoofLogCount = 0;
+let spoofLogWindowStart = 0;
+
+function warnSpoofedForwardedHostThrottled(xfHost: string, host0: string, path: string, hasCfFingerprint: boolean): void {
+  const now = Date.now();
+  if (now - spoofLogWindowStart >= 60_000) {
+    spoofLogWindowStart = now;
+    spoofLogCount = 0;
+  }
+  if (spoofLogCount >= SPOOF_LOG_MAX_PER_MIN) return;
+  spoofLogCount++;
+  logger.warn("[Shield] x-forwarded-host spoof probe on raw origin", {
+    claimed: xfHost,
+    actualHost: host0,
+    path,
+    hasCfRay: hasCfFingerprint,
+    note: "space router passes client x-forwarded-host through — gate is advisory; hard closure = CF Worker secret header",
+  });
+}
+
 export const shieldMiddleware = createMiddleware(async (c, next) => {
   // ✅ SECURITY (post-audit, MEASURED not assumed): host-allowlist at the origin.
   //
@@ -142,6 +188,40 @@ export const shieldMiddleware = createMiddleware(async (c, next) => {
     if (!isEmbedFrame && !isInternal && !isPaymobWebhook && !isYtSyncIngest) {
       const xfHost = (c.req.header("x-forwarded-host") ?? "").split(",")[0].trim().toLowerCase();
       const effective = xfHost || host0;
+      // ✅ v1.1.3 HARDENING (origin E2E audit 2026-11-20): the space router
+      // passes a client-supplied x-forwarded-host through UNCHANGED (measured:
+      // `curl -H "x-forwarded-host: ahmedelbaz.qzz.io"` direct to the raw
+      // *.hf.space origin returned 200 for gated endpoints) — so this gate is
+      // spoofable by construction. Two zero-breakage levers shipped now:
+      //   1. OPERATOR LANE — a timing-safe EDGE_ORIGIN_SECRET Bearer proves
+      //      operator identity and bypasses the disguise, giving monitoring
+      //      and origin E2E a legitimate path (no header spoofing needed).
+      //   2. SPOOF DETECTION — whenever the gate passes on the RAW space host
+      //      via a client-supplied x-forwarded-host, a throttled warn lands in
+      //      the ops log, making direct-origin probing visible.
+      //   The cryptographic closure is a Cloudflare Worker injecting a secret
+      //   header on canonical-domain routes only (infra change, documented in
+      //   the E2E report) — every header at the container is client-writable,
+      //   so no app-side check can be stronger than this without it.
+      // Raw-origin spoof probe: host header is the space subdomain while a
+      // client-supplied x-forwarded-host claims a different (allowed) host.
+      // Requests that genuinely traversed Cloudflare always carry cf-ray (CF
+      // injects it on every served request) — so a spoof WITHOUT any CF
+      // fingerprint is the reliable direct-origin-probe signal. The hasCfRay
+      // field in the log settles, within a day of live traffic, whether HF's
+      // router forwards cf-* headers (if domain traffic ever logs with
+      // hasCfRay:false, the detector threshold can be revisited).
+      if (host0.endsWith(".hf.space") && xfHost && xfHost !== host0) {
+        const hasCfRay = Boolean(c.req.header("cf-ray"));
+        if (!hasCfRay) {
+          warnSpoofedForwardedHostThrottled(xfHost, host0, c.req.path, false);
+        }
+      }
+      if (isOperatorBearer(c.req.header("authorization"))) {
+        // Operator lane: fall through to the rest of the shield (rate limits,
+        // payload guard, etc.) but SKIP the host allowlist rejection below —
+        // the middleware must still call next(), never return early here.
+      } else {
       // EXPLICIT allowlist — deliberately NOT built from CORS_ORIGINS: measured
       // live, it contains the hf.space host itself, which would re-open the
       // very door this gate closes.
@@ -175,6 +255,7 @@ export const shieldMiddleware = createMiddleware(async (c, next) => {
         }
         return c.json({ error: "Not Found" }, 404);
       }
+      } // end else (non-operator: host allowlist enforcement)
     }
   }
 
