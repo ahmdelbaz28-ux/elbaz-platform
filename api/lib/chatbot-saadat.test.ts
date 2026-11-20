@@ -207,6 +207,39 @@ describe("SAADAT prompt blocks + buildSaadatContextBlock", () => {
     expect(block).toContain("6.9");
     expect(block).toContain("Requested problem");
   });
+
+  // ── v1.1.1 (live E2E finding): deterministic citation compliance ──
+  // Live v1.0.0 evidence: P 11.1 answered with the book's own numbers
+  // (801.2 MJ / 8.5 MJ·s/rad) but WITHOUT the [Saadat, ...] tag — the
+  // directive was non-positional. The block now carries the exact
+  // prefilled citation line the model copies verbatim.
+  it("prefills the EXACT citation line for a direct-ID hit (ar, thinking)", () => {
+    const block = buildSaadatContextBlock("حل المسألة 6.9", "ar");
+    expect(block).toContain("سطر الاستشهاد الإلزامي");
+    expect(block).toContain("[Saadat, Solutions Manual, Ch.6, P 6.9, pp.133]");
+    expect(block).toContain("نهاية الرد");
+  });
+
+  it("prefills the EXACT citation line for a direct-ID hit (en, instant lane)", () => {
+    const block = buildSaadatContextBlock("solve problem 11.1 quickly", "en", "instant");
+    expect(block).toContain("Mandatory citation line");
+    expect(block).toContain("[Saadat, Solutions Manual, Ch.11, P 11.1, pp.247]");
+    expect(block).toContain("LAST line");
+  });
+
+  it("does NOT prefill a citation for concept queries (no false problem attribution)", () => {
+    const block = buildSaadatContextBlock("شرح طريقة Gauss-Seidel في تدفق الأحمال", "ar");
+    expect(block).not.toContain("سطر الاستشهاد الإلزامي");
+    expect(block).toContain("[Saadat, Solutions Manual, Ch.X, P X.Y, pp.N]");
+  });
+
+  it("production prompt carries the prefilled citation end-to-end", () => {
+    const block = buildSaadatContextBlock("حل مسألة 11.1 بالتفصيل", "ar");
+    const prompt = getSystemPrompt("ar", "thinking", "", false, undefined, undefined, false,
+      "حل مسألة 11.1 بالتفصيل", false, "full", block);
+    expect(prompt).toContain("[Saadat, Solutions Manual, Ch.11, P 11.1, pp.247]");
+    expect(prompt).toContain("سطر الاستشهاد الإلزامي");
+  });
 });
 
 // ─── 6. Router + prompt composition integration ────────────────────────────
@@ -290,10 +323,13 @@ describe("REAL-CASE regression — real student phrasing + real book numbers", (
     expect(block).toContain("j125");
     expect(block).toContain("j89");
     expect(block).toContain("j100");
-    // Instant lane stays token-light:
+    // Instant lane stays token-light: excerpt sizing still obeys the 1900
+    // INSTANT_CONTEXT_BUDGET; the v1.1.1 mandatory prefilled citation line
+    // (~130 ch) is a directive appended OUTSIDE the excerpt budget, so the
+    // guard moves to budget + citation margin.
     const instant = buildSaadatContextBlock("حل المسألة 6.9", "ar", "instant");
     expect(instant.length).toBeGreaterThan(0);
-    expect(instant.length).toBeLessThan(2200);
+    expect(instant.length).toBeLessThan(2400);
   });
 
   it("verifies the book's REAL stated answers across chapters (±0.5%)", () => {

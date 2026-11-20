@@ -517,9 +517,23 @@ export const SAADAT_CORE_BLOCKS = {
 const THINKING_CONTEXT_BUDGET = 5200;
 const INSTANT_CONTEXT_BUDGET = 1900;
 
-const CONTEXT_RULES_AR = `قواعد استخدام هذا السياق: المقاطع أدناه نصوص أصلية من دليل حلول كتاب Saadat — اعتمد عليها في المنهجية والأرقام، وأعد الحساب بنفسك قبل تقديم أي رقم نهائي وتحقق من التوافق ضمن ±0.5%، واستشهد بالصيغة [Saadat, Solutions Manual, Ch.X, P X.Y, pp.N]. ما لا يظهر في المقاطع لا تُنسبه للكتاب.`;
+// v1.1.1 (live E2E finding): the citation directive was non-positional, so the
+// model omitted the tag in ~1 of 5 live thinking-lane answers (P 11.1 real-case
+// ran with correct numbers but no [Saadat, ...] tag). Two deterministic levers:
+//   1. POSITION — the rules now demand the citation line at the END of the reply.
+//   2. PREFILL — buildSaadatContextBlock appends the EXACT citation string for
+//      the requested problem (copy-verbatim), removing any formatting variance.
+const CONTEXT_RULES_AR = `قواعد استخدام هذا السياق: المقاطع أدناه نصوص أصلية من دليل حلول كتاب Saadat — اعتمد عليها في المنهجية والأرقام، وأعد الحساب بنفسك قبل تقديم أي رقم نهائي وتحقق من التوافق ضمن ±0.5%، واستشهد بالصيغة [Saadat, Solutions Manual, Ch.X, P X.Y, pp.N] — ضع سطر الاستشهاد إلزاميًا في نهاية الرد حرفيًا (آخر ما يظهر في الإجابة). ما لا يظهر في المقاطع لا تُنسبه للكتاب.`;
 
-const CONTEXT_RULES_EN = `Context usage rules: the excerpts below are original text from Saadat's Solutions Manual — rely on them for methodology and numbers, recompute yourself before stating any final number and verify agreement within ±0.5%, and cite as [Saadat, Solutions Manual, Ch.X, P X.Y, pp.N]. Never attribute to the book anything that does not appear in these excerpts.`;
+const CONTEXT_RULES_EN = `Context usage rules: the excerpts below are original text from Saadat's Solutions Manual — rely on them for methodology and numbers, recompute yourself before stating any final number and verify agreement within ±0.5%, and cite as [Saadat, Solutions Manual, Ch.X, P X.Y, pp.N] — the citation line is MANDATORY and must be the LAST line of your reply, verbatim. Never attribute to the book anything that does not appear in these excerpts.`;
+
+/** Prefilled verbatim citation line for a direct-ID hit (v1.1.1, live-verified need). */
+function prefilledCitationLine(hit: SaadatHit, lang: SaadatLang): string {
+  const cite = `[Saadat, Solutions Manual, Ch.${hit.ch}, P ${hit.id}, pp.${hit.page}]`;
+  return lang === "ar"
+    ? `📌 سطر الاستشهاد الإلزامي — انسخه حرفيًا في نهاية الرد: ${cite}`
+    : `📌 Mandatory citation line — copy verbatim at the end of the reply: ${cite}`;
+}
 
 /**
  * Builds the dynamic RAG block appended to the system prompt. Returns ""
@@ -543,7 +557,11 @@ export function buildSaadatContextBlock(query: string, lang: SaadatLang, mode: S
   const parts: string[] = [];
   parts.push(lang === "ar" ? "\n\n📚 SAADAT-KB — مقاطع مسترجعة من دليل حلول كتاب Saadat (نص الكتاب الفعلي):" : "\n\n📚 SAADAT-KB — excerpts retrieved from Saadat's Solutions Manual (actual book text):");
   const rules = lang === "ar" ? CONTEXT_RULES_AR : CONTEXT_RULES_EN;
-  let size = parts[0].length + rules.length;
+  // v1.1.1: reserve the prefilled citation line's size UP FRONT so the
+  // excerpt budget leaves room for it — the block never exceeds its budget
+  // because of the citation (live E2E regression: P 6.9 instant hit 2225 > 2200).
+  const citeLine = hits[0].reason === "problem-id" ? prefilledCitationLine(hits[0], lang) : "";
+  let size = parts[0].length + rules.length + citeLine.length;
 
   hits.forEach((hit, i) => {
     const head = `\n[${i + 1}] ${hit.reason === "problem-id" ? (lang === "ar" ? "المسألة المطلوبة" : "Requested problem") : (lang === "ar" ? "مطابقة سياقية" : "Context match")} — P ${hit.id} · Ch.${hit.ch} (${tocTitle(hit.ch)}) · p.${hit.page}:\n«${hit.excerpt}»`;
@@ -557,13 +575,16 @@ export function buildSaadatContextBlock(query: string, lang: SaadatLang, mode: S
     parts.push(`\n[1] ${lang === "ar" ? "المسألة المطلوبة" : "Requested problem"} — P ${hits[0].id} · Ch.${hits[0].ch} (${tocTitle(hits[0].ch)}) · p.${hits[0].page}:\n«${hits[0].excerpt.slice(0, 1500)}»`);
   }
   parts.push(`\n📌 ${rules}`);
+  // v1.1.1: the requested problem's exact citation rides in the block itself —
+  // the model no longer has to derive it, so tag compliance is deterministic.
+  if (citeLine) parts.push(`\n${citeLine}`);
   return parts.join("");
 }
 
 // ─── Public meta (telemetry + docs) ─────────────────────────────────────────
 
 export const SAADAT_LAYER_META = {
-  version: "1.1.0",
+  version: "1.1.1",
   source: SAADAT_META.source,
   problemCount: SAADAT_META.problemCount,
   chapterCount: SAADAT_META.chapterCount,

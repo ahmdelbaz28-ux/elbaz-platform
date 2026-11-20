@@ -72,9 +72,12 @@ for (const c of CASES) {
   const r2b = c.expectIdsAll === undefined ? true : c.expectIdsAll.every((x) => ids.includes(x));
   const r3 = c.expectChapter === undefined ? true : hits.length > 0 && hits[0].ch === c.expectChapter;
   const r4 = c.groundTruth === undefined ? true : prompt.includes(c.groundTruth);
+  // v1.1.1: a pinned problem-id hit MUST carry its prefilled verbatim citation
+  const r4b = c.expectId === undefined ? true
+    : prompt.includes("سطر الاستشهاد الإلزامي") && prompt.includes(`[Saadat, Solutions Manual, Ch.${hits[0]?.ch}, P ${c.expectId}, pp.`);
   const r5 = c.mode === "instant" ? prompt.length < INSTANT_BUDGET : prompt.length < THINKING_BUDGET;
 
-  const ok = r1 && r2 && r2b && r3 && r4 && r5;
+  const ok = r1 && r2 && r2b && r3 && r4 && r4b && r5;
   if (ok) pass++; else { fail++; failures.push(c.label); }
   console.log(`\n── ${c.label}`);
   console.log(`   query: "${c.query}"`);
@@ -83,6 +86,7 @@ for (const c of CASES) {
   if (c.expectIdsAll !== undefined) console.log(`   R2b ids=[${ids.join(",")}] (want ${c.expectIdsAll.join(",")}) ${r2b ? "OK" : "FAIL"}`);
   if (c.expectChapter !== undefined) console.log(`   R3 topHit=${hits[0]?.id ?? "-"} ch${hits[0]?.ch ?? "-"} (want ch${c.expectChapter}) ${r3 ? "OK" : "FAIL"}`);
   if (c.groundTruth !== undefined) console.log(`   R4 book-answer "${c.groundTruth}" in production prompt: ${r4 ? "OK" : "FAIL"}`);
+  if (c.expectId !== undefined) console.log(`   R4b prefilled citation line in prompt: ${r4b ? "OK" : "FAIL"}`);
   console.log(`   R5 prompt=${prompt.length} chars (budget ${c.mode === "instant" ? INSTANT_BUDGET : THINKING_BUDGET}) ${r5 ? "OK" : "FAIL"}`);
   console.log(`   hits: ${hits.map((h) => `${h.id}(ch${h.ch},p${h.page},${h.reason})`).join(" ") || "—"}`);
   console.log(`   block: ${block.length} chars`);
