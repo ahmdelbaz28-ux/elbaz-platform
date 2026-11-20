@@ -111,12 +111,55 @@ if ('serviceWorker' in navigator && !(globalThis as any).Capacitor?.isNativePlat
   });
 }
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <BrowserRouter>
-      <TRPCProvider>
-        <App />
-      </TRPCProvider>
-    </BrowserRouter>
-  </StrictMode>,
-)
+/**
+ * ✅ CLS ROOT-CURE (Lighthouse 2026-11-20): wait for the entry stylesheet
+ * before mounting.
+ *
+ * Module (deferred) scripts do NOT wait for stylesheets — on any load where
+ * the JS bundle arrives before the CSS bundle (cold cache, slow origin, thin
+ * pipe), React used to mount into an UNSTYLED document: every section had
+ * zero height and the footer sat at ~y494 inside the first viewport. When the
+ * stylesheet landed ~400ms later, the whole document expanded at once and
+ * pushed the footer ~9,500px down — the single 0.4 layout-shift that capped
+ * the homepage CLS (measured identically on the production origin and
+ * locally). The stylesheet is render-blocking anyway, so users never saw the
+ * unstyled frame — but the CLS recorder did.
+ *
+ * The wait is effectively free: CSS and JS download in parallel; this only
+ * aligns the mount to the slower of the two (the boot splash from index.html
+ * stays up meanwhile — it is replaced by the styled first render).
+ */
+async function waitForEntryStylesheet(): Promise<void> {
+  try {
+    const links = Array.from(
+      document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]'),
+    ).filter((l) => /\/assets\/index-.*\.css/.test(l.href));
+    await Promise.all(
+      links.map(
+        (link) =>
+          new Promise<void>((resolve) => {
+            if (link.sheet) return resolve(); // already applied
+            const done = () => resolve();
+            link.addEventListener("load", done, { once: true });
+            link.addEventListener("error", done, { once: true });
+            // Hard failsafe — never hold the app hostage to a stalled CSS request
+            setTimeout(done, 4000);
+          }),
+      ),
+    );
+  } catch {
+    // Any surprise here must never block boot — render anyway.
+  }
+}
+
+void waitForEntryStylesheet().then(() => {
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <BrowserRouter>
+        <TRPCProvider>
+          <App />
+        </TRPCProvider>
+      </BrowserRouter>
+    </StrictMode>,
+  );
+});

@@ -16,6 +16,14 @@ import { EngineeringModeProvider } from "@/components/ui/EngineeringMode";
 import AmbientOrbs from "@/components/ui/AmbientOrbs";
 import FloatingIconsBg from "@/components/FloatingIconsBg";
 import { useTranslation } from "@/hooks/useTranslation";
+// ✅ CLS ROOT-CURE (Lighthouse 2026-11-20): Home is NOT lazy.
+// The landing route used to mount through Suspense: the shell (navbar +
+// footer) committed first with the footer inside the first viewport, and when
+// the Home chunk arrived ~400ms later the full page pushed it ~9,000px down —
+// a single 0.4 layout shift on every landing visit. Home is the entry page,
+// so its chunk now ships in the main bundle and the first commit IS the real
+// page. All other routes stay lazy (hover-prefetch keeps them instant).
+import Home from "./pages/Home";
 import "@/engineering-mode.css";
 
 // 🚀 PERFORMANCE (Task ID 7): Lazy-load ChatBot (~50KB compressed).
@@ -51,7 +59,6 @@ function DeferredChatBot() {
   return <ChatBot />;
 }
 
-const Home = lazy(() => import("./pages/Home").then(m => ({ default: m.default })));
 const Courses = lazy(() => import("./pages/Courses").then(m => ({ default: m.default })));
 const CourseDetail = lazy(() => import("./pages/CourseDetail").then(m => ({ default: m.default })));
 const References = lazy(() => import("./pages/References").then(m => ({ default: m.default })));

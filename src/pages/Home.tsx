@@ -581,7 +581,7 @@ export default function Home() { // NOSONAR — landing page with hero + feature
           {categoriesPending ? (
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
               {[1, 2, 3, 4].map((i) => (
-                <div key={`cat-sk-${i}`} className="h-44 rounded-xl border border-border skeleton-shimmer" />
+                <div key={`cat-sk-${i}`} className="h-64 rounded-xl border border-border skeleton-shimmer" />
               ))}
             </div>
           ) : (
@@ -638,7 +638,7 @@ export default function Home() { // NOSONAR — landing page with hero + feature
           {coursesPending ? (
             <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
               {[1, 2, 3].map((i) => (
-                <div key={`course-sk-${i}`} className="h-80 rounded-xl border border-border skeleton-shimmer" />
+                <div key={`course-sk-${i}`} className="h-[26.5rem] rounded-xl border border-border skeleton-shimmer" />
               ))}
             </div>
           ) : (

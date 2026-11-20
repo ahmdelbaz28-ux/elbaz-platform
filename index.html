@@ -66,28 +66,30 @@
     <meta property="twitter:image" content="https://ahmedelbaz.qzz.io/og-image.png" />
     <meta property="twitter:image:alt" content="منصة م. أحمد الباز لكورسات الهندسة الكهربية" />
 
-    <!-- 🚀 PERFORMANCE: dns-prefetch + preconnect for external domains -->
-    <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
-    <link rel="dns-prefetch" href="https://fonts.gstatic.com" />
+    <!-- 🚀 PERFORMANCE: dns-prefetch for external domains.
+         Fonts are now SELF-HOSTED (public/fonts/ + src/fonts.css) — no
+         fonts.googleapis/gstatic connections at all. Self-hosted woff2 files
+         are preloaded below and arrive before first paint (paint is gated on
+         JS execution), so there is no font-swap reflow — the hosted Google
+         Fonts chain used to swap Cairo in ~700ms after paint and re-flowed
+         every Arabic text block (CLS 0.4 measured on the homepage). -->
     <link rel="dns-prefetch" href="https://www.clarity.ms" />
     <link rel="dns-prefetch" href="https://accounts.google.com" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <!-- Google Fonts - Inter + Cairo
-         🚀 PERF (root-cause audit, F6): Inter 300 removed — the only
-         font-light usage in the app was a single ":" separator (Home.tsx),
-         now font-normal. Every remaining weight (Inter 400/500/600/700,
-         Cairo 400/500/600/700) is genuinely used across the UI.
-         🚀 PERF (Lighthouse 2026-11-20): the stylesheet was render-blocking
-         (~770ms on slow networks). Loaded via the media="print" swap so text
-         paints with the system fallback immediately and the webfonts apply
-         when ready (display=swap). CSP allows inline handlers (script-src
-         'unsafe-inline'); noscript keeps full CSS for JS-disabled crawlers. -->
-    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cairo:wght@400;500;600;700&display=swap" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cairo:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'" />
-    <noscript>
-      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cairo:wght@400;500;600;700&display=swap" />
-    </noscript>
+    <!-- 🚀 PERF (Lighthouse 2026-11-20): self-hosted fonts, preloaded.
+         The eight files cover every weight used above the fold (Cairo 400/500/
+         600/700 arabic + Inter 400/500/600/700 latin); the remaining subsets
+         (latin-ext) and weights load on demand via unicode-range in
+         src/fonts.css (bundled in the hashed CSS). font-display: swap is
+         retained as a safety net — with same-origin preloads the fonts win
+         the race against first paint, so no visible swap occurs. -->
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/cairo-400-arabic.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/cairo-500-arabic.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/cairo-600-arabic.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/cairo-700-arabic.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/inter-400-latin.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/inter-500-latin.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/inter-600-latin.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/inter-700-latin.woff2" />
 
     <!-- PWA Manifest -->
     <link rel="manifest" href="/manifest.webmanifest" />

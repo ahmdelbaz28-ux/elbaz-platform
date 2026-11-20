@@ -1,3 +1,6 @@
+/* Self-hosted @font-face declarations — MUST be first so the fonts resolve
+   before Tailwind base styles reference the families. */
+@import './fonts.css';
 @import './elite-animations.css';
 @tailwind base;
 @tailwind components;
