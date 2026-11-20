@@ -31,6 +31,13 @@ export const MAX_IMAGES_PER_REQUEST = 2;
 export const MAX_MESSAGE_CHARS = 8_000;
 export const MAX_TOTAL_CHARS = 60_000;
 
+// ── Arabic-script detection (anti-koshary audit fix: one shared copy) ──
+// Full Arabic Unicode ranges (base + supplement + extended-A/B + presentation
+// forms-A/B). Shared by the router's language mirror and the Telegram brain;
+// the client keeps its own copy (src/lib/chat-render.ts) — api/ never imports
+// from src/ (bundle-boundary rule), so cross-boundary sharing stays flagged.
+export const ARABIC_CHAR_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+
 // ── ✅ TOKEN OPTIMIZATION (v3.6.0) — SLIDING-WINDOW HISTORY TRIM ──
 // The client ships its last 20 messages VERBATIM; assistant replies on this
 // platform reach 8k chars each, so a 10-round conversation could carry

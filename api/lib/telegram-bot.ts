@@ -35,6 +35,7 @@
  */
 import { logger } from "./logger.js";
 import { telegramApiBase, telegramRelayHeaders } from "./telegram-transport.js";
+import { ARABIC_CHAR_RE } from "./chatbot-normalize.js";
 
 // ─── Telegram types (minimal — only what we touch) ───────────────────────────
 
@@ -89,7 +90,9 @@ export type ChatBrain = (
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const ARABIC_CHAR_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+// ✅ ANTI-KOSHARY AUDIT FIX: ARABIC_CHAR_RE now imported from
+// chatbot-normalize.js (pure module — pulls no provider-core runtime into the
+// worker bundle) instead of a second hand-kept copy.
 export const TELEGRAM_TEXT_CAP = 3_900; // hard API cap is 4096 — headroom keeps chunks whole
 const DM_HISTORY_MAX_MESSAGES = 12;
 const DM_HISTORY_TTL_MS = 30 * 60_000;

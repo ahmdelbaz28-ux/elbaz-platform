@@ -22,6 +22,18 @@ import { getChatResponse } from "./chatbot.js";
 import { finalizeReply, toOpaqueWireModel } from "./finalize-reply.js";
 import { logger } from "./logger.js";
 
+/**
+ * ✅ ANTI-KOSHARY AUDIT FIX: clear every stored round for one user — the
+ * chat DELETE endpoint's persistence seam. Previously the route embedded
+ * dynamic drizzle imports inline, putting chat-history persistence rules in
+ * two layers; now persist/get/clear all live behind this one module and the
+ * operation is reusable outside HTTP (tests, future Telegram clear command).
+ * Fails closed (caller maps errors to its own error contract).
+ */
+export async function clearChatHistory(userId: number): Promise<void> {
+  await getDb().delete(chatMessages).where(eq(chatMessages.userId, userId));
+}
+
 export const CHAT_HISTORY_LIMIT = 50;
 const SUMMARY_ROLE = "summary";
 /** Context older than this window is folded into the rolling summary. */

@@ -11,7 +11,7 @@ import crypto from "node:crypto";
 import { getChatResponse, getStreamResponse, type ChatApiMessage, type ContentPart } from "./lib/chatbot.js";
 // ✅ Extracted (2026-11): input normalization lives in api/lib/chatbot-normalize.js —
 // pure + unit-testable without the router's import graph (no Hono, no DB).
-import { normalizeChatInput, MAX_MESSAGE_CHARS, MAX_TOTAL_CHARS } from "./lib/chatbot-normalize.js";
+import { normalizeChatInput, MAX_MESSAGE_CHARS, MAX_TOTAL_CHARS, ARABIC_CHAR_RE } from "./lib/chatbot-normalize.js";
 import { parseScreenContext } from "./lib/chatbot-screen.js";
 import { getCourseCatalogText, getCourseCatalogLiteText } from "./lib/course-catalog.js";
 import { courseIntentFromMessages } from "./lib/chatbot-intent.js";
@@ -24,7 +24,7 @@ import { enforcePinnedCitation } from "./lib/chatbot-saadat.js";
 import { chatbotError, logSafeError, scrubCredentials, type ChatbotErrorCode } from "./lib/chatbot-errors.js";
 import { getClientIpFromHono as getChatbotIp } from "./lib/client-ip";
 import { getImageQuotaUsed, incrementImageQuota, DAILY_IMAGE_LIMIT, DAILY_SCREEN_FRAME_LIMIT, visionQuotaLane } from "./lib/image-quota.js";
-import { persistChatRound, getChatHistory, getLatestSummaryText } from "./lib/chat-history.js";
+import { persistChatRound, getChatHistory, getLatestSummaryText, clearChatHistory } from "./lib/chat-history.js";
 import { resolveOptionalUser } from "./context.js";
 import { logger } from "./lib/logger.js";
 import { chatbotFeedbackRoute } from "./chatbot-feedback-route.js";
@@ -174,7 +174,9 @@ setInterval(() => {
 // ── Language mirror: reply in the language of the user's LAST message ──
 // The UI language is irrelevant — an Arabic message must get an Arabic reply
 // and an English (Latin) message an English one, regardless of site locale.
-const ARABIC_CHAR_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+// ✅ ANTI-KOSHARY AUDIT FIX (F4): ARABIC_CHAR_RE now lives in
+// chatbot-normalize.js (one shared copy with telegram-bot) instead of a third
+// hand-kept duplicate.
 
 /** Plain text of a message — string content or the text parts of a parts array. */
 function messageText(m: ChatApiMessage): string {
@@ -215,6 +217,138 @@ function screenQuotaExceededResponse(used: number): { en: string; ar: string } {
   return {
     en: `I'm really sorry 🙏 only ${DAILY_SCREEN_FRAME_LIMIT} live screen frames per day are available to preserve the live-reading quota (you've used ${used}/${DAILY_SCREEN_FRAME_LIMIT} today) — it renews tomorrow, and meanwhile I'm fully ready to answer any text question!`,
     ar: `أعتذر منك جداً 🙏 المتاح فقط ${DAILY_SCREEN_FRAME_LIMIT} لقطة شاشة حية يومياً حفاظاً على كوتة القراءة الحية (استهلكت ${used}/${DAILY_SCREEN_FRAME_LIMIT} اليوم) — تتجدد غداً، وحتى ذلك الحين أنا جاهز تماماً للرد على أي سؤال نصي!`,
+  };
+}
+
+// ── Shared request preflight (anti-koshary audit fix) ──
+// POST / and POST /stream previously carried two hand-kept copies of the same
+// ~60-line admission sequence (rate limit → JSON parse → normalize → size
+// guard → daily IP quota → vision quota → user resolution → catalog → daily
+// user quota). The copies had ALREADY drifted: the non-stream normalize /
+// TOO_LARGE errors omitted `chatId` while the stream included it, and the two
+// endpoints disagreed on whether malformed JSON consumes the per-minute rate
+// bucket (stream: yes, non-stream: no). One helper now owns the sequence and
+// both endpoints receive the same prepared context. Unified-contract notes:
+//   • error responses carry `chatId` consistently on BOTH endpoints;
+//   • malformed JSON on POST / now consumes the rate bucket like every other
+//     request — matches the stream contract, strictly more protective.
+type ChatPreflightBody = {
+  messages: unknown;
+  language?: string;
+  chatId?: string;
+  mode?: "thinking" | "instant";
+  pageContext?: unknown;
+};
+
+type ChatPreflight =
+  | { error: Response }
+  | {
+      body: ChatPreflightBody;
+      messages: ChatApiMessage[];
+      vision: boolean;
+      imageCount: number;
+      screenCapture: boolean;
+      quotaLane: ReturnType<typeof visionQuotaLane>;
+      dailyLang: "ar" | "en";
+      language: string | undefined;
+      courseIntent: boolean;
+      catalog: string;
+      chatUser: Awaited<ReturnType<typeof resolveOptionalUser>>;
+      historySummary: string | null;
+    };
+
+async function chatRequestPreflight(c: Context): Promise<ChatPreflight> {
+  const ip = getChatbotIp(c);
+  const lane = chatbotLaneFor(c, ip);
+  if (!checkChatbotRateLimit(lane.key, lane.ratePerMinute)) {
+    return { error: errorResponse(c, "RATE_LIMITED") };
+  }
+
+  // Malformed JSON is a client bug: answer 400 with a stable shape before any
+  // other work (the root-cure both endpoints originally grew separately).
+  let body: ChatPreflightBody;
+  try {
+    body = await c.req.json<ChatPreflightBody>();
+  } catch {
+    return { error: c.json({ error: "INVALID_JSON", message: "Request body must be valid JSON." }, 400) };
+  }
+
+  const normalized = normalizeChatInput(body.messages);
+  if (!normalized.ok) {
+    const isAr = resolveChatLanguage(body.language, []) === "ar";
+    const f = normalized.failure;
+    return { error: errorResponse(c, f.code, { lang: isAr ? "ar" : "en", chatId: body.chatId, message: isAr ? f.ar : f.en }) };
+  }
+  const { messages, vision, imageCount, totalTextChars, screenCapture } = normalized.data;
+
+  if (totalTextChars > MAX_TOTAL_CHARS) {
+    const tooLongAr = resolveChatLanguage(body.language, messages) === "ar";
+    return { error: errorResponse(c, "TOO_LARGE", {
+      chatId: body.chatId,
+      lang: tooLongAr ? "ar" : "en",
+      message: tooLongAr
+        ? "المحادثة أصبحت طويلة جداً — ابدأ محادثة جديدة من فضلك."
+        : "Conversation too long. Please start a new chat.",
+    }) };
+  }
+
+  // ✅ SECURITY FIX (pre-launch audit run-2): daily per-IP message quota —
+  // the abuse brake for anonymous direct-API callers. Authenticated
+  // bot-worker traffic rides its own lane (no IP sharing).
+  const dailyLang = resolveChatLanguage(body.language, messages) === "ar" ? "ar" : "en";
+  if (!bumpAndCheckChatbotDaily(lane.key, lane.dailyLimit)) {
+    return { error: errorResponse(c, "RATE_LIMITED", { lang: dailyLang, chatId: body.chatId, message: chatbotDailyQuotaMessage(lane.dailyLimit, dailyLang) }) };
+  }
+
+  // Vision quota — enforced BEFORE dispatch so no provider call is wasted.
+  // ✅ ROOT-CURE (2026-11-13): live screen frames ride their own 60/day lane
+  // (visionQuotaLane) — the 5/day attachment cap can no longer kill an
+  // ongoing screen-teacher session after five frames.
+  const quotaLane = visionQuotaLane(screenCapture, ip);
+  if (vision) {
+    const used = await getImageQuotaUsed(quotaLane.key);
+    if (used + imageCount > quotaLane.limit) {
+      const msg = quotaLane.screen ? screenQuotaExceededResponse(used) : imageQuotaExceededResponse(used);
+      const lang = resolveChatLanguage(body.language, messages);
+      return { error: errorResponse(c, "QUOTA_EXCEEDED", { lang: lang === "en" ? "en" : "ar", chatId: body.chatId, message: lang === "ar" ? msg.ar : msg.en }) };
+    }
+  }
+
+  // Real course catalog (SWR-cached 10 min, fail-open to "") — lets the bot
+  // quote actual course names/levels/prices instead of hallucinating them.
+  // ✅ TOKEN OPTIMIZATION (v3.6.0): the FULL catalog rides only on course /
+  // platform intent (sticky over recent history) or the vision lane — pure
+  // technical questions carry the featured sample instead.
+  // PERF: catalog and user resolution are independent — start both, await
+  // each only where its value is first needed (saves one serial DB round
+  // trip per chat message on the critical path).
+  const courseIntent = vision || courseIntentFromMessages(messages);
+  const catalogPromise = courseIntent ? getCourseCatalogText() : getCourseCatalogLiteText();
+
+  // ── Chat-history continuity (logged-in users only, fail-open) ──
+  const chatUser = await resolveOptionalUser(c.req.raw);
+  const historySummary = chatUser ? await getLatestSummaryText(chatUser.id).catch(() => null) : null;
+  const catalog = await catalogPromise;
+
+  // ✅ SECURITY FIX (pre-launch audit run-2): daily per-USER message quota —
+  // generous headroom for real students; only an automated loop hits it.
+  if (chatUser && !bumpAndCheckChatbotDaily(`user:${chatUser.id}`, CHATBOT_DAILY_USER_LIMIT)) {
+    return { error: errorResponse(c, "RATE_LIMITED", { lang: dailyLang, chatId: body.chatId, message: chatbotDailyQuotaMessage(CHATBOT_DAILY_USER_LIMIT, dailyLang) }) };
+  }
+
+  return {
+    body,
+    messages,
+    vision,
+    imageCount,
+    screenCapture,
+    quotaLane,
+    dailyLang,
+    language: resolveChatLanguage(body.language, messages),
+    courseIntent,
+    catalog,
+    chatUser,
+    historySummary,
   };
 }
 
@@ -266,10 +400,10 @@ chatbotRouter.delete("/history", async (c) => {
     return errorResponse(c, "UNAUTHORIZED");
   }
   try {
-    const { getDb } = await import("./queries/connection.js");
-    const { chatMessages } = await import("@db/schema");
-    const { eq } = await import("drizzle-orm");
-    await getDb().delete(chatMessages).where(eq(chatMessages.userId, user.id));
+    // ✅ ANTI-KOSHARY AUDIT FIX (F5): persistence moved to the chat-history
+    // lib seam (clearChatHistory) — the DELETE path no longer embeds drizzle
+    // imports in the route and is reusable outside HTTP (tests, Telegram).
+    await clearChatHistory(user.id);
     return c.json({ success: true });
   } catch (err) {
     logger.error("[Chatbot] history clear failed", { error: logSafeError(err) });
@@ -279,94 +413,19 @@ chatbotRouter.delete("/history", async (c) => {
 
 // ── Non-streaming chat endpoint ──
 chatbotRouter.post("/", async (c) => {
-  // ✅ ROOT-CURE (2026-11-13): the JSON parse used to run inside the giant
-  // try/catch below, so a malformed request body produced an unhandled 500
-  // (INTERNAL) + a false error log — exactly the bug the /stream endpoint
-  // already had fixed. Malformed JSON is a client bug: answer 400 with the
-  // SAME shape /stream uses, before the try block.
-  let body: { messages: unknown; language?: string; chatId?: string; mode?: "thinking" | "instant"; pageContext?: unknown };
   try {
-    body = await c.req.json<{ messages: unknown; language?: string; chatId?: string; mode?: "thinking" | "instant"; pageContext?: unknown }>();
-  } catch {
-    return c.json({ error: "INVALID_JSON", message: "Request body must be valid JSON." }, 400);
-  }
-  try {
-    const ip = getChatbotIp(c);
-    const lane = chatbotLaneFor(c, ip);
-    if (!checkChatbotRateLimit(lane.key, lane.ratePerMinute)) {
-      return errorResponse(c, "RATE_LIMITED");
-    }
-
-    const normalized = normalizeChatInput(body.messages);
-    if (!normalized.ok) {
-      const isAr = resolveChatLanguage(body.language, []) === "ar";
-      const f = normalized.failure;
-      return errorResponse(c, f.code, { lang: isAr ? "ar" : "en", message: isAr ? f.ar : f.en });
-    }
-    const { messages, vision, imageCount, totalTextChars, screenCapture } = normalized.data;
-
-    if (totalTextChars > MAX_TOTAL_CHARS) {
-      const tooLongAr = resolveChatLanguage(body.language, messages) === "ar";
-      return errorResponse(c, "TOO_LARGE", {
-        lang: tooLongAr ? "ar" : "en",
-        message: tooLongAr
-          ? "المحادثة أصبحت طويلة جداً — ابدأ محادثة جديدة من فضلك."
-          : "Conversation too long. Please start a new chat.",
-      });
-    }
-
-    // ✅ SECURITY FIX (pre-launch audit run-2): daily per-IP message quota —
-    // the abuse brake for anonymous direct-API callers (see block above).
-    // Authenticated bot-worker traffic rides its own lane (no IP sharing).
-    const dailyLang = resolveChatLanguage(body.language, messages) === "ar" ? "ar" : "en";
-    if (!bumpAndCheckChatbotDaily(lane.key, lane.dailyLimit)) {
-      return errorResponse(c, "RATE_LIMITED", { lang: dailyLang, chatId: body.chatId, message: chatbotDailyQuotaMessage(lane.dailyLimit, dailyLang) });
-    }
-
-    // Vision quota — enforced BEFORE dispatch so no provider call is wasted.
-    // ✅ ROOT-CURE (2026-11-13): live screen frames ride their own 60/day lane
-    // (visionQuotaLane) — the 5/day attachment cap can no longer kill an
-    // ongoing screen-teacher session after five frames.
-    const quotaLane = visionQuotaLane(screenCapture, ip);
-    if (vision) {
-      const used = await getImageQuotaUsed(quotaLane.key);
-      if (used + imageCount > quotaLane.limit) {
-        const msg = quotaLane.screen ? screenQuotaExceededResponse(used) : imageQuotaExceededResponse(used);
-        const lang = resolveChatLanguage(body.language, messages);
-        return errorResponse(c, "QUOTA_EXCEEDED", { lang: lang === "en" ? "en" : "ar", chatId: body.chatId, message: lang === "ar" ? msg.ar : msg.en });
-      }
-    }
-
-    // Real course catalog (SWR-cached 10 min, fail-open to "") — lets the bot
-    // quote actual course names/levels/prices instead of hallucinating them.
-    // PERF: catalog and user resolution are independent — start both (same
-    // pattern as the /stream handler below).
-    // ✅ TOKEN OPTIMIZATION (v3.6.0): the FULL 40-course catalog (~8.1k chars)
-    // rides only on course/platform intent — detected generously and STICKY
-    // over the recent conversation (a follow-up like «طيب والأخيرة دي؟» after
-    // a course question still gets the full list). Pure technical questions
-    // carry the featured sample instead. Vision lanes always get the full
-    // catalog (a screenshot may be a course page the text never mentions).
-    const courseIntent = vision || courseIntentFromMessages(messages);
-    const catalogPromise = courseIntent ? getCourseCatalogText() : getCourseCatalogLiteText();
-
-    // ── Chat-history continuity (logged-in users only, fail-open) ──
-    const chatUser = await resolveOptionalUser(c.req.raw);
-    const historySummary = chatUser ? await getLatestSummaryText(chatUser.id).catch(() => null) : null;
-    const catalog = await catalogPromise;
-
-    // ✅ SECURITY FIX (pre-launch audit run-2): daily per-USER message quota —
-    // generous headroom for real students; only an automated loop hits it.
-    if (chatUser && !bumpAndCheckChatbotDaily(`user:${chatUser.id}`, CHATBOT_DAILY_USER_LIMIT)) {
-      return errorResponse(c, "RATE_LIMITED", { lang: dailyLang, chatId: body.chatId, message: chatbotDailyQuotaMessage(CHATBOT_DAILY_USER_LIMIT, dailyLang) });
-    }
+    // ✅ ANTI-KOSHARY AUDIT FIX: the whole admission sequence is ONE shared
+    // preflight (chatRequestPreflight above) — see its unified-contract notes.
+    const pre = await chatRequestPreflight(c);
+    if ("error" in pre) return pre.error;
+    const { body, messages, vision, imageCount, screenCapture, quotaLane, dailyLang, language, courseIntent, catalog, chatUser, historySummary } = pre;
     const nonStreamPersistDeadline = Date.now()
       + (Number.isFinite(Number(process.env.CHATBOT_NONSTREAM_PERSIST_MS)) && Number(process.env.CHATBOT_NONSTREAM_PERSIST_MS) > 0
         ? Number(process.env.CHATBOT_NONSTREAM_PERSIST_MS)
         : 30_000);
     const chatRequest = {
       messages,
-      language: resolveChatLanguage(body.language, messages),
+      language,
       mode: body.mode,
       catalog,
       // ✅ TOKEN OPTIMIZATION: which catalog block style the prompt renders
@@ -489,86 +548,14 @@ function softBusyText(language?: string): string {
 }
 
 chatbotRouter.post("/stream", async (c) => {
-  const ip = getChatbotIp(c);
-  const lane = chatbotLaneFor(c, ip);
-  if (!checkChatbotRateLimit(lane.key, lane.ratePerMinute)) {
-    return errorResponse(c, "RATE_LIMITED");
-  }
-  // ✅ FIX (pre-launch audit): the JSON parse ran outside try/catch, so a
-  // malformed request body produced an unhandled 500 (and an AI-diagnosis
-  // spend) instead of a clean 400. Malformed JSON is a client bug — respond
-  // as such.
-  let body: { messages?: unknown; language?: string; chatId?: string; mode?: "thinking" | "instant"; pageContext?: unknown };
-  try {
-    body = await c.req.json<{ messages: unknown; language?: string; chatId?: string; mode?: "thinking" | "instant"; pageContext?: unknown }>();
-  } catch {
-    return c.json({ error: "INVALID_JSON", message: "Request body must be valid JSON." }, 400);
-  }
-
-  const normalized = normalizeChatInput(body.messages);
-  if (!normalized.ok) {
-    const isAr = resolveChatLanguage(body.language, []) === "ar";
-    const f = normalized.failure;
-    return errorResponse(c, f.code, { lang: isAr ? "ar" : "en", chatId: body.chatId, message: isAr ? f.ar : f.en });
-  }
-  const { messages, vision, imageCount, totalTextChars, screenCapture } = normalized.data;
-
-  if (totalTextChars > MAX_TOTAL_CHARS) {
-    const tooLongAr = resolveChatLanguage(body.language, messages) === "ar";
-    return errorResponse(c, "TOO_LARGE", {
-      chatId: body.chatId,
-      lang: tooLongAr ? "ar" : "en",
-      message: tooLongAr
-        ? "المحادثة أصبحت طويلة جداً — ابدأ محادثة جديدة من فضلك."
-        : "Conversation too long. Please start a new chat.",
-    });
-  }
-
-  // ✅ SECURITY FIX (pre-launch audit run-2): daily per-IP message quota —
-  // the abuse brake for anonymous direct-API callers (same contract as the
-  // non-stream endpoint above). Authenticated bot-worker traffic rides its
-  // own lane (no IP sharing).
-  const dailyLang = resolveChatLanguage(body.language, messages) === "ar" ? "ar" : "en";
-  if (!bumpAndCheckChatbotDaily(lane.key, lane.dailyLimit)) {
-    return errorResponse(c, "RATE_LIMITED", { lang: dailyLang, chatId: body.chatId, message: chatbotDailyQuotaMessage(lane.dailyLimit, dailyLang) });
-  }
-
-  // Vision quota — enforced BEFORE dispatch so no provider call is wasted.
-  // ✅ ROOT-CURE (2026-11-13): live screen frames ride their own 60/day lane
-  // (visionQuotaLane) — same contract as the non-stream endpoint above.
-  const quotaLane = visionQuotaLane(screenCapture, ip);
-  if (vision) {
-    const used = await getImageQuotaUsed(quotaLane.key);
-    if (used + imageCount > quotaLane.limit) {
-      const msg = quotaLane.screen ? screenQuotaExceededResponse(used) : imageQuotaExceededResponse(used);
-      const lang = resolveChatLanguage(body.language, messages);
-      return errorResponse(c, "QUOTA_EXCEEDED", { lang: lang === "en" ? "en" : "ar", chatId: body.chatId, message: lang === "ar" ? msg.ar : msg.en });
-    }
-  }
+  // ✅ ANTI-KOSHARY AUDIT FIX: same shared chatRequestPreflight as the
+  // non-stream endpoint — one admission sequence, no drift.
+  const pre = await chatRequestPreflight(c);
+  if ("error" in pre) return pre.error;
+  const { body, messages, vision, imageCount, screenCapture, quotaLane, language, courseIntent, catalog, chatUser, historySummary } = pre;
 
   const startedAt = Date.now();
   const mode: "thinking" | "instant" = body.mode === "instant" ? "instant" : "thinking";
-  const language = resolveChatLanguage(body.language, messages);
-
-  // Real course catalog + chat-history continuity — prepared ONCE here so
-  // every persistence round inside the stream reuses them (fail-open).
-  // PERF: catalog and user resolution are independent — start both, await
-  // each only where its value is first needed (saves one serial DB round
-  // trip per chat message on the stream's critical path).
-  // ✅ TOKEN OPTIMIZATION (v3.6.0): full catalog only on course/platform
-  // intent (sticky over recent history) or the vision lane — otherwise the
-  // featured sample rides along (see the non-stream handler for the contract).
-  const courseIntent = vision || courseIntentFromMessages(messages);
-  const catalogPromise = courseIntent ? getCourseCatalogText() : getCourseCatalogLiteText();
-  const chatUser = await resolveOptionalUser(c.req.raw);
-  const historySummary = chatUser ? await getLatestSummaryText(chatUser.id).catch(() => null) : null;
-  const catalog = await catalogPromise;
-
-  // ✅ SECURITY FIX (pre-launch audit run-2): daily per-USER message quota —
-  // generous headroom for real students; only an automated loop hits it.
-  if (chatUser && !bumpAndCheckChatbotDaily(`user:${chatUser.id}`, CHATBOT_DAILY_USER_LIMIT)) {
-    return errorResponse(c, "RATE_LIMITED", { lang: dailyLang, chatId: body.chatId, message: chatbotDailyQuotaMessage(CHATBOT_DAILY_USER_LIMIT, dailyLang) });
-  }
 
   const timeoutController = new AbortController();
   const timeoutId = setTimeout(() => {
