@@ -22,6 +22,7 @@ import {
   hasSaadatIntent,
   normalizeSaadatText,
   resolveProblemId,
+  resolveProblemIds,
   retrieveSaadat,
   verifyAgainstBook,
 } from "./chatbot-saadat";
@@ -249,5 +250,69 @@ describe("SKILL_REGISTRY routing + getSystemPrompt integration", () => {
     expect(normalizeSaadatText("مسألة")).toBe("مساله");
     expect(normalizeSaadatText("الإستقرارية")).toBe("الاستقراريه");
     expect(normalizeSaadatText("YBus")).toBe("ybus");
+  });
+});
+
+// ─── 7. REAL-CASE regression (v1.1.0 — live student phrasing, real problems)
+
+describe("REAL-CASE regression — real student phrasing + real book numbers", () => {
+  it("resolves 'رقم' + Arabic-Indic digits (the most common Egyptian phrasing)", () => {
+    expect(resolveProblemId("حل المسألة رقم ٢.٧ خطوة بخطوة")).toBe("2.7");
+    expect(resolveProblemId("حل المسألة رقم 6.9")).toBe("6.9");
+    expect(resolveProblemId("عايز حل مسألة (6.9) بتاعة Ybus")).toBe("6.9");
+  });
+
+  it("normalizes Arabic-Indic digits and Arabic separators", () => {
+    expect(normalizeSaadatText("مسألة ٢.٧")).toBe("مساله 2.7");
+    expect(normalizeSaadatText("٢٫٧")).toBe("2.7"); // Arabic decimal separator ٫
+    expect(normalizeSaadatText("٣٬٤٠٠")).toBe("3400"); // thousands separator ٬
+  });
+
+  it("pins ALL problems of a multi-problem message (chained ids)", () => {
+    expect(hasSaadatIntent("أحل المسألتين 6.9 و 10.3")).toBe(true);
+    expect(resolveProblemIds("أحل المسألتين 6.9 و 10.3")).toEqual(["6.9", "10.3"]);
+    expect(resolveProblemIds("solve problems 2.7 and 3.4")).toEqual(["2.7", "3.4"]);
+    const hits = retrieveSaadat("أحل المسألتين 6.9 و 10.3", 3);
+    expect(hits[0]).toMatchObject({ id: "6.9", reason: "problem-id" });
+    expect(hits[1]).toMatchObject({ id: "10.3", reason: "problem-id" });
+  });
+
+  it("keeps stray decimals and course chatter unresolvable (negative)", () => {
+    expect(resolveProblemId("اشتري 2.7 كيلو")).toBeNull();
+    expect(resolveProblemIds("سعر كورس ETAP 5.4")).toEqual([]);
+  });
+
+  it("thinking-mode excerpt keeps the book's own solution data (P 6.9 Ybus)", () => {
+    // The v1.0.0 excerpt window (1200 head + 400 tail) cut the Ybus answer
+    // matrix out of this 3032-char problem — the bot could not ground its
+    // ±0.5% check. The widened window now delivers the full manual text:
+    const block = buildSaadatContextBlock("حل المسألة 6.9", "ar");
+    expect(block).toContain("j125");
+    expect(block).toContain("j89");
+    expect(block).toContain("j100");
+    // Instant lane stays token-light:
+    const instant = buildSaadatContextBlock("حل المسألة 6.9", "ar", "instant");
+    expect(instant.length).toBeGreaterThan(0);
+    expect(instant.length).toBeLessThan(2200);
+  });
+
+  it("verifies the book's REAL stated answers across chapters (±0.5%)", () => {
+    // Values read from the manual's own solution text (extraction truth):
+    expect(verifyAgainstBook("11.1", 801.2).verified).toBe(true); // Wk = 801.2 MJ
+    expect(verifyAgainstBook("11.1", 8.5).verified).toBe(true);   // M = 8.5 MJ·s/rad
+    expect(verifyAgainstBook("12.1", 25).verified).toBe(true);    // ΔP = 25 MW
+    expect(verifyAgainstBook("12.1", 18).verified).toBe(false);   // wrong number
+    expect(verifyAgainstBook("7.1", 5.656).verified).toBe(true);  // max perimeter
+    expect(verifyAgainstBook("3.5", 2.247).verified).toBe(true);  // VR = 2.247 %
+    expect(verifyAgainstBook("2.7", 30).verified).toBe(true);     // new line current 30 A
+    expect(verifyAgainstBook("2.7", 500).verified).toBe(false);   // wrong number
+  });
+
+  it("grounds the full production prompt with the book answer for an Arabic-Indic query", () => {
+    const q = "حل المسألة رقم ٢.٧ بالتفصيل";
+    const prompt = getSystemPrompt("ar", "thinking", "", false, undefined, undefined, false, q, false, "full", buildSaadatContextBlock(q, "ar"));
+    expect(prompt).toContain("SAADAT-KB");
+    expect(prompt).toContain("530.5");
+    expect(prompt).toContain("[Saadat, Solutions Manual");
   });
 });

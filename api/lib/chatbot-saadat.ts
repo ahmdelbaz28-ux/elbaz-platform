@@ -1,6 +1,6 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- *  ELBAZ BOT — SAADAT ACADEMIC CORE  (v1.0.0)
+ *  ELBAZ BOT — SAADAT ACADEMIC CORE  (v1.1.0)
  *  Power System Analysis textbook-mastery layer for the chatbot.
  * ───────────────────────────────────────────────────────────────────────────
  *  What this module adds to the bot (user requirement: the assistant must
@@ -51,10 +51,17 @@ export type SaadatMode = "thinking" | "instant";
 // ─── Arabic-aware normalization (local, cycle-safe) ─────────────────────────
 
 /** Same canonical form as SkillNet's normalizer: harakat/tatweel stripped,
- *  أ إ آ → ا, ى → ي, ة → ه, ؤ → و, ئ → ي, lowercase, collapsed spaces. */
+ *  أ إ آ → ا, ى → ي, ة → ه, ؤ → و, ئ → ي, lowercase, collapsed spaces.
+ *  v1.1.0 (real-case hardening): Arabic-Indic ٠-٩ and Persian ۰-۹ digits
+ *  map to ASCII (students type "مسألة ٢.٧" constantly), the Arabic decimal
+ *  separator ٫ becomes "." and the thousands separator ٬ is dropped. */
 export function normalizeSaadatText(text: string): string {
   return text
     .toLowerCase()
+    .replace(/[\u0660-\u0669]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0x0660 + 0x30))
+    .replace(/[\u06F0-\u06F9]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0x06F0 + 0x30))
+    .replace(/\u066B/g, ".")
+    .replace(/\u066C/g, "")
     .replace(/[\u064B-\u065F\u0670\u0640]/g, "")
     .replace(/[\u0623\u0625\u0622\u0671]/g, "\u0627")
     .replace(/\u0649/g, "\u064A")
@@ -75,7 +82,7 @@ const SAADAT_INTENT_KEYWORDS: string[] = [
   // The book itself
   "saadat", "سعدت", "سعادت", "solution manual", "دليل الحلول", "manual الحلول",
   // Problem/exercise language
-  "مساله", "مسائل", "مساءل", "تمرين", "تمارين", "exercise", "حل المساله",
+  "مساله", "مسائل", "مسالتين", "مسالتان", "مساءل", "تمرين", "تمارين", "exercise", "حل المساله",
   "منهجيه", "منهجية الحل", "خطوات الحل", "حل كتاب", "كتاب سعدت", "الكتاب المرجعي",
   "textbook", "chapter", "فصل", "problem", "سؤال كتاب",
   // Chapter 2 — per-unit + AC fundamentals
@@ -130,27 +137,68 @@ export function hasSaadatIntent(text: string): boolean {
 
 const VALID_IDS = new Set(SAADAT_PROBLEMS.map((p) => p.id));
 
+/** Academic anchors that license a nearby "X.Y" number as a problem id. */
+const PROBLEM_ANCHOR_RE = /(?:problem|مسالتين|مسالتان|مساله|مساءل|تمرين|exercise|saadat|سعدت|حل)/g;
+/** A problem-id-shaped number: "2.7", "6-9" (٫ was already normalized to "."). */
+const PROBLEM_NUM_RE = /(\d{1,2})\s*[.-]\s*(\d{1,2})/g;
+/** Connector-only gap between an anchor and the number (or between two
+ *  chained ids): whitespace, "و", "أو", "and", "or", commas, #/:. */
+const CONNECTOR_GAP_RE = /^(?:[\sو,،:#]|and|or|او)+$/;
+const ANCHOR_REACH = 12; // chars after the anchor end where the id may live
+const CHAIN_REACH = 10;  // chars after a resolved id where the next id may live
+
 /**
- * Resolves an explicit problem reference ("حل المسألة 2.7", "solve problem
- * 6.9", "تمرين 11.5") into a KB problem id. Requires an academic anchor so a
- * stray decimal ("اشتري 2.7 كيلو") never resolves. Returns null when absent.
+ * Resolves EVERY explicit problem reference ("حل المسألتين 6.9 و 10.3",
+ * "solve problems 2.7 and 3.4", "حل المسألة رقم ٢.٧") into KB problem ids.
+ * v1.1.0 (real-case hardening): the old single-regex approach missed the
+ * most common student phrasings — "رقم" between the anchor and the number,
+ * parentheses "مسألة (6.9)", Arabic-Indic digits "٢.٧" and multiple problems
+ * in one message. This scanner licenses an id only when it sits within reach
+ * of an academic anchor (or chained to an already-licensed id through a
+ * pure connector gap), so a stray decimal ("اشتري 2.7 كيلو") still never
+ * resolves. Order follows the text order; duplicates dropped; max 4.
  */
-export function resolveProblemId(text: string): string | null {
+export function resolveProblemIds(text: string): string[] {
   const normalized = normalizeSaadatText(text);
-  // The academic anchor is REQUIRED — a stray decimal ("اشتري 2.7 كيلو")
-  // never resolves. "حل" covers "حل 2.7 بالتفصيل"; its substring reach
-  // (يحل/الحلول) is academic context anyway, and a false positive here only
-  // adds a small KB block (safe per the platform's gate contract).
-  const re = /(?:problem|مساله|مساءل|تمرين|exercise|saadat|سعدت|حل|مسأله)\s*[:#]?\s*(\d{1,2})\s*[.-]\s*(\d{1,2})/g;
-  for (const m of normalized.matchAll(re)) {
+  if (normalized.length < 2) return [];
+  const anchors = [...normalized.matchAll(PROBLEM_ANCHOR_RE)].map((m) => ({ start: m.index ?? 0, end: (m.index ?? 0) + m[0].length }));
+  if (anchors.length === 0) return [];
+
+  const ids: string[] = [];
+  const accepted: Array<{ end: number }> = [];
+  for (const m of normalized.matchAll(PROBLEM_NUM_RE)) {
+    const start = m.index ?? 0;
+    const end = start + m[0].length;
     const ch = Number(m[1]);
     const pn = Number(m[2]);
     if (!Number.isFinite(ch) || !Number.isFinite(pn)) continue;
     if (ch < 1 || ch > 12) continue;
     const id = `${ch}.${pn}`;
-    if (VALID_IDS.has(id)) return id;
+    if (!VALID_IDS.has(id)) continue;
+
+    const direct = anchors.some((a) => (start >= a.start && start < a.end) || (start >= a.end && start - a.end <= ANCHOR_REACH));
+    const chain = accepted.length > 0
+      && (() => {
+        const prev = accepted[accepted.length - 1];
+        return start - prev.end <= CHAIN_REACH && CONNECTOR_GAP_RE.test(normalized.slice(prev.end, start));
+      })();
+    if (!direct && !chain) continue;
+    if (!ids.includes(id) && ids.length < 4) {
+      ids.push(id);
+      accepted.push({ end });
+    }
   }
-  return null;
+  return ids;
+}
+
+/**
+ * Resolves the FIRST explicit problem reference ("حل المسألة 2.7", "solve
+ * problem 6.9", "تمرين 11.5") into a KB problem id. Requires an academic
+ * anchor so a stray decimal ("اشتري 2.7 كيلو") never resolves. Returns null
+ * when absent.
+ */
+export function resolveProblemId(text: string): string | null {
+  return resolveProblemIds(text)[0] ?? null;
 }
 
 // ─── BM25 retriever over the knowledge base ─────────────────────────────────
@@ -218,38 +266,57 @@ function getIndex(): { docs: IndexedDoc[]; df: Map<string, number>; avgLen: numb
   return { docs, df, avgLen: AVG_LEN };
 }
 
+/** Excerpt sizing (chars). Defaults preserve the v1.0.0 shape; the thinking
+ *  lane passes wider values so the book's actual solution data (e.g. the Ybus
+ *  matrix of P 6.9) reaches the prompt instead of being cut between head and
+ *  tail. 98/181 manual problems exceed the old 1640-char window. */
+export interface SaadatRetrieveOptions {
+  excerptHeadLen?: number;
+  excerptTailLen?: number;
+  excerptWindow?: number;
+}
+
+const DEFAULT_EXCERPT = { headLen: 1200, tailLen: 400, window: 1500 } as const;
+
 /**
- * BM25 retrieval over the Solutions Manual KB. A deterministic problem-ID
- * hit (resolveProblemId) always ranks first with reason "problem-id"; the
- * rest are ranked lexically. Returns at most `k` hits.
+ * BM25 retrieval over the Solutions Manual KB. Deterministic problem-ID hits
+ * (resolveProblemIds — ALL of them, so "المسألتين 6.9 و 10.3" pins both)
+ * always rank first with reason "problem-id"; the rest are ranked lexically.
+ * Returns at most `k` hits.
  */
-export function retrieveSaadat(query: string, k = 4): SaadatHit[] {
+export function retrieveSaadat(query: string, k = 4, options?: SaadatRetrieveOptions): SaadatHit[] {
   if (k <= 0) return [];
   const { docs, df, avgLen } = getIndex();
   const qTokens = tokenize(query);
   if (qTokens.length === 0) return [];
 
+  const headLen = options?.excerptHeadLen ?? DEFAULT_EXCERPT.headLen;
+  const tailLen = options?.excerptTailLen ?? DEFAULT_EXCERPT.tailLen;
+  const windowLen = options?.excerptWindow ?? DEFAULT_EXCERPT.window;
+
   const hits: SaadatHit[] = [];
-  const directId = resolveProblemId(query);
-  if (directId) {
+  const directIds = resolveProblemIds(query);
+  const pinned = new Set<string>();
+  for (const directId of directIds) {
+    if (pinned.has(directId) || hits.length >= k) break;
     const doc = docs.find((d) => d.entry.id === directId);
-    if (doc) {
-      hits.push({
-        id: doc.entry.id,
-        ch: doc.entry.ch,
-        page: doc.entry.page,
-        score: Number.POSITIVE_INFINITY,
-        excerpt: excerptForId(doc.entry),
-        reason: "problem-id",
-      });
-    }
+    if (!doc) continue;
+    pinned.add(directId);
+    hits.push({
+      id: doc.entry.id,
+      ch: doc.entry.ch,
+      page: doc.entry.page,
+      score: Number.POSITIVE_INFINITY,
+      excerpt: excerptForId(doc.entry, headLen, tailLen),
+      reason: "problem-id",
+    });
   }
 
   const n = docs.length;
   const scored: Array<{ doc: IndexedDoc; score: number }> = [];
   const qSet = [...new Set(qTokens)];
   for (const doc of docs) {
-    if (doc.entry.id === directId) continue; // already first
+    if (pinned.has(doc.entry.id)) continue; // already pinned
     const tf = new Map<string, number>();
     for (const t of doc.tokens) tf.set(t, (tf.get(t) ?? 0) + 1);
     let score = 0;
@@ -270,7 +337,7 @@ export function retrieveSaadat(query: string, k = 4): SaadatHit[] {
       ch: s.doc.entry.ch,
       page: s.doc.entry.page,
       score: Math.round(s.score * 100) / 100,
-      excerpt: excerptForQuery(s.doc.entry, qTokens, 1500),
+      excerpt: excerptForQuery(s.doc.entry, qTokens, windowLen),
       reason: "bm25",
     });
   }
@@ -463,7 +530,11 @@ export function buildSaadatContextBlock(query: string, lang: SaadatLang, mode: S
   if (!hasSaadatIntent(query)) return "";
   const instant = mode === "instant";
   const k = instant ? 1 : 3;
-  const hits = retrieveSaadat(query, k);
+  // Thinking mode widens the direct-ID excerpt (2400 head + 700 tail) so the
+  // requested problem's own solution data survives; instant stays compact.
+  const hits = retrieveSaadat(query, k, instant
+    ? { excerptHeadLen: 1200, excerptTailLen: 400 }
+    : { excerptHeadLen: 2400, excerptTailLen: 700 });
   if (hits.length === 0) return "";
 
   const budget = instant ? INSTANT_CONTEXT_BUDGET : THINKING_CONTEXT_BUDGET;
@@ -492,7 +563,7 @@ export function buildSaadatContextBlock(query: string, lang: SaadatLang, mode: S
 // ─── Public meta (telemetry + docs) ─────────────────────────────────────────
 
 export const SAADAT_LAYER_META = {
-  version: "1.0.0",
+  version: "1.1.0",
   source: SAADAT_META.source,
   problemCount: SAADAT_META.problemCount,
   chapterCount: SAADAT_META.chapterCount,

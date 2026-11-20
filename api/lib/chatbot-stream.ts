@@ -192,7 +192,7 @@ export async function pickWorkingModel(
   // now the routing signal source — the legacy backbone gets the same routed
   // prompt as the dynamic router path.
   const routingSignal = extractRoutingSignal(messages);
-  // ✅ SAADAT ACADEMIC CORE (v1.0.0): academic-intent-gated RAG block from
+  // ✅ SAADAT ACADEMIC CORE (v1.1.0): academic-intent-gated RAG block from
   // the Solutions-Manual knowledge base ("" → prompt unchanged).
   const saadatContext = buildSaadatContextBlock(routingSignal, language === "ar" ? "ar" : "en", mode);
   // ✅ ROOT-CURE (2026-11-13): the vision flag threads into the legacy prompt.
@@ -838,7 +838,7 @@ async function getVisionStreamResponse(request: {
   // always carried the full core set, so the technical floor is forced even
   // when the reader failed and the description is just the honesty note.
   const routingSignal = extractRoutingSignal(pass2Messages);
-  // ✅ SAADAT ACADEMIC CORE (v1.0.0): an attached image often contains a
+  // ✅ SAADAT ACADEMIC CORE (v1.1.0): an attached image often contains a
   // handwritten problem from the textbook — the academic RAG block rides
   // along whenever the caption/description text matches academic intent.
   const saadatContext = buildSaadatContextBlock(routingSignal, request.language === "ar" ? "ar" : "en", mode);

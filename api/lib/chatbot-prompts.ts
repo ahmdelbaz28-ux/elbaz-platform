@@ -666,7 +666,7 @@ registerSkillContent("electrical-depth-pack", {
  *                 block chosen by the router via chatbot-intent.ts. Both
  *                 texts arrive through `catalog`; this flag only picks the
  *                 block STYLE and its honesty contract line.
- * @param saadatContext  SAADAT ACADEMIC CORE (v1.0.0): pre-built RAG block
+ * @param saadatContext  SAADAT ACADEMIC CORE (v1.1.0): pre-built RAG block
  *                 from buildSaadatContextBlock() — retrieved Solutions-Manual
  *                 excerpts + usage/citation rules ("" when the query has no
  *                 academic intent). Appended verbatim at the end of the
@@ -748,7 +748,7 @@ Hard rules (guessing is absolutely forbidden):
     : "";
 
 
-  // ── SAADAT ACADEMIC CORE (v1.0.0) — the dynamic RAG block built by
+  // ── SAADAT ACADEMIC CORE (v1.1.0) — the dynamic RAG block built by
   // chatbot-saadat.ts from the routing signal (academic-intent gated).
   // Appended verbatim AFTER the screen block: the KB excerpts are reference
   // data, and the screen teacher rules stay closest to the model's final

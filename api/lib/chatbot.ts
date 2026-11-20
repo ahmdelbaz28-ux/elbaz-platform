@@ -1013,7 +1013,7 @@ async function runTextCascade(request: {
   // ✅ SKILLNET ROUTING (v3.5.0): the latest user message is the routing
   // signal — the skill router injects only the relevant domain cores/packs.
   const routingSignal = extractRoutingSignal(request.messages);
-  // ✅ SAADAT ACADEMIC CORE (v1.0.0): academic-intent-gated RAG block from
+  // ✅ SAADAT ACADEMIC CORE (v1.1.0): academic-intent-gated RAG block from
   // the Solutions-Manual knowledge base ("" for non-academic queries →
   // prompt unchanged). Built once here; the same block serves every lane.
   const saadatContext = buildSaadatContextBlock(routingSignal, request.language === "ar" ? "ar" : "en", mode);
