@@ -25,7 +25,10 @@ const headers = process.env.FWD_HOST
 
 const stamp = Date.now().toString(36);
 const USERNAME = `mailprobe${stamp}`;
-const EMAIL = `mailprobe.${stamp}@example.com`;
+// Resend rejects reserved/blocked recipient domains like example.com with a
+// 422 "Invalid to field" — that is a PROVIDER policy, not a platform bug.
+// Use a real recipient domain so the probe measures the actual send path.
+const EMAIL = `mailprobe.${stamp}@gmail.com`;
 const PASSWORD = "Probe#Temp2026";
 
 let fails = 0;

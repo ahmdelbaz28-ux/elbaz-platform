@@ -155,7 +155,7 @@ const SIDEBAR_GROUPS: { labelAr: string; labelEn: string; ids: string[] }[] = [
   { labelAr: "عام", labelEn: "Overview", ids: ["dashboard"] },
   { labelAr: "الإدارة", labelEn: "Management", ids: ["users", "courses", "articles", "faq", "tickets", "payments"] },
   { labelAr: "المنصة", labelEn: "Platform", ids: ["ai", "chatbot", "contact", "cms", "themes"] },
-  { labelAr: "التسويق", labelEn: "Marketing", ids: ["promos", "promotions", "notifications"] },
+  { labelAr: "التسويق", labelEn: "Marketing", ids: ["promos", "promotions", "testimonials", "notifications"] },
   { labelAr: "الأمن والرقابة", labelEn: "Safety & Oversight", ids: ["moderation", "audit"] },
 ];
 
