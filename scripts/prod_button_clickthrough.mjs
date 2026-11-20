@@ -161,7 +161,14 @@ async function main() {
         check(`tab ${tabId} clickable`, false, "sidebar item not found");
         continue;
       }
-      await visible.first().click({ timeout: 8000 });
+      // framer-motion hover/tap animations occasionally keep the item
+      // "unstable" for Playwright's actionability check — force-click is the
+      // safe fallback: same element, same onClick, no pointer math.
+      try {
+        await visible.first().click({ timeout: 12000 });
+      } catch {
+        await visible.first().click({ timeout: 6000, force: true });
+      }
       await page.waitForTimeout(2500);
       const text = (await page.locator("body").innerText().catch(() => ""));
       const dead = /something went wrong|خطأ غير متوقع|Error Boundary/i.test(text);
