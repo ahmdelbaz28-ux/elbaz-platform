@@ -654,8 +654,10 @@ export const localAuthRouter = createRouter({
 
       // Resolve the target user: code-entry flow sends the email address
       // (the user never sees their numeric id); link flow sends the uid.
-      let userId = input.userId;
-      if (userId === undefined && input.email) {
+      let resolvedUserId: number;
+      if (input.userId !== undefined) {
+        resolvedUserId = input.userId;
+      } else if (input.email) {
         const [row] = await getDb()
           .select({ id: users.id })
           .from(users)
@@ -665,11 +667,14 @@ export const localAuthRouter = createRouter({
           // Same generic message as an invalid token — no email enumeration.
           throw new TRPCError({ code: "BAD_REQUEST", message: "This reset link is invalid or has expired" });
         }
-        userId = row.id;
+        resolvedUserId = row.id;
+      } else {
+        // Unreachable (input refine guarantees userId or email) — TS-safe guard.
+        throw new TRPCError({ code: "BAD_REQUEST", message: "This reset link is invalid or has expired" });
       }
 
       const result = await completePasswordReset(
-        userId,
+        resolvedUserId,
         input.code ?? input.token!,
         input.newPassword,
       );
