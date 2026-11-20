@@ -71,12 +71,31 @@ function getDummyHash(): Promise<string> {
 // deployment, and a restart merely resets a soft throttle.
 const ACCOUNT_LOGIN_WINDOW_MS = 15 * 60_000;
 const ACCOUNT_LOGIN_MAX_FAILURES = 20;
+// ✅ ANTI-KOSHARY AUDIT FIX: the map is keyed by CLIENT-SUPPLIED usernames,
+// so a distributed attacker can mint unlimited keys inside one window. The
+// time-only cleanup (below) cannot bound that growth — the same unbounded-map
+// class already fixed in chatbot-router (run-2, "chatbot.map-bounds"),
+// chatbot-feedback-route (VOTES_MAP_MAX_SIZE) and shield (RATE_LIMIT_MAP_MAX_SIZE).
+// Same MAX_SIZE pattern: evict expired entries first, then the oldest-inserted
+// key (Map iteration order = insertion). No legitimate user is affected — real
+// users have at most a handful of usernames.
+const ACCOUNT_LOGIN_MAP_MAX_SIZE = 5000;
 const accountLoginFailures = new Map<string, { count: number; resetAt: number }>();
 
 function recordAccountLoginFailure(username: string): void {
   const key = username.trim().toLowerCase().slice(0, 120);
   if (!key) return;
   const now = Date.now();
+  if (accountLoginFailures.size >= ACCOUNT_LOGIN_MAP_MAX_SIZE) {
+    for (const [k, entry] of accountLoginFailures) {
+      if (now > entry.resetAt) accountLoginFailures.delete(k);
+    }
+    // Absolute fallback: evict the oldest inserted key (Map order = insertion).
+    if (accountLoginFailures.size >= ACCOUNT_LOGIN_MAP_MAX_SIZE) {
+      const oldest = accountLoginFailures.keys().next().value;
+      if (oldest !== undefined) accountLoginFailures.delete(oldest);
+    }
+  }
   const entry = accountLoginFailures.get(key);
   if (!entry || now > entry.resetAt) {
     accountLoginFailures.set(key, { count: 1, resetAt: now + ACCOUNT_LOGIN_WINDOW_MS });
