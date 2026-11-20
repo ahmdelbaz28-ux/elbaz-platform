@@ -394,8 +394,10 @@ chatbotRouter.post("/", async (c) => {
     while (!result.success && !(result as { permanent?: boolean }).permanent && Date.now() < nonStreamPersistDeadline && !c.req.raw.signal?.aborted) {
       persistRound += 1;
       await new Promise((r) => setTimeout(r, 4_000));
-      // Persistence escalation: rounds ≥ 2 skip the dynamic router and go
-      // straight to the legacy backbone (same contract as /stream).
+      // Persistence escalation: the FIRST retry round already skips the
+      // dynamic router and goes straight to the legacy backbone (same
+      // contract as /stream) — a storming dynamic pool must not re-burn
+      // the retry budget before Groq/NVIDIA are tried.
       result = await getChatResponse({ ...chatRequest, preferLegacy: persistRound >= 1 });
     }
 
