@@ -172,9 +172,9 @@ export default function Footer() {
 
           {/* Platform links */}
           <div>
-            <h4 className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-text-muted">
+            <h2 className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-text-muted">
               {lang === "ar" ? "المنصة" : "Platform"}
-            </h4>
+            </h2>
             <ul className="space-y-3">
               {links.platform.map((l) => (
                 <li key={l.to}>
@@ -188,9 +188,9 @@ export default function Footer() {
 
           {/* Legal links */}
           <div>
-            <h4 className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-text-muted">
+            <h2 className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-text-muted">
               {lang === "ar" ? "قانوني" : "Legal"}
-            </h4>
+            </h2>
             <ul className="space-y-3">
               {links.legal.map((l) => (
                 <li key={l.label}>
@@ -204,9 +204,9 @@ export default function Footer() {
 
           {/* Tools */}
           <div>
-            <h4 className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-text-muted">
+            <h2 className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-text-muted">
               {lang === "ar" ? "البرامج التي ستتعلمها" : "Tools You'll Master"}
-            </h4>
+            </h2>
             <div className="flex flex-wrap gap-2">
               {tools.map((tool) => (
                 <span

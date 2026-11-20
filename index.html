@@ -1,5 +1,9 @@
 <!doctype html>
-<html lang="en" dir="ltr">
+<!-- lang="ar" dir="rtl" — the platform's primary audience/content is Arabic.
+     Search engines index the RAW HTML before any JS runs, so the static
+     document must declare the real default (rtl-detect.js still overrides
+     per user preference for English visitors before React mounts). -->
+<html lang="ar" dir="rtl">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
@@ -73,8 +77,17 @@
          🚀 PERF (root-cause audit, F6): Inter 300 removed — the only
          font-light usage in the app was a single ":" separator (Home.tsx),
          now font-normal. Every remaining weight (Inter 400/500/600/700,
-         Cairo 400/500/600/700) is genuinely used across the UI. -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cairo:wght@400;500;600;700&display=swap" rel="stylesheet" />
+         Cairo 400/500/600/700) is genuinely used across the UI.
+         🚀 PERF (Lighthouse 2026-11-20): the stylesheet was render-blocking
+         (~770ms on slow networks). Loaded via the media="print" swap so text
+         paints with the system fallback immediately and the webfonts apply
+         when ready (display=swap). CSP allows inline handlers (script-src
+         'unsafe-inline'); noscript keeps full CSS for JS-disabled crawlers. -->
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cairo:wght@400;500;600;700&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cairo:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'" />
+    <noscript>
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cairo:wght@400;500;600;700&display=swap" />
+    </noscript>
 
     <!-- PWA Manifest -->
     <link rel="manifest" href="/manifest.webmanifest" />

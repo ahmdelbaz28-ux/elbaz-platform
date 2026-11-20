@@ -57,6 +57,14 @@ export default function AnimatedCounter({
 
   const formattedValue = decimals > 0 ? count.toFixed(decimals) : Math.floor(count).toLocaleString();
 
+  // ✅ CLS FIX (Lighthouse 2026-11-20): while the count animates from 0 up to
+  // the final value, the number's width grows digit by digit and pushed the
+  // suffix/label around — the single largest layout-shift source on the home
+  // page (CLS 0.4 measured). Reserving the FINAL value's width up front (ch
+  // units + tabular-nums keep every digit the same width) makes the span a
+  // constant-size box, so the animation changes pixels but shifts nothing.
+  const finalValueStr = decimals > 0 ? value.toFixed(decimals) : Math.floor(value).toLocaleString();
+
   return (
     <motion.div
       ref={ref}
@@ -76,7 +84,7 @@ export default function AnimatedCounter({
         {prefix && <span className="text-lg font-medium" style={{ color }}>{prefix}</span>}
         <motion.span
           className={cn("text-4xl font-bold tabular-nums", valueClassName)}
-          style={{ color }}
+          style={{ color, display: "inline-block", minWidth: `${finalValueStr.length}ch`, textAlign: "center" }}
         >
           {formattedValue}
         </motion.span>

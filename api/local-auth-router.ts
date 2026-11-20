@@ -523,6 +523,20 @@ export const localAuthRouter = createRouter({
     return ctx.user;
   }),
 
+  // ✅ SEO/BEST-PRACTICES (2026-11-20): console-silent session oracle.
+  // The remember-device boot probe used to call auth.me (an AUTHED procedure)
+  // for every fresh guest, and the browser logs every 4xx network response to
+  // the DevTools console — one unavoidable "Failed to load resource: 401"
+  // error per fresh visit that permanently capped Lighthouse Best Practices.
+  // sessionProbe is a PUBLIC procedure that ALWAYS answers 200 with whether
+  // the ambient cookie resolves to a live user — identical oracle semantics
+  // (hidden-session detection, one roundtrip, same probe marks) with zero
+  // console noise. auth.me stays the single source of truth for the user
+  // object; this only decides WHETHER to fetch it.
+  sessionProbe: publicQuery.query(({ ctx }) => {
+    return { authenticated: !!ctx.user };
+  }),
+
   updateProfile: authedQuery
     .input(
       z.object({

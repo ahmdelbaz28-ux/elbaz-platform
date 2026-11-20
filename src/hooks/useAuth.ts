@@ -28,11 +28,19 @@ import {
  *   flag missing, no mark      → "active" (join/lead the ONE shared probe)
  *   flag missing, mark present → "done"   (probe already concluded — dead end)
  *
- * The mark is written ONLY when the probe CONCLUDES (success or UNAUTHORIZED
- * rejection), never when it starts — that is what lets late joiners mount
- * into "active" and ride the same shared auth.me fetch. React-Query
- * deduplicates the shared key, so all instances observe ONE request; the
- * conclusion effects below (success → done, 401 → done) write the mark.
+ * ✅ SEO/BEST-PRACTICES (2026-11-20): the probe now rides auth.sessionProbe —
+ * a PUBLIC procedure that always answers 200 {authenticated} — instead of
+ * auth.me (an AUTHED procedure whose 401 for plain guests is logged by the
+ * browser as a console error and permanently capped Lighthouse Best
+ * Practices). Oracle semantics are unchanged: one shared request, the mark
+ * written only on conclusion, and a hidden session flips into the normal
+ * auth.me path by setting storedAuth.
+ *
+ * The mark is written ONLY when the probe CONCLUDES (success or rejection),
+ * never when it starts — that is what lets late joiners mount into "active"
+ * and ride the same shared fetch. React-Query deduplicates the shared key, so
+ * all instances observe ONE request; the conclusion effects below write the
+ * mark.
  */
 type ProbePhase = "idle" | "active" | "done";
 
@@ -83,13 +91,48 @@ export function useAuth() {
     error,
     refetch,
   } = trpc.auth.me.useQuery(undefined, {
-    enabled: hasMounted && (storedAuth || probePhase === "active"),
+    // ✅ probe no longer enables auth.me — the probe rides auth.sessionProbe
+    // (200-always) below; a hidden session flips storedAuth true and the
+    // normal flag-gated path takes over from here.
+    enabled: hasMounted && storedAuth,
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 10,
     retry: false,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
+
+  // ✅ Console-silent boot probe (fresh guests only — see computeProbePhase).
+  // 200 {authenticated:false} for plain guests, 200 {authenticated:true} for a
+  // hidden remembered session — the browser has nothing to log either way.
+  const sessionProbe = trpc.auth.sessionProbe.useQuery(undefined, {
+    enabled: hasMounted && probePhase === "active",
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
+  // Probe conclusion — success: write the mark; a hidden session additionally
+  // flips into the normal auth.me path. Error (network/5xx): conclude for THIS
+  // load only, without the mark — the next full load probes again and
+  // self-heals if the session was alive all along (same semantics as before).
+  useEffect(() => {
+    if (!hasMounted || probePhase !== "active") return;
+    if (sessionProbe.isError) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setProbePhase("done");
+      return;
+    }
+    if (sessionProbe.isSuccess) {
+      if (sessionProbe.data?.authenticated) {
+        setStoredAuth(true); // enables auth.me — its 200 re-sets the flag cookie
+      }
+      markSessionProbeDone();
+      setProbePhase("done");
+    }
+  }, [hasMounted, probePhase, sessionProbe.isError, sessionProbe.isSuccess, sessionProbe.data]);
 
   const logoutMutation = trpc.auth.logout.useMutation({
     onSuccess: () => {
@@ -207,7 +250,15 @@ export function useAuth() {
     navigate("/login", { replace: true });
   }, [logoutMutation, navigate, queryClient]);
 
-  const isLoading = !hasMounted || queryLoading;
+  // ✅ RACE GUARD (2026-11-20, sessionProbe migration): the probe used to ride
+  // the auth.me query itself, so queryLoading held this spinner while the
+  // shared probe was in flight and ProtectedRoute never bounced a hidden
+  // session to /login mid-probe. auth.me is now gated on storedAuth only —
+  // without folding probePhase in here, a fresh guest's isLoading would fall
+  // to false the moment auth.me was found disabled and ProtectedRoute would
+  // bounce to /login BEFORE the sessionProbe concluded (the exact race the
+  // probe design exists to prevent).
+  const isLoading = !hasMounted || queryLoading || probePhase === "active";
 
   return useMemo(
     () => ({
