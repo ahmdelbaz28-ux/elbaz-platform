@@ -21,6 +21,8 @@
  */
 
 import { getSystemPrompt, MODE_TUNING, sanitizeReplyOutput, type ModeTuning } from "./chatbot-prompts.js";
+
+import { buildSaadatContextBlock } from "./chatbot-saadat.js";
 import { extractRoutingSignal } from "./chatbot-skillnet.js";
 import type { ParsedScreenContext } from "./chatbot-screen.js";
 import { logger } from "./logger.js";
@@ -190,8 +192,11 @@ export async function pickWorkingModel(
   // now the routing signal source — the legacy backbone gets the same routed
   // prompt as the dynamic router path.
   const routingSignal = extractRoutingSignal(messages);
+  // ✅ SAADAT ACADEMIC CORE (v1.0.0): academic-intent-gated RAG block from
+  // the Solutions-Manual knowledge base ("" → prompt unchanged).
+  const saadatContext = buildSaadatContextBlock(routingSignal, language === "ar" ? "ar" : "en", mode);
   // ✅ ROOT-CURE (2026-11-13): the vision flag threads into the legacy prompt.
-  const systemPrompt = getSystemPrompt(language, mode, catalog, vision === true, historySummary, screen, screenCapture, routingSignal, false, catalogMode);
+  const systemPrompt = getSystemPrompt(language, mode, catalog, vision === true, historySummary, screen, screenCapture, routingSignal, false, catalogMode, saadatContext);
 
   if (mode === "instant") {
     // ─── INSTANT: fastest first — Groq → OpenRouter (fast model) → NVIDIA ───
@@ -833,11 +838,15 @@ async function getVisionStreamResponse(request: {
   // always carried the full core set, so the technical floor is forced even
   // when the reader failed and the description is just the honesty note.
   const routingSignal = extractRoutingSignal(pass2Messages);
+  // ✅ SAADAT ACADEMIC CORE (v1.0.0): an attached image often contains a
+  // handwritten problem from the textbook — the academic RAG block rides
+  // along whenever the caption/description text matches academic intent.
+  const saadatContext = buildSaadatContextBlock(routingSignal, request.language === "ar" ? "ar" : "en", mode);
   // ✅ ROOT-CURE (2026-11-13, vision block was dead in production): the vision
   // pass-2 IS a vision request — the screen-teacher block (live frames) or
   // the generic image-analysis block (ordinary attachments) must reach the
   // persona prompt on EVERY lane (dynamic router, legacy backbone, fallback).
-  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, true, request.historySummary, request.screen, request.screenCapture, routingSignal, true, request.catalogMode);
+  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, true, request.historySummary, request.screen, request.screenCapture, routingSignal, true, request.catalogMode, saadatContext);
 
   // ── PASS 2 (ANSWER): streaming reasoning-first cascade over the TEXT
   // description — the strongest available model writes the answer.

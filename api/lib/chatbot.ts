@@ -33,6 +33,8 @@
 
 import { env } from "../lib/env";
 import { getSystemPrompt, MODE_TUNING, type ChatbotMode, type ModeTuning } from "./chatbot-prompts.js";
+
+import { buildSaadatContextBlock } from "./chatbot-saadat.js";
 import { extractRoutingSignal } from "./chatbot-skillnet.js";
 import { webIntentFromMessages } from "./chatbot-intent.js";
 import { reportTokenUsage } from "./token-usage.js";
@@ -1011,9 +1013,13 @@ async function runTextCascade(request: {
   // ✅ SKILLNET ROUTING (v3.5.0): the latest user message is the routing
   // signal — the skill router injects only the relevant domain cores/packs.
   const routingSignal = extractRoutingSignal(request.messages);
+  // ✅ SAADAT ACADEMIC CORE (v1.0.0): academic-intent-gated RAG block from
+  // the Solutions-Manual knowledge base ("" for non-academic queries →
+  // prompt unchanged). Built once here; the same block serves every lane.
+  const saadatContext = buildSaadatContextBlock(routingSignal, request.language === "ar" ? "ar" : "en", mode);
   // ✅ ROOT-CURE (2026-11-13): the vision flag now threads into the prompt —
   // vision pass-2 requests carry the screen-teacher / image-analysis block.
-  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, request.vision === true, request.historySummary, request.screen, request.screenCapture, routingSignal, false, request.catalogMode);
+  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, request.vision === true, request.historySummary, request.screen, request.screenCapture, routingSignal, false, request.catalogMode, saadatContext);
   // WEB GROUNDING policy: thinking mode (the accuracy lane) gets live web
   // search on OpenRouter so answers stay documented; instant stays plugin-
   // free for latency. Every failure degrades gracefully (breaker in ai-router

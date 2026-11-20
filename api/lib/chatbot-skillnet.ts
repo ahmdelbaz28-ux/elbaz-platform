@@ -57,6 +57,11 @@ import {
   sldSkillEn,
 } from "./chatbot-skills.js";
 
+// SAADAT ACADEMIC CORE (v1.0.0): imported from the leaf module — one-way
+// dependency (skillnet → saadat → saadat-kb; saadat imports nothing here,
+// it carries its own local normalizer to avoid a cycle).
+import { SAADAT_CORE_BLOCKS } from "./chatbot-saadat.js";
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export type SkillnetLang = "ar" | "en";
@@ -439,6 +444,39 @@ export const SKILL_REGISTRY: SkillDefinition[] = [
     // core in every lane (units, MISSING protocol, X/R, IEEE 485/80 anchors).
     alwaysOn: true,
     build: (lang, mode) => DELEGATED["electrical-depth-pack"][lang](lang, mode),
+  },
+  {
+    id: "saadat-academic-core",
+    label: "النواة الأكاديمية لكتاب Saadat (تحليل نظم القوى)",
+    description: "Power System Analysis textbook mastery: Saadat solution-methodology protocol, deterministic problem-ID resolution, SAADAT-KB grounding and the ±0.5% verification + citation contract.",
+    category: "study-pack",
+    version: "1.0.0",
+    phrases: [
+      "saadat", "سعدت", "solution manual", "دليل الحلول", "حل المسألة", "حل المساله",
+      "per unit", "بير ويت", "بير يونت", "ybus", "zbus", "شبكه الممانعه",
+      "معادله التارجح", "معادله التأرجح", "المكونات المتماثله", "symmetrical components",
+      "تدفق الأحمال", "تدفق الاحمال", "power flow", "load flow",
+      "economic dispatch", "التوزيع الاقتصادي", "critical clearing", "swing equation",
+      "تصحيح معامل القدره", "ثوابت abcd", "خطوط النقل", "الاله التزامنيه",
+    ],
+    keywords: [
+      "saadat", "manual", "textbook", "كتاب", "مساله", "مسائل", "تمرين", "تمارين",
+      "exercise", "problem", "منهجيه", "خطوات الحل", "per-unit", "perunit", "pu",
+      "base value", "y-bus", "z-bus", "admittance", "gauss-seidel", "newton raphson",
+      "newton-raphson", "fast decoupled", "slack", "pv bus", "pq bus",
+      "الاستقراريه", "stability", "swing", "equal area", "inertia", "ثابت القصور",
+      "symmetrical", "متماثله", "sequence", "operator a",
+      "line to line", "line to ground", "subtransient", "transient", "fault mva",
+      "breaker duty", "قدره القصر", "قصر", "عطل", "zbus", "alfc", "avr",
+      "load frequency", "excitation", "speed regulation", "منظم السرعه", "منظم الجهد",
+      "lqr", "lagrange", "lambda", "incremental cost", "التكلفه الحديه", "kuhn",
+      "fuel cost", "abcd", "surge impedance", "voltage regulation", "تنظيم الجهد",
+      "gmd", "acsr", "خط النقل", "خط قصير", "نموذج بي", "nominal pi",
+      "فصل", "chapter", "معادله", "متماثل", "اقتصادي", "dispatch", "حل الاحمال",
+    ],
+    softwareAffinity: [/saadat/i, /solution\s?manual/i, /سعدت/],
+    modes: ["thinking", "instant"],
+    build: (lang, mode) => SAADAT_CORE_BLOCKS[mode][lang],
   },
   {
     id: "arc-flash-pack",
