@@ -752,6 +752,86 @@ export default function Home() { // NOSONAR — landing page with hero + feature
         </div>
       </section>
 
+      {/* ═══════════════════ AI ASSISTANT — Saadat expert ═══════════════════ */}
+      <section className="border-t border-border py-24">
+        <div className="mx-auto max-w-7xl px-4 lg:px-6">
+          <SectionHeader
+            badge={lang === "en" ? "AI Teaching Assistant" : "المساعد الذكي"}
+            title={lang === "en" ? "A Power-Systems AI That Solves Like the Textbook" : "مساعد ذكاء اصطناعي يحل مسائل القوى مثل الكتاب"}
+            subtitle={lang === "en" ? "Built on the full solutions of Hadi Saadat's Power System Analysis manual — 181 problems across 12 chapters. Step-by-step methodology, verifiable citations, and a numeric checker on every answer." : "مبني على الحلول الكاملة لدليل كتاب Power System Analysis للدكتور هادي سادات — 181 مسألة موزعة على 12 فصل. منهجية حل خطوة بخطوة، استشهاد قابل للتحقق بكل إجابة، ومدقق رقمي يطابق الدليل."}
+          />
+
+          <div className="grid gap-6 lg:grid-cols-3">
+            <BentoCard delay={0} className="p-8">
+              <div className="flex flex-col h-full items-center text-center">
+                <AnimatedIcon icon={<GraduationCap className="h-8 w-8" />} variant="orbit" size="lg" color="#06b6d4" />
+                <h3 className="mt-6 text-xl font-bold text-foreground">{lang === "en" ? "Textbook Methodology" : "منهجية كتابية"}</h3>
+                <p className="mt-3 text-sm leading-relaxed text-text-muted">
+                  {lang === "en" ? "Every answer follows the manual's solution path — model, assumptions, equations, result — with a citation: [Saadat, Ch.X, P X.Y, pp.N–M]." : "كل إجابة تسير على مسار حل الدليل — النموذج والافتراضات والمعادلات والنتيجة — مع استشهاد بصيغة [Saadat، الفصل X، المسألة X.Y، الصفحات N–M]."}
+                </p>
+              </div>
+            </BentoCard>
+
+            <BentoCard delay={0.1} className="p-8">
+              <div className="flex flex-col h-full items-center text-center">
+                <AnimatedIcon icon={<BadgeCheck className="h-8 w-8" />} variant="pulse" size="lg" color="#10b981" />
+                <h3 className="mt-6 text-xl font-bold text-foreground">{lang === "en" ? "Numeric Verification ±0.5%" : "مدقق رقمي ±0.5%"}</h3>
+                <p className="mt-3 text-sm leading-relaxed text-text-muted">
+                  {lang === "en" ? "A verification layer cross-checks computed results against the manual's ground truth — answers that drift more than 0.5% get flagged and re-derived." : "طبقة تحقق تقاطعية تطابق النتائج المحسوبة مع إجابات الدليل المرجعية — أي انحراف يتجاوز 0.5% يُرصد ويُعاد اشتقاقه."}
+                </p>
+              </div>
+            </BentoCard>
+
+            <BentoCard delay={0.2} className="p-8">
+              <div className="flex flex-col h-full items-center text-center">
+                <AnimatedIcon icon={<Sparkles className="h-8 w-8" />} variant="morph" size="lg" color="#8b5cf6" />
+                <h3 className="mt-6 text-xl font-bold text-foreground">{lang === "en" ? "Arabic, With Engineering Terms" : "عربي، مع المصطلحات الهندسية"}</h3>
+                <p className="mt-3 text-sm leading-relaxed text-text-muted">
+                  {lang === "en" ? "Explanations in clear Arabic while keeping the technical terms in English — the way engineering is actually taught and practiced." : "شرح بالعربية السليمة مع إبقاء المصطلحات التقنية بالإنجليزية — تماماً كما تُدرَّس الهندسة وتُمارَس فعلياً."}
+                </p>
+              </div>
+            </BentoCard>
+          </div>
+
+          <ScrollReveal className="mt-12">
+            <div className="mx-auto max-w-3xl rounded-2xl border border-border bg-background p-6 lg:p-8">
+              <p className="text-center text-sm font-medium text-text-muted">
+                {lang === "en" ? "Try asking:" : "جرّب أن تسأله:"}
+              </p>
+              <ul className="mt-4 space-y-3">
+                {[
+                  lang === "en" ? "Solve problem 2.7 from Saadat step by step" : "حل مسألة 2.7 من كتاب سادات خطوة بخطوة",
+                  lang === "en" ? "Build the Ybus matrix for problem 6.9" : "احسب مصفوفة Ybus للشبكة في مسألة 6.9",
+                  lang === "en" ? "Why is my voltage regulation different in problem 3.5?" : "لماذا نتيجتي في تنظيم الجهد تختلف عن الكتاب في مسألة 3.5؟",
+                ].map((q, j) => (
+                  <motion.li key={q} initial={{ opacity: 0, x: -10 }} whileInView={{ opacity: 1, x: 0 }} transition={{ delay: j * 0.1 }} viewport={{ once: true }} className="flex items-start gap-3 rounded-lg bg-muted/40 px-4 py-3 text-sm text-foreground" dir="auto">
+                    <Sparkles className="h-4 w-4 shrink-0 mt-0.5 text-accent-secondary" />
+                    <span>{q}</span>
+                  </motion.li>
+                ))}
+              </ul>
+              <div className="mt-6 flex flex-col items-center justify-center gap-4 sm:flex-row">
+                <Link to="/register">
+                  <ArcFlashButton variant="primary" onClick={() => trackEvent("cta_click", { button: "try_ai_assistant", page: "ai_assistant_section" })}>
+                    <Zap className="h-4 w-4" />
+                    {lang === "en" ? "Create an account and try it" : "أنشئ حساباً وجرّبه الآن"}
+                  </ArcFlashButton>
+                </Link>
+                <Link to="/courses">
+                  <ArcFlashButton variant="outline" onClick={() => trackEvent("cta_click", { button: "explore_courses", page: "ai_assistant_section" })}>
+                    <PlayCircle className="h-4 w-4" />
+                    {t("exploreCourses")}
+                  </ArcFlashButton>
+                </Link>
+              </div>
+              <p className="mt-4 text-center text-xs text-text-muted">
+                {lang === "en" ? "Free to try with any account — the assistant runs in thinking mode for full worked solutions." : "مجاني مع أي حساب — يعمل المساعد بوضع التفكير المعمّق للحلول الكاملة."}
+              </p>
+            </div>
+          </ScrollReveal>
+        </div>
+      </section>
+
       {/* ═══════════════════ INSTRUCTOR ═══════════════════ */}
       <section className="border-t border-border py-24">
         <div className="mx-auto max-w-7xl px-4 lg:px-6">
