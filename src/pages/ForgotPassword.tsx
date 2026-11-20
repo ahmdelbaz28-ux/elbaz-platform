@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
-import { isValidEmail } from "@/lib/validation";
+import { isValidEmail, hasPasswordStrengthChars } from "@/lib/validation";
 import { trpc } from "@/providers/trpc";
 import { toast } from "sonner";
 import {
@@ -17,14 +17,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trackPlatform } from "@/lib/clarity";
 
-type Step = "enterEmail" | "sending" | "sent";
+type Step = "enterEmail" | "sending" | "sent" | "resetDone";
 
 export default function ForgotPassword() {
   const { lang } = useTranslation();
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [step, setStep] = useState<Step>("enterEmail");
   const [deliveryWarning, setDeliveryWarning] = useState<string | null>(null);
+  // Code-entry state — the email carries a 6-digit code + a link. Both work.
+  const [resetCode, setResetCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   const forgotMutation = trpc.auth.forgotPassword.useMutation({
     onSuccess: (data) => {
@@ -36,6 +41,18 @@ export default function ForgotPassword() {
     onError: (err) => {
       trackPlatform("forgot_password_error");
       setError(err.message);
+      toast.error(err.message);
+    },
+  });
+
+  const resetMutation = trpc.auth.resetPassword.useMutation({
+    onSuccess: (data) => {
+      trackPlatform("password_reset_success");
+      toast.success(data.message);
+      setStep("resetDone");
+    },
+    onError: (err) => {
+      trackPlatform("password_reset_error");
       toast.error(err.message);
     },
   });
@@ -62,6 +79,28 @@ export default function ForgotPassword() {
   const handleResend = () => {
     setError("");
     submitForgotPassword();
+  };
+
+  const handleCodeReset = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    if (resetCode.trim().length !== 6 || !/^\d{6}$/.test(resetCode.trim())) {
+      const msg = lang === "ar" ? "الرمز يجب أن يكون 6 أرقام" : "The code must be 6 digits";
+      setError(msg); toast.error(msg); return;
+    }
+    if (newPassword.length < 8) {
+      const msg = lang === "ar" ? "كلمة المرور يجب أن تكون 8 أحرف على الأقل" : "Password must be at least 8 characters";
+      setError(msg); toast.error(msg); return;
+    }
+    if (!hasPasswordStrengthChars(newPassword)) {
+      const msg = lang === "ar" ? "كلمة المرور يجب أن تحتوي على حرف كبير وحرف صغير ورقم" : "Password must contain an uppercase letter, a lowercase letter, and a number";
+      setError(msg); toast.error(msg); return;
+    }
+    if (newPassword !== confirmPassword) {
+      const msg = lang === "ar" ? "كلمتا المرور غير متطابقتين" : "Passwords do not match";
+      setError(msg); toast.error(msg); return;
+    }
+    resetMutation.mutate({ email: email.trim().toLowerCase(), code: resetCode.trim(), newPassword });
   };
 
   const sendResetLinkLabel = lang === "ar" ? "إرسال رابط إعادة التعيين" : "Send Reset Link";
@@ -207,11 +246,96 @@ export default function ForgotPassword() {
                   <div className="h-2 w-2 shrink-0 rounded-full bg-amber-500" />
                   <p className="text-xs text-amber-500">
                     {lang === "ar"
-                      ? "الرابط ينتهي خلال 15 دقيقة. تحقق من مجلد الرسائل غير المرغوب فيها إذا لم تجد الرسالة."
-                      : "The link expires in 15 minutes. Check your spam folder if you don't see the email."}
+                      ? "الرمز والرابط ينتهيان خلال 15 دقيقة. تحقق من مجلد الرسائل غير المرغوب فيها إذا لم تجد الرسالة."
+                      : "The code and link expire in 15 minutes. Check your spam folder if you don't see the email."}
                   </p>
                 </div>
               </div>
+
+              {deliveryWarning && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
+                  <p className="text-sm font-medium text-amber-500">
+                    {lang === "ar" ? "ملاحظة حول البريد الإلكتروني" : "Email delivery notice"}
+                  </p>
+                  <p className="mt-2 text-xs leading-relaxed text-text-muted">{deliveryWarning}</p>
+                </div>
+              )}
+
+              {/* ── Code entry: set the new password directly with the 6-digit code ── */}
+              <form onSubmit={handleCodeReset} className="rounded-xl border border-border bg-primary p-5">
+                <h2 className="mb-1 text-base font-semibold text-foreground">
+                  {lang === "ar" ? "عندك الرمز؟ عيّن كلمة المرور مباشرة" : "Have the code? Set your new password"}
+                </h2>
+                <p className="mb-4 text-xs leading-relaxed text-text-muted">
+                  {lang === "ar"
+                    ? "أدخل الرمز المكوّن من 6 أرقام الموجود في رسالة البريد مع كلمة المرور الجديدة."
+                    : "Enter the 6-digit code from the email along with your new password."}
+                </p>
+                <div className="space-y-3">
+                  <div>
+                    <Label htmlFor="reset-code" className="text-sm text-text-muted">
+                      {lang === "ar" ? "رمز التأكيد (6 أرقام)" : "Confirmation code (6 digits)"}
+                    </Label>
+                    <Input
+                      id="reset-code"
+                      name="code"
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={resetCode}
+                      onChange={(e) => setResetCode(e.target.value.replace(/\D/g, ""))}
+                      placeholder="123456"
+                      dir="ltr"
+                      className="mt-1 border-border bg-background text-center text-lg tracking-[0.4em] text-foreground placeholder:text-text-faint focus:border-accent-secondary focus:ring-accent-secondary"
+                      autoComplete="one-time-code"
+                      disabled={resetMutation.isPending}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="fp-new-password" className="text-sm text-text-muted">
+                      {lang === "ar" ? "كلمة المرور الجديدة" : "New password"}
+                    </Label>
+                    <Input
+                      id="fp-new-password"
+                      name="newPassword"
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="mt-1 border-border bg-background text-foreground focus:border-accent-secondary focus:ring-accent-secondary"
+                      autoComplete="new-password"
+                      disabled={resetMutation.isPending}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="fp-confirm-password" className="text-sm text-text-muted">
+                      {lang === "ar" ? "تأكيد كلمة المرور" : "Confirm new password"}
+                    </Label>
+                    <Input
+                      id="fp-confirm-password"
+                      name="confirmPassword"
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="mt-1 border-border bg-background text-foreground focus:border-accent-secondary focus:ring-accent-secondary"
+                      autoComplete="new-password"
+                      disabled={resetMutation.isPending}
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    className="glow-btn w-full bg-gradient-to-r from-accent-secondary to-accent-secondary/80 font-semibold text-background"
+                    disabled={resetMutation.isPending}
+                  >
+                    {resetMutation.isPending ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        {lang === "ar" ? "جاري التعيين..." : "Setting..."}
+                      </span>
+                    ) : (
+                      (lang === "ar" ? "تأكيد الرمز وتعيين كلمة المرور" : "Confirm code & set password")
+                    )}
+                  </Button>
+                </div>
+              </form>
 
               <div className="flex flex-col gap-3">
                 <Button
@@ -233,6 +357,30 @@ export default function ForgotPassword() {
               </div>
             </div>
           </>
+        )}
+
+        {step === "resetDone" && (
+          <div className="space-y-6">
+            <div className="text-center">
+              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-emerald-500/10">
+                <ShieldCheck className="h-10 w-10 text-emerald-500" />
+              </div>
+              <h1 className="mt-5 text-2xl font-bold text-foreground">
+                {lang === "ar" ? "تم تغيير كلمة المرور بنجاح!" : "Password updated!"}
+              </h1>
+              <p className="mt-2 text-sm leading-relaxed text-text-muted">
+                {lang === "ar"
+                  ? "تم تعيين كلمة المرور الجديدة بنجاح. سجّل الدخول الآن بكلمة المرور الجديدة."
+                  : "Your new password has been set. Sign in with it now."}
+              </p>
+            </div>
+            <Button
+              onClick={() => navigate("/login")}
+              className="glow-btn w-full bg-gradient-to-r from-accent-secondary to-accent-secondary/80 font-semibold text-background"
+            >
+              {lang === "ar" ? "تسجيل الدخول الآن" : "Sign In Now"}
+            </Button>
+          </div>
         )}
       </div>
     </div>

@@ -627,12 +627,14 @@ export const localAuthRouter = createRouter({
       return result;
     }),
 
-  // Step 2: Complete password reset (verify token + set new password)
+  // Step 2: Complete password reset (verify token OR 6-digit code + set new password)
   resetPassword: publicQuery
     .use(authRateLimit('resetPassword'))
     .input(z.object({
-      userId: z.number().int().positive(),
-      token: z.string().min(1),
+      userId: z.number().int().positive().optional(),
+      email: z.string().email().optional(),
+      token: z.string().min(1).optional(),
+      code: z.string().regex(/^\d{6}$/, "Verification code must be 6 digits").optional(),
       newPassword: z.string()
           .min(8, "Password must be at least 8 characters")
           .max(100)
@@ -640,15 +642,35 @@ export const localAuthRouter = createRouter({
             /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
             "Password must contain at least one uppercase letter, one lowercase letter, and one number"
           ),
+    }).refine((v) => v.userId !== undefined || v.email !== undefined, {
+      message: "userId or email is required",
+    }).refine((v) => v.token !== undefined || v.code !== undefined, {
+      message: "token or code is required",
     }))
     .mutation(async ({ ctx, input }) => {
       // ✅ FIXED: Add rate limiting to resetPassword to prevent brute-force
       const ip = getClientIpFromHeaders(ctx.req.headers);
       await checkRateLimit(ip, "resetPassword");
 
+      // Resolve the target user: code-entry flow sends the email address
+      // (the user never sees their numeric id); link flow sends the uid.
+      let userId = input.userId;
+      if (userId === undefined && input.email) {
+        const [row] = await getDb()
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.email, input.email.toLowerCase()))
+          .limit(1);
+        if (!row) {
+          // Same generic message as an invalid token — no email enumeration.
+          throw new TRPCError({ code: "BAD_REQUEST", message: "This reset link is invalid or has expired" });
+        }
+        userId = row.id;
+      }
+
       const result = await completePasswordReset(
-        input.userId,
-        input.token,
+        userId,
+        input.code ?? input.token!,
         input.newPassword,
       );
 
@@ -779,20 +801,24 @@ export const localAuthRouter = createRouter({
     };
   }),
 
-  // Step 2: Anyone with a valid token completes verification (e.g. from email link)
+  // Step 2: Anyone with a valid token OR 6-digit code completes verification
+  // (from the email link, or typed into the profile / forgot-password UI)
   // ✅ FIX: Added rate limiting to prevent brute-force attacks
   verifyEmail: publicQuery
     .use(authRateLimit('verifyEmail'))
     .input(z.object({
       userId: z.number().int().positive(),
-      token: z.string().min(1),
+      token: z.string().min(1).optional(),
+      code: z.string().regex(/^\d{6}$/, "Verification code must be 6 digits").optional(),
+    }).refine((v) => v.token !== undefined || v.code !== undefined, {
+      message: "token or code is required",
     }))
     .mutation(async ({ ctx, input }) => {
       // ✅ SECURITY FIX: Rate limit to prevent brute-force token guessing
       const ip = getClientIpFromHeaders(ctx.req.headers);
       await checkRateLimit(ip, "verifyEmail");
 
-      const result = await completeEmailVerification(input.userId, input.token);
+      const result = await completeEmailVerification(input.userId, input.code ?? input.token!);
 
       if (!result.success) {
         throw new TRPCError({ code: "BAD_REQUEST", message: result.message });

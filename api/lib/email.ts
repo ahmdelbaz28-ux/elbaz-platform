@@ -19,6 +19,8 @@ import { getDb } from "../queries/connection";
 import { users } from "@db/schema";
 import { env, getActiveFrontendUrl } from "./env";
 import { logger, maskEmail } from "./logger.js";
+import { generateOtpCode, hashOtpCode, isOtpFormat, otpAttemptsExhaustedAfterFailure, OTP_MAX_ATTEMPTS } from "./otp.js";
+import { buildResetEmail, buildVerificationEmail } from "./email-templates.js";
 // ✅ SECURITY FIX (pre-launch audit run-2): instant cache eviction after
 // password reset revokes sessions (no 30s cache window for the old JWT).
 // Import direction is safe: context.ts does not import email.ts.
@@ -180,9 +182,12 @@ export async function initiatePasswordReset(email: string, headers?: Headers): P
      })
      .where(eq(users.id, user.id));
 
-   // Generate a secure reset token
+   // Generate a secure reset token + a 6-digit confirmation code.
+   // Both lead to the same completion path: the link carries the token, the
+   // UI accepts the code — hash-only storage for either.
    const resetToken = crypto.randomBytes(RESET_TOKEN_LENGTH).toString("hex");
    const resetTokenExpiry = new Date(Date.now() + RESET_TOKEN_EXPIRY_MINUTES * 60 * 1000);
+   const otpCode = generateOtpCode();
 
    // Store the token hash (not the raw token) in the database
    // This way, even if the DB is compromised, tokens can't be used
@@ -194,6 +199,8 @@ export async function initiatePasswordReset(email: string, headers?: Headers): P
      .set({
        passwordResetToken: tokenHash,
        passwordResetExpiresAt: resetTokenExpiry,
+       passwordOtpCode: hashOtpCode(otpCode),
+       passwordOtpAttempts: 0,
        updatedAt: new Date(),
      })
      .where(eq(users.id, user.id));
@@ -201,29 +208,14 @@ export async function initiatePasswordReset(email: string, headers?: Headers): P
   // Build reset URL
   const resetUrl = `${getFrontendUrl(headers)}/reset-password?token=${resetToken}&uid=${user.id}`;
 
-  // Send the reset email
-  const name = (user.name || user.username).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\"", "&quot;");
+  // Send the reset email (Arabic-first RTL template: big 6-digit code + link)
+  const name = user.name || user.username || "";
+  const template = buildResetEmail(name, resetUrl, otpCode, RESET_TOKEN_EXPIRY_MINUTES);
   const sendResult = await sendEmailWithDiagnostics({
     to: user.email,
-    subject: "Password Reset — Ahmed Elbaz Electrical Engineering Platform",
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #06b6d4;">Password Reset Request</h2>
-        <p>Hello ${name},</p>
-        <p>We received a request to reset your password. Click the button below to create a new password:</p>
-        <a href="${resetUrl}" style="display: inline-block; background: #06b6d4; color: #0a0e17; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 16px 0;">
-          Reset My Password
-        </a>
-        <p>This link expires in ${RESET_TOKEN_EXPIRY_MINUTES} minutes.</p>
-        <p>If you didn't request this, you can safely ignore this email — your password will remain unchanged.</p>
-        <hr style="border: none; border-top: 1px solid #1f2d44; margin: 24px 0;" />
-        <p style="color: #64748b; font-size: 12px;">
-          Ahmed Elbaz Electrical Engineering Platform<br />
-          If the button doesn't work, copy this link: ${resetUrl}
-        </p>
-      </div>
-    `,
-    text: `Hello ${name},\n\nWe received a request to reset your password.\n\nReset link: ${resetUrl}\n\nThis link expires in ${RESET_TOKEN_EXPIRY_MINUTES} minutes.\n\nIf you didn't request this, ignore this email.`,
+    subject: template.subject,
+    html: template.html,
+    text: template.text,
   });
 
   if (!sendResult.ok) {
@@ -264,11 +256,13 @@ export function augmentAdminEmailMessage(baseMessage: string, providerReason?: s
 }
 
 /**
- * Verify a password reset token and update the user's password.
+ * Verify a password reset token OR 6-digit code and update the user's password.
+ * `tokenOrCode` is the 64-hex token from the email link, or the 6-digit code
+ * typed into the UI. Both fail with the SAME generic message (no probing).
  */
 export async function completePasswordReset(
   userId: number,
-  token: string,
+  tokenOrCode: string,
   newPassword: string,
 ): Promise<{ success: boolean; message: string }> {
   const db = getDb();
@@ -287,28 +281,50 @@ export async function completePasswordReset(
     return { success: false, message: genericError };
   }
 
-  // Check expiry
+  // Check expiry (token and code share the same window)
   if (!user.passwordResetExpiresAt || Date.now() > user.passwordResetExpiresAt.getTime()) {
     return { success: false, message: genericError };
   }
 
-  // Verify token hash
-  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-  // ✅ SECURITY FIX (pre-launch audit run-2, reset.timing-safe-compare): use
-  // timingSafeEqual for the stored-hash comparison, matching verifyEmail's
-  // hardened path. The hash is of a 256-bit random token so the practical
-  // risk was nil, but consistency costs nothing.
-  const a = Buffer.from(tokenHash, "utf8");
-  const b = Buffer.from(user.passwordResetToken ?? "", "utf8");
-  if (!user.passwordResetToken || a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
-    return { success: false, message: genericError };
+  if (isOtpFormat(tokenOrCode)) {
+    // ── 6-digit code path ──
+    if (!user.passwordOtpCode) return { success: false, message: genericError };
+    if (user.passwordOtpAttempts >= OTP_MAX_ATTEMPTS) {
+      // Attempt budget spent — invalidate the code (the link stays valid).
+      await db.update(users).set({ passwordOtpCode: null, passwordOtpAttempts: 0 }).where(eq(users.id, userId));
+      return { success: false, message: genericError };
+    }
+    const incomingHash = hashOtpCode(tokenOrCode);
+    const a = Buffer.from(incomingHash, "utf8");
+    const b = Buffer.from(user.passwordOtpCode, "utf8");
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+      const exhausted = otpAttemptsExhaustedAfterFailure(user.passwordOtpAttempts);
+      await db
+        .update(users)
+        .set({ passwordOtpAttempts: exhausted ? 0 : user.passwordOtpAttempts + 1, ...(exhausted ? { passwordOtpCode: null } : {}) })
+        .where(eq(users.id, userId));
+      return { success: false, message: genericError };
+    }
+  } else {
+    // ── Link-token path ──
+    // Verify token hash
+    const tokenHash = crypto.createHash("sha256").update(tokenOrCode).digest("hex");
+    // ✅ SECURITY FIX (pre-launch audit run-2, reset.timing-safe-compare): use
+    // timingSafeEqual for the stored-hash comparison, matching verifyEmail's
+    // hardened path. The hash is of a 256-bit random token so the practical
+    // risk was nil, but consistency costs nothing.
+    const a = Buffer.from(tokenHash, "utf8");
+    const b = Buffer.from(user.passwordResetToken ?? "", "utf8");
+    if (!user.passwordResetToken || a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+      return { success: false, message: genericError };
+    }
   }
 
   // ✅ Hash the new password
   const { hashPassword } = await import("./password");
   const newHash = await hashPassword(newPassword);
 
-  // Update password and clear the reset token (don't touch avatar!)
+  // Update password and clear the reset credentials (don't touch avatar!)
   await db
     .update(users)
     .set({
@@ -316,6 +332,8 @@ export async function completePasswordReset(
       tokenVersion: sql`${users.tokenVersion} + 1`, // Revoke all existing sessions
       passwordResetToken: null, // Clear reset token
       passwordResetExpiresAt: null,
+      passwordOtpCode: null, // Clear reset code
+      passwordOtpAttempts: 0,
       updatedAt: new Date(),
     })
     .where(eq(users.id, userId));
@@ -364,13 +382,16 @@ export async function initiateEmailVerification(userId: number, newEmail?: strin
   // ✅ FIX: Store SHA-256 hash of token in DB (never store raw tokens)
   const tokenHash = crypto.createHash("sha256").update(verificationToken).digest("hex");
   const tokenExpiry = new Date(Date.now() + EMAIL_VERIFICATION_EXPIRY_MINUTES * 60 * 1000);
+  const otpCode = generateOtpCode();
 
-  // ✅ FIX: Store token hash + expiry in DB. Also store pending email if this is an email change.
+  // ✅ FIX: Store token hash + OTP hash + expiry in DB. Also store pending email if this is an email change.
   await db
     .update(users)
     .set({
       emailVerificationToken: tokenHash,
       emailVerificationExpiry: tokenExpiry,
+      emailOtpCode: hashOtpCode(otpCode),
+      emailOtpAttempts: 0,
       ...(newEmail ? { pendingEmail: newEmail } : {}),
       updatedAt: new Date(),
     })
@@ -378,53 +399,15 @@ export async function initiateEmailVerification(userId: number, newEmail?: strin
 
   const verificationUrl = `${getFrontendUrl(headers)}/verify-email?token=${verificationToken}&uid=${userId}`;
 
-  const name = (user.name || user.username).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\"", "&quot;");
+  const name = user.name || user.username || "";
 
-  const emailSubject = newEmail
-    ? "Confirm Your New Email — Ahmed Elbaz Electrical Engineering Platform"
-    : "Verify Your Email — Ahmed Elbaz Electrical Engineering Platform";
-
-  const emailBody = newEmail
-    ? `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #06b6d4;">Confirm Your New Email Address</h2>
-        <p>Hello ${name},</p>
-        <p>You requested to change your email address. Please confirm by clicking the button below:</p>
-        <a href="${verificationUrl}" style="display: inline-block; background: #06b6d4; color: #0a0e17; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 16px 0;">
-          Confirm New Email
-        </a>
-        <p>This link expires in ${EMAIL_VERIFICATION_EXPIRY_MINUTES} minutes.</p>
-        <p>If you didn't request this change, your account is still safe — just ignore this email.</p>
-        <hr style="border: none; border-top: 1px solid #1f2d44; margin: 24px 0;" />
-        <p style="color: #64748b; font-size: 12px;">
-          Ahmed Elbaz Electrical Engineering Platform<br />
-          If the button doesn't work, copy this link: ${verificationUrl}
-        </p>
-      </div>`
-    : `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #06b6d4;">Verify Your Email Address</h2>
-        <p>Hello ${name},</p>
-        <p>Thank you for registering on the Ahmed Elbaz Electrical Engineering Platform. Please verify your email address by clicking the button below:</p>
-        <a href="${verificationUrl}" style="display: inline-block; background: #06b6d4; color: #0a0e17; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 16px 0;">
-          Verify My Email
-        </a>
-        <p>This link expires in ${EMAIL_VERIFICATION_EXPIRY_MINUTES} minutes.</p>
-        <p>If you didn't create an account, you can safely ignore this email.</p>
-        <hr style="border: none; border-top: 1px solid #1f2d44; margin: 24px 0;" />
-        <p style="color: #64748b; font-size: 12px;">
-          Ahmed Elbaz Electrical Engineering Platform<br />
-          If the button doesn't work, copy this link: ${verificationUrl}
-        </p>
-      </div>`;
-
-  const textBody = newEmail
-    ? `Hello ${name},\n\nPlease confirm your new email address by clicking the link below:\n\n${verificationUrl}\n\nThis link expires in ${EMAIL_VERIFICATION_EXPIRY_MINUTES} minutes.\n\nIf you didn't request this change, ignore this email.`
-    : `Hello ${name},\n\nPlease verify your email address by clicking the link below:\n\n${verificationUrl}\n\nThis link expires in ${EMAIL_VERIFICATION_EXPIRY_MINUTES} minutes.\n\nIf you didn't create an account, ignore this email.`;
+  const template = buildVerificationEmail(name, verificationUrl, otpCode, EMAIL_VERIFICATION_EXPIRY_MINUTES, Boolean(newEmail));
 
   const sendResult = await sendEmailWithDiagnostics({
     to: targetEmail,
-    subject: emailSubject,
-    html: emailBody,
-    text: textBody,
+    subject: template.subject,
+    html: template.html,
+    text: template.text,
   });
 
   if (!sendResult.ok) {
@@ -449,7 +432,7 @@ export async function initiateEmailVerification(userId: number, newEmail?: strin
 
 export async function completeEmailVerification(
   userId: number,
-  token: string,
+  tokenOrCode: string,
 ): Promise<{ success: boolean; message: string }> {
   const db = getDb();
 
@@ -465,33 +448,61 @@ export async function completeEmailVerification(
     return { success: false, message: genericError };
   }
 
-  // ✅ FIX: Validate token exists and not expired
+  // ✅ FIX: Validate credential exists and not expired (token and code share the window)
   if (!user.emailVerificationToken || !user.emailVerificationExpiry) {
     return { success: false, message: genericError };
   }
 
   if (Date.now() > user.emailVerificationExpiry.getTime()) {
-    // Clear expired token
-    await db.update(users).set({ emailVerificationToken: null, emailVerificationExpiry: null }).where(eq(users.id, userId));
+    // Clear expired credentials
+    await db.update(users).set({ emailVerificationToken: null, emailVerificationExpiry: null, emailOtpCode: null, emailOtpAttempts: 0 }).where(eq(users.id, userId));
     return { success: false, message: "Verification link has expired. Please request a new one." };
   }
 
-  // ✅ FIX: Timing-safe comparison using SHA-256 hash
-  const incomingHash = crypto.createHash("sha256").update(token).digest("hex");
-  const storedHash = user.emailVerificationToken;
-
   let isValid = false;
-  try {
-    isValid = crypto.timingSafeEqual(
-      Buffer.from(incomingHash, "hex"),
-      Buffer.from(storedHash, "hex"),
-    );
-  } catch {
-    return { success: false, message: genericError };
-  }
+  if (isOtpFormat(tokenOrCode)) {
+    // ── 6-digit code path ──
+    if (!user.emailOtpCode) return { success: false, message: genericError };
+    if (user.emailOtpAttempts >= OTP_MAX_ATTEMPTS) {
+      // Attempt budget spent — invalidate the code (the link stays valid).
+      await db.update(users).set({ emailOtpCode: null, emailOtpAttempts: 0 }).where(eq(users.id, userId));
+      return { success: false, message: genericError };
+    }
+    const incomingHash = hashOtpCode(tokenOrCode);
+    try {
+      isValid = crypto.timingSafeEqual(
+        Buffer.from(incomingHash, "utf8"),
+        Buffer.from(user.emailOtpCode, "utf8"),
+      );
+    } catch {
+      return { success: false, message: genericError };
+    }
+    if (!isValid) {
+      const exhausted = otpAttemptsExhaustedAfterFailure(user.emailOtpAttempts);
+      await db
+        .update(users)
+        .set({ emailOtpAttempts: exhausted ? 0 : user.emailOtpAttempts + 1, ...(exhausted ? { emailOtpCode: null } : {}) })
+        .where(eq(users.id, userId));
+      return { success: false, message: genericError };
+    }
+  } else {
+    // ── Link-token path ──
+    // ✅ FIX: Timing-safe comparison using SHA-256 hash
+    const incomingHash = crypto.createHash("sha256").update(tokenOrCode).digest("hex");
+    const storedHash = user.emailVerificationToken;
 
-  if (!isValid) {
-    return { success: false, message: genericError };
+    try {
+      isValid = crypto.timingSafeEqual(
+        Buffer.from(incomingHash, "hex"),
+        Buffer.from(storedHash, "hex"),
+      );
+    } catch {
+      return { success: false, message: genericError };
+    }
+
+    if (!isValid) {
+      return { success: false, message: genericError };
+    }
   }
 
   // ✅ Already verified? Return success (idempotent)
@@ -504,6 +515,8 @@ export async function completeEmailVerification(
   const updateData: Record<string, unknown> = {
     emailVerificationToken: null, // ✅ Single-use: clear token immediately
     emailVerificationExpiry: null,
+    emailOtpCode: null, // ✅ Single-use: clear code immediately
+    emailOtpAttempts: 0,
     emailVerifiedAt: new Date(),
     updatedAt: new Date(),
   };

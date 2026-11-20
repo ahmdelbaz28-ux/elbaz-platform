@@ -40,8 +40,16 @@ export const users = mysqlTable(
     lastSignInAt: timestamp("lastSignInAt", { mode: "date" }).notNull().defaultNow(),
     passwordResetToken: varchar("passwordResetToken", { length: 255 }),
     passwordResetExpiresAt: timestamp("passwordResetExpiresAt", { mode: "date" }),
+    /** SHA-256 hash of the 6-digit reset code shown in the email (raw code never stored). */
+    passwordOtpCode: varchar("passwordOtpCode", { length: 255 }),
+    /** Wrong-entry counter for the reset code — 5 misses invalidate it. */
+    passwordOtpAttempts: int("passwordOtpAttempts").notNull().default(0),
     emailVerificationToken: varchar("emailVerificationToken", { length: 255 }),
     emailVerificationExpiry: timestamp("emailVerificationExpiry", { mode: "date" }),
+    /** SHA-256 hash of the 6-digit verification code shown in the email. */
+    emailOtpCode: varchar("emailOtpCode", { length: 255 }),
+    /** Wrong-entry counter for the verification code — 5 misses invalidate it. */
+    emailOtpAttempts: int("emailOtpAttempts").notNull().default(0),
     emailVerifiedAt: timestamp("emailVerifiedAt", { mode: "date" }),
     totpSecret: varchar("totpSecret", { length: 255 }),
     totpEnabled: boolean("totpEnabled").notNull().default(false),

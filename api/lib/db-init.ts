@@ -165,6 +165,23 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
             );
           },
         },
+        {
+          id: "v18-auth-otp-columns",
+          description: "6-digit email confirmation codes: hashed OTP columns + attempt counters for verify/reset flows",
+          run: async (c) => {
+            const otpColumns: Array<[string, string]> = [
+              ["passwordOtpCode", "VARCHAR(255) NULL"],
+              ["passwordOtpAttempts", "INT NOT NULL DEFAULT 0"],
+              ["emailOtpCode", "VARCHAR(255) NULL"],
+              ["emailOtpAttempts", "INT NOT NULL DEFAULT 0"],
+            ];
+            for (const [column, definition] of otpColumns) {
+              if (!(await dbColumnExists(c, "users", column))) {
+                await c.execute(`ALTER TABLE users ADD COLUMN \`${column}\` ${definition}`);
+              }
+            }
+          },
+        },
       ];
       await runMigrations(conn, MIGRATIONS);
 

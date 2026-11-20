@@ -51,6 +51,8 @@ export default function Profile() {
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+  // 6-digit confirmation code — typed from the verification email.
+  const [verificationCode, setVerificationCode] = useState("");
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -143,6 +145,24 @@ export default function Profile() {
     },
     onError: (err) => toast.error(err.message),
   });
+
+  const verifyCodeMutation = trpc.auth.verifyEmail.useMutation({
+    onSuccess: (data) => {
+      toast.success(data.message || (lang === "en" ? "Email verified!" : "تم تأكيد البريد الإلكتروني!"));
+      setVerificationCode("");
+      globalThis.location.reload();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const handleVerifyCode = () => {
+    if (!/^\d{6}$/.test(verificationCode.trim())) {
+      toast.error(lang === "en" ? "The code must be 6 digits" : "الرمز يجب أن يكون 6 أرقام");
+      return;
+    }
+    if (!user?.id) return;
+    verifyCodeMutation.mutate({ userId: user.id, code: verificationCode.trim() });
+  };
 
   const handleStartEdit = () => {
     setEditName(user?.name || "");
@@ -268,6 +288,44 @@ export default function Profile() {
                 </Button>
               )}
             </div>
+
+            {!user.emailVerifiedAt && (
+              <div className="mt-4 border-t border-border pt-4">
+                <p className="mb-2 text-xs text-text-muted">
+                  {lang === "en"
+                    ? "Enter the 6-digit code from the verification email to confirm instantly:"
+                    : "أدخل الرمز المكوّن من 6 أرقام من رسالة التأكيد للتأكيد فورًا:"}
+                </p>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Input
+                    id="email-verification-code"
+                    name="code"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={verificationCode}
+                    onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ""))}
+                    placeholder="123456"
+                    dir="ltr"
+                    className="w-full bg-background text-center text-lg tracking-[0.4em] text-foreground placeholder:text-text-faint focus:border-accent-secondary focus:ring-accent-secondary sm:w-44"
+                    autoComplete="one-time-code"
+                    disabled={verifyCodeMutation.isPending}
+                  />
+                  <Button
+                    onClick={handleVerifyCode}
+                    disabled={verifyCodeMutation.isPending || verificationCode.trim().length !== 6}
+                    variant="outline"
+                    className="shrink-0 gap-2 border-accent-secondary/40 text-accent-secondary hover:bg-accent-secondary/10"
+                  >
+                    {verifyCodeMutation.isPending ? (
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-accent-secondary border-t-transparent" />
+                    ) : (
+                      <MailCheck className="h-4 w-4" />
+                    )}
+                    {lang === "en" ? "Confirm code" : "تأكيد الرمز"}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
