@@ -963,9 +963,16 @@ export async function getStreamResponse(request: {
     // request — the latest user message decides; legacy behavior = always-on
     // in thinking, so any doubt keeps grounding ON).
     const routerWebIntent = webIntentFromMessages(request.messages);
+    // ✅ v1.1.2 FIX (live E2E audit): the dynamic-router stream lane built its
+    // system prompt WITHOUT the Saadat RAG block — the legacy chain passed
+    // saadatContext but this lane dropped it, so streamed academic answers
+    // served by a pool provider lost ALL book grounding (methodology, ±0.5%
+    // numbers, prefilled citation). Same build as runTextCascade in chatbot.ts.
+    const routerSignal = extractRoutingSignal(request.messages);
+    const routerSaadatContext = buildSaadatContextBlock(routerSignal, request.language === "ar" ? "ar" : "en", routerMode);
     const routed = await routeChatStream({
       messages: request.messages,
-      systemPrompt: getSystemPrompt(request.language, routerMode, request.catalog, false, request.historySummary, request.screen, request.screenCapture, extractRoutingSignal(request.messages), false, request.catalogMode),
+      systemPrompt: getSystemPrompt(request.language, routerMode, request.catalog, false, request.historySummary, request.screen, request.screenCapture, routerSignal, false, request.catalogMode, routerSaadatContext),
       mode: routerMode,
       vision: false,
       language: request.language,

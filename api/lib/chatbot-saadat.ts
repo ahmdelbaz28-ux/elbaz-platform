@@ -581,10 +581,102 @@ export function buildSaadatContextBlock(query: string, lang: SaadatLang, mode: S
   return parts.join("");
 }
 
+// ─── Deterministic citation enforcement (v1.1.2, live E2E finding) ──────────
+// Live production E2E (2026-11-20, 6 real book problems): prompt-side prefill
+// alone is NOT deterministic — thinking-lane models omitted the [Saadat, ...]
+// tag in 3 of 4 pinned-problem answers while instant-lane complied (numbers
+// were ±0.5% correct in every case; only the tag drifted). These helpers
+// close the contract server-side: the pinned problem's citation is resolved
+// with the SAME retrieval call that built the prompt, and appended/verified
+// on the reply itself before it reaches the client or persistence.
+
+/** Loose citation match — canonical form, bold-wrapped variants, page ranges. */
+const LOOSE_CITATION_RE = /\*{0,2}\[Saadat,\s*Solutions Manual,\s*Ch\.(\d+),\s*P\s*([\d.]+)(?:[^\]]*)?,?\s*pp\.\s*(\d+)(?:\s*[–\-]\s*\d+)?\]\*{0,2}/;
+// Global twin for find-all: String.match with /g/ returns full matches only
+// (capture groups are dropped), so group extraction uses the non-global RE.
+const LOOSE_CITATION_ALL_RE = new RegExp(LOOSE_CITATION_RE.source, "g");
+
+/** Reply prefixes that indicate a refusal — never attribute a refusal to the book. */
+const REFUSAL_PREFIX_RE = /^(?:❌|⚠️|🚫|🔔|📌|\s)*(?:لا\s+(?:أستطيع|يمكنني)|أعتذر|عذراً?|نأسف|لم\s+أستطع|I(?:'m)?\s+sorry|I\s+cannot|I\s+can't|Sorry)/i;
+
+function isRefusalReply(reply: string): boolean {
+  const t = reply.trim();
+  if (t.length < 80) return true;
+  return REFUSAL_PREFIX_RE.test(t.slice(0, 120));
+}
+
+/**
+ * Resolves the pinned problem's canonical citation line with the SAME
+ * retrieval parameters buildSaadatContextBlock used — null when the query
+ * has no academic intent or no direct problem-id hit (anti-attribution
+ * guard: concept queries are never force-cited).
+ */
+export function resolvePinnedCitation(query: string, _lang: SaadatLang, mode: SaadatMode = "thinking"): string | null {
+  // _lang kept in the signature for call-site symmetry with enforcePinnedCitation;
+  // the canonical citation line itself is language-independent.
+  if (!hasSaadatIntent(query)) return null;
+  const instant = mode === "instant";
+  const hits = retrieveSaadat(query, instant ? 1 : 3, instant
+    ? { excerptHeadLen: 1200, excerptTailLen: 400 }
+    : { excerptHeadLen: 2400, excerptTailLen: 700 });
+  const pinned = hits.find((h) => h.reason === "problem-id");
+  if (!pinned) return null;
+  return `[Saadat, Solutions Manual, Ch.${pinned.ch}, P ${pinned.id}, pp.${pinned.page}]`;
+}
+
+/** True when a loose citation match refers to the pinned chapter + problem id. */
+function matchIsPinned(match: string, cite: string): boolean {
+  const m = match.match(LOOSE_CITATION_RE);
+  if (!m) return false;
+  const canonical = cite.match(/\[Saadat,\s*Solutions Manual,\s*Ch\.(\d+),\s*P\s*([\d.]+)/);
+  if (!canonical) return false;
+  return m[1] === canonical[1] && m[2] === canonical[2];
+}
+
+/**
+ * Server-side citation compliance (v1.1.2).
+ * - `appendOnly` (streaming): the client may have already received the text,
+ *   so an existing citation is left untouched; a missing one is appended.
+ * - Full mode (non-streaming): a citation for the PINNED problem is
+ *   repositioned as the canonical last line; citations of OTHER problems
+ *   the model volunteered are preserved in place.
+ * Refusal and no-pin replies are returned unchanged (anti-attribution guard).
+ */
+export function enforcePinnedCitation(
+  reply: string,
+  query: string,
+  lang: SaadatLang,
+  mode: SaadatMode = "thinking",
+  opts: { appendOnly?: boolean } = {},
+): string {
+  const cite = resolvePinnedCitation(query, lang, mode);
+  if (!cite) return reply;
+  if (isRefusalReply(reply)) return reply;
+
+  // Does the reply already cite the pinned problem (any loose variant)?
+  const looseMatches = reply.match(LOOSE_CITATION_ALL_RE) ?? [];
+  const pinnedCited = looseMatches.some((m) => matchIsPinned(m, cite));
+
+  if (opts.appendOnly) return pinnedCited ? reply : `${reply.trimEnd()}\n\n${cite}`;
+
+  if (pinnedCited) {
+    // Reposition: strip the pinned match only, re-append canonical at the end.
+    let stripped = reply;
+    for (const m of looseMatches) {
+      if (matchIsPinned(m, cite)) { stripped = stripped.replace(m, ""); break; }
+    }
+    stripped = stripped.replace(/[ \t]+$/gm, "").replace(/\n{3,}/g, "\n\n").trimEnd();
+    return stripped ? `${stripped}\n\n${cite}` : `${reply.trimEnd()}\n\n${cite}`;
+  }
+
+  // Not cited at all — append canonical line, keep any other citations.
+  return `${reply.trimEnd()}\n\n${cite}`;
+}
+
 // ─── Public meta (telemetry + docs) ─────────────────────────────────────────
 
 export const SAADAT_LAYER_META = {
-  version: "1.1.1",
+  version: "1.1.2",
   source: SAADAT_META.source,
   problemCount: SAADAT_META.problemCount,
   chapterCount: SAADAT_META.chapterCount,

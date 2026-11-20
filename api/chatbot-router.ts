@@ -15,8 +15,12 @@ import { normalizeChatInput, MAX_MESSAGE_CHARS, MAX_TOTAL_CHARS } from "./lib/ch
 import { parseScreenContext } from "./lib/chatbot-screen.js";
 import { getCourseCatalogText, getCourseCatalogLiteText } from "./lib/course-catalog.js";
 import { courseIntentFromMessages } from "./lib/chatbot-intent.js";
+import { extractRoutingSignal } from "./lib/chatbot-skillnet.js";
 import { containsPromptLeak, promptLeakRefusal } from "./lib/chatbot-prompts.js";
 import { finalizeReply, opaqueModelKey } from "./lib/finalize-reply.js";
+// ✅ v1.1.2: deterministic citation compliance — the stream terminator seam
+// appends the pinned problem's citation when the model omitted it.
+import { enforcePinnedCitation } from "./lib/chatbot-saadat.js";
 import { chatbotError, logSafeError, scrubCredentials, type ChatbotErrorCode } from "./lib/chatbot-errors.js";
 import { getClientIpFromHono as getChatbotIp } from "./lib/client-ip";
 import { getImageQuotaUsed, incrementImageQuota, DAILY_IMAGE_LIMIT, DAILY_SCREEN_FRAME_LIMIT, visionQuotaLane } from "./lib/image-quota.js";
@@ -829,6 +833,21 @@ chatbotRouter.post("/stream", async (c) => {
 
           const trailingBytes = flushAccumulator();
           if (trailingBytes && !leakDetected) safeEnqueue(trailingBytes);
+          // ✅ v1.1.2 DETERMINISTIC CITATION COMPLIANCE (stream seam): the model
+          // may omit the [Saadat, ...] tag even with the prefilled line (live
+          // E2E: 3 of 4 thinking-lane answers lacked it). The endpoint owns the
+          // client-facing terminator, so appendOnly enforcement runs HERE —
+          // the appended citation streams as a final text event AND lands in
+          // the persisted copy. Refusals / concept queries are never cited
+          // (anti-attribution guard inside enforcePinnedCitation).
+          if (!leakDetected) {
+            const enforced = enforcePinnedCitation(accumulatedReply, extractRoutingSignal(messages), language === "ar" ? "ar" : "en", mode, { appendOnly: true });
+            if (enforced !== accumulatedReply) {
+              const extra = enforced.slice(accumulatedReply.length);
+              accumulatedReply = enforced;
+              if (extra) safeEnqueue(forwardEncoder.encode(`data: ${JSON.stringify({ text: extra })}\n\n`));
+            }
+          }
           const reply = accumulatedReply.trim();
           if (reply) {
             served = true;

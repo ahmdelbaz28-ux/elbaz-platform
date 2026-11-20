@@ -19,8 +19,10 @@ import { describe, it, expect } from "vitest";
 import {
   SAADAT_CORE_BLOCKS,
   buildSaadatContextBlock,
+  enforcePinnedCitation,
   hasSaadatIntent,
   normalizeSaadatText,
+  resolvePinnedCitation,
   resolveProblemId,
   resolveProblemIds,
   retrieveSaadat,
@@ -350,5 +352,69 @@ describe("REAL-CASE regression — real student phrasing + real book numbers", (
     expect(prompt).toContain("SAADAT-KB");
     expect(prompt).toContain("530.5");
     expect(prompt).toContain("[Saadat, Solutions Manual");
+  });
+});
+
+describe("citation enforcement v1.1.2 — deterministic server-side compliance", () => {
+  const P27_Q = "حل مسألة 2.7 بالتفصيل";
+  const P27_CITE = "[Saadat, Solutions Manual, Ch.2, P 2.7, pp.";
+
+  it("resolvePinnedCitation returns the canonical line for a direct-ID query and null for concepts", () => {
+    const cite = resolvePinnedCitation(P27_Q, "ar");
+    expect(cite).not.toBeNull();
+    expect(cite!).toContain(P27_CITE);
+    expect(resolvePinnedCitation("شرح طريقة Gauss-Seidel في تدفق الأحمال", "ar")).toBeNull();
+    expect(resolvePinnedCitation("كام سعر كورس ETAP؟", "ar")).toBeNull();
+  });
+
+  it("appends the canonical citation when the model omitted it (live E2E thinking-lane case)", () => {
+    const reply = "### حل مسألة 2.7\n\nالمعطيات: جهد التغذية 200 فولت، التردد 60 هرتز، حمل أول 0.8 + j5.6 أوم وحمل ثانٍ 8 − j16 أوم ومحرك 5 kVA بمعامل قدرة 0.8 متخلف.\n\nالمكثف الموازي المطلوب لتصحيح معامل القدرة إلى الوحدة قيمته 530.5 ميكروفاراد.";
+    const out = enforcePinnedCitation(reply, P27_Q, "ar");
+    expect(out.startsWith(reply.trimEnd())).toBe(true);
+    expect(out).toContain(P27_CITE);
+    expect(out.trimEnd().endsWith("]")).toBe(true);
+    const last = out.trimEnd().split("\n").pop() ?? "";
+    expect(last).toContain(P27_CITE);
+  });
+
+  it("repositions a bold-wrapped citation to the canonical last line without duplication", () => {
+    const reply = "النتيجة النهائية 530.5 ميكروفاراد مع شرح كافٍ للخطوات والحسابات\n\n**[Saadat, Solutions Manual, Ch.2, P 2.7, pp.30]**\nسطر إضافي بعد الاستشهاد";
+    const out = enforcePinnedCitation(reply, P27_Q, "ar");
+    expect(out).toContain(P27_CITE);
+    expect((out.match(/\[Saadat,/g) ?? []).length).toBe(1);
+    expect(out).not.toContain("سطر إضافي بعد الاستشهاد**");
+    const last = out.trimEnd().split("\n").pop() ?? "";
+    expect(last).toContain("[Saadat, Solutions Manual, Ch.2, P 2.7");
+  });
+
+  it("appendOnly (stream seam) leaves an existing citation untouched and appends only when missing", () => {
+    const withCite = "حل كامل بأرقام الكتاب ونتيجة 530.5 ميكروفاراد\n\n[Saadat, Solutions Manual, Ch.2, P 2.7, pp.30]";
+    expect(enforcePinnedCitation(withCite, P27_Q, "ar", "thinking", { appendOnly: true })).toBe(withCite);
+    const noCite = "حل كامل بأرقام الكتاب ونتيجة 530.5 ميكروفاراد ضمن التوافق المطلوب مع شرح وافٍ للمنهجية والخطوات";
+    const out = enforcePinnedCitation(noCite, P27_Q, "ar", "thinking", { appendOnly: true });
+    expect(out).toContain(P27_CITE);
+    expect(out.startsWith(noCite)).toBe(true);
+  });
+
+  it("keeps the model's own citation of ANOTHER problem while enforcing the pinned one", () => {
+    const reply = "حل المسألتين معاً بالتفصيل الكامل للخطوات والنتائج الرقمية المؤكدة وفق منهجية الكتاب\n\n[Saadat, Solutions Manual, Ch.10, P 10.3, pp.203]";
+    const out = enforcePinnedCitation(reply, "أحل المسألتين 6.9 و 10.3", "ar");
+    expect(out).toContain("[Saadat, Solutions Manual, Ch.10, P 10.3");
+    expect(out).toContain("[Saadat, Solutions Manual, Ch.6, P 6.9");
+    expect(out.trimEnd().endsWith("]")).toBe(true);
+  });
+
+  it("never cites on refusals or non-academic replies (anti-attribution guard)", () => {
+    const refusal = "أعتذر، لا أستطيع الإجابة على هذا السؤال في الوقت الحالي، يرجى المحاولة مرة أخرى لاحقاً من فضلك.";
+    expect(enforcePinnedCitation(refusal, P27_Q, "ar")).toBe(refusal);
+    expect(enforcePinnedCitation("قصير", P27_Q, "ar")).toBe("قصير");
+  });
+
+  it("instant lane resolves and enforces with the compact retrieval contract", () => {
+    const cite = resolvePinnedCitation("حل مسألة 12.1 بسرعة", "ar", "instant");
+    expect(cite).not.toBeNull();
+    expect(cite!).toContain("[Saadat, Solutions Manual, Ch.12, P 12.1");
+    const out = enforcePinnedCitation("النتيجة 25 ميجاواط بزيادة القدرة عند انخفاض التردد المذكور مع التبرير الكامل للخطوات", "حل مسألة 12.1 بسرعة", "ar", "instant");
+    expect(out).toContain("[Saadat, Solutions Manual, Ch.12, P 12.1");
   });
 });

@@ -34,7 +34,7 @@
 import { env } from "../lib/env";
 import { getSystemPrompt, MODE_TUNING, type ChatbotMode, type ModeTuning } from "./chatbot-prompts.js";
 
-import { buildSaadatContextBlock } from "./chatbot-saadat.js";
+import { buildSaadatContextBlock, enforcePinnedCitation } from "./chatbot-saadat.js";
 import { extractRoutingSignal } from "./chatbot-skillnet.js";
 import { webIntentFromMessages } from "./chatbot-intent.js";
 import { reportTokenUsage } from "./token-usage.js";
@@ -1020,6 +1020,18 @@ async function runTextCascade(request: {
   // ✅ ROOT-CURE (2026-11-13): the vision flag now threads into the prompt —
   // vision pass-2 requests carry the screen-teacher / image-analysis block.
   const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, request.vision === true, request.historySummary, request.screen, request.screenCapture, routingSignal, false, request.catalogMode, saadatContext);
+  // ✅ v1.1.2 DETERMINISTIC CITATION COMPLIANCE (live E2E finding): prompt-side
+  // prefill alone is not deterministic — thinking-lane models omitted the
+  // [Saadat, ...] tag in 3 of 4 pinned-problem live answers (numbers were
+  // ±0.5% correct; only the tag drifted). Every success path funnels through
+  // this wrapper: the pinned problem's canonical citation is verified on the
+  // reply itself before it leaves this module (the streaming path has its own
+  // appendOnly guard at the router's terminator seam).
+  const finishSaadatCitation = (reply: string, model: string) =>
+    buildSuccessResult({
+      reply: enforcePinnedCitation(reply, routingSignal, request.language === "ar" ? "ar" : "en", mode),
+      model,
+    });
   // WEB GROUNDING policy: thinking mode (the accuracy lane) gets live web
   // search on OpenRouter so answers stay documented; instant stays plugin-
   // free for latency. Every failure degrades gracefully (breaker in ai-router
@@ -1054,7 +1066,7 @@ async function runTextCascade(request: {
         ? { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 10_000, globalBudgetMs: 12_000 }
         : { temperature: tuning.temperature, maxTokens: tuning.maxTokens, attemptTimeoutMs: 20_000, globalBudgetMs: 22_000 },
     });
-    if (routed.ok) return buildSuccessResult({ reply: routed.result.reply, model: routed.result.model });
+    if (routed.ok) return finishSaadatCitation(routed.result.reply, routed.result.model);
   }
 
   // ✅ AUDIT RUN-2 FIX: abort between legacy lanes — a disconnected request
@@ -1064,18 +1076,19 @@ async function runTextCascade(request: {
   if (mode === "instant") {
     // INSTANT — fastest provider first: Groq → OpenRouter (fast model) → NVIDIA
     const groqResult = await tryGroqTier(request.messages, systemPrompt, tuning, request.abortSignal);
-    if (groqResult) return groqResult;
+    // Same contract as the thinking lane: failure envelopes pass untouched.
+    if (groqResult) return groqResult.reply ? finishSaadatCitation(groqResult.reply, groqResult.model ?? "unknown") : groqResult;
 
     if (request.abortSignal?.aborted) return buildAllTiersFailedResponse(request.language);
     const orResult = await openRouterFallback(request.messages, systemPrompt, request.language, tuning, false, request.abortSignal);
-    if (orResult) return buildSuccessResult(orResult);
+    if (orResult) return finishSaadatCitation(orResult.reply, orResult.model);
 
     if (request.abortSignal?.aborted) return buildAllTiersFailedResponse(request.language);
     if (nvidiaIsAvailable()) {
       if (chatHealth.nvidiaKeyValid === null) await validateNvidiaKey();
       if (nvidiaIsAvailable()) {
         const nvidiaResult = await nvidiaFallback(request.messages, systemPrompt, tuning, request.abortSignal);
-        if (nvidiaResult) return buildSuccessResult(nvidiaResult);
+        if (nvidiaResult) return finishSaadatCitation(nvidiaResult.reply, nvidiaResult.model);
       }
     }
   } else {
@@ -1084,17 +1097,20 @@ async function runTextCascade(request: {
       if (chatHealth.nvidiaKeyValid === null) await validateNvidiaKey();
       if (nvidiaIsAvailable()) {
         const nvidiaResult = await nvidiaFallback(request.messages, systemPrompt, tuning, request.abortSignal);
-        if (nvidiaResult) return buildSuccessResult(nvidiaResult);
+        if (nvidiaResult) return finishSaadatCitation(nvidiaResult.reply, nvidiaResult.model);
       }
     }
 
     if (request.abortSignal?.aborted) return buildAllTiersFailedResponse(request.language);
     const orResult = await openRouterFallback(request.messages, systemPrompt, request.language, tuning, true, request.abortSignal);
-    if (orResult) return buildSuccessResult(orResult);
+    if (orResult) return finishSaadatCitation(orResult.reply, orResult.model);
 
     if (request.abortSignal?.aborted) return buildAllTiersFailedResponse(request.language);
     const groqResult = await tryGroqTier(request.messages, systemPrompt, tuning, request.abortSignal);
-    if (groqResult) return groqResult;
+    // Preserve the original contract: a tier result WITHOUT a reply (tier-level
+    // failure envelope) is returned untouched; only real replies get the
+    // citation enforcement.
+    if (groqResult) return groqResult.reply ? finishSaadatCitation(groqResult.reply, groqResult.model ?? "unknown") : groqResult;
   }
 
   return buildAllTiersFailedResponse(request.language);
