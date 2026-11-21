@@ -3,7 +3,7 @@ import { z } from "zod";
 import { db } from "./queries/connection.js";
 import { resolveOptionalUser } from "./context.js";
 import { eq, and, sql, lte, gte, isNull, or, count } from "drizzle-orm";
-import { rateLimit, rateLimitPerWindow } from "./lib/rate-limiter.js";
+import { rateLimitPerWindow } from "./lib/rate-limiter.js";
 import { getClientIpFromHono } from "./lib/client-ip.js";
 import { env } from "./lib/env.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -140,7 +140,12 @@ promoRouter.post("/apply", async (c) => {
   // reset the bucket on every request.
   const clientIp = getClientIpFromHono(c);
   try {
-    await rateLimit(`promo:apply:${clientIp}`, 5);
+    // ✅ SECURITY FIX (audit run-2, fp.promo-validate-rate-cost-vs-window-cap — incomplete-fix variant):
+    // the numeric 5 was rateLimit()'s consume() COST against the shared
+    // 300-capacity bucket (effective 60 probes/min/IP, 12x intent). The
+    // intended 5/window is now the dedicated limiter's BUCKET CAPACITY with
+    // cost always 1 — same contract as the fixed /validate site below.
+    await rateLimitPerWindow("promo-apply", clientIp, 5, 60);
   } catch {
     return c.json({ error: "طلبات كثيرة جداً، حاول لاحقاً" }, 429);
   }
@@ -194,7 +199,8 @@ promoRouter.post("/apply/internal", async (c) => {
   // ✅ SECURITY FIX (audit run-1): same trust-ordered IP derivation as /apply.
   const clientIp = getClientIpFromHono(c);
   try {
-    await rateLimit(`promo:internal:${clientIp}`, 20);
+    // ✅ SECURITY FIX (audit run-2): cap-as-capacity with cost 1 — 20/60s/IP.
+    await rateLimitPerWindow("promo-internal", clientIp, 20, 60);
   } catch {
     return c.json({ error: "Rate limited" }, 429);
   }

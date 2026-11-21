@@ -6,6 +6,21 @@ import { siteSettings, themes, promotions } from "@db/schema";
 import { TRPCError } from "@trpc/server";
 import { invalidateSettingsCache, getCache, cacheKeys, CACHE_TTL } from "./lib/cache";
 
+// ✅ SECURITY FIX (audit run-2, api/settings-router.ts:publicQuery:getAll+getSection:backupHash-disclosure):
+// siteSettings stores BOTH public CMS content and secret/internal state
+// (adminRecovery.backupHash — the ADMIN_RECOVERY lever parks the admin's
+// bcrypt-12 verifier here during a claim window; youtubeSync/youtubeWatch
+// internal state). The two public reads had no section partition: one
+// anonymous GET returned every row. Deny-by-default allowlist — the exact
+// sections the public frontend + Admin CMS editor fetch (verified consumer
+// census: useContactSettings.ts:38, CourseDetail.tsx:811, Admin.tsx CMS_SECTIONS).
+// Everything else (adminRecovery, youtubeSync, youtubeWatch, future secrets)
+// stays server-side. adminQuery reads remain available for admin tooling.
+const PUBLIC_SETTINGS_SECTIONS = new Set([
+  "contact", "subscribeGate", "payments",
+  "hero", "features", "instructor", "footer", "cta",
+]);
+
 export const settingsRouter = createRouter({
   // ═══════════════════════════════════════════════
   // PUBLIC: Get all settings (for frontend rendering)
@@ -14,8 +29,10 @@ export const settingsRouter = createRouter({
     const db = getDb();
     const settings = await db.select().from(siteSettings).orderBy(siteSettings.section, siteSettings.sortOrder);
     // Convert to nested object: { hero: { titleEn: "...", ... }, features: { ... } }
+    // ✅ SECURITY FIX (audit run-2): only allowlisted sections are ever served.
     const result: Record<string, Record<string, string>> = {};
     for (const s of settings) {
+      if (!PUBLIC_SETTINGS_SECTIONS.has(s.section)) continue; // never serve secret/internal sections
       if (!result[s.section]) result[s.section] = {};
       result[s.section][s.key] = s.value;
     }
@@ -23,8 +40,18 @@ export const settingsRouter = createRouter({
   }),
 
   // Get settings for a specific section
+  // ✅ SECURITY FIX (audit run-2): deny-by-default section allowlist.
+  // The refine runs in tRPC v11's input parser BEFORE the resolver — so a
+  // non-public section (adminRecovery incl. backupHash, youtubeSync,
+  // youtubeWatch) is rejected before the cache lookup can ever serve a
+  // cached pre-fix value.
   getSection: publicQuery
-    .input(z.object({ section: z.string() }))
+    .input(
+      z.object({ section: z.string() }).refine(
+        (v) => PUBLIC_SETTINGS_SECTIONS.has(v.section),
+        { message: "Section not found" },
+      ),
+    )
     .query(async ({ input }) => {
       const cache = getCache();
       const cacheKey = cacheKeys.settingsSection(input.section);

@@ -19,7 +19,7 @@ import { randomUUID } from "node:crypto";
 import { users } from "@db/schema";
 import { getDb } from "./queries/connection";
 import { createToken } from "./lib/jwt";
-import { serializeAuthCookie, serializeAuthFlagCookie } from "./lib/cookies";
+import { serializeAuthCookie, serializeAuthFlagCookie, serializeIdentitySwitchCookie } from "./lib/cookies";
 import { env } from "./lib/env";
 import { checkRateLimit } from "./lib/rate-limiter";
 import { logger, maskEmail } from "./lib/logger";
@@ -482,6 +482,17 @@ googleAuthRouter.get("/callback", async (c) => { // NOSONAR — complex function
     setAuthCookies(c, token);
 
     logger.info(`[GoogleAuth/OAuth] User signed in: ${username} (id=${userId})`);
+
+    // ✅ SECURITY FIX (audit run-2, auth.google-login.query-cache-purge-missing):
+    // this 302 completes a FULL-PAGE identity flip — the only live Google
+    // sign-in path. Without a marker, the fresh SPA boot rehydrated the
+    // PREVIOUS account's persisted tRPC cache (ELBAZ_QUERY_CACHE, 24h maxAge)
+    // into the new identity's session before any purge could run (the 4 SPA
+    // completion purges sit on paths this redirect never hits). A short-lived
+    // non-HttpOnly marker cookie lets main.tsx purge the persisted cache
+    // pre-render, then consume the marker. A query-param marker was rejected:
+    // it persists in history/Referer chains.
+    c.header("Set-Cookie", serializeIdentitySwitchCookie(c.req.raw.headers as Headers), { append: true });
 
     // Redirect to home page — cookies are set, user is logged in
     return c.redirect("/");

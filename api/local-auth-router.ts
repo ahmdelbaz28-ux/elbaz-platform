@@ -16,7 +16,7 @@ import { getClientIpFromHeaders } from "./lib/client-ip";
 import { env } from "./lib/env";
 // ✅ SECURITY FIX (pre-launch audit run-2): instant auth-cache eviction on
 // every revocation site (logout / password change) — closes the 30s window.
-import { evictUserAuthCache } from "./context.js";
+import { evictUserAuthCache, AuthMeOutput } from "./context.js";
 // ✅ SECURITY FIX (audit run-1): enforce the enrolled second factor at login.
 import { verifyTotp, hashToken } from "./twofa-router";
 // Growth features: referral rewards + educational email drip.
@@ -528,7 +528,12 @@ export const localAuthRouter = createRouter({
       return loginData;
     }),
 
-   me: authedQuery.query(({ ctx }) => {
+   // ✅ SECURITY FIX (audit run-2): .output(AuthMeOutput) — the runtime leak
+   // fix. ctx.user itself is now a curated 7-field projection (see context.ts
+   // SafeUser), and .output() strips anything unlisted at serialization time;
+   // totpSecret/totpBackupCodes/OTP-token hashes/deviceFingerprint never leave
+   // the server. The flag-cookie self-heal is preserved untouched.
+   me: authedQuery.output(AuthMeOutput).query(({ ctx }) => {
     // ✅ ROOT-CURE (remember-device, 2026-11-14): keep the JS-readable flag
     // cookie in sync with the live session on EVERY successful auth.me. The
     // client gates auth.me on this flag; if the flag ever dies while the

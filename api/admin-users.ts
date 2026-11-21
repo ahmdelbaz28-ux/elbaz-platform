@@ -33,6 +33,10 @@ export const adminUsersProcedures = {
           avatar: users.avatar,
           role: users.role,
           preferredLanguage: users.preferredLanguage,
+          // ✅ SECURITY FIX (audit run-2): SafeUser is now a curated Pick<> that
+          // includes emailVerifiedAt — the admin list select must carry it for
+          // the `as SafeUser[]` cast to hold.
+          emailVerifiedAt: users.emailVerifiedAt,
           createdAt: users.createdAt,
           updatedAt: users.updatedAt,
           lastSignInAt: users.lastSignInAt,

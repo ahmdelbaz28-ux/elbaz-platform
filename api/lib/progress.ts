@@ -51,6 +51,13 @@ export async function recalcEnrollmentProgress(
         and(
           eq(lessonProgress.userId, userId),
           eq(lessons.courseId, courseId),
+          // ✅ SECURITY FIX (audit run-2, api/lib/progress.ts:recalcEnrollmentProgress:draft-completion-asymmetry):
+          // the completed side MUST apply the same publish predicate as the
+          // total side below — otherwise draft/unpublished-lesson completions
+          // pad the numerator while the denominator excludes them, flipping
+          // isCompleted (and certificate eligibility) without the real
+          // curriculum being finished.
+          eq(lessons.isPublished, true),
           sql`(${lessonProgress.isCompleted} = 1 OR ${lessonProgress.isQuizPassed} = 1)`,
         ),
       ),
@@ -162,6 +169,9 @@ export async function getCourseProgressDetail(
         and(
           eq(lessonProgress.userId, userId),
           eq(lessons.courseId, courseId),
+          // ✅ SECURITY FIX (audit run-2): same publish predicate as the total
+          // side below — getCourseProgressDetail had the identical asymmetry.
+          eq(lessons.isPublished, true),
           sql`(${lessonProgress.isCompleted} = 1 OR ${lessonProgress.isQuizPassed} = 1)`,
         ),
       ),

@@ -87,6 +87,11 @@ export const certificateRouter = createRouter({
             and(
               eq(lessonProgress.userId, userId),
               eq(lessons.courseId, input.courseId),
+              // ✅ SECURITY FIX (audit run-2, progress-draft-completion-asymmetry):
+              // draft/withdrawn-lesson quiz scores must never contribute to
+              // the certificate grade — same publish predicate as the progress
+              // engine's total side.
+              eq(lessons.isPublished, true),
               eq(lessonProgress.isQuizPassed, true),
             ),
           ),

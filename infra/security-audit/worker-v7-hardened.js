@@ -988,14 +988,23 @@ async function ytSyncPushToOrigin(env) {
     videos: videos.map((v) => ({ videoId: v.videoId, title: v.title })),
     source: 'cf-worker-cron',
   });
-  // HMAC-SHA256 hex over the RAW body — must match yt-sync-ingest.ts.
+  // ✅ SECURITY FIX (audit run-2, fp.yt-sync.body-only-replay-lane — STEP 1 of
+  // the phased rolling fix): sign HMAC-SHA256 hex over body + '.' + ts and send
+  // x-sync-ts — the replay-protected contract the GH relay
+  // (scripts/yt_playlist_relay.py:201-210) already speaks. The old raw-body
+  // signature had NO freshness binding: any single captured cron request was
+  // replayable forever via the ingest's legacy fallback. The ingest keeps
+  // dual-accept during this transition window (STEP 2 = the explicit removal
+  // commit that hard-401s body-only, gated on this worker deploy being green
+  // + one successful cron tick).
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(body));
+  const ts = String(Date.now());
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(`${body}.${ts}`));
   const signature = [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
   const res = await fetch(YT_SYNC_INGEST_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-sync-signature': signature },
+    headers: { 'Content-Type': 'application/json', 'x-sync-signature': signature, 'x-sync-ts': ts },
     body,
     signal: AbortSignal.timeout(20000),
   });

@@ -18,10 +18,15 @@ export const quizRouter = createRouter({
       const db = getDb();
 
       // Verify the user has access to this lesson's course
+      // ✅ SECURITY FIX (audit run-2, api/quiz-router.ts:byLesson+submit:missing-lesson-publish-gate):
+      // the lesson lookup must enforce the same publish gate every sibling
+      // lesson-content surface enforces (course-watching.ts:58/:140/:178,
+      // course-browse.ts:219/:272) — draft lessons resolve only for admins.
+      // Draft ids fall through to the existing NOT_FOUND below.
       const [lesson] = await db
         .select({ courseId: lessons.courseId, isFree: lessons.isFree })
         .from(lessons)
-        .where(eq(lessons.id, input.lessonId))
+        .where(and(eq(lessons.id, input.lessonId), eq(lessons.isPublished, true)))
         .limit(1);
 
       if (!lesson) {
@@ -107,7 +112,9 @@ export const quizRouter = createRouter({
         db
           .select({ courseId: lessons.courseId, isFree: lessons.isFree })
           .from(lessons)
-          .where(eq(lessons.id, input.lessonId))
+          // ✅ SECURITY FIX (audit run-2): same publish gate as byLesson —
+          // draft lessons are indistinguishable from nonexistent ones.
+          .where(and(eq(lessons.id, input.lessonId), eq(lessons.isPublished, true)))
           .limit(1),
         db
           .select()

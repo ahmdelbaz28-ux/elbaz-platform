@@ -1,6 +1,6 @@
 import * as cookie from "cookie";
 import { eq, sql } from "drizzle-orm";
-import { evictUserAuthCache } from "./context";
+import { evictUserAuthCache, AuthMeOutput } from "./context";
 import { Session } from "@contracts/constants";
 import { getSessionCookieOptions, AUTH_FLAG_COOKIE_NAME } from "./lib/cookies";
 import { createRouter, authedQuery } from "./middleware";
@@ -8,7 +8,14 @@ import { getDb } from "./queries/connection";
 import { users } from "@db/schema";
 
 export const authRouter = createRouter({
-  me: authedQuery.query((opts) => opts.ctx.user),
+  // ✅ SECURITY FIX (audit run-2, api/local-auth-router.ts:auth.me:SafeUser-secret-projection):
+  // this endpoint previously returned the FULL ctx.user row (wholesale
+  // Omit<User,"passwordHash">) — totpSecret, OTP/token hashes, deviceFingerprint
+  // and PII crossed the wire on one same-origin fetch. Zero client consumers
+  // exist (verified repo-wide) but the endpoint stayed mounted and reachable,
+  // so the shared AuthMeOutput .output() schema is applied: tRPC v11 strips
+  // anything unlisted from the serialized response at runtime.
+  me: authedQuery.output(AuthMeOutput).query((opts) => opts.ctx.user),
   logout: authedQuery.mutation(async ({ ctx }) => {
     // ✅ SECURITY FIX (audit run-1): bump tokenVersion so the presented JWT is
     // invalidated server-side. Clearing cookies alone left the token valid

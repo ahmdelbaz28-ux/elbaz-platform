@@ -10,7 +10,7 @@ import { eq, and, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { authedQuery, publicMutation } from "./middleware";
 import { getDb } from "./queries/connection";
-import { lessons, enrollments, lessonProgress } from "@db/schema";
+import { lessons, enrollments, lessonProgress, courses } from "@db/schema";
 import { recalcEnrollmentProgress, markLessonWatched } from "./lib/progress";
 import { getSecureVideoUrl } from "./lib/video-protection";
 import { activeEnrollmentWhere } from "./lib/enrollment";
@@ -49,13 +49,30 @@ export const courseWatchingProcedures = {
     .query(async ({ ctx, input }) => {
       const db = getDb();
 
+      // ✅ SECURITY FIX (audit run-2, api/course-watching.ts:lessonVideo:missing-course-publish-gate):
+      // the lesson-level gate alone was not enough — admin.updateCourse
+      // unpublish touches ONLY the courses row, so lessons of a withdrawn
+      // course kept playing on the raw-id path (sibling previewVideo enforces
+      // BOTH levels, course-browse.ts:272). Two-level gate via innerJoin.
+      // Projection carries every consumed field below (isFree :72, videoUrl
+      // :74/:98, id :76/:100, courseId :87) — a bare select() with the join
+      // would return nested {lessons,courses} rows and break destructuring.
       const [lesson] = await db
-        .select()
+        .select({
+          id: lessons.id,
+          courseId: lessons.courseId,
+          isFree: lessons.isFree,
+          videoUrl: lessons.videoUrl,
+        })
         .from(lessons)
-        // ✅ ROOT-CURE (2026-11-13): raw lesson ids bypassed isPublished — an
-        // admin-unpublished/draft lesson stayed playable by anyone holding
-        // its id. The public course feed filters drafts; so do the raw ids.
-        .where(and(eq(lessons.id, input.lessonId), eq(lessons.isPublished, true)))
+        .innerJoin(courses, eq(lessons.courseId, courses.id))
+        .where(
+          and(
+            eq(lessons.id, input.lessonId),
+            eq(lessons.isPublished, true),
+            eq(courses.isPublished, true),
+          ),
+        )
         .limit(1);
 
       if (!lesson) throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
@@ -132,12 +149,20 @@ export const courseWatchingProcedures = {
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
 
+      // ✅ SECURITY FIX (audit run-2): two-level publish gate (lesson + course)
+      // — withdrawn-course lessons must not keep accumulating progress
+      // (courseId/isFree projection covers every consumed field below).
       const [lesson] = await db
         .select({ courseId: lessons.courseId, isFree: lessons.isFree })
         .from(lessons)
-        // ✅ ROOT-CURE (2026-11-13): draft lessons must not accumulate
-        // progress/watch-time either — same isPublished gate as lessonVideo.
-        .where(and(eq(lessons.id, input.lessonId), eq(lessons.isPublished, true)))
+        .innerJoin(courses, eq(lessons.courseId, courses.id))
+        .where(
+          and(
+            eq(lessons.id, input.lessonId),
+            eq(lessons.isPublished, true),
+            eq(courses.isPublished, true),
+          ),
+        )
         .limit(1);
 
       if (!lesson) {
@@ -170,12 +195,20 @@ export const courseWatchingProcedures = {
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
 
+      // ✅ SECURITY FIX (audit run-2): two-level publish gate (lesson + course)
+      // — withdrawn-course lessons must not keep accumulating progress
+      // (courseId/isFree projection covers every consumed field below).
       const [lesson] = await db
         .select({ courseId: lessons.courseId, isFree: lessons.isFree })
         .from(lessons)
-        // ✅ ROOT-CURE (2026-11-13): draft lessons must not accumulate
-        // progress/watch-time either — same isPublished gate as lessonVideo.
-        .where(and(eq(lessons.id, input.lessonId), eq(lessons.isPublished, true)))
+        .innerJoin(courses, eq(lessons.courseId, courses.id))
+        .where(
+          and(
+            eq(lessons.id, input.lessonId),
+            eq(lessons.isPublished, true),
+            eq(courses.isPublished, true),
+          ),
+        )
         .limit(1);
 
       if (!lesson) {

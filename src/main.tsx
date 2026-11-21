@@ -152,6 +152,25 @@ async function waitForEntryStylesheet(): Promise<void> {
   }
 }
 
+// ✅ SECURITY FIX (audit run-2, auth.google-login.query-cache-purge-missing):
+// The Google OAuth redirect callback completes a FULL-PAGE identity flip and
+// lands on bare '/' with a short-lived marker cookie (elbaz_identity_switch,
+// set server-side by the callback). This pre-render hook — it runs BEFORE
+// createRoot().render(), i.e. BEFORE PersistQueryClientProvider rehydrates
+// ELBAZ_QUERY_CACHE — purges the previous account's persisted private queries
+// and consumes the marker. A fresh JS context has no in-memory cache, so the
+// localStorage purge is sufficient on this path; the window flag lets
+// trpc.tsx add a belt-and-braces in-memory clear for defense in depth.
+try {
+  if (document.cookie.includes('elbaz_identity_switch=1')) {
+    document.cookie = 'elbaz_identity_switch=; Max-Age=0; Path=/';
+    localStorage.removeItem('ELBAZ_QUERY_CACHE');
+    (window as unknown as { __elbazIdentitySwitchPurged?: boolean }).__elbazIdentitySwitchPurged = true;
+  }
+} catch {
+  // Never block boot on the purge.
+}
+
 void waitForEntryStylesheet().then(() => {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>

@@ -22,6 +22,23 @@ export function getSessionCookieOptions(headers: Headers): CookieOptions {
 export const AUTH_COOKIE_NAME = "elbaz_auth";
 export const AUTH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60; // 30 days in seconds (matches JWT TTL)
 
+// ✅ SECURITY FIX (audit run-2, auth.google-login.query-cache-purge-missing):
+// short-lived NON-HttpOnly marker appended by the Google OAuth callback's 302.
+// The SPA boot (src/main.tsx, pre-render — BEFORE PersistQueryClientProvider
+// rehydrates ELBAZ_QUERY_CACHE) reads it via document.cookie and purges the
+// previous account's persisted private queries, then consumes (clears) it.
+// Localhost-aware secure — same derivation as the auth cookies in this file.
+export function serializeIdentitySwitchCookie(headers: Headers): string {
+  const localhost = isLocalhost(headers);
+  return cookie.serialize("elbaz_identity_switch", "1", {
+    httpOnly: false, // must be readable from JavaScript (boot purge in main.tsx)
+    path: "/",
+    sameSite: "lax",
+    secure: !localhost, // https prod secured; http://localhost dev unblocked
+    maxAge: 60,
+  });
+}
+
 // ✅ FIX: Non-HttpOnly companion cookie — readable from JS to guard auth.me calls
 // Prevents unnecessary auth.me requests on every page load for unauthenticated users
 export const AUTH_FLAG_COOKIE_NAME = "elbaz_auth_flag";

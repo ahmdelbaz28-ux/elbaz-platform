@@ -107,8 +107,19 @@ function authenticateIngest(secret: string, raw: string, c: { req: { header: (na
     }
     return { ok: true, replayProtected: true };
   }
+  // ✅ SECURITY FIX (audit run-2, fp.yt-sync.body-only-replay-lane — STEP 1):
+  // the legacy body-only fallback stays during the phased transition (the
+  // worker cron migration ships in the same commit; dual-accept guarantees
+  // the cron never 401s mid-deploy). Every body-only accept now logs a
+  // deprecation warning so ops can see when the lane is fully retired —
+  // STEP 2 (removal commit, gated on the CF deploy green + one cron tick)
+  // hard-401s this branch and makes replays dead on arrival.
+  const ok = signatureMatches(computeSignature(secret, raw), received);
+  if (ok) {
+    logger.warn("[YtSyncIngest] DEPRECATED body-only HMAC accepted — sender must migrate to x-sync-ts (removal commit pending)");
+  }
   return {
-    ok: signatureMatches(computeSignature(secret, raw), received),
+    ok,
     status: 401,
     replayProtected: false,
   };

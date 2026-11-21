@@ -259,6 +259,16 @@ export function TRPCProvider({ children }: { readonly children: ReactNode }) {
       <PersistQueryClientProvider 
         client={queryClient}
         persistOptions={{ persister, maxAge: 1000 * 60 * 60 * 24 }}
+        // ✅ SECURITY FIX (audit run-2, identity-flip purge): belt-and-braces —
+        // if the boot pre-render purge ran (Google OAuth redirect identity
+        // flip), also drop anything the restore still merged into memory so
+        // no previous-account row can serve before refetches resolve.
+        // (onSuccess is a PersistQueryClientProvider prop, called once
+        // restoring finishes even when nothing was restored.)
+        onSuccess={() => {
+          const w = window as unknown as { __elbazIdentitySwitchPurged?: boolean };
+          if (w.__elbazIdentitySwitchPurged) queryClient.clear();
+        }}
       >
         {children}
       </PersistQueryClientProvider>

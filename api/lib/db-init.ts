@@ -1426,6 +1426,11 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
                  ON DUPLICATE KEY UPDATE value = VALUES(value)`
               );
               logger.info("[DB] admin recovery: claimed — current hash backed up, recovery hash active");
+              // ✅ SECURITY FIX (audit run-2): cached settings:section:* values
+              // (900s TTL) must never straddle the partition — the claim just
+              // wrote adminRecovery rows that the anonymous reads must never
+              // serve from a stale cache entry.
+              await invalidateSettingsCache();
             }
           } else if (recoveryValue === "restore" && phase === "claimed") {
             const [backupRows] = await conn.execute(
@@ -1446,6 +1451,9 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
                 `DELETE FROM siteSettings WHERE section = 'adminRecovery' AND \`key\` = 'backupHash'`
               );
               logger.info("[DB] admin recovery: original hash restored, backup cleared");
+              // ✅ SECURITY FIX (audit run-2): cached pre-restore values must not
+              // outlive the row deletion (same partition-straddle rule as claim).
+              await invalidateSettingsCache();
             }
           } else if (recoveryValue === "reset2fa") {
             // ── One-time 2FA lockout recovery ──
@@ -1471,6 +1479,8 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
                  ON DUPLICATE KEY UPDATE value = VALUES(value)`
               );
               logger.info("[DB] admin recovery: 2FA reset complete — log in with username+password, re-enrol 2FA from the profile");
+              // ✅ SECURITY FIX (audit run-2): keep cached section values in sync with the marker write.
+              await invalidateSettingsCache();
             }
           }
         } catch (err) {

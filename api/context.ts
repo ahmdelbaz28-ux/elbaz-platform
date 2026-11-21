@@ -8,13 +8,38 @@ import { eq } from "drizzle-orm";
 import { AUTH_COOKIE_NAME, serializeAuthCookie, serializeAuthFlagCookie } from './lib/cookies';
 import { parse } from "cookie";
 
+import { z } from "zod";
 import { logger } from "./lib/logger";
 
-// ✅ SECURITY FIX: Define a SafeUser type that excludes passwordHash
-// The full User object (including passwordHash) should NEVER be in the tRPC context
-// because any route using authedQuery has access to ctx.user — accidentally
-// returning it in a response would leak the bcrypt hash.
-export type SafeUser = Omit<User, "passwordHash">;
+// ✅ SECURITY FIX (audit run-2, api/local-auth-router.ts:auth.me:SafeUser-secret-projection):
+// SafeUser is now a curated Pick<> of EXACTLY the fields the UI consumes
+// (id, username, name, email, role, emailVerifiedAt, createdAt — verified by
+// exhaustive frontend grep) plus what server logic reads off ctx.user
+// (id/username/role/email/name — same 7 fields). The previous
+// Omit<User,"passwordHash"> definition let every secret-bearing users column
+// (totpSecret, totpBackupCodes, OTP/token hashes, pendingEmail,
+// deviceFingerprint) ride in ctx.user, and both identity endpoints returned
+// it wholesale — the plaintext TOTP seed landed in the browser and the
+// 24h-persisted ELBAZ_QUERY_CACHE. Secrets never enter the context now.
+// Runtime enforcement lives in the shared AuthMeOutput .output() schema on
+// BOTH identity endpoints (auth.me + session.me).
+export type SafeUser = Pick<
+  User,
+  "id" | "username" | "name" | "email" | "role" | "emailVerifiedAt" | "createdAt"
+>;
+
+// ✅ SECURITY FIX (audit run-2): the runtime projection schema for identity
+// endpoints. tRPC v11 .output() strips anything unlisted from the serialized
+// response even if a future code path widens SafeUser again.
+export const AuthMeOutput = z.object({
+  id: z.number(),
+  username: z.string(),
+  name: z.string().nullable(),
+  email: z.string().nullable(),
+  role: z.string(),
+  emailVerifiedAt: z.date().nullable(),
+  createdAt: z.date(),
+});
 
 export type TrpcContext = {
   req: Request;
@@ -283,9 +308,22 @@ async function loadUserFromDb(
     return null;
   }
 
-  // ✅ SECURITY FIX: Strip passwordHash before putting user in context
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { passwordHash: _ph, ...safeUser } = user;
+  // ✅ SECURITY FIX (audit run-2): explicit curated projection — replaces the
+  // passwordHash-only destructure. The context now carries ONLY the 7 fields
+  // the UI/server logic consume; every secret column (totpSecret,
+  // totpBackupCodes, OTP/token hashes, deviceFingerprint, pendingEmail,
+  // tokenVersion) stays server-side. tokenVersion revocation was already
+  // enforced above via the full-row comparison — the JWT payload alone
+  // carries the version for mint/renew, so the context never needs it.
+  const safeUser: SafeUser = {
+    id: user.id,
+    username: user.username,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    emailVerifiedAt: user.emailVerifiedAt,
+    createdAt: user.createdAt,
+  };
 
   evictOldestCacheEntries();
   userCache.set(cacheKey, {
