@@ -183,6 +183,12 @@ export async function tryByokChat(params: {
         max_tokens: tuning.maxTokens,
       }),
       signal: headerTimeout.signal,
+      // ✅ SECURITY HARDENING (isolation review 2026-11): the SSRF guard
+      // validates the TARGET string, but fetch follows redirects by default —
+      // a public URL that 30x-redirects to an internal address would carry
+      // this key-bearing request past the guard. No legitimate
+      // chat/completions endpoint redirects a POST: any redirect is hostile.
+      redirect: "error",
     });
     headerTimeout.done();
 
@@ -256,6 +262,8 @@ export async function tryByokStream(params: {
         stream: true,
       }),
       signal: headerTimeout.signal,
+      // Same redirect contract as tryByokChat (SSRF hardening).
+      redirect: "error",
     });
     headerTimeout.done();
 
@@ -312,6 +320,8 @@ export async function testByokProvider(params: {
         temperature: 0,
       }),
       signal: headerTimeout.signal,
+      // Same redirect contract as the chat lanes (SSRF hardening).
+      redirect: "error",
     });
     headerTimeout.done();
     const latencyMs = Date.now() - startedAt;

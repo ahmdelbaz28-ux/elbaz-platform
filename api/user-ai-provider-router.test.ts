@@ -321,3 +321,108 @@ describe("POST /test", () => {
     expect(res.status).toBe(400);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ✅ ISOLATION REVIEW (2026-11-21, owner requirement: "لو مستخدم أضاف الـ API
+// الخاص به لا يستخدمه أي أحد غيره"): regression tests proving the row is
+// keyed EXCLUSIVELY to the authenticated identity — the request body can
+// never target another user's provider config, and the key floor is enforced
+// server-side, not just in the panel.
+// ═══════════════════════════════════════════════════════════════════════════
+describe("cross-user isolation (isolation review 2026-11)", () => {
+  it("PUT ignores a client-supplied userId — the row is always keyed to the authenticated user", async () => {
+    // User 99 is authenticated but FORGES userId: 42 (another user's id) in
+    // the body. The stored row must still belong to 99 — user 42's config is
+    // unreachable no matter what the body says.
+    resolveOptionalUser.mockResolvedValue({ id: 99, role: "user" });
+    const db = fakeDb([]); // user 99 has no existing row
+    const res = await userAiProviderRouter.request("/", {
+      method: "PUT",
+      body: JSON.stringify({ ...VALID_BODY, userId: 42, id: 7 }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(200);
+    const values = db.captured.insertValues as { userId: number; id?: number };
+    expect(values.userId).toBe(99);
+    expect(values.userId).not.toBe(42);
+    expect(values.id).toBeUndefined(); // the forged row id is dropped too
+  });
+
+  it("GET / from user B never returns user A's config (per-user select)", async () => {
+    // The fake db returns ONLY the authenticated user's row (the real DB
+    // filters by the WHERE userId = authenticated id). Auth as 99, and even
+    // though a row for user 42 exists in the table, the query result for 99
+    // is empty → config null.
+    resolveOptionalUser.mockResolvedValue({ id: 99, role: "user" });
+    fakeDb([]); // select filtered by userId=99 → no row
+    const res = await userAiProviderRouter.request("/");
+    const body = await res.json() as { config: unknown };
+    expect(body.config).toBeNull();
+  });
+
+  it("rejects a sub-8-char key SERVER-SIDE (panel no longer the only gate)", async () => {
+    resolveOptionalUser.mockResolvedValue({ id: 42, role: "user" });
+    const db = fakeDb([]);
+    const res = await userAiProviderRouter.request("/", {
+      method: "PUT",
+      body: JSON.stringify({ ...VALID_BODY, apiKey: "abc12" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json() as { error?: string };
+    expect(body.error).toContain("8 أحرف");
+    expect(db.captured.insertValues).toBeNull();
+  });
+
+  it("an empty-string apiKey normalizes to omission — stored ciphertext kept", async () => {
+    resolveOptionalUser.mockResolvedValue({ id: 42, role: "user" });
+    const db = fakeDb([[makeRow()]]); // existing config with REAL_ENC
+    const res = await userAiProviderRouter.request("/", {
+      method: "PUT",
+      body: JSON.stringify({ ...VALID_BODY, apiKey: "   " }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(200);
+    // Write-only contract intact: the duplicate-update set must NOT carry a
+    // re-encrypted key (the empty string was normalized to undefined).
+    const set = db.captured.dupUpdateSet as { apiKeyEnc?: string };
+    expect(set.apiKeyEnc).toBeUndefined();
+  });
+
+  it("PATCH from user B cannot disable user A's stored config (affectedRows=0 → 404)", async () => {
+    // User 99 toggles with no row of their own — the update is scoped to
+    // userId=99, so it can never touch user 42's row (which lives in the same
+    // table). The scoped update matches 0 rows → 404, not a silent success.
+    resolveOptionalUser.mockResolvedValue({ id: 99, role: "user" });
+    fakeDb([], 0); // UPDATE … WHERE userId=99 matches nothing
+    const res = await userAiProviderRouter.request("/", {
+      method: "PATCH",
+      body: JSON.stringify({ enabled: false }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("DELETE from user B deletes only WHERE userId=B — A's row untouched", async () => {
+    resolveOptionalUser.mockResolvedValue({ id: 99, role: "user" });
+    const db = fakeDb([]);
+    const res = await userAiProviderRouter.request("/", { method: "DELETE" });
+    expect(res.status).toBe(200);
+    expect(db.captured.deleteWhere).not.toBeNull();
+    // The WHERE object is drizzle SQL built from the AUTHENTICATED id (99).
+    // Cycle-safe walk: collect every primitive embedded in the condition —
+    // the only user id that may appear is 99 (never a forged body value).
+    const seen = new WeakSet<object>();
+    const flat: unknown[] = [];
+    const walk = (v: unknown): void => {
+      if (v === null || typeof v !== "object") { flat.push(v); return; }
+      if (seen.has(v)) return;
+      seen.add(v);
+      for (const part of Object.values(v)) walk(part);
+    };
+    walk(db.captured.deleteWhere);
+    const joined = flat.map(String).join("|");
+    expect(joined).toContain("99");
+    expect(joined).not.toContain("42");
+  });
+});

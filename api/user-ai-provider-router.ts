@@ -73,8 +73,17 @@ const saveSchema = z.object({
   provider: z.string().trim().max(48).refine((v) => isKnownUserProvider(v), { message: "مزود غير معروف" }).default("custom"),
   baseUrl: baseUrlSchema,
   modelId: z.string().trim().min(1, "اسم النموذج مطلوب").max(190),
-  /** Omit / empty → keep the stored key on update; required for creates. */
-  apiKey: z.string().trim().max(512).optional(),
+  /**
+   * Omit / empty → keep the stored key on update; required for creates.
+   * ✅ SECURITY HARDENING (isolation review 2026-11): the ≥8 length floor is
+   * enforced SERVER-SIDE too (the panel checked it only client-side, so a
+   * direct API caller could store a 1-char key). An empty/whitespace value
+   * normalizes to undefined — identical to omission (write-only contract).
+   */
+  apiKey: z.string().trim().max(512)
+    .transform((v) => (v.length === 0 ? undefined : v))
+    .refine((v) => v === undefined || v.length >= 8, { message: "مفتاح API قصير جداً — 8 أحرف على الأقل" })
+    .optional(),
   enabled: z.boolean().default(true),
 });
 
