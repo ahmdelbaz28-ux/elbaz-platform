@@ -393,19 +393,6 @@ export async function initiateEmailVerification(userId: number, newEmail?: strin
   const tokenExpiry = new Date(Date.now() + EMAIL_VERIFICATION_EXPIRY_MINUTES * 60 * 1000);
   const otpCode = generateOtpCode();
 
-  // ✅ FIX: Store token hash + OTP hash + expiry in DB. Also store pending email if this is an email change.
-  await db
-    .update(users)
-    .set({
-      emailVerificationToken: tokenHash,
-      emailVerificationExpiry: tokenExpiry,
-      emailOtpCode: hashOtpCode(otpCode),
-      emailOtpAttempts: 0,
-      ...(newEmail ? { pendingEmail: newEmail } : {}),
-      updatedAt: new Date(),
-    })
-    .where(eq(users.id, userId));
-
   const verificationUrl = `${getFrontendUrl(headers)}/verify-email?token=${verificationToken}&uid=${userId}`;
 
   const name = user.name || user.username || "";
@@ -423,7 +410,13 @@ export async function initiateEmailVerification(userId: number, newEmail?: strin
     // ✅ SECURITY FIX (pre-launch audit run-2, logs.verify-token): same rule as
     // the reset link — never log the live verification URL. Hash prefix only.
     logger.error("[Email] Failed to send verification email", { to: maskEmail(targetEmail), reason: sendResult.reason });
-    logger.warn(`[Email/Recovery] Verification email FAILED — a verification token was minted and is valid for ${EMAIL_VERIFICATION_EXPIRY_MINUTES} minutes (token hash prefix logged for correlation only)`, { to: maskEmail(targetEmail), userId, tokenHashPrefix: tokenHash.slice(0, 8) });
+    // ✅ ROOT FIX (profile email-flow review, 2026-11-22): the DB write moved
+    // AFTER the send. A failed send is now a NO-OP — no credential pair, and
+    // crucially no pendingEmail, is ever armed for a message that never left
+    // the server. Previously the write ran BEFORE the send, so a provider
+    // outage left a "pending" email change that a later, unrelated plain
+    // verification (code to the CURRENT address) would silently APPLY.
+    logger.warn("[Email/Recovery] Verification email FAILED — nothing was armed (credentials are written only after a successful send)", { to: maskEmail(targetEmail), userId });
     return {
       success: false,
       message: "Could not send verification email. Please try again later.",
@@ -436,13 +429,34 @@ export async function initiateEmailVerification(userId: number, newEmail?: strin
     };
   }
 
+  // ✅ ROOT FIX (profile email-flow review): credentials + pendingEmail are
+  // persisted ONLY after the provider accepted the message. Invariant kept
+  // from here on: pendingEmail is live IF AND ONLY IF the stored credential
+  // is the one delivered to the NEW address — so a pending change can only
+  // ever be confirmed by a code/link the new address actually received.
+  // A PLAIN verification send (no newEmail) clears any lingering pendingEmail:
+  // the confirmation code it carries proves the CURRENT address, so it must
+  // never be able to apply an email change.
+  await db
+    .update(users)
+    .set({
+      emailVerificationToken: tokenHash,
+      emailVerificationExpiry: tokenExpiry,
+      emailOtpCode: hashOtpCode(otpCode),
+      emailOtpAttempts: 0,
+      // plain send: drop any stale pending change; change send: arm it
+      pendingEmail: newEmail ?? null,
+      updatedAt: new Date(),
+    })
+    .where(eq(users.id, userId));
+
   return { success: true, message: "Verification email sent. Please check your inbox." };
 }
 
 export async function completeEmailVerification(
   userId: number,
   tokenOrCode: string,
-): Promise<{ success: boolean; message: string }> {
+): Promise<{ success: boolean; message: string; emailChanged: boolean }> {
   const db = getDb();
 
   const [user] = await db
@@ -454,28 +468,37 @@ export async function completeEmailVerification(
   const genericError = "Invalid or expired verification link. Please request a new one.";
 
   if (!user) {
-    return { success: false, message: genericError };
+    return { success: false, message: genericError, emailChanged: false };
   }
+
+  // ✅ ROOT FIX (profile email-flow review): read the pending change up front —
+  // the "already verified" idempotency check below must NOT run before the
+  // pending email is honored. The old order (check → return) made an email
+  // change IMPOSSIBLE for already-verified users: the change-confirmation
+  // code "succeeded" while pendingEmail was silently never applied.
+  const pendingEmail = user.pendingEmail || null;
 
   // ✅ FIX: Validate credential exists and not expired (token and code share the window)
   if (!user.emailVerificationToken || !user.emailVerificationExpiry) {
-    return { success: false, message: genericError };
+    // stale pending change with no live credential can never complete — clear it
+    await db.update(users).set({ emailOtpCode: null, emailOtpAttempts: 0, pendingEmail: null }).where(eq(users.id, userId));
+    return { success: false, message: genericError, emailChanged: false };
   }
 
   if (Date.now() > user.emailVerificationExpiry.getTime()) {
-    // Clear expired credentials
-    await db.update(users).set({ emailVerificationToken: null, emailVerificationExpiry: null, emailOtpCode: null, emailOtpAttempts: 0 }).where(eq(users.id, userId));
-    return { success: false, message: "Verification link has expired. Please request a new one." };
+    // Clear expired credentials (and the pending change they carried)
+    await db.update(users).set({ emailVerificationToken: null, emailVerificationExpiry: null, emailOtpCode: null, emailOtpAttempts: 0, pendingEmail: null }).where(eq(users.id, userId));
+    return { success: false, message: "Verification link has expired. Please request a new one.", emailChanged: false };
   }
 
   let isValid = false;
   if (isOtpFormat(tokenOrCode)) {
     // ── 6-digit code path ──
-    if (!user.emailOtpCode) return { success: false, message: genericError };
+    if (!user.emailOtpCode) return { success: false, message: genericError, emailChanged: false };
     if (user.emailOtpAttempts >= OTP_MAX_ATTEMPTS) {
       // Attempt budget spent — invalidate the code (the link stays valid).
       await db.update(users).set({ emailOtpCode: null, emailOtpAttempts: 0 }).where(eq(users.id, userId));
-      return { success: false, message: genericError };
+      return { success: false, message: genericError, emailChanged: false };
     }
     const incomingHash = hashOtpCode(tokenOrCode);
     try {
@@ -484,7 +507,7 @@ export async function completeEmailVerification(
         Buffer.from(user.emailOtpCode, "utf8"),
       );
     } catch {
-      return { success: false, message: genericError };
+      return { success: false, message: genericError, emailChanged: false };
     }
     if (!isValid) {
       const exhausted = otpAttemptsExhaustedAfterFailure(user.emailOtpAttempts);
@@ -492,7 +515,7 @@ export async function completeEmailVerification(
         .update(users)
         .set({ emailOtpAttempts: exhausted ? 0 : user.emailOtpAttempts + 1, ...(exhausted ? { emailOtpCode: null } : {}) })
         .where(eq(users.id, userId));
-      return { success: false, message: genericError };
+      return { success: false, message: genericError, emailChanged: false };
     }
   } else {
     // ── Link-token path ──
@@ -506,21 +529,22 @@ export async function completeEmailVerification(
         Buffer.from(storedHash, "hex"),
       );
     } catch {
-      return { success: false, message: genericError };
+      return { success: false, message: genericError, emailChanged: false };
     }
 
     if (!isValid) {
-      return { success: false, message: genericError };
+      return { success: false, message: genericError, emailChanged: false };
     }
   }
 
-  // ✅ Already verified? Return success (idempotent)
-  if (user.emailVerifiedAt) {
-    return { success: true, message: "Email already verified." };
+  // ✅ ROOT FIX (profile email-flow review): idempotency ONLY when there is no
+  // pending change. A verified user confirming an email change MUST fall
+  // through — this is the exact fix that un-breaks email changes for users
+  // who verify first and change their address afterwards (the normal order).
+  if (user.emailVerifiedAt && !pendingEmail) {
+    return { success: true, message: "Email already verified.", emailChanged: false };
   }
 
-  // ✅ If there's a pending email change, apply it now
-  const pendingEmail = user.pendingEmail || null;
   const updateData: Record<string, unknown> = {
     emailVerificationToken: null, // ✅ Single-use: clear token immediately
     emailVerificationExpiry: null,
@@ -531,15 +555,40 @@ export async function completeEmailVerification(
   };
 
   if (pendingEmail) {
+    // ✅ ROOT FIX: re-check uniqueness at completion time — the check ran when
+    // the change was REQUESTED, but completion may happen minutes later and
+    // another account may have claimed the address in between. Without this,
+    // users_email_unique turns the update into a raw 500.
+    const [claimed] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, pendingEmail))
+      .limit(1);
+    if (claimed && claimed.id !== userId) {
+      // Someone else owns the address now — disarm the change, tell the truth.
+      await db.update(users).set({ pendingEmail: null }).where(eq(users.id, userId));
+      logger.warn("[Email] pending email change aborted — address claimed by another account", { userId });
+      return {
+        success: false,
+        message: "This email address can no longer be used. Please start the change again from your profile.",
+        emailChanged: false,
+      };
+    }
     updateData.email = pendingEmail;
     updateData.pendingEmail = null;
   }
 
-  await db.update(users).set(updateData).where(eq(users.id, userId));
+  try {
+    await db.update(users).set(updateData).where(eq(users.id, userId));
+  } catch (updateErr) {
+    // users_email_unique belt-and-braces for the same completion-time race.
+    logger.error("[Email] verification completion update failed", { userId, error: (updateErr as Error).message });
+    return { success: false, message: genericError, emailChanged: false };
+  }
 
   const message = pendingEmail
     ? "Email address updated and verified successfully."
     : "Email verified successfully. Your account is now fully secured.";
 
-  return { success: true, message };
+  return { success: true, message, emailChanged: Boolean(pendingEmail) };
 }

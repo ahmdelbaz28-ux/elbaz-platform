@@ -79,15 +79,23 @@ export default function Navbar() {
     };
   }, [mobileOpen]);
 
-  // Close user menu on outside click
+  // Close user menu on outside click OR Escape (a11y: keyboard users must be
+  // able to dismiss the dropdown without tabbing away)
   useEffect(() => {
     if (!userMenuOpen) return;
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       if (!target.closest("[data-user-menu]")) setUserMenuOpen(false);
     };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setUserMenuOpen(false);
+    };
     document.addEventListener("click", handleClick);
-    return () => document.removeEventListener("click", handleClick);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("click", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
   }, [userMenuOpen]);
 
   const isActive = (path: string) =>

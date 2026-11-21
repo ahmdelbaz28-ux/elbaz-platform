@@ -36,6 +36,10 @@ export default function Profile() {
   const { user, isAuthenticated, isLoading, logout } = useAuth();
   const { t, lang } = useTranslation();
   const navigate = useNavigate();
+  // ✅ ROOT FIX (profile email-flow review): toasts + auth.me invalidation
+  // replace globalThis.location.reload() — the reload killed every success
+  // toast instantly and flashed the whole page for a simple header refresh.
+  const utils = trpc.useUtils();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) navigate("/login");
@@ -53,6 +57,17 @@ export default function Profile() {
   const [cooldown, setCooldown] = useState(0);
   // 6-digit confirmation code — typed from the verification email.
   const [verificationCode, setVerificationCode] = useState("");
+  // ✅ ROOT FIX (profile email-flow review): a VERIFIED user who requests an
+  // email change receives the code at the NEW address — but the code-entry box
+  // only rendered for UNVERIFIED accounts, so the email link was the only
+  // path. This local flag (session-scoped) arms the change-confirmation box
+  // for verified users too, right after the change is requested.
+  const [emailChangePending, setEmailChangePending] = useState(false);
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem("elbaz_email_change_pending") === "1") setEmailChangePending(true);
+    } catch { /* private mode */ }
+  }, []);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -61,10 +76,37 @@ export default function Profile() {
   }, [cooldown]);
 
   const updateProfileMutation = trpc.auth.updateProfile.useMutation({
-    onSuccess: () => {
-      toast.success(lang === "en" ? "Profile updated successfully" : "تم تحديث الملف الشخصي بنجاح");
+    onSuccess: (data) => {
+      // ✅ ROOT FIX (profile email-flow review): truthful branching. The old
+      // handler toasted "Profile updated successfully" for EVERY response —
+      // including the email-change branch (the address is NOT changed until
+      // the new address confirms) and provider-failure responses that used to
+      // hide the outage. The panel stays open on a send failure so the user
+      // can retry without retyping.
+      void utils.auth.me.invalidate();
+      if (data.emailVerificationRequired) {
+        if (data.success) {
+          try { sessionStorage.setItem("elbaz_email_change_pending", "1"); } catch { /* private mode */ }
+          setEmailChangePending(true);
+          setIsEditing(false);
+          toast.success(
+            lang === "en"
+              ? "Saved — we sent a confirmation code to your NEW email. Enter it below (or click the link in the email) to apply the change."
+              : "تم الحفظ — أرسلنا رمز تأكيد إلى بريدك الجديد. أدخل الرمز بالأسفل (أو اضغط الرابط داخل الرسالة) لتثبيت التغيير.",
+            { duration: 8000 },
+          );
+        } else {
+          toast.error(
+            lang === "en"
+              ? "Your other changes were saved, but the confirmation email could NOT be sent. Try saving again."
+              : "تم حفظ تعديلاتك، لكن تعذر إرسال بريد التأكيد للبريد الجديد. حاول الحفظ مرة أخرى.",
+            { duration: 8000 },
+          );
+        }
+        return;
+      }
       setIsEditing(false);
-      globalThis.location.reload();
+      toast.success(lang === "en" ? "Profile updated successfully" : "تم تحديث الملف الشخصي بنجاح");
     },
     onError: (err) => toast.error(err.message),
   });
@@ -148,9 +190,19 @@ export default function Profile() {
 
   const verifyCodeMutation = trpc.auth.verifyEmail.useMutation({
     onSuccess: (data) => {
-      toast.success(data.message || (lang === "en" ? "Email verified!" : "تم تأكيد البريد الإلكتروني!"));
+      // ✅ ROOT FIX: no full reload (it killed the toast + flashed the page).
+      // auth.me invalidation refreshes the verified badge in place, and the
+      // toast now distinguishes a plain verification from an applied email
+      // change (emailChanged — the pending address actually switched).
+      try { sessionStorage.removeItem("elbaz_email_change_pending"); } catch { /* private mode */ }
+      setEmailChangePending(false);
       setVerificationCode("");
-      globalThis.location.reload();
+      void utils.auth.me.invalidate();
+      if (data.emailChanged) {
+        toast.success(lang === "en" ? "Your email address has been changed and verified!" : "تم تغيير بريدك الإلكتروني وتأكيده بنجاح!");
+      } else {
+        toast.success(data.message || (lang === "en" ? "Email verified!" : "تم تأكيد البريد الإلكتروني!"));
+      }
     },
     onError: (err) => toast.error(err.message),
   });
@@ -172,6 +224,9 @@ export default function Profile() {
 
   const handleSaveProfile = () => {
     if (!editName.trim()) { toast.error(lang === "en" ? "Name is required" : "الاسم مطلوب"); return; }
+    // ✅ ROOT FIX: clearing the email field used to be silently dropped by the
+    // backend (email: undefined) with a success toast — tell the truth up front.
+    if (!editEmail.trim() && user?.email) { toast.error(lang === "en" ? "The email cannot be removed — it can only be changed." : "لا يمكن حذف البريد الإلكتروني — يمكن تغييره فقط."); return; }
     if (editEmail.trim() && !isValidEmail(editEmail)) { toast.error(lang === "en" ? "Invalid email format" : "صيغة البريد الإلكتروني غير صحيحة"); return; }
     updateProfileMutation.mutate({ name: editName.trim(), email: editEmail.trim() || undefined });
   };
@@ -326,6 +381,51 @@ export default function Profile() {
                 </div>
               </div>
             )}
+
+            {/* ✅ ROOT FIX (profile email-flow review): email-change confirmation
+                box for VERIFIED users. The change code is delivered to the NEW
+                address; previously the only way to confirm was the email link —
+                the in-page code box existed for unverified accounts only. */}
+            {user.emailVerifiedAt && emailChangePending && (
+              <div className="mt-4 border-t border-border pt-4" data-testid="email-change-confirm">
+                <div className="mb-2 flex items-start gap-2 rounded-lg bg-amber-500/8 border border-amber-500/20 p-3">
+                  <MailWarning className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+                  <p className="text-xs text-amber-500">
+                    {lang === "en"
+                      ? "Your email is NOT changed yet — we sent a confirmation code to your NEW address. Enter it here (or click the link in that email) to apply the change."
+                      : "بريدك لم يتغير بعد — أرسلنا رمز تأكيد إلى بريدك الجديد. أدخل الرمز هنا (أو اضغط الرابط داخل تلك الرسالة) لتثبيت التغيير."}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Input
+                    id="email-change-verification-code"
+                    name="code"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={verificationCode}
+                    onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ""))}
+                    placeholder="123456"
+                    dir="ltr"
+                    className="w-full bg-background text-center text-lg tracking-[0.4em] text-foreground placeholder:text-text-faint focus:border-accent-secondary focus:ring-accent-secondary sm:w-44"
+                    autoComplete="one-time-code"
+                    disabled={verifyCodeMutation.isPending}
+                  />
+                  <Button
+                    onClick={handleVerifyCode}
+                    disabled={verifyCodeMutation.isPending || verificationCode.trim().length !== 6}
+                    variant="outline"
+                    className="shrink-0 gap-2 border-accent-secondary/40 text-accent-secondary hover:bg-accent-secondary/10"
+                  >
+                    {verifyCodeMutation.isPending ? (
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-accent-secondary border-t-transparent" />
+                    ) : (
+                      <MailCheck className="h-4 w-4" />
+                    )}
+                    {lang === "en" ? "Confirm new email" : "تأكيد البريد الجديد"}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -404,7 +504,9 @@ export default function Profile() {
             <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10">
               <Zap className="h-5 w-5 text-amber-500" />
             </div>
-            <p className="text-2xl font-bold text-foreground">{user.role === "admin" ? "Admin" : "Student"}</p>
+            {/* ✅ i18n FIX (profile review): reuse the bilingual roleLabel — the
+                card used to hardcode English "Admin"/"Student" in the Arabic UI. */}
+            <p className="text-2xl font-bold text-foreground">{roleLabel}</p>
             <p className="mt-1 text-xs text-text-muted">{lang === "en" ? "Account Level" : "مستوى الحساب"}</p>
           </div>
         </div>

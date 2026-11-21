@@ -587,9 +587,43 @@ export const localAuthRouter = createRouter({
         }
 
         if (input.email.toLowerCase() !== (ctx.user.email || "").toLowerCase()) {
-          // Send verification email to the NEW address
-          await initiateEmailVerification(ctx.user.id, input.email, ctx.req.headers);
-          return { success: true, emailVerificationRequired: true, message: "A verification link has been sent to your new email address. Please click it to confirm the change." };
+          // ✅ ROOT FIX (profile email-flow review, 2026-11-22): the email-change
+          // branch triggers a REAL provider send to an arbitrary address with no
+          // per-IP limiter — an email-bombing vector. The plain verification
+          // button was already capped; the change path now shares the same
+          // sendVerification bucket (5 sends / 15 min / IP).
+          const ip = getClientIpFromHeaders(ctx.req.headers);
+          await checkRateLimit(ip, "sendVerification");
+
+          // ✅ ROOT FIX: apply name/language FIRST — the old code returned
+          // early here and silently DROPPED the name (and preferredLanguage)
+          // the user saved together with the email change.
+          if (input.name !== undefined || input.preferredLanguage !== undefined) {
+            await db
+              .update(users)
+              .set({
+                ...(input.name !== undefined && { name: input.name }),
+                ...(input.preferredLanguage !== undefined && { preferredLanguage: input.preferredLanguage }),
+                updatedAt: new Date(),
+              })
+              .where(eq(users.id, ctx.user.id));
+          }
+
+          // ✅ ROOT FIX: check the send result — the old code ignored it and
+          // returned "a verification link has been sent" even when the
+          // provider refused, hiding the outage from the user (and admin).
+          // initiateEmailVerification now arms credentials/pendingEmail ONLY
+          // after a successful send, so failure here leaves nothing pending.
+          const result = await initiateEmailVerification(ctx.user.id, input.email, ctx.req.headers);
+          if (!result.success) {
+            if (ctx.user.role === "admin") {
+              return { success: false, emailVerificationRequired: false, message: augmentAdminEmailMessage(result.message, result.providerReason) };
+            }
+            // regular users: CLEANED result — no diagnostics fields (no operational intel)
+            const { needsDomainVerification: _ndv, providerReason: _pr, success: _s, ...safeMessage } = result;
+            return { success: false, emailVerificationRequired: false, message: safeMessage.message };
+          }
+          return { success: true, emailVerificationRequired: true, message: result.message };
         }
       }
 
@@ -602,7 +636,9 @@ export const localAuthRouter = createRouter({
         })
         .where(eq(users.id, ctx.user.id));
 
-      return { success: true };
+      // ✅ ROOT FIX: normalized response shape on every branch so the UI can
+      // branch truthfully (emailVerificationRequired) without type unions.
+      return { success: true, emailVerificationRequired: false, message: "Profile updated." };
     }),
 
   changePassword: authedQuery
