@@ -23,7 +23,9 @@ import {
   ThumbsUp,
   ThumbsDown,
   Square,
+  KeyRound,
 } from "lucide-react";
+import ByokSettingsPanel from "@/components/chatbot/ByokSettingsPanel";
 import { resolveAfterAttempts, shouldAttemptNext, type StreamAttemptOutcome } from "@/lib/chat-stop-flow";
 import {
   captureScreenFrame,
@@ -959,6 +961,12 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   const [streamingContent, setStreamingContent] = useState<string>("");
   const [copiedId, setCopiedId] = useState<string>("");
   const [chatMode, setChatMode] = useState<ChatMode>(loadChatMode);
+  // ✅ BYOK (bring-your-own-key): the chatbot's own-model menu. When open it
+  // replaces the messages area (a small settings screen inside the chat
+  // window); byokActive lights the header key badge so the user always sees
+  // whether their custom model is in charge.
+  const [byokPanelOpen, setByokPanelOpen] = useState(false);
+  const [byokActive, setByokActive] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -1015,6 +1023,22 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     pushTrail(location.pathname);
     authRef.current = user?.role === "admin" ? "admin" : isAuthenticated ? "user" : "guest";
   }, [location.pathname, user?.role, isAuthenticated]);
+
+  // ─── BYOK badge state (fail-open): when the chat opens for an
+  // authenticated user, one cheap GET lights the header key badge if a
+  // custom model is saved AND enabled. Never blocks the chat — any failure
+  // just leaves the badge off. ───
+  useEffect(() => {
+    if (!isOpen || !isAuthenticated) return;
+    let cancelled = false;
+    fetch(`${API_BASE}/api/user-ai-provider`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { success?: boolean; config?: { enabled?: boolean } | null } | null) => {
+        if (!cancelled && data?.success) setByokActive(!!data.config?.enabled);
+      })
+      .catch(() => { /* badge stays off — the panel refetches on open */ });
+    return () => { cancelled = true; };
+  }, [isOpen, isAuthenticated]);
 
   // ─── Typing indicator visibility (handles enter/exit animations) ───
   const [typingVisible, setTypingVisible] = useState(false);
@@ -2100,6 +2124,27 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                       >
                         <Brain className="h-[18px] w-[18px]" />
                       </button>
+                      {/* ─── BYOK: the user's own model menu — glows cyan while a
+                           custom model is saved AND active, so the user always
+                           knows which engine is answering ─── */}
+                      <button
+                        onClick={() => setByokPanelOpen((v) => !v)}
+                        disabled={isLoading}
+                        aria-pressed={byokPanelOpen}
+                        className={
+                          "flex h-8 w-8 items-center justify-center rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed " +
+                          (byokActive && !byokPanelOpen
+                            ? "text-cyan-300 drop-shadow-[0_0_7px_rgba(6,182,212,0.75)]"
+                            : byokPanelOpen
+                              ? "text-cyan-300 bg-cyan-400/10"
+                              : "text-slate-500 hover:text-cyan-300")
+                        }
+                        title={byokActive
+                          ? (lang === "ar" ? "النموذج الخاص بك مفعّل — اضغط للإعدادات" : "Your own model is active — click for settings")
+                          : (lang === "ar" ? "استخدم نموذجك الخاص ومفتاح API" : "Use your own model and API key")}
+                      >
+                        <KeyRound className="h-4 w-4" />
+                      </button>
                       {/* Clear chat button */}
                       <button
                         onClick={clearChat}
@@ -2128,6 +2173,15 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                   </div>
                 </div>
 
+                {/* ─── BYOK panel — replaces the messages area when open ─── */}
+                {byokPanelOpen ? (
+                  <ByokSettingsPanel
+                    lang={lang}
+                    onClose={() => setByokPanelOpen(false)}
+                    onActiveChange={setByokActive}
+                  />
+                ) : (
+                <>
                 {/* ─── Messages Area ─── */}
                 <div ref={chatContainerRef} onScroll={handleMessagesScroll} role="log" aria-label={lang === "ar" ? "\u0631\u0633\u0627\u0626\u0644 \u0627\u0644\u0645\u062d\u0627\u062f\u062b\u0629" : "Chat messages"} aria-live="polite" className="flex-1 overflow-y-auto overscroll-contain px-4 py-3 space-y-4 chatbot-messages">
                   {messages.map((msg) => (
@@ -2250,6 +2304,8 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                   onSend={sendMessage}
                   onStop={stopGeneration}
                 />
+                </>
+                )}
               </>
             )}
           </div>

@@ -26,6 +26,7 @@ import {
   uniqueIndex,
   foreignKey,
 } from "drizzle-orm/mysql-core";
+import { users } from "./auth.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AI Providers (admin-managed)
@@ -106,3 +107,55 @@ export const aiModels = mysqlTable(
 
 export type AiProvider = typeof aiProviders.$inferSelect;
 export type AiModel = typeof aiModels.$inferSelect;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// User BYOK provider (bring-your-own-key — optional per-user override)
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * One optional custom AI provider per user. When set and enabled, the chatbot
+ * tries the user's own OpenAI-compatible endpoint (their key, their model)
+ * BEFORE the platform-managed provider cascade; any failure falls straight
+ * back to the platform chain, so the user's setup can never make the chatbot
+ * LESS available than the platform baseline.
+ *
+ * SECURITY:
+ *   - apiKeyEnc holds an AES-256-GCM ciphertext (api/lib/byok-crypto.ts),
+ *     derived from APP_SECRET — never a plaintext key.
+ *   - The key is write-only: every API returns only a masked last-4 preview.
+ *   - baseUrl is user-writable, so every outbound fetch re-checks the
+ *     shared isPublicProviderUrl SSRF guard (fail-closed) and the REST layer
+ *     validates it at save time.
+ */
+export const userAiProviders = mysqlTable(
+  "userAiProviders",
+  {
+    id: bigint("id", { mode: "number", unsigned: true }).primaryKey().autoincrement(),
+    userId: bigint("userId", { mode: "number", unsigned: true }).notNull(),
+    /** Catalog slug from api/lib/chatbot-byok.ts (openrouter | groq | … | custom). */
+    provider: varchar("provider", { length: 48 }).notNull().default("custom"),
+    /** OpenAI-compatible API root the server will call. */
+    baseUrl: varchar("baseUrl", { length: 255 }).notNull(),
+    /** Provider-native model id chosen by the user. */
+    modelId: varchar("modelId", { length: 190 }).notNull(),
+    /** AES-256-GCM ciphertext (v1.iv.tag.ct) — the plaintext key never rests. */
+    apiKeyEnc: text("apiKeyEnc").notNull(),
+    /** Kill switch without losing the stored config. */
+    enabled: boolean("enabled").notNull().default(true),
+    lastTestOk: boolean("lastTestOk"),
+    lastTestError: varchar("lastTestError", { length: 400 }),
+    lastTestedAt: timestamp("lastTestedAt", { mode: "date" }),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("user_ai_providers_user_unique").on(table.userId),
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [users.id],
+      name: "fk_user_ai_providers_user",
+    }).onDelete("cascade").onUpdate("cascade"),
+  ]
+);
+
+export type UserAiProvider = typeof userAiProviders.$inferSelect;
+export type InsertUserAiProvider = typeof userAiProviders.$inferInsert;

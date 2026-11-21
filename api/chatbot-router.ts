@@ -21,6 +21,7 @@ import { finalizeReply, opaqueModelKey } from "./lib/finalize-reply.js";
 // ✅ v1.1.2: deterministic citation compliance — the stream terminator seam
 // appends the pinned problem's citation when the model omitted it.
 import { enforcePinnedCitation } from "./lib/chatbot-saadat.js";
+import { getUserByokConfig } from "./lib/chatbot-byok.js";
 import { chatbotError, logSafeError, scrubCredentials, type ChatbotErrorCode } from "./lib/chatbot-errors.js";
 import { getClientIpFromHono as getChatbotIp } from "./lib/client-ip";
 import { getImageQuotaUsed, incrementImageQuota, DAILY_IMAGE_LIMIT, DAILY_SCREEN_FRAME_LIMIT, visionQuotaLane } from "./lib/image-quota.js";
@@ -444,6 +445,11 @@ chatbotRouter.post("/", async (c) => {
       // whole cascade — the walk, every lane and every in-flight fetch now
       // observe it (abort-utils composition), not just the persistence loop.
       abortSignal: c.req.raw.signal,
+      // ✅ BYOK: the authenticated user's own provider (chatbot key menu) is
+      // resolved server-side from their encrypted row — tried FIRST in the
+      // cascade, falling back to the platform models on any failure. A null
+      // lookup (no config / disabled / corrupt) changes nothing downstream.
+      byok: chatUser ? await getUserByokConfig(chatUser.id).catch(() => null) : null,
     };
     let result = await getChatResponse(chatRequest);
     let persistRound = 0;
@@ -564,6 +570,10 @@ chatbotRouter.post("/stream", async (c) => {
   }, SSE_ENDPOINT_HARD_CAP_MS);
 
   const encoder = new TextEncoder();
+  // ✅ BYOK: the authenticated user's own provider resolved ONCE for the whole
+  // walk — tried on the FIRST round only (rounds ≥ 2 pass preferLegacy and
+  // go straight to the platform backbone), falling back on any failure.
+  const userByok = chatUser ? await getUserByokConfig(chatUser.id).catch(() => null) : null;
   // Persistence escalation: rounds ≥ 2 skip the dynamic router entirely and
   // reach the legacy backbone (Groq/NVIDIA) directly — a storming dynamic
   // pool must never re-burn every round's walk budget.
@@ -585,6 +595,7 @@ chatbotRouter.post("/stream", async (c) => {
     // ✅ ARCH-AUDIT FIX: the walk sees the endpoint's abort signal — rounds
     // abandoned by the hard cap / client disconnect stop burning quota.
     abortSignal: timeoutController.signal,
+    byok: userByok,
   });
 
   // Server-side accumulation of the assistant text — the normalized SSE

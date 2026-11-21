@@ -166,6 +166,10 @@ app.route("/api/webhooks/paymob", paymobWebhookAlias);
 app.route("/api/chatbot", chatbotRouter);
 app.route("/api/google-auth", googleAuthRouter);
 
+// ── BYOK (bring-your-own-key) management for the chatbot key menu ──
+import { userAiProviderRouter } from "./user-ai-provider-router.js";
+app.route("/api/user-ai-provider", userAiProviderRouter);
+
 // ── Notification polling (bell + YouTube episode watcher) at /api/notifications/* ──
 app.route("/api/notifications", notificationRoute);
 

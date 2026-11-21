@@ -43,6 +43,7 @@ import { logger } from "./logger.js";
 import { routeChatCompletion, isWebPluginDisabled, disableWebPluginFor, WEB_PLUGIN_BODY, isOpenRouterDailyLimited, noteOpenRouterDailyLimit, isChatLaneModel, isDiscoveredModelId } from "./ai-router.js";
 import { withCallerAbort } from "./abort-utils.js";
 import { stripThinkBlocks } from "./think-filter.js";
+import { tryByokChat, type ByokConfig } from "./chatbot-byok.js";
 import { buildAugmentedTextMessages, buildVisionFailureMessages, readImageViaVisionModels } from "./chatbot-vision.js";
 
 // ════════════════════════════════════════════════════════════════════════
@@ -958,6 +959,12 @@ export async function getChatResponse(request: {
    *  checked between lanes and between attempts so an abandoned request
    *  (client gone / endpoint hard cap) stops burning provider quota. */
   abortSignal?: AbortSignal;
+  /** ✅ BYOK (bring-your-own-key): the authenticated user's own OpenAI-
+   *  compatible provider (api/lib/chatbot-byok.ts). When present and enabled,
+   *  the user's endpoint is tried FIRST with the same system prompt; any
+   *  failure falls straight back into the platform cascade below. Text lane
+   *  only — vision requests keep the platform two-pass pipeline. */
+  byok?: ByokConfig | null;
 }): Promise<{ success: boolean; reply?: string; error?: string; model?: string }> {
   if (request.vision) return getVisionResponse(request);
 
@@ -972,6 +979,7 @@ export async function getChatResponse(request: {
     screenCapture: request.screenCapture,
     preferLegacy: request.preferLegacy,
     abortSignal: request.abortSignal,
+    byok: request.byok,
   });
 }
 
@@ -988,6 +996,8 @@ async function runTextCascade(request: {
   /** ✅ TOKEN OPTIMIZATION (v3.6.0): catalog block style — see getChatResponse. */
   catalogMode?: "full" | "lite";
   historySummary?: string;
+  /** ✅ BYOK: see getChatResponse — user-supplied provider tried first. */
+  byok?: ByokConfig | null;
   /** ✅ SCREEN CONTEXT: validated user-screen snapshot (chatbot-screen.ts). */
   screen?: ParsedScreenContext;
   /** LIVE SCREEN: last user image is a frame of the user's real screen —
@@ -1043,6 +1053,29 @@ async function runTextCascade(request: {
   // the injected results. False negatives err safe: the trigger list is
   // generous and any doubt keeps grounding ON (legacy behavior).
   const webSearch = mode === "thinking" && webIntentFromMessages(request.messages);
+
+  // ─── BYOK LANE (bring-your-own-key) — the user's own provider first ──────
+  // Product contract: platform models remain the baseline the owner manages;
+  // a user who registered their own endpoint (chatbot key menu) gets that
+  // model FIRST, with the same system prompt — Saadat identity, methodology,
+  // citations and the deterministic citation enforcement all apply verbatim.
+  // Any failure (bad key, dead endpoint, empty reply) falls straight into the
+  // platform cascade below, so availability can only increase. Vision runs
+  // the platform two-pass pipeline (see getChatResponse) — not here.
+  // Persistence escalation (preferLegacy) skips this lane too: it already
+  // had its shot this request — retry rounds go straight to the resilient
+  // platform backbone instead of re-burning every round on a dead endpoint.
+  if (request.byok && !request.vision && !request.preferLegacy) {
+    const byokResult = await tryByokChat({
+      config: request.byok,
+      messages: request.messages,
+      systemPrompt,
+      tuning,
+      abortSignal: request.abortSignal,
+    });
+    if (byokResult) return finishSaadatCitation(byokResult.reply, byokResult.model);
+    if (request.abortSignal?.aborted) return buildAllTiersFailedResponse(request.language);
+  }
 
   // ─── DYNAMIC ROUTER (v9) — admin-managed providers first ──────────────
   // Any provider the admin configured in the dashboard (with a valid key and

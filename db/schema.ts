@@ -88,8 +88,11 @@ export {
   // AI Router (dynamic multi-provider chatbot gateway)
   aiProviders,
   aiModels,
+  userAiProviders,
   type AiProvider,
   type AiModel,
+  type UserAiProvider,
+  type InsertUserAiProvider,
 } from "./schema/ai.js";
 
 export {

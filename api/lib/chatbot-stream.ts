@@ -63,6 +63,7 @@ import {
   validateOpenRouterKey,
 } from "./chatbot.js";
 import { routeChatStream, buildUpstreamSSETransform, isWebPluginDisabled, disableWebPluginFor, WEB_PLUGIN_BODY, noteOpenRouterDailyLimit, isChatLaneModel, isDiscoveredModelId } from "./ai-router.js";
+import { tryByokStream, type ByokConfig } from "./chatbot-byok.js";
 import { webIntentFromMessages } from "./chatbot-intent.js";
 import { reportTokenUsage } from "./token-usage.js";
 import { headerTimeoutSignal } from "./abort-utils.js";
@@ -941,6 +942,12 @@ export async function getStreamResponse(request: {
   /** ✅ ARCH-AUDIT FIX: forwarded to the dynamic walk — a walk abandoned by
    *  the endpoint (hard cap / client disconnect) stops burning quota. */
   abortSignal?: AbortSignal;
+  /** ✅ BYOK (bring-your-own-key): the authenticated user's own OpenAI-
+   *  compatible provider (api/lib/chatbot-byok.ts). Tried FIRST with the same
+   *  system prompt before the platform walk; any failure falls straight back
+   *  into the platform cascade. Text lane only (vision keeps the platform
+   *  two-pass pipeline). */
+  byok?: ByokConfig | null;
 }): Promise<{ stream: ReadableStream<Uint8Array>; model: string } | { error: string }> {
   // ── TWO-PASS VISION gate (BEFORE the dynamic router!) ──
   // Image requests follow the product policy: a vision model READS the image
@@ -949,6 +956,32 @@ export async function getStreamResponse(request: {
   // reasoning lane with the persona prompt, and a vision model is never the
   // first choice to write the final answer.
   if (request.vision) return await getVisionStreamResponse(request);
+
+  // ─── BYOK LANE (bring-your-own-key) — the user's own provider first ──────
+  // Same contract as runTextCascade: the user's model carries the identical
+  // system prompt (Saadat identity + citations intact — the router's
+  // terminator seam enforces the pinned citation on BYOK winners exactly as
+  // it does for platform winners). Failure falls through to the platform
+  // walk below; nothing about the platform baseline changes. Persistence
+  // escalation (preferLegacy, walk rounds ≥ 2) skips the lane — it already
+  // had its shot this request, retries go straight to the platform backbone.
+  if (request.byok && !request.vision && !request.preferLegacy) {
+    const routerMode: "thinking" | "instant" = request.mode === "instant" ? "instant" : "thinking";
+    const byokTuning = MODE_TUNING[routerMode];
+    const byokSignal = extractRoutingSignal(request.messages);
+    const byokSaadatContext = buildSaadatContextBlock(byokSignal, request.language === "ar" ? "ar" : "en", routerMode);
+    const byokResult = await tryByokStream({
+      config: request.byok,
+      messages: request.messages,
+      systemPrompt: getSystemPrompt(request.language, routerMode, request.catalog, false, request.historySummary, request.screen, request.screenCapture, byokSignal, false, request.catalogMode, byokSaadatContext),
+      tuning: byokTuning,
+      abortSignal: request.abortSignal,
+    });
+    if (byokResult) return { stream: byokResult.stream, model: byokResult.model };
+    // Caller abort mid-BYOK: same literal contract as the provider sweepers
+    // below (streamGroqProvider et al.) — the endpoint loop stops on it.
+    if (request.abortSignal?.aborted) return { error: "aborted" };
+  }
 
   // ─── DYNAMIC ROUTER (v9) — admin-managed providers first ─────────────
   // Streams from any provider the admin configured (priority → tier order,

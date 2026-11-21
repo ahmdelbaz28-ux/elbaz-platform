@@ -1293,6 +1293,39 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         logger.warn("[DB] v15 growth migration warning", { error: (err as Error).message });
       }
 
+      // ── v16 feature: userAiProviders table (BYOK — bring-your-own-key) ──
+      // One optional custom OpenAI-compatible provider per user. When set and
+      // enabled, the chatbot tries the user's own endpoint (their key, their
+      // model) BEFORE the platform cascade; any failure falls straight back to
+      // the platform chain. apiKeyEnc is AES-256-GCM (byok-crypto.ts) — the
+      // plaintext key never rests and never leaves the server after save.
+      // Idempotent.
+      try {
+        await conn.query(`
+          CREATE TABLE IF NOT EXISTS \`userAiProviders\` (
+            \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            \`userId\` BIGINT UNSIGNED NOT NULL,
+            \`provider\` VARCHAR(48) NOT NULL DEFAULT 'custom',
+            \`baseUrl\` VARCHAR(255) NOT NULL,
+            \`modelId\` VARCHAR(190) NOT NULL,
+            \`apiKeyEnc\` TEXT NOT NULL,
+            \`enabled\` BOOLEAN NOT NULL DEFAULT TRUE,
+            \`lastTestOk\` BOOLEAN NULL,
+            \`lastTestError\` VARCHAR(400) NULL,
+            \`lastTestedAt\` TIMESTAMP NULL,
+            \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            \`updatedAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (\`id\`),
+            UNIQUE INDEX \`user_ai_providers_user_unique\` (\`userId\`),
+            CONSTRAINT \`fk_user_ai_providers_user\` FOREIGN KEY (\`userId\`) REFERENCES \`users\` (\`id\`)
+              ON DELETE CASCADE ON UPDATE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        logger.info("[DB] v16 userAiProviders table verified");
+      } catch (err) {
+        logger.warn("[DB] v16 userAiProviders migration warning", { error: (err as Error).message });
+      }
+
       // ── Admin password sync (existing deployments) ──
       // ✅ SECURITY FIX (audit run-1, db-init.admin-password-env-sync):
       // ADMIN_PASSWORD is SEED-ONLY. Previously every boot re-synced the admin
