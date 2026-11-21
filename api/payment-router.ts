@@ -56,11 +56,21 @@ async function applyPromoCode(
   }
 
   // ✅ Per-user usage cap (previously only enforced on the unused /api/promo path)
+  // ✅ SECURITY FIX (audit run-1, fp.payment-promo-peruser-cap-snapshot-race):
+  // this count is now a LOCKING read (FOR UPDATE). Under REPEATABLE READ the
+  // transaction's snapshot is fixed by its FIRST read (the course select before
+  // the promo-row lock wait), so a plain consistent read here could not see a
+  // concurrent checkout's just-committed usage row — two simultaneous checkouts
+  // both passed the cap. A locking read always sees the latest committed rows
+  // at execution time under ANY isolation level, and it serializes concurrent
+  // cap checkers per (promoCodeId, userId). The global-cap FOR UPDATE above is
+  // unaffected.
   const maxPerUser = promo.maxUsesPerUser ?? 1;
   const userUsageRows = await tx
     .select({ id: promoCodeUsage.id })
     .from(promoCodeUsage)
-    .where(and(eq(promoCodeUsage.promoCodeId, promo.id), eq(promoCodeUsage.userId, userId)));
+    .where(and(eq(promoCodeUsage.promoCodeId, promo.id), eq(promoCodeUsage.userId, userId)))
+    .for("update");
   if (userUsageRows.length >= maxPerUser) return null;
 
   let discountAmount: number;

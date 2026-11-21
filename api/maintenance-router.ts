@@ -91,8 +91,29 @@ maintenanceRouter.get("/maintenance/dump", async (c) => {
       const [rows] = await conn.query<RowDataPacket[]>(`SELECT * FROM ${name}`);
       if (rows.length > 0) {
         const cols = Object.keys(rows[0] as Record<string, unknown>).map((k) => sqlEscapeId(k)).join(", ");
+        // ✅ SECURITY FIX (audit run-1, fp.dump.sqlEscape.json-objectToValues):
+        // mysql2 decodes JSON columns to parsed JS objects/arrays (the pool never
+        // sets jsonStrings), and sql-escaper renders a plain object as a bare
+        // `k` = v pair and an array as (v1, v2) — non-scalar fragments inside a
+        // VALUES tuple that make every affected INSERT un-restorable while the
+        // gzip+CREATE TABLE integrity gate stays green. Stringify object/array
+        // values (excluding Date/Buffer) so they emit valid quoted scalars.
+        // Do NOT set jsonStrings:true pool-wide: twofa-router/promo-router read
+        // these columns back as parsed values.
+        const dumpScalar = (v: unknown): string | number | boolean | Date | null | Buffer => {
+          if (
+            v !== null &&
+            typeof v === "object" &&
+            !(v instanceof Date) &&
+            !Buffer.isBuffer(v) &&
+            !(v instanceof Uint8Array)
+          ) {
+            return JSON.stringify(v);
+          }
+          return v as string | number | boolean | Date | null | Buffer;
+        };
         const values = (rows as Array<Record<string, unknown>>).map(
-          (r) => `(${Object.values(r).map((v) => sqlEscape(v as string | number | boolean | Date | null | Buffer)).join(", ")})`
+          (r) => `(${Object.values(r).map((v) => sqlEscape(dumpScalar(v))).join(", ")})`
         );
         // Batch every 200 rows so a huge table never becomes one giant statement.
         for (let i = 0; i < values.length; i += 200) {

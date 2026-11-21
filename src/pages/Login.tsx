@@ -170,6 +170,12 @@ export default function Login() {
       const data = await res.json();
       if (data.success && data.user) {
         trackPlatform("google_login_success");
+        // ✅ SECURITY FIX (audit run-1, auth.google-login.query-cache-purge-missing):
+        // a Google sign-in that replaces a different identity must purge that
+        // identity's cached private queries (persisted copy + in-memory cache) —
+        // same contract the local-login path enforces below.
+        try { localStorage.removeItem("ELBAZ_QUERY_CACHE"); } catch { /* ignore */ }
+        queryClient.clear();
         if (data.user?.id && data.user?.username) identifyUser(data.user.id, data.user.username, { role: data.user.role || "user", loginMethod: "google" });
         toast.success(lang === "ar" ? "تم تسجيل الدخول بنجاح" : "Logged in successfully");
         navigate(safeRedirectTarget(), { replace: true });
@@ -182,7 +188,7 @@ export default function Login() {
       const errMsg = lang === "ar" ? "تعذر الاتصال بالخادم" : "Could not connect to server";
       setError(errMsg); toast.error(errMsg);
     } finally { setGoogleLoading(false); }
-  }, [lang, navigate]);
+  }, [lang, navigate, queryClient]);
 
   useEffect(() => {
     if (!googleClientId) return;

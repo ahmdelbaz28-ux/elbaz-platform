@@ -145,6 +145,13 @@ async function processWebhookInTransaction(
     return c.json({ ok: true, message: "Transaction not found" }, 200);
   }
 
+  // ✅ SECURITY FIX (audit run-1, fp.paymob-webhook-terminal-guard-blocks-post-
+  // failure-success): obj.pending is part of the Paymob callback contract
+  // (wallet/kiosk settle as pending first) — a pending event is NOT a terminal
+  // outcome and must never write the terminal 'failed' status that the guard
+  // below would then use to ignore a later genuine success.
+  const isPending = obj.pending === true && !isSuccess && !isRefunded && !isVoided;
+
   // ── Step 3: Skip if already processed (idempotency) ──
   if (paymentRecord.status === "completed" && !isRefunded && !isVoided) {
     logger.info(`[Paymob Webhook] Payment already completed, skipping`, { merchantOrderId });
@@ -152,13 +159,21 @@ async function processWebhookInTransaction(
   }
 
   // ✅ SECURITY FIX (audit run-1, paymob-webhook.stale-success-reactivates-
-  // refunded-enrollment): terminal states must stay terminal. A success
-  // callback for a payment that was already refunded/voided/failed (e.g. a
-  // redelivered older success notification) must NOT flip the row back to
-  // completed and re-grant the enrollment — the money was already returned.
-  // Only refund/void events may follow a completed payment.
+  // refunded-enrollment): refunded/voided states must stay terminal — a success
+  // callback for a refunded/voided payment must NOT flip the row back to
+  // completed (the money was already returned).
+  // ✅ SECURITY FIX (audit run-1, fp.paymob-webhook-terminal-guard-blocks-post-
+  // failure-success): 'failed' is no longer treated as order-terminal for
+  // success callbacks. A declined/pending transaction previously wrote
+  // transaction-level 'failed' into order-level terminal state, so the later
+  // GENUINE success for the same merchant_order_id (multi-attempt wallet
+  // orders, pending-first settlement) was permanently ignored — a paid
+  // customer got no automatic enrollment and no payment-row recovery path
+  // (approve/reject are manual-only). A success callback is HMAC-verified and
+  // amount-checked by the steps below, so completing a previously failed row
+  // is exactly the money path working; refunded/voided remain terminal.
   if (
-    (paymentRecord.status === "refunded" || paymentRecord.status === "voided" || paymentRecord.status === "failed") &&
+    (paymentRecord.status === "refunded" || paymentRecord.status === "voided") &&
     isSuccess && !isRefunded && !isVoided
   ) {
     logger.warn(`[Paymob Webhook] Ignoring success callback for terminal-status payment`, {
@@ -175,7 +190,10 @@ async function processWebhookInTransaction(
   }
 
   // ── Step 5: Update payment status ──
-  const newStatus = computeNewPaymentStatus(isSuccess, isRefunded, isVoided);
+  // ✅ SECURITY FIX (audit run-1, fp.paymob-webhook-terminal-guard-blocks-post-
+  // failure-success): a pending event keeps the row 'pending' (non-terminal)
+  // instead of writing the terminal 'failed' that blocked later success.
+  const newStatus = isPending ? "pending" : computeNewPaymentStatus(isSuccess, isRefunded, isVoided);
 
   await tx
     .update(payments)
@@ -263,6 +281,7 @@ const handlePaymobWebhook = async (c: Context) => {
   const isSuccess = obj.success === true;
   const isRefunded = obj.is_refunded === true;
   const isVoided = obj.is_voided === true;
+
 
   if (!merchantOrderId) {
     logger.warn("[Paymob Webhook] Missing merchant_order_id");

@@ -36,7 +36,12 @@ export default function ForgotPassword() {
       trackPlatform("forgot_password_requested");
       setStep("sent");
       toast.success(data.message);
-      if (data.deliveryWarning) setDeliveryWarning(data.deliveryWarning);
+      // ✅ SECURITY FIX (audit run-1): deliveryWarning removed from the API
+      // response — it was a registered-vs-unknown email enumeration oracle on
+      // the delivery-failure path. Delivery failures are logged server-side.
+      if (typeof data.deliveryWarning === "string" && data.deliveryWarning.length > 0) {
+        setDeliveryWarning(data.deliveryWarning);
+      }
     },
     onError: (err) => {
       trackPlatform("forgot_password_error");

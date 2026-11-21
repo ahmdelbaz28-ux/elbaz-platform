@@ -1,5 +1,6 @@
 import * as cookie from "cookie";
 import { eq, sql } from "drizzle-orm";
+import { evictUserAuthCache } from "./context";
 import { Session } from "@contracts/constants";
 import { getSessionCookieOptions, AUTH_FLAG_COOKIE_NAME } from "./lib/cookies";
 import { createRouter, authedQuery } from "./middleware";
@@ -17,6 +18,12 @@ export const authRouter = createRouter({
         .update(users)
         .set({ tokenVersion: sql`${users.tokenVersion} + 1` })
         .where(eq(users.id, ctx.user.id));
+      // ✅ SECURITY FIX (audit run-1, fp-auth:session-logout-missing-auth-cache-evict):
+      // every tokenVersion bump MUST evict the userId:tokenVersion-keyed auth
+      // cache immediately — without this, a revoked JWT keeps authenticating
+      // from the cache-first read for up to USER_CACHE_TTL_MS (30s). All six
+      // sibling revocation sites already do this.
+      evictUserAuthCache(ctx.user.id);
     } catch {
       // Never block cookie clearing on a DB hiccup.
     }

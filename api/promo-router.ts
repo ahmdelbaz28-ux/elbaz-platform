@@ -3,7 +3,7 @@ import { z } from "zod";
 import { db } from "./queries/connection.js";
 import { resolveOptionalUser } from "./context.js";
 import { eq, and, sql, lte, gte, isNull, or, count } from "drizzle-orm";
-import { rateLimit } from "./lib/rate-limiter.js";
+import { rateLimit, rateLimitPerWindow } from "./lib/rate-limiter.js";
 import { getClientIpFromHono } from "./lib/client-ip.js";
 import { env } from "./lib/env.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -221,7 +221,11 @@ promoRouter.get("/validate/:code", async (c) => {
   // the trust-ordered client IP, not the client-chosen leftmost XFF entry.
   const probeIp = getClientIpFromHono(c);
   try {
-    await rateLimit(`promo:validate:${session.userId}:${probeIp}`, 1);
+    // ✅ SECURITY FIX (audit run-1, fp.promo-validate-rate-cost-vs-window-cap):
+    // the old call passed 1 as rateLimit's consume() COST against the shared
+    // 300-capacity bucket — an effective ~300 probes/min. The intended
+    // 1-probe-per-60s window is now the limiter's actual BUCKET CAPACITY.
+    await rateLimitPerWindow("promo-validate", `${session.userId}:${probeIp}`, 1, 60);
   } catch {
     return c.json({ error: "طلبات كثيرة جداً، حاول لاحقاً" }, 429);
   }

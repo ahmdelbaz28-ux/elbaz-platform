@@ -75,6 +75,37 @@ async function rateLimit(
 // use the shared rateLimiter via checkRateLimit() which uses a single instance
 // with automatic cleanup of expired entries.
 
+// ✅ SECURITY FIX (audit run-1, fp.promo-validate-rate-cost-vs-window-cap):
+// rateLimit()'s 2nd argument is rate-limiter-flexible consume() pointsToConsume —
+// the PER-REQUEST COST — while the shared bucket's capacity is
+// env.RATE_LIMIT_MAX_REQUESTS (default 300/window). Call sites that pass an
+// intended per-window cap there actually get "300 requests at cost N per
+// window" (the audit finding: promo validate passed 1 → ~300 probes/min).
+// This helper encodes the intended cap as the BUCKET CAPACITY of a dedicated
+// per-purpose limiter whose consume cost is ALWAYS 1. Instances are cached per
+// purpose (never constructed per request — same leak lesson as above).
+const perWindowLimiters = new Map<string, RateLimiterMemory>();
+
+export async function rateLimitPerWindow(
+  purpose: string,
+  key: string,
+  windowCap: number,
+  windowSec: number
+): Promise<RateLimiterRes> {
+  let limiter = perWindowLimiters.get(purpose);
+  if (!limiter) {
+    const { RateLimiterMemory: RLFMemory } = await import("rate-limiter-flexible");
+    limiter = new RLFMemory({
+      keyPrefix: `${purpose}:`,
+      points: Math.max(1, Math.floor(windowCap)),
+      duration: Math.max(1, Math.floor(windowSec)),
+      blockDuration: 0, // reject for the remainder of the window; no extra blocking
+    });
+    perWindowLimiters.set(purpose, limiter);
+  }
+  return limiter.consume(key, 1);
+}
+
 type RateLimitAction = "login" | "register" | "forgotPassword" | "resetPassword" | "sendVerification" | "verifyEmail" | "quizAttempt" | "api";
 
 // 🔒 SECURITY FIX (Task ID 6): Per-action rate limits for sensitive auth flows.

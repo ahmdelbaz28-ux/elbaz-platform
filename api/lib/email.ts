@@ -44,7 +44,14 @@ function getFrontendUrl(headers?: Headers): string {
   const forwardedHost = headers.get("x-forwarded-host");
   const host = forwardedHost || headers.get("host");
   if (!host) return env.FRONTEND_URL;
-  const protocol = headers.get("x-forwarded-proto") || (host.includes("localhost") ? "http" : "https");
+  // ✅ SECURITY FIX (audit run-1, email/getActiveFrontendUrl-x-forwarded-proto-http):
+  // the scheme previously came verbatim from the client-forwardable
+  // x-forwarded-proto header — a caller could mint http:// token-bearing reset
+  // links for allowlisted hosts. The scheme is now decided by the HOST class
+  // only: localhost keeps http (dev), every other host is pinned to https.
+  // getActiveFrontendUrl still validates the hostname against the exact
+  // operator allowlist.
+  const protocol = host.includes("localhost") ? "http" : "https";
   return getActiveFrontendUrl(`${protocol}://${host}`);
 }
 
@@ -232,13 +239,15 @@ export async function initiatePasswordReset(email: string, headers?: Headers): P
     // reset token in the JSON response — a complete account-takeover primitive.
     // The reset link is now ONLY delivered via email.
     logger.warn(`[Email/Recovery] Password reset email FAILED — a reset token was minted and is valid for ${RESET_TOKEN_EXPIRY_MINUTES} minutes (token hash prefix logged for correlation only)`, { to: maskEmail(user.email), tokenHashPrefix: tokenHash.slice(0, 8) });
-    return {
-      success: true,
-      message: genericMessage,
-      deliveryWarning: sendResult.needsDomainVerification
-        ? "Email delivery is currently limited (email domain not verified). Please contact support to reset your password."
-        : "Password reset email could not be delivered. Please try again later or contact support.",
-    };
+    // ✅ SECURITY FIX (audit run-1, fp-auth:forgot-password-delivery-warning-enumeration):
+    // the uniform-response invariant stated above (identical shape whether the
+    // email exists or not) must hold on the delivery-failure branch too — the
+    // extra deliveryWarning field existed ONLY on the registered-email path,
+    // giving an anonymous caller a registered-vs-unknown oracle during any
+    // delivery-failure state (missing key, unverified domain, provider outage).
+    // The failure is logged server-side (above) instead of differentiated in
+    // the response.
+    return { success: true, message: genericMessage };
   }
 
   return { success: true, message: genericMessage };

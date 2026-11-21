@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { initiateGoogleOAuth } from "@/lib/google-auth";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -71,6 +72,7 @@ function describeRegistrationError(err: any, lang: "ar" | "en"): string {
 
 export default function Register() {
   const { t, lang } = useTranslation();
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [username, setUsername] = useState("");
@@ -119,6 +121,11 @@ export default function Register() {
       const data = await res.json();
       if (data.success && data.user) {
         trackPlatform("google_register_success");
+        // ✅ SECURITY FIX (audit run-1, auth.google-login.query-cache-purge-missing):
+        // a Google sign-up that establishes a NEW identity must not inherit the
+        // previous account's cached private queries (persisted + in-memory).
+        try { localStorage.removeItem("ELBAZ_QUERY_CACHE"); } catch { /* ignore */ }
+        queryClient.clear();
         identifyUser(data.user.id, data.user.username, { role: "user", loginMethod: "google" });
         toast.success(lang === "ar" ? "تم إنشاء الحساب بنجاح" : "Account created successfully");
         navigate("/", { replace: true });
@@ -130,7 +137,7 @@ export default function Register() {
       const errMsg = lang === "ar" ? "تعذر الاتصال بالخادم" : "Could not connect to server";
       setError(errMsg); toast.error(errMsg);
     } finally { setGoogleLoading(false); }
-  }, [lang, navigate]);
+  }, [lang, navigate, queryClient]);
 
   useEffect(() => {
     if (!googleClientId) return;
@@ -177,6 +184,10 @@ export default function Register() {
   const registerMutation = trpc.auth.register.useMutation({
     onSuccess: (data) => {
       trackPlatform("register_success");
+      // ✅ SECURITY FIX (audit run-1): local registration establishing a new
+      // identity also purges the previous account's cached private queries.
+      try { localStorage.removeItem("ELBAZ_QUERY_CACHE"); } catch { /* ignore */ }
+      queryClient.clear();
       try { localStorage.removeItem("elbaz_ref"); } catch { /* ignore */ }
       if (data?.user?.id && data?.user?.username) identifyUser(data.user.id, data.user.username, { role: "user", isNewUser: true });
       if (isNativePlatform() && data?.token) setStoredToken(data.token);
