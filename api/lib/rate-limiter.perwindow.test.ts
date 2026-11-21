@@ -14,7 +14,7 @@ describe("rateLimitPerWindow (per-window cap semantics)", () => {
     const { rateLimitPerWindow } = await import("./rate-limiter.js");
     const key = `qa:${Date.now()}`;
     const first = await rateLimitPerWindow("qa-window-test", key, 1, 60);
-    expect(first.residualPoints ?? first.remainingPoints ?? 0).toBeLessThanOrEqual(1);
+    expect(first.consumedPoints).toBe(1);
     await expect(rateLimitPerWindow("qa-window-test", key, 1, 60)).rejects.toThrow();
   });
 
