@@ -337,12 +337,16 @@ function addCacheHeaders(newHeaders, url) {
     return;
   }
 
-  // HTML pages: short cache at edge (30 seconds) for fast navigation
-  // while still allowing updates to propagate quickly
+  // HTML shell: NEVER cache at the edge — not even briefly.
+  // ROOT CURE (2026-11-22, owner report "الكمبيوتر يفتح نسخة قديمة / يحمل
+  // للأبد"): the old CDN-Cache-Control 'public, max-age=30' let an edge PoP
+  // serve a pre-deploy shell that references DELETED hashed assets, so the
+  // very first visitors after each deploy got a white screen / infinite
+  // splash. The origin already stamps Cache-Control: no-cache,
+  // must-revalidate on the shell; the edge must revalidate every time.
   if (ext === '' || ext === 'html') {
-    if (!newHeaders.get('Cache-Control') || newHeaders.get('Cache-Control').includes('no-cache')) {
-      newHeaders.set('CDN-Cache-Control', 'public, max-age=30');
-    }
+    newHeaders.set('CDN-Cache-Control', 'no-store');
+    newHeaders.set('Cloudflare-CDN-Cache-Control', 'no-store');
   }
 }
 

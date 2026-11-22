@@ -174,6 +174,20 @@
   globalThis.__nukeAndReload = nukeAndReload;
 
   /**
+   * Restores the healing budget after a PROVEN healthy load (token == buildId
+   * == stored). Only fires when the counter is non-zero so a healthy session
+   * never writes storage in a hot loop.
+   */
+  function resetBudgetIfEarned() {
+    try {
+      if (Number(sGet(NUKE_COUNT_KEY) || "0") > 0) {
+        sSet(NUKE_COUNT_KEY, "0");
+        console.warn("[Cache-Nuke] fresh build confirmed — healing budget restored");
+      }
+    } catch (_) { /* private mode — cap simply stays */ }
+  }
+
+  /**
    * Reads the cache-bust token baked into THIS page's own script tag —
    * the fingerprint of the HTML shell currently in the browser.
    */
@@ -208,6 +222,7 @@
         if (!stored) {
           // First visit — just record the build identity.
           lSet(BUILD_ID_KEY, serverId);
+          resetBudgetIfEarned();
           return;
         }
         if (staleShell || drift) {
@@ -217,7 +232,13 @@
               ? "stale HTML shell (token " + token + " != build " + serverId + ")"
               : "build changed: " + stored + " -> " + serverId
           );
+          return;
         }
+        // Healthy fresh shell: token == serverId == stored. Restore the full
+        // healing budget — the cap exists to stop a pathological loop, not to
+        // permanently disarm long-lived tabs (owner report 2026-11-22: a tab
+        // that burned its 2 nukes on earlier deploys stayed stale forever).
+        resetBudgetIfEarned();
       })
       .catch(function (err) {
         // Network error or server down — can't check, just continue.

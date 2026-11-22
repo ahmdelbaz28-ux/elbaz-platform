@@ -264,6 +264,33 @@ describe("cache-nuke.js — client recovery contract", () => {
     expect(h.cachesCleared).toBe(0);
   });
 
+  it("HEALTHY LOAD restores the healing budget — long-lived tabs never go disarmed", async () => {
+    // Owner report 2026-11-22: a tab that burned its 2-nuke cap on earlier
+    // deploys stayed stale forever. A proven-fresh shell (token == buildId ==
+    // stored) must reset the counter so the NEXT deploy can heal again.
+    const h = createHarness({
+      token: "b2",
+      versionBody: { buildId: "b2" },
+      localStorageSeed: { elbaz_build_id: "b2" },
+      sessionStorageSeed: { elbaz_nuke_count: "2" },
+    });
+    await flush();
+    expect(h.reloads).toBe(0); // calm load
+    expect(h.sessionStorage.getItem("elbaz_nuke_count")).toBe("0"); // budget restored
+  });
+
+  it("a calm load with a zero budget leaves storage untouched (no hot-loop writes)", async () => {
+    const h = createHarness({
+      token: "b2",
+      versionBody: { buildId: "b2" },
+      localStorageSeed: { elbaz_build_id: "b2" },
+      sessionStorageSeed: { elbaz_nuke_count: "0" },
+    });
+    await flush();
+    expect(h.reloads).toBe(0);
+    expect(h.sessionStorage.getItem("elbaz_nuke_count")).toBe("0");
+  });
+
   it("untrustworthy ids (dev/unknown/runtime-) never trigger nukes", async () => {
     const h = createHarness({
       token: "dev",

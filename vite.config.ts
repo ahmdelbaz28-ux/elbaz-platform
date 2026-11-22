@@ -156,10 +156,19 @@ export default defineConfig({
         // handlers from /push-sw.js (public/push-sw.js) so notifications reach
         // users even when every tab is closed.
         importScripts: ['/push-sw.js'],
-        // 🚀 PERFORMANCE: Only precache critical assets (JS, CSS, HTML).
+        // 🚀 PERFORMANCE: Only precache critical assets (JS, CSS, ico, manifest).
         // Images and fonts are cached on-demand via runtimeCaching (CacheFirst).
         // This reduces initial SW install size from ~3MB to ~600KB.
-        globPatterns: ['**/*.{js,css,html,ico,webmanifest}'],
+        //
+        // 🧨 ROOT CURE (2026-11-22, owner report "متصفح آخر يفتح نسخة قديمة"):
+        // 'html' is REMOVED from globPatterns — index.html must NEVER be
+        // precached. The old NavigationRoute served the PRECACHED shell
+        // cache-first for every navigation, so a browser profile with an old
+        // SW kept opening a one-deploy-behind (or worse) shell while the app
+        // looked "alive" — the exact stale-version report. The shell already
+        // carries Cache-Control: no-cache + a versioned cache-nuke token, so
+        // navigations must ALWAYS hit the network and revalidate.
+        globPatterns: ['**/*.{js,css,ico,webmanifest}'],
         // Exclude critical files from precache — they're served with no-cache headers
         // and must always come fresh from the server to detect new deploys.
         globIgnores: [...PRECACHE_EXCLUDE.map(f => `**/${f}`), ...PRECACHE_EXCLUDE_CHUNKS],
@@ -171,14 +180,16 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 2 * 1024 * 1024,
         navigationPreload: false,
 
-        // PWA offline fallback page
-        // 🔧 FIX: Deny navigation fallback for /api/ routes.
-        // Previously, navigateFallback: '/index.html' was intercepting
-        // /api/google-auth/callback requests and serving cached index.html
-        // instead of letting the server process the OAuth callback.
-        // This caused a white screen after Google redirected back.
-        navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//, /^\/admin\//],
+        // 🧨 ROOT CURE (2026-11-22): navigateFallback REMOVED entirely.
+        // vite-plugin-pwa defaults navigateFallback to "index.html"
+        // (defaultWorkbox), which emits NavigationRoute +
+        // createHandlerBoundToURL — an OLD shell served cache-first for every
+        // navigation (the exact stale-version report). `undefined` here
+        // OVERRIDES that default (Object.assign merges own props), so no
+        // NavigationRoute is emitted and navigations always pass through to
+        // the network; the shell carries no-cache + the cache-nuke token and
+        // revalidates on every visit.
+        navigateFallback: undefined,
         runtimeCaching: [
           // ── External Fonts: Cache-first with 1-year expiry ──
           {
