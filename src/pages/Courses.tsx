@@ -61,7 +61,7 @@ const categoryIcons: Record<string, React.ReactNode> = {
   FileCheck: <FileCheck className="h-4 w-4" />,
 };
 
-const SKELETON_KEYS = ["sk-0", "sk-1", "sk-2", "sk-3", "sk-4", "sk-5"] as const;
+const SKELETON_KEYS = ["sk-0", "sk-1", "sk-2", "sk-3", "sk-4", "sk-5", "sk-6", "sk-7", "sk-8", "sk-9", "sk-10", "sk-11"] as const;
 const PAGE_SIZE = 12;
 
 export default function Courses() {
