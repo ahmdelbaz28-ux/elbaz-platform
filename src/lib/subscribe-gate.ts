@@ -125,6 +125,23 @@ export function clearSubscribeTicket(): void {
 }
 
 /**
+ * CSPRNG fallback for environments without crypto.randomUUID (S2245: never
+ * Math.random for identifiers) — 8 random bytes hex via getRandomValues.
+ * If even getRandomValues is missing (extremely rare), mixes Date.now as a
+ * last resort — the device subject is an identifier, not a credential.
+ */
+function cryptoHexFallback(): string {
+  const bytes = new Uint8Array(8);
+  if (typeof globalThis.crypto?.getRandomValues === "function") {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    const now = Date.now();
+    for (let i = 0; i < bytes.length; i++) bytes[i] = (now >> (i * 4)) & 0xff;
+  }
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
  * Stable per-browser device subject `d<uuid>` — binds a GUEST's ticket to
  * this device (authenticated viewers get account-bound `u<id>` subjects
  * server-side regardless). Persisted so re-unlocks keep the same subject.
@@ -135,14 +152,14 @@ export function getDeviceSubject(): string {
     if (existing && /^d[0-9a-zA-Z-]{6,64}$/.test(existing)) return existing;
     const uuid =
       globalThis.crypto?.randomUUID?.() ??
-      `fallback-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+      `fallback-${Date.now().toString(36)}-${cryptoHexFallback()}`;
     const subject = `d${uuid}`;
     globalThis.localStorage?.setItem(DEVICE_KEY, subject);
     return subject;
   } catch {
     // No storage — ephemeral subject (the ticket simply won't outlive reload).
     const uuid =
-      globalThis.crypto?.randomUUID?.() ?? `ephemeral-${Date.now().toString(36)}`;
+      globalThis.crypto?.randomUUID?.() ?? `ephemeral-${cryptoHexFallback()}`;
     return `d${uuid}`;
   }
 }

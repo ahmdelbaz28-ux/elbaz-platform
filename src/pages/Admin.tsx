@@ -1433,7 +1433,7 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                               </span>
                               <Badge className={r.isPublished ? "bg-[rgba(16,185,129,0.15)] text-emerald-500 text-[10px]" : "bg-[rgba(244,63,94,0.15)] text-rose-500 text-[10px]"}>{r.isPublished ? (isRTL ? "منشور" : "Published") : (isRTL ? "مخفي" : "Hidden")}</Badge>
                             </div>
-                            <p className="text-xs text-text-muted mt-0.5">{isRTL ? (r.courseTitle || "—") : (r.courseTitle || "—")}</p>
+                            <p className="text-xs text-text-muted mt-0.5">{r.courseTitle || "—"}</p>
                             {r.comment && <p className="mt-1.5 text-sm text-text-muted line-clamp-3">{r.comment}</p>}
                           </div>
                           <Button size="sm" variant="ghost" className="h-8 text-xs text-accent-secondary" onClick={() => toggleReviewPublish.mutate({ id: r.id })}>{r.isPublished ? (isRTL ? "إخفاء" : "Hide") : (isRTL ? "إظهار" : "Show")}</Button>
