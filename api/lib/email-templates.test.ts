@@ -1,15 +1,25 @@
 /**
  * Unit tests for email templates (api/lib/email-templates.ts).
  * The templates are the user-facing face of the OTP system — the 6-digit
- * code MUST be present, the link MUST be preserved, and Arabic copy MUST
- * render (this is an Arabic-first platform).
+ * code MUST be present, the link MUST be preserved, and the spam-folder
+ * guidance MUST be rendered in the user's working language (ar/en/both).
  */
 
 import { describe, it, expect } from "vitest";
-import { buildVerificationEmail, buildResetEmail } from "./email-templates.js";
+import { buildVerificationEmail, buildResetEmail, resolveEmailLang } from "./email-templates.js";
 
 describe("email-templates.ts", () => {
   const url = "https://ahmedelbaz.qzz.io/verify-email?token=abc&uid=1";
+
+  describe("resolveEmailLang", () => {
+    it("maps stored language values to template languages", () => {
+      expect(resolveEmailLang("ar")).toBe("ar");
+      expect(resolveEmailLang("en")).toBe("en");
+      expect(resolveEmailLang(null)).toBe("both");
+      expect(resolveEmailLang(undefined)).toBe("both");
+      expect(resolveEmailLang("fr")).toBe("both");
+    });
+  });
 
   describe("buildVerificationEmail", () => {
     it("includes the 6-digit code in html and text", () => {
@@ -48,6 +58,38 @@ describe("email-templates.ts", () => {
       expect(tpl.html).toContain('dir="rtl"');
       expect(tpl.html).toContain("منصة أحمد الباز");
     });
+
+    it("ar variant: Arabic copy + Arabic spam guidance, no English section", () => {
+      const tpl = buildVerificationEmail("أحمد", url, "483920", 30, false, "ar");
+      expect(tpl.html).toContain("غير المرغوبة");
+      expect(tpl.html).toContain("Not spam");
+      expect(tpl.text).toContain("الرسائل غير المرغوبة");
+      expect(tpl.html).toContain("شكرًا لتسجيلك");
+      expect(tpl.html).not.toContain("thanks for registering");
+    });
+
+    it("en variant: English copy + English spam guidance, no Arabic section", () => {
+      const tpl = buildVerificationEmail("أحمد", url, "483920", 30, false, "en");
+      expect(tpl.html).toContain("Check your Spam folder");
+      expect(tpl.html).toContain('dir="ltr"');
+      expect(tpl.text).toContain("Spam folder");
+      expect(tpl.html).toContain("thanks for registering");
+      expect(tpl.html).not.toContain("شكرًا لتسجيلك");
+    });
+
+    it("both variant (default): Arabic AND English spam guidance present", () => {
+      const tpl = buildVerificationEmail("أحمد", url, "483920", 30, false, "both");
+      expect(tpl.html).toContain("غير المرغوبة");
+      expect(tpl.html).toContain("Check your Spam folder");
+      expect(tpl.text).toContain("Spam folder");
+      expect(tpl.text).toContain("الرسائل غير المرغوبة");
+    });
+
+    it("default parameter is 'both' (bilingual) for every caller", () => {
+      const tpl = buildVerificationEmail("أحمد", url, "483920", 30, false);
+      expect(tpl.html).toContain("Check your Spam folder");
+      expect(tpl.html).toContain("غير المرغوبة");
+    });
   });
 
   describe("buildResetEmail", () => {
@@ -72,6 +114,35 @@ describe("email-templates.ts", () => {
       const tpl = buildResetEmail("محمد", resetUrl, "918273", 15);
       expect(tpl.html).toContain('dir="rtl"');
       expect(tpl.html).toContain("رمز");
+    });
+
+    it("ar variant: carries the Arabic spam-folder guidance", () => {
+      const tpl = buildResetEmail("محمد", resetUrl, "918273", 15, "ar");
+      expect(tpl.html).toContain("غير المرغوبة");
+      expect(tpl.html).toContain("Not spam");
+      expect(tpl.text).toContain("الرسائل غير المرغوبة");
+      expect(tpl.html).not.toContain("Reset My Password");
+    });
+
+    it("en variant: carries the English spam-folder guidance", () => {
+      const tpl = buildResetEmail("محمد", resetUrl, "918273", 15, "en");
+      expect(tpl.html).toContain("Check your Spam folder");
+      expect(tpl.html).toContain("Reset My Password");
+      expect(tpl.text).toContain("Spam folder");
+      expect(tpl.html).not.toContain("وصلنا طلب");
+    });
+
+    it("both variant: carries BOTH spam guidances", () => {
+      const tpl = buildResetEmail("محمد", resetUrl, "918273", 15, "both");
+      expect(tpl.html).toContain("غير المرغوبة");
+      expect(tpl.html).toContain("Check your Spam folder");
+      expect(tpl.text).toContain("الرسائل غير المرغوبة");
+      expect(tpl.text).toContain("Spam folder");
+    });
+
+    it("guidance asks the user to mark the message as Not spam", () => {
+      const tpl = buildResetEmail("محمد", resetUrl, "918273", 15, "en");
+      expect(tpl.html).toContain("Not spam");
     });
   });
 });

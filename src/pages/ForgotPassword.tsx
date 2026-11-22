@@ -35,7 +35,13 @@ export default function ForgotPassword() {
     onSuccess: (data) => {
       trackPlatform("forgot_password_requested");
       setStep("sent");
-      toast.success(data.message);
+      // ✅ Localized confirmation — the generic server message is English-only,
+      // the user-facing toast must speak the language the user works with.
+      toast.success(
+        lang === "ar"
+          ? "تم إرسال رمز إعادة التعيين — إن لم تصلك الرسالة فافحص مجلد الرسائل غير المرغوبة (Spam)"
+          : "Reset code sent — if you don't see it, please check your Spam folder",
+      );
       // ✅ SECURITY FIX (audit run-1): deliveryWarning removed from the API
       // response — it was a registered-vs-unknown email enumeration oracle on
       // the delivery-failure path. Delivery failures are logged server-side.
@@ -209,7 +215,7 @@ export default function ForgotPassword() {
                   <Inbox className="h-10 w-10 text-emerald-500" />
                 </div>
                 <h1 className="mt-5 text-2xl font-bold text-foreground">
-                  {lang === "ar" ? "تم إرسال الرابط بنجاح!" : "Check your email!"}
+                  {lang === "ar" ? "تم إرسال الرمز بنجاح!" : "Check your email!"}
                 </h1>
                 <p className="mt-2 text-sm leading-relaxed text-text-muted">
                   {lang === "ar"
@@ -217,8 +223,8 @@ export default function ForgotPassword() {
                     : `If an account exists for `}
                   <span className="font-medium text-foreground">{email}</span>
                   {lang === "ar"
-                    ? " فستصلك رسالة تحتوي على رابط إعادة تعيين كلمة المرور."
-                    : ", you'll receive an email with a password reset link."}
+                    ? " فستصلك رسالة تحتوي على رمز من 6 أرقام لإعادة تعيين كلمة المرور، مع رابط بديل داخل الرسالة نفسها."
+                    : ", you'll receive an email with a 6-digit reset code plus a backup link inside it."}
                 </p>
               </div>
 
@@ -234,7 +240,7 @@ export default function ForgotPassword() {
 
                 <div className="space-y-3">
                   {[
-                    { num: "1", ar: "افتح صندوق الوارد، وإن لم تجد الرسالة افحص مجلد الرسائل غير المرغوبة (Spam) فغالبًا تهبط هناك", en: 'Open your inbox — if nothing arrived, check the Spam folder (new domains often land there)' },
+                    { num: "1", ar: "افتح صندوق الوارد، وإن لم تجد الرسالة افحص مجلد الرسائل غير المرغوبة (Spam) فغالبًا تهبط هناك — وإن وجدتها هناك اضغط «ليست رسالة غير مرغوبة» لتصلك مباشرة المرة القادمة", en: 'Open your inbox — if nothing arrived, check the Spam folder (new domains often land there). If you find it there, mark it as "Not spam" so it reaches you directly next time' },
                     { num: "2", ar: "ابحث عن رسالة من \"Ahmed Elbaz Platform\" فيها رمز من 6 أرقام", en: 'Look for an email from "Ahmed Elbaz Platform" containing a 6-digit code' },
                     { num: "3", ar: "أدخل الرمز أدناه مع كلمة المرور الجديدة، أو استخدم زر الرابط داخل الرسالة نفسها", en: "Enter the code below with your new password, or use the link button inside the email" },
                   ].map((item) => (
@@ -256,15 +262,6 @@ export default function ForgotPassword() {
                   </p>
                 </div>
               </div>
-
-              {deliveryWarning && (
-                <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
-                  <p className="text-sm font-medium text-amber-500">
-                    {lang === "ar" ? "ملاحظة حول البريد الإلكتروني" : "Email delivery notice"}
-                  </p>
-                  <p className="mt-2 text-xs leading-relaxed text-text-muted">{deliveryWarning}</p>
-                </div>
-              )}
 
               {/* ── Code entry: set the new password directly with the 6-digit code ── */}
               <form onSubmit={handleCodeReset} className="rounded-xl border border-border bg-primary p-5">

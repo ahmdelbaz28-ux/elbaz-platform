@@ -20,7 +20,7 @@ import { users } from "@db/schema";
 import { env, getActiveFrontendUrl } from "./env";
 import { logger, maskEmail } from "./logger.js";
 import { generateOtpCode, hashOtpCode, isOtpFormat, otpAttemptsExhaustedAfterFailure, OTP_MAX_ATTEMPTS } from "./otp.js";
-import { buildResetEmail, buildVerificationEmail } from "./email-templates.js";
+import { buildResetEmail, buildVerificationEmail, resolveEmailLang } from "./email-templates.js";
 // ✅ SECURITY FIX (pre-launch audit run-2): instant cache eviction after
 // password reset revokes sessions (no 30s cache window for the old JWT).
 // Import direction is safe: context.ts does not import email.ts.
@@ -170,9 +170,10 @@ export async function initiatePasswordReset(rawEmail: string, headers?: Headers)
   // the stored address is sent to verbatim (providers fold case themselves).
   const email = rawEmail.trim().toLowerCase();
 
-  // Find user by email (case-insensitive by contract)
+  // Find user by email (case-insensitive by contract). preferredLanguage is
+  // read too: the reset email must speak the language the user works with.
   const [user] = await db
-    .select({ id: users.id, email: users.email, name: users.name, username: users.username })
+    .select({ id: users.id, email: users.email, name: users.name, username: users.username, preferredLanguage: users.preferredLanguage })
     .from(users)
     .where(eq(users.email, email))
     .limit(1);
@@ -223,9 +224,11 @@ export async function initiatePasswordReset(rawEmail: string, headers?: Headers)
   // Build reset URL
   const resetUrl = `${getFrontendUrl(headers)}/reset-password?token=${resetToken}&uid=${user.id}`;
 
-  // Send the reset email (Arabic-first RTL template: big 6-digit code + link)
+  // Send the reset email — language follows the user's UI language (ar/en,
+  // bilingual when unknown): big 6-digit code + one-click link + spam-folder
+  // guidance in the SAME language (2026-11-22 owner requirement).
   const name = user.name || user.username || "";
-  const template = buildResetEmail(name, resetUrl, otpCode, RESET_TOKEN_EXPIRY_MINUTES);
+  const template = buildResetEmail(name, resetUrl, otpCode, RESET_TOKEN_EXPIRY_MINUTES, resolveEmailLang(user.preferredLanguage));
   const sendResult = await sendEmailWithDiagnostics({
     to: user.email,
     subject: template.subject,
@@ -380,7 +383,7 @@ export async function initiateEmailVerification(userId: number, newEmail?: strin
   const db = getDb();
 
   const [user] = await db
-    .select({ id: users.id, email: users.email, name: users.name, username: users.username })
+    .select({ id: users.id, email: users.email, name: users.name, username: users.username, preferredLanguage: users.preferredLanguage })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
@@ -405,7 +408,7 @@ export async function initiateEmailVerification(userId: number, newEmail?: strin
 
   const name = user.name || user.username || "";
 
-  const template = buildVerificationEmail(name, verificationUrl, otpCode, EMAIL_VERIFICATION_EXPIRY_MINUTES, Boolean(newEmail));
+  const template = buildVerificationEmail(name, verificationUrl, otpCode, EMAIL_VERIFICATION_EXPIRY_MINUTES, Boolean(newEmail), resolveEmailLang(user.preferredLanguage));
 
   const sendResult = await sendEmailWithDiagnostics({
     to: targetEmail,
