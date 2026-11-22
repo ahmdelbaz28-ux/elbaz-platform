@@ -3,7 +3,11 @@
  *
  * Features:
  *   - list:         Public query — paginated published articles (no heavy content fields)
- *   - getBySlug:    Public query — full article by slug (published only) + view counter
+ *   - getBySlug:    AUTHED query — full article by slug (published only) + view counter.
+ *                   ✅ OWNER CONTRACT (2026-11-22): the article BODY is platform content —
+ *                   reading it requires a signed-in session. The list/categories stay
+ *                   public (catalog metadata only), and SEO meta still exposes a short
+ *                   excerpt for crawlers via api/lib/seo-meta.ts.
  *   - categories:   Public query — distinct categories of published articles
  *   - adminList:    Admin query — all articles including drafts
  *   - create:       Admin mutation — create a new article (draft or published)
@@ -18,7 +22,7 @@
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { and, desc, eq, like, or, sql } from "drizzle-orm";
-import { createRouter, publicQuery, adminQuery, adminMutation } from "./middleware";
+import { createRouter, publicQuery, authedQuery, adminQuery, adminMutation } from "./middleware";
 import { logger } from "./lib/logger.js";
 import { getDb } from "./queries/connection";
 import { articles } from "@db/schema";
@@ -117,7 +121,10 @@ export const articlesRouter = createRouter({
     }),
 
   // ─── Full article by slug (published only) + best-effort view increment ───
-  getBySlug: publicQuery
+  // ✅ OWNER CONTRACT (2026-11-22): the article BODY is platform content —
+  // anonymous callers get UNAUTHORIZED, not the content. The frontend route
+  // /articles/:slug is ProtectedRoute-guarded to match (login-first UX).
+  getBySlug: authedQuery
     .input(z.object({ slug: z.string().min(1).max(300) }))
     .query(async ({ input }) => {
       const db = getDb();

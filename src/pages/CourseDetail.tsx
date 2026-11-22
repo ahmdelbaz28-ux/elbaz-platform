@@ -826,11 +826,6 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
     setGateUnlocked(true);
   }, [gateDays]);
 
-  // Guest preview: first-lesson sample for visitors (server serves ONLY
-  // lessons explicitly flagged isFree). Zero auth — the watch-before-you-pay
-  // funnel for any future paid course.
-  const activeLessonIsFree = !!course?.lessons?.some((l) => l.id === activeLesson && l.isFree);
-
   const { data: authedVideoData, isLoading: authedVideoLoading, error: lessonVideoError } = trpc.course.lessonVideo.useQuery(
     { lessonId: activeLesson || 0, subTicket: subTicket ?? undefined },
     {
@@ -842,21 +837,12 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
     },
   );
 
-  const { data: previewData, isLoading: previewLoading, error: previewError } = trpc.course.previewVideo.useQuery(
-    { lessonId: activeLesson || 0, subTicket: subTicket ?? undefined },
-    {
-      enabled: !!activeLesson && !isAuthenticated && activeLessonIsFree && !subscribeGateActive,
-      retry: false,
-    },
-  );
-
   // ── Self-heal: the server is the source of truth for the unlock ──
   // If the server rejects the presented ticket (expired / rotated secret /
   // forged localStorage marker), the device re-locks immediately and the
   // gate takes the video slot again. No reload needed.
   const subscribeRequired =
-    String(lessonVideoError?.message || "").includes("SUBSCRIBE_REQUIRED") ||
-    String(previewError?.message || "").includes("SUBSCRIBE_REQUIRED");
+    String(lessonVideoError?.message || "").includes("SUBSCRIBE_REQUIRED");
   useEffect(() => {
     if (!subscribeRequired) return;
     // Storage purge is plain I/O; the two setState calls below are the
@@ -871,8 +857,8 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
     setGateUnlocked(false);
   }, [subscribeRequired]);
 
-  const videoData = isAuthenticated ? authedVideoData : previewData;
-  const videoLoading = isAuthenticated ? authedVideoLoading : previewLoading;
+  const videoData = authedVideoData;
+  const videoLoading = authedVideoLoading;
 
   // ─── Floating mini-player (YouTube-style dock-while-scrolling) ───
   // One IntersectionObserver on the player shell. Scrolling past a PLAYING
@@ -1290,7 +1276,11 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
     : (activeLessonData?.titleEn ?? "");
   const activeLessonTitle = activeLessonData ? lessonTitleByLang : "";
 
+  // ✅ OWNER CONTRACT (2026-11-22): NO lesson video for logged-out visitors —
+  // login is required BEFORE anything plays (then the subscribe gate applies).
+  // The former guest-preview funnel (previewVideo) was removed server-side.
   const canAccessLesson = (lesson: typeof course.lessons[0]) => {
+    if (!isAuthenticated) return false;
     if (!course.isPremium) return true;
     if (lesson.isFree) return true;
     return isEnrolled;
@@ -1535,41 +1525,14 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                   )}
 
                   {activeLesson && !!activeLessonData && canAccessLesson(activeLessonData) && !subscribeGateActive && !videoLoading && !videoData?.videoUrl && (
-                    isAuthenticated ? (
-                      <div className="flex aspect-video items-center justify-center bg-gradient-to-br from-[#0f172a] to-[#1e293b]">
-                        <div className="text-center">
-                          <PlayCircle className="mx-auto h-12 w-12 text-[#06b6d4]" />
-                          <p className="mt-3 text-sm text-[#94a3b8]">
-                            {lang === "en" ? "No video available for this lesson" : "لا يوجد فيديو متاح لهذا الدرس"}
-                          </p>
-                        </div>
+                    <div className="flex aspect-video items-center justify-center bg-gradient-to-br from-[#0f172a] to-[#1e293b]">
+                      <div className="text-center">
+                        <PlayCircle className="mx-auto h-12 w-12 text-[#06b6d4]" />
+                        <p className="mt-3 text-sm text-[#94a3b8]">
+                          {lang === "en" ? "No video available for this lesson" : "لا يوجد فيديو متاح لهذا الدرس"}
+                        </p>
                       </div>
-                    ) : (
-                      <div className="flex aspect-video items-center justify-center bg-gradient-to-br from-[#0f172a] to-[#1e293b]">
-                        <div className="text-center">
-                          <PlayCircle className="mx-auto h-12 w-12 text-[#06b6d4]" />
-                          <p className="mt-3 text-sm text-[#94a3b8]">
-                            {lang === "en"
-                              ? "Create a free account to watch this lesson"
-                              : "اعمل حساب مجاني لمشاهدة هذا الدرس"}
-                          </p>
-                          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                            <Link
-                              to="/register"
-                              className="inline-flex items-center gap-2 rounded-lg bg-[#06b6d4] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#0891b2]"
-                            >
-                              {lang === "en" ? "Sign Up Free" : "سجّل مجاناً"}
-                            </Link>
-                            <Link
-                              to="/login"
-                              className="inline-flex items-center gap-2 rounded-lg border border-[#1f2d44] px-5 py-2.5 text-sm font-semibold text-[#94a3b8] transition-colors hover:border-[#06b6d4] hover:text-[#06b6d4]"
-                            >
-                              {lang === "en" ? "Sign In" : "تسجيل الدخول"}
-                            </Link>
-                          </div>
-                        </div>
-                      </div>
-                    )
+                    </div>
                   )}
 
                   {!(activeLesson && !!activeLessonData && canAccessLesson(activeLessonData)) && (
@@ -1577,7 +1540,34 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                       <CourseThumbnailWithFallback thumbnail={course.thumbnail} title={title} />
                       <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-t from-[#0a0e17]/90 via-[#0a0e17]/40 to-transparent">
                         <div className="text-center">
-                          {!isEnrolled && course.isPremium ? (
+                          {/* ✅ OWNER CONTRACT (2026-11-22): a guest who clicks ANY
+                              lesson hits the LOGIN wall first — no preview, no
+                              subscribe-gate, no playback without an account. */}
+                          {!isAuthenticated && activeLesson ? (
+                            <>
+                              <Lock className="mx-auto h-12 w-12 text-[#f59e0b]" />
+                              <p className="mt-3 text-sm font-medium text-[#f0f4f8]">
+                                {lang === "en"
+                                  ? "Sign in to watch the lessons — the full course library is for registered users"
+                                  : "سجّل الدخول لمشاهدة الدروس — مكتبة الكورسات كاملة لأعضاء المنصة"}
+                              </p>
+                              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                                <Link
+                                  to="/login"
+                                  className="inline-flex items-center gap-2 rounded-lg bg-[#06b6d4] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#0891b2]"
+                                  data-testid="lesson-login-wall"
+                                >
+                                  {lang === "en" ? "Sign In" : "تسجيل الدخول"}
+                                </Link>
+                                <Link
+                                  to="/register"
+                                  className="inline-flex items-center gap-2 rounded-lg border border-[#1f2d44] px-5 py-2.5 text-sm font-semibold text-[#94a3b8] transition-colors hover:border-[#06b6d4] hover:text-[#06b6d4]"
+                                >
+                                  {lang === "en" ? "Create Account" : "إنشاء حساب"}
+                                </Link>
+                              </div>
+                            </>
+                          ) : !isEnrolled && course.isPremium ? (
                             <>
                               <Lock className="mx-auto h-12 w-12 text-[#f59e0b]" />
                               <p className="mt-3 text-sm text-[#f0f4f8]">
@@ -1599,33 +1589,6 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                 </>
               )}
             </div>
-
-            {/* Guest preview funnel — "watch the style before you commit". */}
-            {!isAuthenticated && activeLesson && !!activeLessonData && canAccessLesson(activeLessonData) && (
-              <div className="mb-8 flex flex-col items-start justify-between gap-3 rounded-xl border border-[#f59e0b]/40 bg-[rgba(245,158,11,0.08)] p-4 sm:flex-row sm:items-center">
-                <div className="flex items-start gap-3">
-                  <PlayCircle className="mt-0.5 h-5 w-5 shrink-0 text-[#f59e0b]" />
-                  <div>
-                    <p className="text-sm font-semibold text-[#f0f4f8]">
-                      {lang === "ar"
-                        ? "شوف أسلوب الشرح قبل ما تدفع — الدرس بيشتغل من غير حساب"
-                        : "Watch the teaching style before you pay — this lesson plays without an account"}
-                    </p>
-                    <p className="mt-0.5 text-xs text-[#94a3b8]">
-                      {lang === "ar"
-                        ? "حساب مجاني = كل الدروس + ملاحظات بالثواني + شهادة موثقة بعد الإكمال"
-                        : "A free account unlocks all lessons, timestamped notes, and a verifiable certificate"}
-                    </p>
-                  </div>
-                </div>
-                <Link
-                  to="/register"
-                  className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-[#06b6d4] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#0891b2]"
-                >
-                  {lang === "en" ? "Create Free Account" : "اعمل حسابك المجاني"}
-                </Link>
-              </div>
-            )}
 
             {/* Lesson Notes — the personal engineering notebook. A note is
                 stamped with the exact video second it was written at. */}
@@ -1828,10 +1791,17 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
               <div className="min-w-0 space-y-1">
                 {course.lessons?.map((lesson, i) => {
                   const canAccess = canAccessLesson(lesson);
+                  // ✅ OWNER CONTRACT (2026-11-22): guests CAN select a lesson —
+                  // the video slot then shows the LOGIN wall (never a player,
+                  // never the subscribe gate). Dimmed/disabled rows are only
+                  // for signed-in users without enrollment.
+                  const selectable = canAccess || !isAuthenticated;
                   const isActive = activeLesson === lesson.id;
                   const lessonStateClass = canAccess
                     ? "hover:bg-[#1a2233]"
-                    : "opacity-50 cursor-not-allowed";
+                    : selectable
+                      ? "hover:bg-[#1a2233]"
+                      : "opacity-50 cursor-not-allowed";
                   const lessonRowClass = isActive
                     ? "bg-[rgba(6,182,212,0.1)] border border-[rgba(6,182,212,0.2)]"
                     : lessonStateClass;
@@ -1839,19 +1809,19 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                     <button
                       key={lesson.id}
                       onClick={() => {
-                        if (canAccess) {
+                        if (selectable) {
                           setActiveLesson(lesson.id);
                           setShowQuiz(false);
                         }
                       }}
-                      // ✅ a11y FIX (pre-launch audit): locked lessons were plain
-                      // buttons without disabled/aria state — screen readers
-                      // announced them as clickable actions.
-                      aria-disabled={!canAccess}
+                      // ✅ a11y: only rows that genuinely can't be opened are
+                      // announced disabled (signed-in + locked). Guest rows are
+                      // actionable — they open the login wall.
+                      aria-disabled={!selectable}
                       // content-visibility render-skip past the 12th lesson:
                       // long curricula stop painting offscreen rows until
                       // scrolled near (first screenful always paints fully).
-                      className={`flex w-full min-w-0 items-center gap-3 rounded-lg px-3 py-2.5 text-start transition-colors ${lessonRowClass} ${canAccess ? "cursor-pointer" : "cursor-not-allowed"}${i >= 12 ? " cv-auto-row" : ""}`}
+                      className={`flex w-full min-w-0 items-center gap-3 rounded-lg px-3 py-2.5 text-start transition-colors ${lessonRowClass} ${selectable ? "cursor-pointer" : "cursor-not-allowed"}${i >= 12 ? " cv-auto-row" : ""}`}
                     >
                       {canAccess ? (
                         <PlayCircle className={`h-4 w-4 shrink-0 ${isActive ? "text-[#06b6d4]" : "text-[#94a3b8]"}`} />

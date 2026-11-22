@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useRef, type ReactNode, type ChangeEvent } from "react";
+import { useNavigate } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useAuth } from "@/hooks/useAuth";
 import { trpc } from "@/providers/trpc";
@@ -191,7 +192,8 @@ function ReferencesEmpty({ lang, hasFilter }: { readonly lang: "ar" | "en"; read
 
 export default function References() {
   const { lang } = useTranslation();
-  const { isAdmin } = useAuth();
+  const { isAdmin, isAuthenticated } = useAuth();
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -222,7 +224,17 @@ export default function References() {
   }, [data, search, selectedCategory]);
 
   // ─── Download handler ───
+  // ✅ OWNER CONTRACT (2026-11-22): downloading platform files requires a
+  // signed-in session — guests get a bilingual toast and are sent to /login
+  // (the server also refuses anonymous getDownloadUrl calls: UNAUTHORIZED).
   const handleDownload = useCallback(async (id: number, fileName: string) => {
+    if (!isAuthenticated) {
+      toast.error(lang === "ar"
+        ? "التحميل متاح لأعضاء المنصة — سجّل الدخول أولًا"
+        : "Downloads are for registered members — please sign in first");
+      navigate("/login");
+      return;
+    }
     setDownloadingId(id);
     try {
       const result = await getDownloadUrl.mutateAsync({ id });
@@ -242,7 +254,7 @@ export default function References() {
     } finally {
       setDownloadingId(null);
     }
-  }, [getDownloadUrl, lang]);
+  }, [getDownloadUrl, lang, isAuthenticated, navigate]);
 
   // ─── Delete handler (admin) ───
   const handleDelete = useCallback(async (id: number, title: string) => {

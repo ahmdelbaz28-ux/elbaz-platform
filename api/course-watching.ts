@@ -1,14 +1,16 @@
 /**
  * COURSE WATCHING — Video playback and progress endpoints
  *
- * Procedures: lessonVideo, markWatched, heartbeat, getSavedPosition, myWatchTime
- * All are authedQuery (authentication required).
+ * Procedures: lessonVideo, completeSubscribeUnlock, markWatched, heartbeat,
+ * getSavedPosition, myWatchTime — ALL require authentication.
+ * ✅ OWNER CONTRACT (2026-11-22): login first, then the subscribe gate —
+ * no procedure here ever serves playback data to a logged-out visitor.
  */
 
 import { z } from "zod";
 import { eq, and, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
-import { authedQuery, publicMutation } from "./middleware";
+import { authedQuery, authMutation } from "./middleware";
 import { getDb } from "./queries/connection";
 import { lessons, enrollments, lessonProgress, courses } from "@db/schema";
 import { recalcEnrollmentProgress, markLessonWatched } from "./lib/progress";
@@ -121,26 +123,17 @@ export const courseWatchingProcedures = {
 
   // ─── Subscribe-gate unlock — the server-anchored confirm step ───
   // Called when the viewer presses «اشتركت — افتح الفيديوهات» on the
-  // SubscribeGate. Issues a signed ticket (account- or device-bound) that
-  // lessonVideo/previewVideo verify. Fail-closed by design: the client only
-  // unlocks on a SUCCESSFUL issue — no ticket, no playback, ever.
-  completeSubscribeUnlock: publicMutation
-    .input(z.object({
-      // The device subject (d<uuid>) built by the client lib — REQUIRED for
-      // anonymous viewers so their ticket is bound to this device; ignored
-      // for authenticated viewers (account-bound subject wins).
-      deviceId: z.string().regex(/^d[0-9a-zA-Z-]{6,64}$/).optional(),
-    }))
-    .mutation(async ({ ctx, input }) => {
-      if (!ctx.user && !input.deviceId) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "SUBSCRIBE_REQUIRED: deviceId is required to unlock for this device.",
-        });
-      }
+  // SubscribeGate. Issues a signed ACCOUNT-bound ticket that lessonVideo
+  // verifies. Fail-closed by design: the client only unlocks on a SUCCESSFUL
+  // issue — no ticket, no playback, ever.
+  // ✅ OWNER CONTRACT (2026-11-22): login required BEFORE the subscribe gate —
+  // the former anonymous deviceId branch was removed, so the ticket subject is
+  // always the signed-in user. No session ⇒ UNAUTHORIZED, never a ticket.
+  completeSubscribeUnlock: authMutation
+    .input(z.object({}))
+    .mutation(async ({ ctx }) => {
       const gate = await getSubscribeGateConfig();
-      const subject = ctx.user ? `u${ctx.user.id}` : (input.deviceId as string);
-      const ticket = issueSubscribeTicket(subject, gate.days);
+      const ticket = issueSubscribeTicket(`u${ctx.user.id}`, gate.days);
       return { ticket, days: gate.days };
     }),
 

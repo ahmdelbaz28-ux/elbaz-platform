@@ -91,16 +91,21 @@ function serveFile(res, filePath, withRange = false, rangeHeader = "") {
 }
 
 // ── Subscribe-gate tRPC stubs (subscribe-gate E2E) ──────────────────────────
-// Mirrors the REAL server contract: while the gate is enabled, lessonVideo/
-// previewVideo answer 403 SUBSCRIBE_REQUIRED unless a ticket is presented,
-// and completeSubscribeUnlock issues the ticket. Telemetry records what the
-// client actually sent so the test can pin the wire contract:
+// Mirrors the REAL server contract (owner contract 2026-11-22: LOGIN first):
+//   • guests NEVER get playback — the client shows the login wall and must
+//     not call any video procedure at all (previewVideo was REMOVED
+//     server-side; any stray call now answers NOT_FOUND like an unknown proc)
+//   • while the gate is enabled, lessonVideo answers 403 SUBSCRIBE_REQUIRED
+//     unless a ticket is presented, and completeSubscribeUnlock (AUTHED only)
+//     issues the ticket. Telemetry records what the client actually sent so
+//     the test can pin the wire contract:
 //   • pre-unlock ⇒ ZERO video fetches (the client must not even ask)
 //   • post-unlock ⇒ every video fetch carries the ticket
 const trpcStub = {
 gateMode: "enabled", // "enabled" | "disabled"
-previewVideoCalls: [], // { hasTicket, ticket }
+previewVideoCalls: [], // legacy telemetry — must stay EMPTY
 lessonVideoCalls: [],
+unauthVideoCalls: 0, // anonymous calls to any video/unlock procedure (must stay 0)
 unlockCalls: 0,
 dashboardMode: "normal", // "normal" | "empty" — student-dashboard dataset mode
 lastBroadcast: null, // last admin.sendBroadcast body the stub observed
@@ -320,14 +325,11 @@ switch (proc) {
       return true;
     }
     case "course.previewVideo": {
+      // REMOVED server-side (owner contract 2026-11-22): no anonymous video
+      // path exists. Telemetry-only — answered like an unknown procedure.
       trpcStub.previewVideoCalls.push({ hasTicket: !!input?.subTicket, ticket: input?.subTicket ?? null });
-      if (trpcStub.gateMode === "enabled" && !input?.subTicket) {
-        trpcError(res, 403, "FORBIDDEN",
-          "SUBSCRIBE_REQUIRED: subscribe to the YouTube channel first — lesson videos stay locked until the subscribe flow is done.",
-          "course.previewVideo");
-        return true;
-      }
-      trpcSend(res, STUB_VIDEO);
+      trpcStub.unauthVideoCalls += 1;
+      trpcError(res, 404, "NOT_FOUND", "No procedure found at path \"course.previewVideo\"", "course.previewVideo");
       return true;
     }
     case "course.lessonVideo": {
@@ -342,6 +344,16 @@ switch (proc) {
       return true;
     }
     case "course.completeSubscribeUnlock": {
+      // AUTHED-only (owner contract 2026-11-22): the real server throws
+      // UNAUTHORIZED for guests — mirror it; elbaz_auth_flag is the stub's
+      // signed-in marker.
+      const cookie = String(req.headers.cookie ?? "");
+      const signedIn = cookie.includes("elbaz_auth_flag=");
+      if (!signedIn) {
+        trpcStub.unauthVideoCalls += 1;
+        trpcError(res, 401, "UNAUTHORIZED", "Your session has expired. Please log in again.", "course.completeSubscribeUnlock");
+        return true;
+      }
       trpcStub.unlockCalls += 1;
       trpcSend(res, { ticket: "e2e-signed-ticket.stubsig", days: 30 });
       return true;
@@ -608,6 +620,7 @@ const server = http.createServer(async (req, res) => {
     trpcStub.gateMode = "enabled";
     trpcStub.previewVideoCalls = [];
     trpcStub.lessonVideoCalls = [];
+    trpcStub.unauthVideoCalls = 0;
     trpcStub.unlockCalls = 0;
     trpcStub.dashboardMode = "normal";
     trpcStub.lastBroadcast = null;

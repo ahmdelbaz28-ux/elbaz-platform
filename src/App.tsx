@@ -289,7 +289,12 @@ export default function App() {
                 <Route path="/courses" element={<Courses />} />
                 <Route path="/courses/:slug" element={<CourseDetail />} />
                 <Route path="/articles" element={<Articles />} />
-                <Route path="/articles/:slug" element={<ArticleDetail />} />
+                {/* ✅ OWNER CONTRACT (2026-11-22): the article BODY is platform
+                    content — opening it requires login. The catalog list stays
+                    public; the detail page redirects guests to /login. */}
+                <Route path="/articles/:slug" element={
+                  <ProtectedRoute><ArticleDetail /></ProtectedRoute>
+                } />
                 <Route path="/references" element={<References />} />
                 <Route path="/faq" element={<Faq />} />
                 <Route path="/login" element={<Login />} />

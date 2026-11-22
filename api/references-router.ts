@@ -2,18 +2,19 @@
  * References Router — tRPC procedures for managing reference files
  *
  * Features:
- *   - list: Public query — list all published reference files
+ *   - list: Public query — list all published reference files (catalog metadata)
  *   - getUploadUrl: Admin mutation — get presigned URL for direct browser upload to R2
  *   - create: Admin mutation — create a reference file record after upload
- *   - getDownloadUrl: Public query — get presigned download URL
- *   - incrementDownload: Public mutation — increment download counter
+ *   - getDownloadUrl: AUTHED mutation — get presigned download URL.
+ *     ✅ OWNER CONTRACT (2026-11-22): downloading platform files requires a
+ *     signed-in session — anonymous callers get UNAUTHORIZED, never a URL.
  *   - update: Admin mutation — update reference file metadata
  *   - delete: Admin mutation — delete reference file (DB record + R2 object)
  */
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { desc, eq, sql, and, or, like } from "drizzle-orm";
-import { createRouter, publicQuery, publicMutation, adminMutation } from "./middleware";
+import { createRouter, publicQuery, authMutation, adminMutation } from "./middleware";
 import { logger } from "./lib/logger.js";
 import { getDb } from "./queries/connection";
 import { referenceFiles } from "@db/schema";
@@ -151,8 +152,8 @@ export const referencesRouter = createRouter({
       return { success: true, id: Number(result.insertId) };
     }),
 
-  // ─── Get presigned download URL ───
-  getDownloadUrl: publicMutation
+  // ─── Get presigned download URL (LOGIN REQUIRED — owner contract 2026-11-22) ───
+  getDownloadUrl: authMutation
     .input(z.object({ id: z.number().int().positive() }))
     .mutation(async ({ input }) => {
       const db = getDb();

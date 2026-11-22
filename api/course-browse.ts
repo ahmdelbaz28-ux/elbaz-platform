@@ -1,20 +1,22 @@
 /**
  * COURSE BROWSING — Public read-only endpoints
  *
- * Procedures: categories, list, bySlug, testimonials, previewVideo, stats
+ * Procedures: categories, list, bySlug, testimonials, stats
  * All are publicQuery (no authentication required).
+ *
+ * ✅ OWNER CONTRACT (2026-11-22): NO video is served to logged-out visitors —
+ * the former guest-preview procedure (previewVideo) was REMOVED entirely so
+ * no anonymous playback path exists anywhere in the codebase. Playback for
+ * authenticated users lives in course-watching.ts (lessonVideo, authed +
+ * subscribe-ticket gated).
  */
 
 import { z } from "zod";
-import { TRPCError } from "@trpc/server";
 import { eq, and, desc, asc, sql, like, or } from "drizzle-orm";
 import { publicQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { courses, categories, lessons, testimonials } from "@db/schema";
 import { getCache, CACHE_TTL, cacheKeys } from "./lib/cache";
-import { getSecureVideoUrl } from "./lib/video-protection";
-import { getSubscribeGateConfig } from "./lib/subscribe-gate-config";
-import { verifySubscribeTicket } from "./lib/subscribe-ticket";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -240,62 +242,12 @@ export const courseBrowseProcedures = {
     return result;
   }),
 
-  // ─── Guest preview — the "watch a sample before you pay" funnel ───
-  // Serves ONLY lessons explicitly flagged isFree=true by the instructor on a
-  // PUBLISHED course, to UNAUTHENTICATED visitors (the authed path uses
-  // course.lessonVideo). Generic: works today for the free ETAP course's
-  // first lesson, and tomorrow for any paid course where the instructor marks
-  // a lesson isFree as its public trailer. Watermarked as "guest-preview".
-  previewVideo: publicQuery
-    .input(z.object({
-      lessonId: z.number().int().positive(),
-      // Signed unlock proof (device-bound ticket) from the SubscribeGate —
-      // required whenever the subscribe gate is enabled. The guest preview
-      // is ALSO channel-gated: free does not mean subscribe-optional.
-      subTicket: z.string().max(2048).optional(),
-    }))
-    .query(async ({ input }) => {
-      const db = getDb();
-      const [lesson] = await db
-        .select({
-          id: lessons.id,
-          videoUrl: lessons.videoUrl,
-          isFree: lessons.isFree,
-          isPublished: lessons.isPublished,
-          courseIsPublished: courses.isPublished,
-        })
-        .from(lessons)
-        .innerJoin(courses, eq(lessons.courseId, courses.id))
-        .where(eq(lessons.id, input.lessonId))
-        .limit(1);
-
-      if (!lesson || !lesson.isPublished || !lesson.courseIsPublished) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
-      }
-      if (!lesson.isFree) {
-        // Never leak premium content through the guest path — fail closed.
-        throw new TRPCError({ code: "FORBIDDEN", message: "This lesson is not a free preview" });
-      }
-
-      // ── Subscribe-to-the-channel gate (HARD, server-side) ──
-      // Same contract as course.lessonVideo: no valid signed unlock ticket
-      // ⇒ no playback data, even for the free guest preview.
-      const gate = await getSubscribeGateConfig();
-      if (gate.enabled && !verifySubscribeTicket(input.subTicket)) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message:
-            "SUBSCRIBE_REQUIRED: subscribe to the YouTube channel first — lesson videos stay locked until the subscribe flow is done.",
-        });
-      }
-
-      return await getSecureVideoUrl({
-        videoUrl: lesson.videoUrl || "",
-        userId: 0,
-        lessonId: lesson.id,
-        username: "guest-preview",
-      });
-    }),
+  // ─── Guest preview REMOVED (owner contract 2026-11-22) ───
+  // The former previewVideo procedure served isFree-lesson playback to
+  // logged-out visitors. Per the owner: ANY video requires LOGIN first —
+  // the procedure was deleted so no anonymous playback path can ever be
+  // reached, even by direct API calls. Logged-in free-lesson playback is
+  // served by course.lessonVideo (subscribe-ticket gated).
 
   stats: publicQuery.query(async () => {
     const cache = getCache();

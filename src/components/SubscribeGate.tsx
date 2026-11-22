@@ -20,7 +20,6 @@ import { useState } from "react";
 import { BellRing, Youtube } from "lucide-react";
 import {
   buildSubscribeUrl,
-  getDeviceSubject,
   hasPressedSubscribe,
   markSubscribePressed,
   storeSubscribeTicket,
@@ -65,7 +64,11 @@ export default function SubscribeGate({ lang, channelUrl, days, onUnlocked }: Su
   };
 
   const confirmSubscribed = () => {
-    issueTicket.mutate({ deviceId: getDeviceSubject() });
+    // ✅ OWNER CONTRACT (2026-11-22): login comes first — the server issues
+    // an ACCOUNT-bound ticket for the signed-in user only (the anonymous
+    // deviceId path was removed). The gate is unreachable for guests anyway:
+    // CourseDetail shows the login wall before any gate renders.
+    issueTicket.mutate({});
   };
 
   const unlockPending = issueTicket.isPending;
