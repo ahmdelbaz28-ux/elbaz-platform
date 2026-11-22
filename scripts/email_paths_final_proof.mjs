@@ -3,10 +3,15 @@
 //   1. auth.sendVerificationEmail  (profile "تأكيد البريد" button)
 //   2. auth.sendEmailSelfTest      (admin one-click provider probe)
 //   3. auth.forgotPassword         (reset code + link)
-import fs from "node:fs";
-
+//
+// Usage: node scripts/email_paths_final_proof.mjs <admin-password>
+//        (password comes from argv/env — never stored in a file)
 const BASE = process.env.BASE || "http://localhost:4174";
-const PASS = fs.readFileSync("/tmp/admin_pass.txt", "utf8").trim();
+const PASS = process.argv[2] || process.env.ADMIN_PASS || "";
+if (!PASS) {
+  console.log("usage: node scripts/email_paths_final_proof.mjs <admin-password>");
+  process.exit(1);
+}
 
 async function trpc(procedure, input, cookie) {
   const res = await fetch(`${BASE}/api/trpc/${procedure}?batch=1`, {
@@ -19,10 +24,13 @@ async function trpc(procedure, input, cookie) {
   return { status: res.status, setCookies, text };
 }
 
+// Log-injection sanitizer: strip CR/LF from upstream-derived values.
+const safe = (v) => String(v ?? "").replace(/[\r\n]+/g, " ");
+
 const login = await trpc("auth.login", { username: "admin", password: PASS, remember: true });
 const authCookie = login.setCookies.map((c) => c.split(";")[0]).filter((c) => c.length > 20).join("; ");
-console.log("login:", login.status, authCookie ? "(session established)" : "(NO COOKIE)");
-if (login.status !== 200 || !authCookie) { console.log(login.text.slice(0, 300)); process.exit(1); }
+console.log("login:", safe(login.status), authCookie ? "(session established)" : "(NO COOKIE)");
+if (login.status !== 200 || !authCookie) { console.log(safe(login.text.slice(0, 300))); process.exit(1); }
 
 const unwrap = (text) => {
   try {
@@ -35,14 +43,14 @@ const unwrap = (text) => {
 
 console.log("\n── Path 1: auth.sendVerificationEmail (profile confirmation) ──");
 const p1 = await trpc("auth.sendVerificationEmail", null, authCookie);
-console.log("  status:", p1.status, "| verdict:", JSON.stringify(unwrap(p1.text)).slice(0, 200));
+console.log("  status:", safe(p1.status), "| verdict:", safe(JSON.stringify(unwrap(p1.text)).slice(0, 200)));
 
 console.log("\n── Path 2: auth.sendEmailSelfTest (admin provider probe) ──");
 const p2 = await trpc("auth.sendEmailSelfTest", null, authCookie);
-console.log("  status:", p2.status, "| verdict:", JSON.stringify(unwrap(p2.text)).slice(0, 260));
+console.log("  status:", safe(p2.status), "| verdict:", safe(JSON.stringify(unwrap(p2.text)).slice(0, 260)));
 
 console.log("\n── Path 3: auth.forgotPassword (reset code) ──");
 const p3 = await trpc("auth.forgotPassword", { email: "admin@ahmedelbaz.qzz.io" });
-console.log("  status:", p3.status, "| verdict:", JSON.stringify(unwrap(p3.text)).slice(0, 200));
+console.log("  status:", safe(p3.status), "| verdict:", safe(JSON.stringify(unwrap(p3.text)).slice(0, 200)));
 
 console.log("\nAll three email paths have been triggered against the LIVE production server.");

@@ -7,6 +7,8 @@ const GH_REPO = "ahmdelbaz28-ux/elbaz-platform";
 const HF_SPACE = "ahmdelbaz28/AHMDRTAP";
 
 const banner = (s) => console.log(`\n──── ${s} ────`);
+// Log-injection sanitizer: strip CR/LF from any upstream-derived value.
+const safe = (v) => String(v ?? "").replace(/[\r\n]+/g, " ");
 
 // 1) GitHub Actions secrets
 banner("1) GitHub Actions secrets");
@@ -15,11 +17,11 @@ try {
     headers: { Authorization: `Bearer ${GH_PAT}`, Accept: "application/vnd.github+json" },
   });
   if (!res.ok) {
-    console.log(`  HTTP ${res.status} — cannot list (PAT lacks admin:repo?) body=${(await res.text()).slice(0, 200)}`);
+    console.log(`  HTTP ${safe(res.status)} — cannot list (PAT lacks admin:repo?) body=${safe((await res.text()).slice(0, 200))}`);
   } else {
     const data = await res.json();
     const names = (data.secrets || []).map((s) => s.name);
-    console.log(`  count=${data.total_count ?? names.length}`);
+    console.log(`  count=${safe(data.total_count ?? names.length)}`);
     for (const want of ["RESEND_API_KEY", "RESEND_FROM_EMAIL", "UPTIMEROBOT_API_KEY", "HF_TOKEN", "ADMIN_RECOVERY", "VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "TELEGRAM_BOT_TOKEN"]) {
       console.log(`  ${names.includes(want) ? "SET " : "MISS"} ${want}`);
     }
@@ -33,11 +35,11 @@ try {
     headers: { Authorization: `Bearer ${HF_TOKEN}` },
   });
   if (!res.ok) {
-    console.log(`  HTTP ${res.status} — ${(await res.text()).slice(0, 200)}`);
+    console.log(`  HTTP ${safe(res.status)} — ${safe((await res.text()).slice(0, 200))}`);
   } else {
     const names = await res.json();
     const list = Array.isArray(names) ? names : (names.keys || []);
-    console.log(`  count=${list.length}`);
+    console.log(`  count=${safe(list.length)}`);
     for (const want of ["RESEND_API_KEY", "RESEND_FROM_EMAIL", "UPTIMEROBOT_API_KEY", "VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "TELEGRAM_BOT_TOKEN", "ADMIN_RECOVERY"]) {
       console.log(`  ${list.includes(want) ? "SET " : "MISS"} ${want}`);
     }
@@ -51,14 +53,14 @@ try {
     headers: { Authorization: `Bearer ${RESEND_KEY}` },
   });
   const body = await res.json().catch(() => ({}));
-  console.log(`  HTTP ${res.status}`);
+  console.log(`  HTTP ${safe(res.status)}`);
   const domains = body?.data || [];
   if (domains.length === 0) {
     console.log("  NO VERIFIED DOMAINS — sandbox mode: can only send to the account owner's email");
   }
   for (const d of domains) {
-    console.log(`  domain=${d.name} status=${d.status} region=${d.region}`);
-    const records = (d.records || []).map((r) => `${r.record_type}:${r.status ?? "?"}`);
-    if (records.length) console.log(`    dns: ${records.join(", ")}`);
+    console.log(`  domain=${safe(d.name)} status=${safe(d.status)} region=${safe(d.region)}`);
+    const records = (d.records || []).map((r) => `${safe(r.record_type)}:${safe(r.status ?? "?")}`);
+    if (records.length) console.log(`    dns: ${records.map(safe).join(", ")}`);
   }
 } catch (e) { console.log("  ERR", e.message); }

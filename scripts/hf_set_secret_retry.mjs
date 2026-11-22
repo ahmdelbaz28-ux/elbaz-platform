@@ -1,13 +1,17 @@
 // Retry HF secret set with backoff until accepted (429 → wait → retry).
-import fs from "node:fs";
-
+// Usage: node scripts/hf_set_secret_retry.mjs <key> <value>
+// Both arguments come from argv — never from a publicly-writable file.
 const HF_TOKEN = process.env.HF_TOKEN || "";
 const SPACE = "ahmdelbaz28/AHMDRTAP";
-const PASSWORD = fs.readFileSync("/tmp/admin_pass.txt", "utf8").trim();
-const KEY = process.argv[2] || "ADMIN_RECOVERY";
-const VALUE = process.argv[3] || PASSWORD;
+const KEY = process.argv[2] || "";
+const VALUE = process.argv[3] || "";
+if (!KEY || !VALUE) {
+  console.log("usage: node scripts/hf_set_secret_retry.mjs <key> <value>");
+  process.exit(1);
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const safe = (v) => String(v ?? "").replace(/[\r\n]+/g, " ");
 
 for (let attempt = 1; attempt <= 8; attempt++) {
   const res = await fetch(`https://huggingface.co/api/spaces/${SPACE}/secrets`, {
@@ -18,10 +22,10 @@ for (let attempt = 1; attempt <= 8; attempt++) {
   const body = await res.text();
   const isHtml = body.trimStart().startsWith("<");
   if (res.status === 200 && !isHtml) {
-    console.log(`OK: ${KEY} set on attempt ${attempt}`);
+    console.log(`OK: ${safe(KEY)} set on attempt ${attempt}`);
     process.exit(0);
   }
-  console.log(`attempt ${attempt}: HTTP ${res.status}${isHtml ? " (rate-limited page)" : " " + body.slice(0, 120)}`);
+  console.log(`attempt ${attempt}: HTTP ${safe(res.status)}${isHtml ? " (rate-limited page)" : " " + safe(body.slice(0, 120))}`);
   await sleep(45_000);
 }
 console.log("FAILED after retries");

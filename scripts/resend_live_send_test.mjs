@@ -19,8 +19,9 @@ const res = await fetch("https://api.resend.com/emails", {
   }),
 });
 const body = await res.json().catch(() => ({}));
-console.log(`HTTP ${res.status}`);
-console.log(JSON.stringify(body, null, 2));
+const safe = (v) => String(v ?? "").replace(/[\r\n]+/g, " ");
+console.log(`HTTP ${safe(res.status)}`);
+console.log(safe(JSON.stringify(body, null, 2)));
 if (res.ok && body.id) {
-  console.log("\nVERDICT: ACCEPTED — email id=" + body.id + " (provider accepted for delivery)");
+  console.log("\nVERDICT: ACCEPTED — email id=" + safe(body.id) + " (provider accepted for delivery)");
 }
