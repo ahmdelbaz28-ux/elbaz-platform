@@ -591,7 +591,7 @@ export function buildSaadatContextBlock(query: string, lang: SaadatLang, mode: S
 // on the reply itself before it reaches the client or persistence.
 
 /** Loose citation match — canonical form, bold-wrapped variants, page ranges. */
-const LOOSE_CITATION_RE = /\*{0,2}\[Saadat,\s*Solutions Manual,\s*Ch\.(\d+),\s*P\s*([\d.]+)(?:[^\]]*)?,?\s*pp\.\s*(\d+)(?:\s*[–\-]\s*\d+)?\]\*{0,2}/;
+const LOOSE_CITATION_RE = /\*{0,2}\[Saadat,\s*Solutions Manual,\s*Ch\.(\d+),\s*P\s*([\d.]+)(?:[^\]]*)?,?\s*pp\.\s*(\d+)(?:\s*[–-]\s*\d+)?\]\*{0,2}/;
 // Global twin for find-all: String.match with /g/ returns full matches only
 // (capture groups are dropped), so group extraction uses the non-global RE.
 const LOOSE_CITATION_ALL_RE = new RegExp(LOOSE_CITATION_RE.source, "g");
