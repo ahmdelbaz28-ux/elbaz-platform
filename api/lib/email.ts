@@ -148,7 +148,7 @@ export async function sendEmailWithDiagnostics(message: EmailMessage): Promise<S
  * Generate a password reset token and send it to the user's email.
  * The token is stored in the database with an expiry time.
  */
-export async function initiatePasswordReset(email: string, headers?: Headers): Promise<{
+export async function initiatePasswordReset(rawEmail: string, headers?: Headers): Promise<{
   success: boolean;
   message: string;
   /** Present only when the email couldn't actually be delivered (e.g. Resend
@@ -162,7 +162,15 @@ export async function initiatePasswordReset(email: string, headers?: Headers): P
 }> {
   const db = getDb();
 
-  // Find user by email
+  // ✅ ROOT CURE (2026-11-22 owner report "reset code never arrives"): emails
+  // are compared case-insensitively everywhere. The MySQL collation is ci, but
+  // the contract must not depend on the collation — the owner's account (id=5)
+  // stores its email UPPERCASE since 2026-05-03, and any exact-byte match in a
+  // future cs/bin-collated column would silently no-send. Normalize the input;
+  // the stored address is sent to verbatim (providers fold case themselves).
+  const email = rawEmail.trim().toLowerCase();
+
+  // Find user by email (case-insensitive by contract)
   const [user] = await db
     .select({ id: users.id, email: users.email, name: users.name, username: users.username })
     .from(users)
@@ -444,8 +452,9 @@ export async function initiateEmailVerification(userId: number, newEmail?: strin
       emailVerificationExpiry: tokenExpiry,
       emailOtpCode: hashOtpCode(otpCode),
       emailOtpAttempts: 0,
-      // plain send: drop any stale pending change; change send: arm it
-      pendingEmail: newEmail ?? null,
+      // plain send: drop any stale pending change; change send: arm it.
+      // ✅ normalized: the confirmed change lands lowercase going forward.
+      pendingEmail: newEmail ? newEmail.trim().toLowerCase() : null,
       updatedAt: new Date(),
     })
     .where(eq(users.id, userId));

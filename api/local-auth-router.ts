@@ -266,7 +266,10 @@ export const localAuthRouter = createRouter({
       }
 
       const db = getDb();
-      const safeEmail = input.email && input.email.trim() !== "" ? input.email.trim() : null;
+      // ✅ ROOT CURE (2026-11-22 owner report): store emails lowercase going
+      // forward — reads are case-insensitive (ci collation), but writing the
+      // typed case produced mixed-case rows (owner account: UPPER since May).
+      const safeEmail = input.email && input.email.trim() !== "" ? input.email.trim().toLowerCase() : null;
 
       try {
         const existing = await db

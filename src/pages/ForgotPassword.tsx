@@ -234,9 +234,9 @@ export default function ForgotPassword() {
 
                 <div className="space-y-3">
                   {[
-                    { num: "1", ar: "افتح صندوق الوارد الخاص ببريدك الإلكتروني", en: "Open your email inbox" },
-                    { num: "2", ar: "ابحث عن رسالة من منصة أحمد الباز", en: 'Look for an email from "Ahmed Elbaz Platform"' },
-                    { num: "3", ar: "اضغط على زر إعادة التعيين في الرسالة", en: 'Click the "Reset Password" button in the email' },
+                    { num: "1", ar: "افتح صندوق الوارد، وإن لم تجد الرسالة افحص مجلد الرسائل غير المرغوبة (Spam) فغالبًا تهبط هناك", en: 'Open your inbox — if nothing arrived, check the Spam folder (new domains often land there)' },
+                    { num: "2", ar: "ابحث عن رسالة من \"Ahmed Elbaz Platform\" فيها رمز من 6 أرقام", en: 'Look for an email from "Ahmed Elbaz Platform" containing a 6-digit code' },
+                    { num: "3", ar: "أدخل الرمز أدناه مع كلمة المرور الجديدة، أو استخدم زر الرابط داخل الرسالة نفسها", en: "Enter the code below with your new password, or use the link button inside the email" },
                   ].map((item) => (
                     <div key={item.num} className="flex items-start gap-3">
                       <div className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent-secondary/15">

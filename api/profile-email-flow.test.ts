@@ -73,8 +73,10 @@ describe("profile email-flow root-cure regression guards", () => {
     // send → failure return → persist: nothing is armed before the verdict
     expect(sendIdx).toBeLessThan(failReturnIdx);
     expect(failReturnIdx).toBeLessThan(persistIdx);
-    // a PLAIN send (no newEmail) clears any lingering pending change
-    expect(emailSource).toContain("pendingEmail: newEmail ?? null,");
+    // a PLAIN send (no newEmail) clears any lingering pending change;
+    // a CHANGE send arms it normalized to lowercase (owner-report root cure
+    // 2026-11-22: confirmed changes land lowercase going forward)
+    expect(emailSource).toContain("pendingEmail: newEmail ? newEmail.trim().toLowerCase() : null,");
   });
 
   it("completeEmailVerification re-checks ownership at completion time and guards the final update", () => {
