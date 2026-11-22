@@ -80,7 +80,7 @@ export interface AdminNotificationPanelProps {
     readonly titleEn?: string;
     readonly messageAr?: string;
     readonly messageEn?: string;
-  }) => Promise<unknown> | void;
+  }) => Promise<unknown> | undefined;
 }
 
 /** One broadcast row as stored by the server (notifications table). */

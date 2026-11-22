@@ -67,7 +67,7 @@ setInterval(() => {
 // ── Validation ──
 const baseUrlSchema = z.string().trim().min(1).max(255)
   .refine((v) => /^https:\/\//i.test(v), { message: "عنوان المزود يجب أن يبدأ بـ https://" })
-  .refine((v) => isPublicProviderUrl(v.replace(/\/+$/, "") + "/chat/completions"), { message: "عنوان المزود غير مسموح — يجب أن يشير إلى نقطة نهاية عامة" });
+  .refine((v) => isPublicProviderUrl(`${v.replace(/\/+$/, "")}/chat/completions`), { message: "عنوان المزود غير مسموح — يجب أن يشير إلى نقطة نهاية عامة" });
 
 const saveSchema = z.object({
   provider: z.string().trim().max(48).refine((v) => isKnownUserProvider(v), { message: "مزود غير معروف" }).default("custom"),

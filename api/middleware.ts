@@ -97,7 +97,7 @@ export function auditInputSummary(input: unknown): string | null {
       (m, k: string) => (AUDIT_REDACT_KEY.test(k) ? '"***":"[REDACTED]"' : m)
     );
     return redacted.length > AUDIT_INPUT_MAX
-      ? redacted.slice(0, AUDIT_INPUT_MAX - 3) + "..."
+      ? `${redacted.slice(0, AUDIT_INPUT_MAX - 3)}...`
       : redacted;
   } catch {
     return null;
@@ -111,7 +111,7 @@ const auditAdmin = t.middleware(async (opts) => {
     if (!user) return result;
     // tRPC v11 exposes the call's raw input via getRawInput() (async, parses
     // lazily) — NOT opts.rawInput (CI's strict typecheck rejects the latter).
-    let rawInput: unknown = undefined;
+    let rawInput: unknown ;
     try {
       rawInput = await opts.getRawInput();
     } catch { /* input unavailable — audit without it */ }

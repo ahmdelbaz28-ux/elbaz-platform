@@ -50,7 +50,9 @@ interface Props {
 }
 
 export default function ByokSettingsPanel({ lang, onClose, onActiveChange }: Props) {
-  const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
+  // Stable per-lang identity (useCallback) — keeps `load`'s useCallback
+  // meaningful and satisfies exhaustive-deps without leaking `lang`.
+  const t = useCallback((ar: string, en: string) => (lang === "ar" ? ar : en), [lang]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -96,7 +98,7 @@ export default function ByokSettingsPanel({ lang, onClose, onActiveChange }: Pro
     } finally {
       setLoading(false);
     }
-  }, [lang, onClose, onActiveChange]);
+  }, [t, onClose, onActiveChange]);
 
   useEffect(() => {
     void load();
@@ -287,7 +289,7 @@ export default function ByokSettingsPanel({ lang, onClose, onActiveChange }: Pro
             </label>
           </div>
           {config.lastTestOk !== null && (
-            <p className={"mt-1.5 text-[11px] " + (config.lastTestOk ? "text-emerald-400" : "text-amber-400")}>
+            <p className={`mt-1.5 text-[11px] ${config.lastTestOk ? "text-emerald-400" : "text-amber-400"}`}>
               {config.lastTestOk
                 ? t("آخر اختبار: ناجح", "Last test: passed")
                 : `${t("آخر اختبار: فاشل", "Last test: failed")} — ${config.lastTestError ?? ""}`}
@@ -299,8 +301,8 @@ export default function ByokSettingsPanel({ lang, onClose, onActiveChange }: Pro
       {/* ── Form ── */}
       <div className="space-y-3">
         <div>
-          <label className={labelCls}>{t("المزود", "Provider")}</label>
-          <select value={provider} onChange={(e) => pickProvider(e.target.value)} className={inputCls}>
+          <label className={labelCls} htmlFor="byok-provider">{t("المزود", "Provider")}</label>
+          <select id="byok-provider" value={provider} onChange={(e) => pickProvider(e.target.value)} className={inputCls}>
             {catalog.length > 0 ? (
               catalog.map((p) => (
                 <option key={p.id} value={p.id} className="bg-[#0d1520]">
@@ -314,11 +316,12 @@ export default function ByokSettingsPanel({ lang, onClose, onActiveChange }: Pro
         </div>
 
         <div>
-          <label className={labelCls}>
+          <label className={labelCls} htmlFor="byok-base-url">
             {t("عنوان المزود (API root)", "Provider URL (API root)")}
             {selectedCatalog?.baseUrl && <span className="text-slate-500"> — {t("معبأ تلقائياً", "prefilled")}</span>}
           </label>
           <input
+            id="byok-base-url"
             type="text"
             value={baseUrl}
             onChange={(e) => { setBaseUrl(e.target.value); setTestResult(null); }}
@@ -330,8 +333,9 @@ export default function ByokSettingsPanel({ lang, onClose, onActiveChange }: Pro
         </div>
 
         <div>
-          <label className={labelCls}>{t("اسم النموذج", "Model name")}</label>
+          <label className={labelCls} htmlFor="byok-model">{t("اسم النموذج", "Model name")}</label>
           <input
+            id="byok-model"
             type="text"
             value={modelId}
             onChange={(e) => { setModelId(e.target.value); setTestResult(null); }}
@@ -351,18 +355,19 @@ export default function ByokSettingsPanel({ lang, onClose, onActiveChange }: Pro
         </div>
 
         <div>
-          <label className={labelCls}>
+          <label className={labelCls} htmlFor="byok-api-key">
             {t("مفتاح API", "API key")}
             {config && <span className="text-slate-500"> — {t("اتركه فارغاً للإبقاء على المفتاح المحفوظ", "leave empty to keep the stored key")}</span>}
           </label>
           <div className="relative">
             <input
+              id="byok-api-key"
               type={showKey ? "text" : "password"}
               value={apiKey}
               onChange={(e) => { setApiKey(e.target.value); setTestResult(null); }}
               placeholder="sk-..."
               autoComplete="off"
-              className={inputCls + " pe-10"}
+              className={`${inputCls} pe-10`}
               dir="ltr"
               spellCheck={false}
             />

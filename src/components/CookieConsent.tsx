@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "@/hooks/useTranslation";
 import { Shield, ChevronDown, ChevronUp, Cookie } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -69,12 +69,14 @@ export default function CookieConsent() {
     setTimeout(() => setVisible(false), 400);
   };
 
-  const handleAcceptNecessary = () => {
+  // Stable identity: only touches module-level fns + setters, so useCallback
+  // lets the Escape-key effect subscribe once instead of every render.
+  const handleAcceptNecessary = useCallback(() => {
     saveConsent(DEFAULT_PREFS);
     revokeConsent();
     setJustAccepted(true);
     setTimeout(() => setVisible(false), 400);
-  };
+  }, []);
 
   // ── Escape closes the banner from ANYWHERE on the page ──
   // ROOT CURE (prod audit tour 2026-11-15): the backdrop button's onKeyDown
@@ -91,7 +93,7 @@ export default function CookieConsent() {
     };
     window.addEventListener("keydown", onEscape);
     return () => window.removeEventListener("keydown", onEscape);
-  }, [visible]);
+  }, [visible, handleAcceptNecessary]);
 
   const handleSavePreferences = () => {
     saveConsent(prefs);

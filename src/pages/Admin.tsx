@@ -1426,7 +1426,7 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                           <div className="flex-1 min-w-[220px]">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-sm font-semibold text-foreground">{r.userName || r.userUsername || `#${r.userId}`}</span>
-                              <span className="flex" aria-label={`${r.rating}/5`}>
+                              <span className="flex" role="img" aria-label={`${r.rating}/5`}>
                                 {Array.from({ length: 5 }).map((_, i) => (
                                   <Star key={i} className={`h-3.5 w-3.5 ${i < r.rating ? "fill-amber-400 text-amber-400" : "text-slate-600"}`} />
                                 ))}
@@ -1466,7 +1466,7 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                               {c.isPinned && <Badge className="bg-[rgba(6,182,212,0.15)] text-cyan-400 text-[10px]">{isRTL ? "مثبت" : "Pinned"}</Badge>}
                               <span className="text-xs text-text-faint">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ""}</span>
                             </div>
-                            <p className="text-xs text-text-muted mt-0.5">{isRTL ? (c.courseTitle || "—") + " ← " + (c.lessonTitle || "—") : `${c.lessonTitleEn || c.lessonTitle || "—"}`}</p>
+                            <p className="text-xs text-text-muted mt-0.5">{isRTL ? `${c.courseTitle || "—"} ← ${c.lessonTitle || "—"}` : `${c.lessonTitleEn || c.lessonTitle || "—"}`}</p>
                             <p className="mt-1.5 text-sm text-text-muted line-clamp-3">{c.content}</p>
                           </div>
                           <div className="flex gap-1">

@@ -163,6 +163,7 @@ async function waitForEntryStylesheet(): Promise<void> {
 // trpc.tsx add a belt-and-braces in-memory clear for defense in depth.
 try {
   if (document.cookie.includes('elbaz_identity_switch=1')) {
+    // biome-ignore lint/suspicious/noDocumentCookie: cookie-store API is async and unavailable pre-hydration; expiry-only clear of a short-lived switch flag is safe here
     document.cookie = 'elbaz_identity_switch=; Max-Age=0; Path=/';
     localStorage.removeItem('ELBAZ_QUERY_CACHE');
     (window as unknown as { __elbazIdentitySwitchPurged?: boolean }).__elbazIdentitySwitchPurged = true;
