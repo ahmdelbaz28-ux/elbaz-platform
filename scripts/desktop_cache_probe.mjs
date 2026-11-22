@@ -43,7 +43,12 @@ async function main() {
   // 🛡️ Edge-challenge bypass (same cure as subscribe_gate_prod_check.mjs)
   await ctx.route("**/*", async (route) => {
     const url = new URL(route.request().url());
-    if (url.pathname === "/sw.js") { await route.fulfill({ status: 404, body: "no sw in probe" }); return; }
+    if (url.pathname === "/sw.js") {
+      // Serve an EMPTY service worker (not a 404 — a failed script fetch
+      // would surface as a console error and pollute check H).
+      await route.fulfill({ status: 200, contentType: "application/javascript", body: "// sw disabled in probe" });
+      return;
+    }
     try {
       const res = await route.fetch();
       await route.fulfill({ response: res });
