@@ -46,6 +46,15 @@ async function main() {
 
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  // Cookie-consent backdrop (z-100 full-screen) intercepts real clicks — grant
+  // consent up-front so button clicks land on the actual UI (same init the
+  // desktop-recovery probe uses).
+  await ctx.addInitScript(() => {
+    try {
+      localStorage.setItem("elbaz_cookie_consent",
+        JSON.stringify({ necessary: true, analytics: false, marketing: false }));
+    } catch { /* storage unavailable */ }
+  });
   const page = await ctx.newPage();
   if (FWD_HOST) await ctx.setExtraHTTPHeaders({ "X-Forwarded-Host": FWD_HOST, "X-Forwarded-Proto": "https" });
 
