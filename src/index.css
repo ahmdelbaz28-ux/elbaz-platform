@@ -1869,3 +1869,37 @@ body {
     display: none !important;
   }
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   CONTENT-VISIBILITY — render-skipping for long below-fold lists
+   (post-launch perf hardening, vercel react-best-practices "rendering")
+
+   Offscreen list items past the initial viewport stop painting/layout
+   until they scroll near the viewport — the browser skips their entire
+   subtree (style, layout, paint). The `auto` keyword inside
+   contain-intrinsic-size makes the browser REMEMBER the real rendered
+   size after first paint, so the fixed estimates below only apply to
+   items that were never rendered, and once an item has been seen its
+   real size takes over — later scrolls never shift layout (CLS-safe,
+   complements the skeleton-geometry + idle-warm work).
+
+   Estimates match measured card/row heights (see each call site):
+     cv-auto     ≈ 320px  article cards (16/8 cover + text, 3-col grid)
+     cv-auto-md  ≈ 180px  review / enrollment medium cards
+     cv-auto-row ≈ 72px  lesson buttons, audit / roster table rows
+
+   Call sites apply the class only from index >= ~8-12, so the first
+   screenful always renders fully — zero interaction with first-paint CLS.
+   ════════════════════════════════════════════════════════════════════ */
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 320px;
+}
+.cv-auto-md {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 180px;
+}
+.cv-auto-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 72px;
+}

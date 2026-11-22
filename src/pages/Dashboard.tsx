@@ -97,7 +97,10 @@ export default function Dashboard() {
 
                 return (
                   <motion.div key={enrollment.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.08, type: "spring", stiffness: 200, damping: 20 }}>
-                    <Link to={`/courses/${courseSlug}`} className="group block rounded-xl border border-border bg-primary p-5 transition-all hover:border-accent-secondary/40 hover:shadow-[0_8px_24px_rgba(6,182,212,0.08)]">
+                    {/* content-visibility render-skip past the 7th course card:
+                        first screenful paints fully; the stagger animation only
+                        plays near the fold anyway (delay = idx * 0.08s). */}
+                    <Link to={`/courses/${courseSlug}`} className={`group block rounded-xl border border-border bg-primary p-5 transition-all hover:border-accent-secondary/40 hover:shadow-[0_8px_24px_rgba(6,182,212,0.08)]${idx >= 6 ? " cv-auto-md" : ""}`}>
                       <div className="mb-3 flex items-start justify-between gap-2">
                         <h3 className="line-clamp-2 text-sm font-semibold text-foreground group-hover:text-accent-secondary transition-colors">{courseTitle}</h3>
                         {isComplete ? (

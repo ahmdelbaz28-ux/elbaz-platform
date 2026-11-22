@@ -1848,7 +1848,10 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                       // buttons without disabled/aria state — screen readers
                       // announced them as clickable actions.
                       aria-disabled={!canAccess}
-                      className={`flex w-full min-w-0 items-center gap-3 rounded-lg px-3 py-2.5 text-start transition-colors ${lessonRowClass} ${canAccess ? "cursor-pointer" : "cursor-not-allowed"}`}
+                      // content-visibility render-skip past the 12th lesson:
+                      // long curricula stop painting offscreen rows until
+                      // scrolled near (first screenful always paints fully).
+                      className={`flex w-full min-w-0 items-center gap-3 rounded-lg px-3 py-2.5 text-start transition-colors ${lessonRowClass} ${canAccess ? "cursor-pointer" : "cursor-not-allowed"}${i >= 12 ? " cv-auto-row" : ""}`}
                     >
                       {canAccess ? (
                         <PlayCircle className={`h-4 w-4 shrink-0 ${isActive ? "text-[#06b6d4]" : "text-[#94a3b8]"}`} />

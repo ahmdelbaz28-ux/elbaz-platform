@@ -37,14 +37,14 @@ function fmtDate(value: Date | string | null, lang: "ar" | "en"): string {
 
 /* ── Article Card ── */
 
-function ArticleCard({ item, lang }: { readonly item: ArticleListItem; readonly lang: "ar" | "en" }) {
+function ArticleCard({ item, lang, cvClass }: { readonly item: ArticleListItem; readonly lang: "ar" | "en"; readonly cvClass?: string }) {
   const title = lang === "ar" ? item.titleAr : item.titleEn;
   const excerpt = (lang === "ar" ? item.excerptAr : item.excerptEn) || (lang === "ar" ? item.excerptEn : item.excerptAr) || "";
 
   return (
     <Link
       to={`/articles/${encodeURIComponent(item.slug)}`}
-      className="group flex flex-col rounded-xl border border-border bg-primary p-5 transition-all duration-200 hover:border-[rgba(6,182,212,0.35)] hover:shadow-[0_8px_32px_rgba(6,182,212,0.06)]"
+      className={`group flex flex-col rounded-xl border border-border bg-primary p-5 transition-all duration-200 hover:border-[rgba(6,182,212,0.35)] hover:shadow-[0_8px_32px_rgba(6,182,212,0.06)]${cvClass ? ` ${cvClass}` : ""}`}
     >
       {item.coverImage && (
         <div className="mb-4 aspect-[16/8] overflow-hidden rounded-lg border border-border">
@@ -192,8 +192,11 @@ export default function Articles() {
                 {isRTL ? `${total} مقال` : `${total} article${total === 1 ? "" : "s"}`}
               </p>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {items.map((item) => (
-                  <ArticleCard key={item.id} item={item} lang={lang} />
+                {items.map((item, i) => (
+                  // content-visibility render-skip from the 9th card on:
+                  // the first screenful always paints fully (CLS-safe), the
+                  // growing tail stops rendering until scrolled near.
+                  <ArticleCard key={item.id} item={item} lang={lang} cvClass={i >= 8 ? "cv-auto" : undefined} />
                 ))}
               </div>
             </>

@@ -224,8 +224,8 @@ export default function CourseReviews({ courseId, averageRating }: { readonly co
         {/* ── Reviews list ── */}
         {items.length > 0 ? (
           <ul className="mt-6 space-y-4">
-            {items.map((r) => (
-              <li key={r.id} className="rounded-lg border border-[#1f2d44] bg-[rgba(10,14,23,0.5)] p-4">
+            {items.map((r, ri) => (
+              <li key={r.id} className={`rounded-lg border border-[#1f2d44] bg-[rgba(10,14,23,0.5)] p-4${ri >= 6 ? " cv-auto-md" : ""}`}>
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-3">
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#06b6d4]/15 text-sm font-bold text-[#06b6d4]">

@@ -1421,8 +1421,10 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                     </div>
                     {(modReviews?.items ?? []).length === 0 && <p className="text-sm text-text-muted py-6 text-center">{isRTL ? "لا توجد مراجعات" : "No reviews yet"}</p>}
                     <div className="grid gap-3">
-                      {(modReviews?.items ?? []).map((r) => (
-                        <div key={r.id} className="flex flex-wrap items-start gap-3 rounded-xl border border-border bg-primary p-4">
+                      {(modReviews?.items ?? []).map((r, ri) => (
+                        // cv-auto-row: moderation queue grows unbounded — past
+                        // the first screenful, offscreen rows skip rendering.
+                        <div key={r.id} className={`flex flex-wrap items-start gap-3 rounded-xl border border-border bg-primary p-4${ri >= 8 ? " cv-auto-row" : ""}`}>
                           <div className="flex-1 min-w-[220px]">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-sm font-semibold text-foreground">{r.userName || r.userUsername || `#${r.userId}`}</span>
@@ -1502,8 +1504,8 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                     <p className="text-sm text-text-muted text-center py-10">{isRTL ? "السجل فارغ — ستظهر العمليات هنا تلقائياً" : "Empty — admin actions will appear here automatically"}</p>
                   )}
                   <div className="grid gap-2">
-                    {(auditData?.items ?? []).map((row) => (
-                      <div key={row.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-primary px-3 py-2 text-xs">
+                    {(auditData?.items ?? []).map((row, ri) => (
+                      <div key={row.id} className={`flex flex-wrap items-center gap-2 rounded-lg border border-border bg-primary px-3 py-2 text-xs${ri >= 12 ? " cv-auto-row" : ""}`}>
                         <span className="text-text-faint shrink-0">{row.createdAt ? new Date(row.createdAt).toLocaleString() : "—"}</span>
                         <Badge variant="outline" className="border-border text-[10px] text-accent-secondary shrink-0">{row.actorUsername}</Badge>
                         <span dir="ltr" className="font-mono text-[11px] text-foreground shrink-0">{row.procedure}</span>
@@ -2747,8 +2749,8 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
             {((rosterData?.items as RosterRow[] | undefined) ?? []).length === 0 && (
               <p className="text-sm text-text-muted text-center py-4" data-testid="roster-empty">{isRTL ? "لا يوجد طلاب مطابقون" : "No matching students"}</p>
             )}
-            {((rosterData?.items as RosterRow[] | undefined) ?? []).map((row) => (
-              <div key={row.id} className="flex items-center gap-3 rounded-lg border border-border bg-background p-3" data-testid={`roster-row-${row.id}`}>
+            {((rosterData?.items as RosterRow[] | undefined) ?? []).map((row, ri) => (
+              <div key={row.id} className={`flex items-center gap-3 rounded-lg border border-border bg-background p-3${ri >= 8 ? " cv-auto-row" : ""}`} data-testid={`roster-row-${row.id}`}>
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[rgba(139,92,246,0.14)] text-sm font-bold text-violet-400">{(row.fullName || row.username || "?").charAt(0).toUpperCase()}</div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground truncate">{row.fullName || row.username}</p>
