@@ -193,6 +193,13 @@ export default function ByokSettingsPanel({ lang, onClose, onActiveChange }: Pro
   }
 
   async function handleDelete() {
+    // Destructive + irreversible: the encrypted key is gone — deleting without
+    // a re-entry means re-typing the whole config. Same confirm convention as
+    // every other destructive action in the app (admin panels, references).
+    if (!window.confirm(t(
+      "حذف النموذج الخاص سيمحي مفتاح API المحفوظ نهائياً — ستحتاج لإدخاله من جديد. متأكد؟",
+      "Deleting your own model permanently erases the stored API key — you will have to re-enter it. Continue?"
+    ))) return;
     setDeleting(true);
     try {
       const res = await fetch(`${API_BASE}/api/user-ai-provider`, { method: "DELETE" });
@@ -215,22 +222,35 @@ export default function ByokSettingsPanel({ lang, onClose, onActiveChange }: Pro
 
   async function handleToggle() {
     const next = !enabled;
+    // Optimistic flip of BOTH mirrors of the same value — the form state and
+    // the saved-config block (the checkbox renders config.enabled; updating
+    // only `enabled` left the checkbox stale, so users re-clicked and silently
+    // re-enabled the model — owner-review UX bug, 2026-11-23).
     setEnabled(next);
+    setConfig((prev) => (prev ? { ...prev, enabled: next } : prev));
     try {
       const res = await fetch(`${API_BASE}/api/user-ai-provider`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: next }),
       });
-      const data = await res.json() as { success: boolean; error?: string };
+      const data = await res.json() as { success: boolean; config?: SavedConfig; error?: string };
       if (!data.success) {
         setEnabled(!next);
+        setConfig((prev) => (prev ? { ...prev, enabled: !next } : prev));
         toast(data.error ?? t("تعذر التحديث", "Couldn't update"), { duration: 2500 });
         return;
       }
+      // The server row is the source of truth — adopt its response verbatim.
+      if (data.config) setConfig(data.config);
       onActiveChange?.(next);
+      toast(next
+        ? t("تم التفعيل — المساعد سيعتمد نموذجك أولاً ثم نماذج المنصة عند الفشل", "Enabled — your model runs first, platform models on failure")
+        : t("تم التعطيل — نماذج المنصة مسؤولة عن الإجابات الآن", "Disabled — the platform models are in charge now"),
+        { duration: 3000 });
     } catch {
       setEnabled(!next);
+      setConfig((prev) => (prev ? { ...prev, enabled: !next } : prev));
       toast(t("تعذر التحديث — تحقق من الاتصال", "Couldn't update — check your connection"), { duration: 2500 });
     }
   }
