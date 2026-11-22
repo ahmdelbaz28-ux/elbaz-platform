@@ -143,6 +143,33 @@ function prefetchRoute(rawPath: string): void {
 
 function useRoutePrefetch(): void {
   useEffect(() => {
+    // 🚀 IDLE prefetch of the top public journeys (owner SEO round, 2026-11-22).
+    // Hover-intent prefetch (below) can only help AFTER the visitor decides to
+    // move; these three chunks cover nearly every guest path (browse → course
+    // → login). Warming them during idle dead-time means a route mount lands
+    // in the SAME paint as the click — inside the 500ms hadRecentInput window,
+    // so the route-swap layout shift is excluded from CLS by the spec, and
+    // navigation is visually instant. Repeat imports are registry-free.
+    const IDLE_ROUTES: ReadonlyArray<() => Promise<unknown>> = [
+      () => import("./pages/Courses"),
+      () => import("./pages/CourseDetail"),
+      () => import("./pages/Login"),
+    ];
+    const idleWarm = (): void => {
+      for (const load of IDLE_ROUTES) void load().catch(() => { /* offline */ });
+    };
+    if ("requestIdleCallback" in globalThis) {
+      const id = (globalThis as { requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => number })
+        .requestIdleCallback(idleWarm, { timeout: 4000 });
+      return () => {
+        (globalThis as { cancelIdleCallback: (id: number) => void }).cancelIdleCallback(id);
+      };
+    }
+    const t = setTimeout(idleWarm, 2000);
+    return () => clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
     const handle = (event: Event): void => {
       const target = event.target instanceof Element ? event.target : null;
       const anchor = target?.closest("a[href^='/']");
