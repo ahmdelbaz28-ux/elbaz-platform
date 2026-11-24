@@ -401,4 +401,20 @@ describe("SKILL_REGISTRY routing + getSystemPrompt integration", () => {
     expect(CABLES_LAYER_META.egyCodeSectionCount).toBe(18);
     expect(CABLES_LAYER_META.docCount).toBe(49);
   });
+
+  it("v3.9.2 cross-domain suppression: a Saudi-DPS question never drags the Elsewedy/EgyCode KB (owner: no unimportant file reads)", () => {
+    // Load words («محركات», «إنارة») fire hasCablesIntent, but the question
+    // belongs to the Saudi-DPS refs lane — with refsRouteActive the cables
+    // block must stay EMPTY so the prompt carries only the asked source.
+    const saudiQ = "احسب الأحمال حسب الكود السعودي DPS لمصنع به محركات 50 كيلووات وإنارة 10 كيلووات";
+    expect(hasCablesIntent(saudiQ)).toBe(true); // load words fire the raw intent…
+    expect(buildCablesContextBlock(saudiQ, "ar", "thinking", { refsRouteActive: true })).toBe(""); // …yet the KB is suppressed
+
+    // Backward compat: without the cross-flag the legacy behavior is intact.
+    expect(buildCablesContextBlock(saudiQ, "ar", "thinking").length).toBeGreaterThan(0);
+
+    // An explicit cable noun overrides the suppression — both cores integrate.
+    const saudiPlusCable = "احسب الأحمال حسب الكود السعودي DPS ثم اختر مقطع الكابل للتغذية الرئيسية";
+    expect(buildCablesContextBlock(saudiPlusCable, "ar", "thinking", { refsRouteActive: true }).length).toBeGreaterThan(0);
+  });
 });

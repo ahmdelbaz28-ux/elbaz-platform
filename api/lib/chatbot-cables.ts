@@ -1122,9 +1122,19 @@ const CONTEXT_RULES_AR = `قواعد استخدام هذا السياق: الم�
 const CONTEXT_RULES_EN = `Context usage rules: the excerpts below are original data from the Elsewedy catalogue and the Egyptian Code guiding volume — rely on them for numbers and rules, present the calculation step by step, and cite with the mandatory format — the citation line is MANDATORY and must be the LAST line of the reply, verbatim. Never attribute anything not present in these excerpts to the references.`;
 
 /** Builds the dynamic context block: CALC-SHEET (when the query carries sizing
- *  data) + BM25 excerpts. Returns "" when there is no cables intent. */
-export function buildCablesContextBlock(query: string, lang: CablesLang, mode: CablesMode = "thinking"): string {
+ *  data) + BM25 excerpts. Returns "" when there is no cables intent.
+ *  ✅ OWNER DISCIPLINE (v3.9.2, "no unimportant file reads"): opts.refsRouteActive
+ *  (computed in chatbot.ts as hasRefsIntent && routeRefsQuery(...).docs.length>0)
+ *  suppresses this block UNLESS the query names an explicit cable noun — a
+ *  Saudi-DPS / ABB / Schneider / Gilany question that merely mentions load
+ *  words («محركات», «إنارة», «معامل الطلب») must NOT drag the Elsewedy /
+ *  Egyptian-Code KB into the prompt (that reference is not the asked source).
+ *  Symmetric to the refs-side cablesIntentActive exclusion (no double burn). */
+const CABLE_NOUN_RE = /(كابل|كابلات|cables?|مقطع|المقاطع|سويدي|elsewedy|امبيراسيه|امبيراسية|أمبيراسية|ampacit|csa|مم2|مم²|مم 2|xlpe|n2xy|nyy|نحاس|ألومنيوم|الومنيوم|aluminium|aluminum|copper)/i;
+
+export function buildCablesContextBlock(query: string, lang: CablesLang, mode: CablesMode = "thinking", opts: { refsRouteActive?: boolean } = {}): string {
   if (!hasCablesIntent(query)) return "";
+  if (opts.refsRouteActive && !CABLE_NOUN_RE.test(query)) return "";
   const instant = mode === "instant";
   const budget = instant ? INSTANT_CONTEXT_BUDGET : THINKING_CONTEXT_BUDGET;
 

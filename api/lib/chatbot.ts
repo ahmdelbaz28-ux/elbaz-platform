@@ -36,7 +36,7 @@ import { getSystemPrompt, MODE_TUNING, type ChatbotMode, type ModeTuning } from 
 
 import { buildSaadatContextBlock, enforcePinnedCitation } from "./chatbot-saadat.js";
 import { buildCablesContextBlock, enforceCablesCitations, hasCablesIntent } from "./chatbot-cables.js";
-import { buildRefsContextBlock, enforceRefsCitations } from "./chatbot-refs.js";
+import { buildRefsContextBlock, enforceRefsCitations, hasRefsIntent, routeRefsQuery } from "./chatbot-refs.js";
 import { extractRoutingSignal } from "./chatbot-skillnet.js";
 import { webIntentFromMessages } from "./chatbot-intent.js";
 import { reportTokenUsage } from "./token-usage.js";
@@ -1033,13 +1033,20 @@ async function runTextCascade(request: {
   // from the Elsewedy-catalogue + Egyptian-Code knowledge bases ("" for
   // non-cables queries → prompt unchanged). Built once here; the same block
   // serves every lane; the deterministic CALC-SHEET rides inside it.
-  const cablesContext = buildCablesContextBlock(routingSignal, request.language === "ar" ? "ar" : "en", mode);
+  // ✅ v3.9.2 OWNER DISCIPLINE ("no unimportant file reads"): when the refs
+  // routes own the question (Saudi DPS / ABB / Schneider / Gilany), the
+  // cables block stays EMPTY unless the query names an explicit cable noun —
+  // load words («محركات», «إنارة») alone never drag the Elsewedy/EgyCode KB
+  // into a Saudi-DPS or catalogue question (symmetric to the refs-side
+  // cablesIntentActive exclusion below — cross-gating in BOTH directions).
+  const cablesIntentActive = hasCablesIntent(routingSignal);
+  const refsRouteActive = hasRefsIntent(routingSignal) && routeRefsQuery(routingSignal, cablesIntentActive).docs.length > 0;
+  const cablesContext = buildCablesContextBlock(routingSignal, request.language === "ar" ? "ar" : "en", mode, { refsRouteActive });
   // ✅ TECHNICAL REFERENCES EXPERT CORE (v1.0.0): references-intent-gated block
   // from the Saudi DPS-01 / ABB / Schneider knowledge bases + the full
   // page-level index of all reference documents ("" for non-reference
   // queries → prompt unchanged). When the cables layer is already active its
   // Elsewedy/EgyCode corpora are excluded here (no double token burn).
-  const cablesIntentActive = hasCablesIntent(routingSignal);
   const refsContext = buildRefsContextBlock(routingSignal, request.language === "ar" ? "ar" : "en", mode, { cablesIntentActive });
   // ✅ ROOT-CURE (2026-11-13): the vision flag now threads into the prompt —
   // vision pass-2 requests carry the screen-teacher / image-analysis block.
