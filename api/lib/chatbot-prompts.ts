@@ -31,6 +31,7 @@
 
 import { buildScreenBlock, type ParsedScreenContext } from "./chatbot-screen.js";
 import { SKILL_REGISTRY, registerSkillContent, routeSkills, logSkillRouting } from "./chatbot-skillnet.js";
+import { routeRefsQuery } from "./chatbot-refs.js";
 
 import {
   versionRuleAr,
@@ -710,22 +711,18 @@ export function getSystemPrompt(language?: string, mode: ChatbotMode = "thinking
     ? null
     : routeSkills({ signal: routingSignal, lang: skillLang, mode, screenCapture, vision, floor: routingFloor });
   if (routingDecision) logSkillRouting(routingDecision, { lane: mode });
+  // ✅ AUDIT FIX (layer-6 coherence): a dynamic RAG block must never ride
+  // without its protocol block — when saadat/cables/refs context is present,
+  // the matching skill block is FORCE-INCLUDED regardless of keyword scoring
+  // (the router may legitimately score 1 on a multi-domain message). The set
+  // is declared here and FILLED after the three blocks are built below.
+  const forcedSkillIds = new Set<string>();
   const skillIncluded = (id: string): boolean =>
     !routingDecision || routingDecision.strategy === "full-fallback"
       ? true
-      : routingDecision.selected.some((s) => s.id === id);
+      : forcedSkillIds.has(id) || routingDecision.selected.some((s) => s.id === id);
 
-  // Routed zone A — pf/skm/pvsyst/etap/depth + the four new study packs, in
-  // the registry's canonical order (exactly the historical composition order
-  // with the new packs inserted after the depth pack). Zone B — the SLD
-  // drawing skill keeps its historical position AFTER the evidence model.
-  const routedZoneA = SKILL_REGISTRY
-    .filter((s) => s.id !== "sld-drawing-skill" && s.modes.includes(mode))
-    .map((s) => (skillIncluded(s.id) ? s.build(skillLang, mode) : ""))
-    .join("");
-  const routedZoneB = skillIncluded("sld-drawing-skill")
-    ? (skillLang === "ar" ? sldSkillAr : sldSkillEn)
-    : "";
+
 
   // ── Screen-context block — the user's CURRENT open screen (page, displayed
   // entity, nav trail, UI state) embedded as read-only data. Built for the
@@ -792,6 +789,29 @@ Hard rules (guessing is absolutely forbidden):
   // REFS-PAGES excerpts with their citation lines. Empty (non-reference
   // query) → byte-identical prompt.
   const refsBlock = typeof refsContext === "string" && refsContext.trim().length > 0 ? refsContext : "";
+
+  // ── forced co-selection fill (layer-6 coherence — see note above) ──
+  if (saadatBlock) forcedSkillIds.add("saadat-academic-core");
+  if (cablesBlock) forcedSkillIds.add("cables-expert-core");
+  if (refsBlock) {
+    const refsRoute = routeRefsQuery(routingSignal ?? "", cablesBlock.length > 0);
+    if (refsRoute.saudi) forcedSkillIds.add("saudi-load-core");
+    if (refsRoute.abb) forcedSkillIds.add("abb-transformer-core");
+    if (refsRoute.schneider) forcedSkillIds.add("schneider-price-core");
+    if (refsRoute.gilany) forcedSkillIds.add("gilany-pse-core");
+  }
+
+  // Routed zone A — pf/skm/pvsyst/etap/depth + the four new study packs, in
+  // the registry's canonical order (exactly the historical composition order
+  // with the new packs inserted after the depth pack). Zone B — the SLD
+  // drawing skill keeps its historical position AFTER the evidence model.
+  const routedZoneA = SKILL_REGISTRY
+    .filter((s) => s.id !== "sld-drawing-skill" && s.modes.includes(mode))
+    .map((s) => (skillIncluded(s.id) ? s.build(skillLang, mode) : ""))
+    .join("");
+  const routedZoneB = skillIncluded("sld-drawing-skill")
+    ? (skillLang === "ar" ? sldSkillAr : sldSkillEn)
+    : "";
 
   if (mode === "instant") {
     if (language === "ar") {

@@ -168,3 +168,54 @@ jobs:
       - name: Deployment Status
         if: always()
         run: echo "Deployment completed. Check https://huggingface.co/spaces/ahmdelbaz28/AHMDRTAP for build status."
+
+  # ══════════════════════════════════════════════════════════
+  # POST-DEPLOY LIVE PROBE (per the e2e-testing + ci-cd skills):
+  # verify the deployed Space actually serves the technical-references
+  # contracts (citations are enforced SERVER-SIDE, so they are deterministic).
+  # Hard checks gate the run; model-variance soft checks report as WARN.
+  # Retries ×2 (CI pattern); artifacts retained 30 days.
+  # ══════════════════════════════════════════════════════════
+  live-probe:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+
+      - name: Install dependencies (tsx runtime only)
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Wait for the HF Space to finish building
+        run: |
+          for i in $(seq 1 40); do
+            STAGE=$(curl -s https://huggingface.co/api/spaces/ahmdelbaz28/AHMDRTAP | grep -o '"stage":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
+            echo "attempt $i: stage=$STAGE"
+            if [ "$STAGE" = "RUNNING" ]; then echo "Space is RUNNING"; exit 0; fi
+            sleep 15
+          done
+          echo "::warning::Space stage never reached RUNNING within 10 minutes — probing anyway"
+
+      - name: Run the references live proof (2 attempts)
+        run: |
+          set -o pipefail
+          npx tsx scripts/chatbot-refs-live-proof.ts 2>&1 | tee live-proof.log && STATUS=0 || STATUS=$?
+          if [ "$STATUS" != "0" ]; then
+            echo "attempt 1 failed (status=$STATUS) — retrying once (flaky-model pattern)"
+            sleep 30
+            npx tsx scripts/chatbot-refs-live-proof.ts 2>&1 | tee live-proof.log
+          fi
+
+      - name: Publish proof summary (log-embedded — the security contract pins
+        every action ref to a verified SHA, so no artifact action is added)
+        if: always()
+        run: |
+          echo "### Chatbot references live proof" >> "$GITHUB_STEP_SUMMARY"
+          tail -40 live-proof.log >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(log missing)"
+

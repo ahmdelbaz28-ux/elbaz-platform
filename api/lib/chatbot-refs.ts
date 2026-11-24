@@ -229,14 +229,16 @@ export function routeRefsQuery(query: string, cablesIntentActive = false): RefsR
     }
   }
   if (docs.length === 0) {
-    // no specialized corpus matched → generic engineering question: the book +
-    // every structured catalogue is the fallback (generous, still filtered
-    // BM25) — minus the corpora the active cables layer already owns
-    const fallback = ALL_DOCS.filter((d) =>
-      cablesIntentActive ? d !== "elsewedy" && d !== "egycode-1" && d !== "egycode-2" : true
-    );
+    // cables layer owns this query and no reference corpus matched → return an
+    // EMPTY route: burning tokens on wrong files is exactly what must never
+    // happen (the cables layer's curated KB + engine already serve it)
+    if (cablesIntentActive) {
+      return { saudi: false, abb: false, schneider: false, gilany: false, docs: [] };
+    }
+    // generic engineering question → the book + every structured catalogue is
+    // the fallback (generous, still filtered BM25)
     gilany = true;
-    return { saudi: true, abb: true, schneider: true, gilany: true, docs: fallback };
+    return { saudi: true, abb: true, schneider: true, gilany: true, docs: [...ALL_DOCS] };
   }
   return { saudi, abb, schneider, gilany, docs };
 }
@@ -1411,6 +1413,7 @@ export function buildRefsContextBlock(
   let size = 0;
 
   const route = routeRefsQuery(query, opts.cablesIntentActive ?? false);
+  if (route.docs.length === 0) return "";
 
   // 1) Saudi load engine
   const saudiReq = route.saudi ? parseSaudiLoadRequest(query) : null;
@@ -1485,6 +1488,7 @@ export function resolveRefsCitations(
 ): string[] {
   if (!hasRefsIntent(query)) return [];
   const route = routeRefsQuery(query, opts.cablesIntentActive ?? false);
+  if (route.docs.length === 0) return [];
   const out: string[] = [];
   const saudiReq = route.saudi ? parseSaudiLoadRequest(query) : null;
   if (saudiReq) {

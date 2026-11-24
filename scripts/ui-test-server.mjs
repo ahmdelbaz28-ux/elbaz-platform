@@ -552,6 +552,27 @@ const server = http.createServer(async (req, res) => {
       "لضغط زر الإيقاف ",
       "قبل اكتمال الرد بالكامل.",
     ];
+    if (mode === "refs-citations") {
+      // Technical-references rendering contract (layer-10 audit): a refs
+      // answer ending with markdown table + citation lines — the UI must
+      // render them verbatim, never mangled (Latin IDs inside RTL text).
+      const refsChunks = [
+        "بناءً على قائمة أسعار شنايدر مصر 2026، قاطع Masterpact MTZ1 بتيار 1600 أمبير:\n\n",
+        "| الوصف | Product ID | السعر (EGP) |\n|---|---|---|\n| MTZ1 16H1 3P Fixed | TABEAAANN | 196,383 |\n| MTZ1 16H2 3P Fixed | TACFAAANN | 215,104 |\n\n",
+        "التحقق: القيمة مطابقة لقائمة الأسعار ضمن ±0.5%.\n",
+        "[Schneider Electric Egypt — Breakers & Switches Price List 2026، 1 - ACB Range، ص.10، Product ID: TABEAAANN]\n",
+        "[SEC DPS-01 — Estimation of Customer Load Guideline، Table 11، ص.32]",
+      ];
+      let ri = 0;
+      timer = setInterval(() => {
+        if (ri >= refsChunks.length) { finish(); return; }
+        chatStream.chunksSent += 1;
+        chatStream.lastText += refsChunks[ri];
+        try { res.write(`data: ${JSON.stringify({ text: refsChunks[ri] })}\n\n`); } catch { /* client gone */ }
+        ri += 1;
+      }, 150);
+      return;
+    }
     if (mode === "silent-delay") {
       // Thinking phase: model event only, first text chunk after 10s —
       // lets the test press STOP before anything visible arrived.
