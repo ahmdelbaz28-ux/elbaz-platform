@@ -417,4 +417,16 @@ describe("SKILL_REGISTRY routing + getSystemPrompt integration", () => {
     const saudiPlusCable = "احسب الأحمال حسب الكود السعودي DPS ثم اختر مقطع الكابل للتغذية الرئيسية";
     expect(buildCablesContextBlock(saudiPlusCable, "ar", "thinking", { refsRouteActive: true }).length).toBeGreaterThan(0);
   });
+
+  it("v3.9.2 stamp side honors the same predicate: no Elsewedy citation on a suppressed Saudi-DPS answer (live E2E finding)", () => {
+    const saudiQ = "احسب الأحمال حسب الكود السعودي DPS لمصنع به محركات 50 كيلووات وإنارة 10 كيلووات";
+    const saudiReply = "الحساب وفق DPS-01: التصنيف C للنشاط الصناعي يحدد كثافة الحمل، ومجموع الأحمال المصرح بها يُضرب بمعامل الطلب المناسب حسب الجدول المرجعي للمنشآت الصناعية.".repeat(2);
+    // The KB is suppressed → the enforcement must NOT stamp Elsewedy citations.
+    expect(enforceCablesCitations(saudiReply, saudiQ, "ar", "thinking")).toBe(saudiReply);
+
+    // A genuine cables question still gets its mandatory stamp (legacy path).
+    const cablesQ = "اختار كابل لحمل 100 كيلووات طول 50 متر تيار قصر 25 ك.أ";
+    const cablesReply = "المقطع المختار 70 مم² بعد التحقق من الأمبيراسية وهبوط الجهد ومقاومة تيار القصر.".repeat(2);
+    expect(enforceCablesCitations(cablesReply, cablesQ, "ar", "thinking")).not.toBe(cablesReply);
+  });
 });

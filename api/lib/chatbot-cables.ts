@@ -51,6 +51,9 @@ import {
   type CableAmpacityTable,
 } from "./chatbot-cables-kb.js";
 import { EGYCODE_SECTIONS, type EgyCodeSection } from "./chatbot-egycode-kb.js";
+// ✅ v3.9.2 cross-gating (one-way dependency — refs never imports cables):
+// the citation-stamp side recomputes the exact refs-route junction value.
+import { hasRefsIntent, routeRefsQuery } from "./chatbot-refs.js";
 
 // ─── Prompt language / mode (mirrors Saadat without importing it) ───────────
 
@@ -1132,9 +1135,19 @@ const CONTEXT_RULES_EN = `Context usage rules: the excerpts below are original d
  *  Symmetric to the refs-side cablesIntentActive exclusion (no double burn). */
 const CABLE_NOUN_RE = /(كابل|كابلات|cables?|مقطع|المقاطع|سويدي|elsewedy|امبيراسيه|امبيراسية|أمبيراسية|ampacit|csa|مم2|مم²|مم 2|xlpe|n2xy|nyy|نحاس|ألومنيوم|الومنيوم|aluminium|aluminum|copper)/i;
 
+/** ✅ v3.9.2 SHARED LOADING PREDICATE — the single source of truth for "does
+ *  the cables block ride in the prompt for this query?". The builder uses it
+ *  for the prompt side, and enforceCablesCitations uses it for the stamp side:
+ *  a citation can never outlive its source (a suppressed KB must never leave
+ *  an Elsewedy/EgyCode stamp on a Saudi-DPS / catalogue answer).
+ *  refsRouteActive is the chatbot.ts junction value:
+ *  hasRefsIntent(query) && routeRefsQuery(query, cablesIntent).docs.length>0. */
+export function cablesBlockLoads(query: string, refsRouteActive: boolean): boolean {
+  return hasCablesIntent(query) && !(refsRouteActive && !CABLE_NOUN_RE.test(query));
+}
+
 export function buildCablesContextBlock(query: string, lang: CablesLang, mode: CablesMode = "thinking", opts: { refsRouteActive?: boolean } = {}): string {
-  if (!hasCablesIntent(query)) return "";
-  if (opts.refsRouteActive && !CABLE_NOUN_RE.test(query)) return "";
+  if (!cablesBlockLoads(query, opts.refsRouteActive ?? false)) return "";
   const instant = mode === "instant";
   const budget = instant ? INSTANT_CONTEXT_BUDGET : THINKING_CONTEXT_BUDGET;
 
@@ -1195,8 +1208,17 @@ function isRefusalReply(reply: string): boolean {
 }
 
 /** Appends any missing mandatory citation line(s) to the reply (append-only —
- *  safe for streaming where partial text already reached the client). */
+ *  safe for streaming where partial text already reached the client).
+ *  ✅ v3.9.2: the stamp side honors the SAME loading predicate as the prompt
+ *  side — the cross-flag is recomputed here (deterministic pure function, so
+ *  it always equals the chatbot.ts junction value) which fixes both call
+ *  sites (chatbot.ts success path + chatbot-router.ts stream seam) at once:
+ *  a Saudi-DPS / ABB / Schneider question whose cables KB was suppressed
+ *  leaves this function with NO Elsewedy/EgyCode citation stamped. */
 export function enforceCablesCitations(reply: string, query: string, lang: CablesLang, mode: CablesMode = "thinking"): string {
+  const cablesIntent = hasCablesIntent(query);
+  const refsRouteActive = cablesIntent && hasRefsIntent(query) && routeRefsQuery(query, cablesIntent).docs.length > 0;
+  if (!cablesBlockLoads(query, refsRouteActive)) return reply;
   const citations = resolveCablesCitations(query, lang, mode);
   if (!citations.length) return reply;
   if (isRefusalReply(reply)) return reply;
