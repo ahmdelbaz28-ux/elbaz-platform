@@ -247,10 +247,14 @@ export function verifyApprovalActionToken(token: string): ApprovalTokenVerdict {
 // Admin fan-out — in-app stream + email alert
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The owner inbox the approval alert lands in (argv-configurable in HF). */
+/** The owner inbox the approval alert lands in. ADMIN_ALERT_EMAIL (Space
+ *  secret, rotatable without a redeploy) wins when set; otherwise the
+ *  deployment's owner inbox — the platform's public identity (it appears in
+ *  every email footer already), not a credential, and this repo is private. */
 export function adminAlertEmail(): string | null {
   const v = (env.ADMIN_ALERT_EMAIL || "").trim().toLowerCase();
-  return v.includes("@") ? v : null;
+  if (v.includes("@")) return v;
+  return "ahmedelbaz28@gmail.com";
 }
 
 async function loadAdminIds(): Promise<number[]> {
