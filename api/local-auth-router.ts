@@ -21,7 +21,9 @@ import { evictUserAuthCache, AuthMeOutput } from "./context.js";
 import { verifyTotp, hashToken } from "./twofa-router";
 // Growth features: referral rewards + educational email drip.
 import { applyReferral } from "./lib/referral";
-import { maybeSendWelcomeEmail } from "./lib/email-drip";
+// ✅ ADMIN APPROVAL GATE (owner directive, 2026-11-24): server-side gate on
+// login + the owner alert fan-out on registration.
+import { approvalGateVerdict, notifyAdminsOfRegistration } from "./lib/approval.js";
 
 // ─── Dummy hash for constant-time login ───────────────────────────────────────
 // To prevent username enumeration via response timing, when a login attempt
@@ -164,6 +166,9 @@ interface AuthUser {
 interface AuthResponse {
   user: AuthUser;
   token?: string;
+  /** ADMIN APPROVAL GATE: true when the account was created but needs the
+   *  owner's approval before it can sign in (no session was issued). */
+  pendingApproval?: boolean;
 }
 
 // ─── Helper: convert a registration DB error into the appropriate TRPCError ───
@@ -296,6 +301,12 @@ export const localAuthRouter = createRouter({
             passwordHash,
             name: input.name || input.username,
             email: safeEmail,
+            // ✅ ADMIN APPROVAL GATE (owner directive, 2026-11-24): every
+            // self-service registration starts pending — the owner approves
+            // or rejects from the dashboard / approval email BEFORE any
+            // session can exist. The column default grandfathers pre-gate
+            // accounts; only this explicit insert creates pending ones.
+            approvalStatus: "pending",
           });
           const resultArr = Array.isArray(insertResult) ? insertResult : [insertResult];
           userId = Number(resultArr[0]?.insertId);
@@ -310,23 +321,15 @@ export const localAuthRouter = createRouter({
           throw toRegistrationTRPCError(err);
         }
 
-        const token = await createToken({ userId, username: input.username, role: "user", tokenVersion: 0 });
-        // clearRateLimit() is a synchronous void function; do not `await` it
-        // (SonarCloud S4123: awaiting a non-Promise is a code smell).
+        // ✅ ADMIN APPROVAL GATE: NO session is issued for a pending account —
+        // no JWT, no cookies, no native token. The response only confirms the
+        // request was received; the login gate enforces the rest server-side.
         clearRateLimit(ip, "register");
 
-        const authCookie = serializeAuthCookie(ctx.req.headers, token);
-        const flagCookie = serializeAuthFlagCookie(ctx.req.headers);
-        ctx.resHeaders.append("set-cookie", authCookie);
-        ctx.resHeaders.append("set-cookie", flagCookie);
-
-         const isMobile = isNativeTokenRequest(ctx.req);
-         const responseData: AuthResponse = {
-           user: { id: userId, username: input.username, name: input.name || input.username },
-         };
-         if (isMobile) {
-           responseData.token = token;
-         }
+        const responseData: AuthResponse = {
+          user: { id: userId, username: input.username, name: input.name || input.username },
+          pendingApproval: true,
+        };
 
         // ── Send email verification if user registered with an email ────────
         // This is non-blocking — if email sending fails, registration still
@@ -350,13 +353,29 @@ export const localAuthRouter = createRouter({
           }
         }
 
-        // ── Educational drip: welcome email ─────────────────────────────────
-        // Fire-and-forget; only users WITH an email address receive it.
-        if (safeEmail) {
-          void maybeSendWelcomeEmail(userId, input.username, safeEmail, input.name || input.username);
-        }
+        // ── Educational drip: welcome email is DEFERRED to approval time ────
+        // (the account cannot sign in yet — the drip lands when the owner
+        // approves, see admin-users approveUser).
 
-        logger.info("Registration successful", { userId, username: input.username, email: maskEmail(safeEmail) });
+        logger.info("Registration successful — pending admin approval", { userId, username: input.username, email: maskEmail(safeEmail) });
+
+        // ── ADMIN APPROVAL GATE: alert the owner (best-effort) ──────────────
+        // In-app admin stream (toast + chime on the owner's open clients)
+        // + the approval email with signed accept/reject links. Never blocks
+        // the registration response.
+        void notifyAdminsOfRegistration({
+          userId,
+          username: input.username,
+          name: input.name || input.username,
+          email: safeEmail,
+          frontendUrl: env.FRONTEND_URL,
+        }).catch((notifyErr) => {
+          logger.warn("[Auth] admin approval notification failed (best-effort)", {
+            userId,
+            error: notifyErr instanceof Error ? notifyErr.message : String(notifyErr),
+          });
+        });
+
         return responseData;
       } catch (err) {
 
@@ -471,6 +490,25 @@ export const localAuthRouter = createRouter({
             message: "Invalid username or password",
           });
         }
+      }
+
+      // ✅ ADMIN APPROVAL GATE (owner directive, 2026-11-24): correct
+      // credentials are NOT enough — the owner must have approved the
+      // account. Placed AFTER credential + 2FA verification so the gate
+      // reveals nothing to an attacker who does not already hold the
+      // credentials, and BEFORE any session issuance. Distinct stable
+      // message sentinels let the login page render the respectful
+      // "under review" / "rejected" panels in the user's language —
+      // while this response deliberately issues NO token and NO cookies.
+      // A pending user retrying does NOT burn the per-account failure
+      // throttle (this is not a credential failure).
+      const gate = approvalGateVerdict(user);
+      if (!gate.allowed) {
+        logger.info("[Auth] login blocked by approval gate", { userId: user.id, gate: gate.gate });
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: gate.gate === "pending" ? "APPROVAL_PENDING" : "APPROVAL_REJECTED",
+        });
       }
 
       // ✅ ROOT-CURE (2026-11-14, "Remember this device still asks for login"):

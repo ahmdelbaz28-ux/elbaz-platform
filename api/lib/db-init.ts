@@ -1326,6 +1326,42 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         logger.warn("[DB] v16 userAiProviders migration warning", { error: (err as Error).message });
       }
 
+      // ── v17 feature: ADMIN APPROVAL GATE on users (owner directive 2026-11) ──
+      // New self-service registrations become "pending" and cannot obtain a
+      // session through ANY path (local login, Google OAuth, GIS) until an
+      // admin approves them (dashboard queue / approval email). Rejection
+      // blocks login and revokes live sessions (tokenVersion bump).
+      // The column DEFAULT 'approved' grandfathers every pre-gate account
+      // without a data backfill; registration inserts the explicit 'pending'.
+      // Idempotent: columnExists-guarded ALTERs.
+      try {
+        if (!(await dbColumnExists(conn, "users", "approvalStatus"))) {
+          await conn.execute(
+            "ALTER TABLE `users` ADD COLUMN `approvalStatus` VARCHAR(20) NOT NULL DEFAULT 'approved'"
+          );
+          logger.info("[DB]   + users.approvalStatus (default approved — pre-gate accounts grandfathered)");
+        }
+        if (!(await dbColumnExists(conn, "users", "approvalDecidedAt"))) {
+          await conn.execute("ALTER TABLE `users` ADD COLUMN `approvalDecidedAt` TIMESTAMP NULL");
+          logger.info("[DB]   + users.approvalDecidedAt");
+        }
+        if (!(await dbColumnExists(conn, "users", "approvalDecidedByUserId"))) {
+          await conn.execute("ALTER TABLE `users` ADD COLUMN `approvalDecidedByUserId` BIGINT UNSIGNED NULL");
+          logger.info("[DB]   + users.approvalDecidedByUserId");
+        }
+        if (!(await dbIndexExists(conn, "users", "users_approval_status_idx"))) {
+          try {
+            await conn.execute("ALTER TABLE `users` ADD INDEX `users_approval_status_idx` (`approvalStatus`)");
+            logger.info("[DB]   + users_approval_status_idx");
+          } catch (e) {
+            logger.warn("[DB] users_approval_status_idx", { error: (e as Error).message });
+          }
+        }
+        logger.info("[DB] v17 admin approval gate verified");
+      } catch (err) {
+        logger.warn("[DB] v17 approval gate migration warning", { error: (err as Error).message });
+      }
+
       // ── Admin password sync (existing deployments) ──
       // ✅ SECURITY FIX (audit run-1, db-init.admin-password-env-sync):
       // ADMIN_PASSWORD is SEED-ONLY. Previously every boot re-synced the admin

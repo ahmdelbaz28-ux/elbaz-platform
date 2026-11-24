@@ -60,6 +60,7 @@ type AppVariables = {
 import { shieldMiddleware } from "./middleware/shield.js";
 import { getClientIpFromHono } from "./lib/client-ip";
 import { notificationRoute } from "./notification-route.js";
+import { approvalActionRoute } from "./approval-action-route.js";
 import { startYoutubeWatcher } from "./lib/youtube-watcher.js";
 
 const app = new Hono<{ Variables: AppVariables }>({ strict: false });
@@ -169,6 +170,9 @@ app.route("/api/google-auth", googleAuthRouter);
 // ── BYOK (bring-your-own-key) management for the chatbot key menu ──
 import { userAiProviderRouter } from "./user-ai-provider-router.js";
 app.route("/api/user-ai-provider", userAiProviderRouter);
+// ✅ ADMIN APPROVAL GATE (owner directive, 2026-11-24): signed one-time
+// approve/reject links from the registration alert email.
+app.route("/api/approval", approvalActionRoute);
 
 // ── Notification polling (bell + YouTube episode watcher) at /api/notifications/* ──
 app.route("/api/notifications", notificationRoute);

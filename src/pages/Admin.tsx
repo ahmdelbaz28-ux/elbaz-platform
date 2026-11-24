@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, type CSSProperties } from "react";
+import { useEffect, useState, useRef, useCallback, type CSSProperties } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -12,7 +12,9 @@ import {
   Youtube, Loader2, ListVideo,
   CalendarDays, ExternalLink, RefreshCw, ImageOff,
   FolderTree, ListChecks, UserPlus, UserMinus, RotateCcw, GraduationCap, HelpCircle, ShieldCheck, Star,
+  UserCheck, UserX, Hourglass, BellRing, MailPlus,
 } from "lucide-react";
+import { requestDeviceNotificationPermission, playApprovalChime } from "@/lib/approval-chime";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -205,7 +207,41 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
   const { data: stats } = trpc.admin.stats.useQuery(undefined, { enabled: !!isAdmin });
   const { data: analytics } = trpc.admin.analytics.useQuery(undefined, { enabled: !!isAdmin && activeTab === "dashboard" });
   // Also fetched on the dashboard tab — the overview's "Newest users" card reads it.
-  const { data: usersData } = trpc.admin.users.useQuery(undefined, { enabled: !!isAdmin && (activeTab === "users" || activeTab === "dashboard") });
+  const { data: usersData, refetch: refetchUsers } = trpc.admin.users.useQuery(undefined, { enabled: !!isAdmin && (activeTab === "users" || activeTab === "dashboard") });
+  // ✅ ADMIN APPROVAL GATE (owner directive, 2026-11-24): live join-request
+  // queue — refreshed every 15s so the sidebar badge stays honest from any
+  // tab, and the sidebar "users" badge lights up the moment someone
+  // registers (the chime + device notification fire via the poller bridge).
+  const { data: approvalsData, refetch: refetchApprovals } = trpc.admin.pendingApprovals.useQuery(undefined, {
+    enabled: !!isAdmin,
+    refetchInterval: 15_000,
+  });
+  const pendingApprovals = approvalsData?.items ?? [];
+  const pendingApprovalsCount = approvalsData?.total ?? 0;
+  const invalidateUsersLists = useCallback(() => {
+    void refetchApprovals();
+    void refetchUsers();
+  }, [refetchApprovals, refetchUsers]);
+  const approveUserMutation = trpc.admin.approveUser.useMutation({
+    onSuccess: () => {
+      toast.success(isRTL ? "تم قبول الحساب — صاحبه يستطيع تسجيل الدخول الآن" : "Account approved — its owner can now sign in");
+      invalidateUsersLists();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+  const rejectUserMutation = trpc.admin.rejectUser.useMutation({
+    onSuccess: () => {
+      toast.success(isRTL ? "تم رفض الطلب — لن يستطيع هذا الحساب تسجيل الدخول" : "Request rejected — this account can no longer sign in");
+      invalidateUsersLists();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+  const resendApprovalEmailMutation = trpc.admin.resendApprovalEmail.useMutation({
+    onSuccess: () => {
+      toast.success(isRTL ? "أعيد إرسال بريد الموافقة إلى صندوقك" : "Approval email re-sent to your inbox");
+    },
+    onError: (err) => toast.error(err.message),
+  });
   const { data: coursesData } = trpc.admin.listCourses.useQuery(undefined, { enabled: !!isAdmin && activeTab === "courses" });
   const { data: allTickets } = trpc.admin.tickets.useQuery(undefined, { enabled: !!isAdmin && activeTab === "tickets" });
   const [feedbackRatingFilter, setFeedbackRatingFilter] = useState<"all" | "up" | "down">("all");
@@ -783,6 +819,17 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                     {item.id === "tickets" && openTickets > 0 && !expanded && (
                       <span className="admin-nav-badge">{openTickets > 9 ? "9+" : openTickets}</span>
                     )}
+                    {/* ✅ ADMIN APPROVAL GATE: the join-request count rides the
+                        users tab — the owner sees pending registrations from
+                        ANY tab (mirrors the open-tickets pattern above). */}
+                    {item.id === "users" && pendingApprovalsCount > 0 && expanded && (
+                      <span className="ms-auto rounded-full bg-[rgba(245,158,11,0.18)] px-1.5 py-0.5 text-[10px] font-bold text-amber-300" data-testid="approvals-nav-badge">
+                        {pendingApprovalsCount > 99 ? "99+" : pendingApprovalsCount}
+                      </span>
+                    )}
+                    {item.id === "users" && pendingApprovalsCount > 0 && !expanded && (
+                      <span className="admin-nav-badge" data-testid="approvals-nav-badge-mini">{pendingApprovalsCount > 9 ? "9+" : pendingApprovalsCount}</span>
+                    )}
                   </motion.button>
                 );
               })}
@@ -1026,6 +1073,105 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                       <p className="text-sm text-text-muted mt-1">{allUsers.length} {isRTL ? "مستخدم" : "users"}</p>
                     </div>
                   </div>
+
+                  {/* ✅ ADMIN APPROVAL GATE (owner directive, 2026-11-24): the
+                      owner's authority over who enters the platform — approve
+                      or reject every registration before it can sign in. */}
+                  <div className="rounded-xl border border-amber-500/30 bg-[rgba(245,158,11,0.04)] overflow-hidden" data-testid="approvals-card">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-500/20 px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <Hourglass className="h-4 w-4 text-amber-300" />
+                        <h2 className="text-sm font-bold text-foreground">
+                          {isRTL ? "طلبات الانضمام بانتظار موافقتك" : "Join requests awaiting your approval"}
+                        </h2>
+                        {pendingApprovalsCount > 0 && (
+                          <span className="rounded-full bg-[rgba(245,158,11,0.18)] px-2 py-0.5 text-[11px] font-bold text-amber-300" data-testid="approvals-card-count">
+                            {pendingApprovalsCount}
+                          </span>
+                        )}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-amber-500/40 text-amber-200 hover:bg-amber-500/10"
+                        data-testid="enable-approval-notifications"
+                        onClick={async () => {
+                          const perm = await requestDeviceNotificationPermission();
+                          if (perm === "granted") {
+                            playApprovalChime();
+                            toast.success(isRTL ? "تم تفعيل تنبيهات الجهاز والصوت — سيصلك إشعار فور تسجيل أي مستخدم" : "Device notifications + sound enabled — you'll be alerted on every registration");
+                          } else {
+                            toast.info(isRTL ? "لم يُسمح بإشعارات الجهاز — سيصلك التنبيه داخل المنصة مع الصوت فقط" : "Device notifications not granted — in-app alerts with sound will still fire");
+                          }
+                        }}
+                      >
+                        <BellRing className="h-4 w-4" />
+                        {isRTL ? "تفعيل صوت وتنبيهات الجهاز" : "Enable sound + device alerts"}
+                      </Button>
+                    </div>
+                    {pendingApprovals.length === 0 ? (
+                      <p className="px-4 py-5 text-sm text-text-muted" data-testid="approvals-empty">
+                        {isRTL
+                          ? "لا توجد طلبات معلّقة حالياً — كل التسجيلات الجديدة ستظهر هنا فور حدوثها مع إشعار صوتي."
+                          : "No pending requests right now — new registrations will appear here instantly with a sound alert."}
+                      </p>
+                    ) : (
+                      <ul className="divide-y divide-border/50">
+                        {pendingApprovals.map((u) => (
+                          <li key={u.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3" data-testid={`approval-row-${u.username}`}>
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[rgba(245,158,11,0.12)] text-xs font-bold text-amber-300">{(u.name || u.username || "?").charAt(0).toUpperCase()}</div>
+                              <div>
+                                <p className="text-sm font-medium text-foreground">{u.name || u.username}</p>
+                                <p className="text-xs text-text-faint">
+                                  @{u.username}{u.email ? ` · ${u.email}` : ""}{u.createdAt ? ` · ${new Date(u.createdAt).toLocaleDateString()}` : ""}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                className="bg-emerald-600 text-white hover:bg-emerald-500"
+                                disabled={approveUserMutation.isPending}
+                                data-testid={`approve-${u.username}`}
+                                onClick={() => approveUserMutation.mutate({ userId: u.id })}
+                              >
+                                <UserCheck className="h-4 w-4" />
+                                {isRTL ? "قبول" : "Approve"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-red-500/40 text-red-300 hover:bg-red-500/10"
+                                disabled={rejectUserMutation.isPending}
+                                data-testid={`reject-${u.username}`}
+                                onClick={() => {
+                                  if (!window.confirm(isRTL
+                                    ? "رفض الطلب سيمنع هذا الحساب من الدخول نهائياً ويوقف أي جلسة نشطة له. متأكد؟"
+                                    : "Rejecting will permanently block this account from signing in and kill any active session. Continue?")) return;
+                                  rejectUserMutation.mutate({ userId: u.id });
+                                }}
+                              >
+                                <UserX className="h-4 w-4" />
+                                {isRTL ? "رفض" : "Reject"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-text-muted hover:text-amber-200"
+                                disabled={resendApprovalEmailMutation.isPending}
+                                title={isRTL ? "إعادة إرسال بريد الموافقة إلى صندوقك" : "Re-send the approval email to your inbox"}
+                                onClick={() => resendApprovalEmailMutation.mutate({ userId: u.id })}
+                              >
+                                <MailPlus className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
                   <div className="rounded-xl border border-border bg-primary overflow-hidden">
                     <table className="w-full text-start text-sm">
                       <thead>

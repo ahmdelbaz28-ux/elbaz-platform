@@ -24,6 +24,9 @@ import { env } from "./lib/env";
 import { checkRateLimit } from "./lib/rate-limiter";
 import { logger, maskEmail } from "./lib/logger";
 import { getClientIpFromHono as getClientIp } from "./lib/client-ip";
+// ✅ ADMIN APPROVAL GATE (owner directive, 2026-11-24): Google sign-in is a
+// session-issuance path — pending/rejected accounts get NO session here.
+import { approvalGateVerdict, notifyAdminsOfRegistration, type GateUser } from "./lib/approval.js";
 
 const googleAuthRouter = new Hono();
 
@@ -419,6 +422,10 @@ googleAuthRouter.get("/callback", async (c) => { // NOSONAR — complex function
     // tokenVersion (was hardcoded 0 — every user with ≥1 local login got a
     // cookie that failed the DB tokenVersion check, breaking Google login).
     let tokenVersionForSession = 0;
+    // ✅ ADMIN APPROVAL GATE: the status travels with the branch so the gate
+    // below can fail-closed BEFORE any session is minted.
+    let approvalStatusForGate: string | null = null;
+    let newlyCreated = false;
     // Note: `userName`, `userEmail`, `userAvatar` were previously declared
     // and assigned in each branch below but never read after the if/else —
     // SonarCloud S1854 (dead stores). Removed; only `userId`, `username`,
@@ -431,6 +438,7 @@ googleAuthRouter.get("/callback", async (c) => { // NOSONAR — complex function
       username = user.username;
       userRole = user.role;
       tokenVersionForSession = user.tokenVersion;
+      approvalStatusForGate = user.approvalStatus;
     } else {
       // Check by email
       const existingByEmail = googleEmail ? await db.select().from(users).where(eq(users.email, googleEmail)).limit(1) : [];
@@ -442,6 +450,7 @@ googleAuthRouter.get("/callback", async (c) => { // NOSONAR — complex function
         username = user.username;
         userRole = user.role;
         tokenVersionForSession = user.tokenVersion;
+        approvalStatusForGate = user.approvalStatus;
       } else if (existingByEmail.length > 0) {
         // ✅ SECURITY FIX (audit run-1): an unverified Google email matching an
         // existing local account must NOT link or sign in — fail closed.
@@ -461,18 +470,47 @@ googleAuthRouter.get("/callback", async (c) => { // NOSONAR — complex function
           name: googleName || newUsername,
           email: googleEmail,
           avatar: googlePicture || null,
+          // ✅ ADMIN APPROVAL GATE: Google OAuth sign-ups join the same queue.
+          approvalStatus: "pending",
         });
 
         const resultArr = Array.isArray(insertResult) ? insertResult : [insertResult];
         userId = Number(resultArr[0]?.insertId);
         username = newUsername;
         userRole = "user";
+        approvalStatusForGate = "pending";
+        newlyCreated = true;
+        logger.info("[GoogleAuth/OAuth] new user created (pending approval)", { userId, username, email: maskEmail(googleEmail) });
+        // Owner alert (in-app stream + email with signed action links) —
+        // best-effort, never blocks the redirect below.
+        void notifyAdminsOfRegistration({
+          userId,
+          username,
+          name: googleName || username,
+          email: googleEmail,
+          frontendUrl: env.FRONTEND_URL,
+        }).catch((notifyErr) => {
+          logger.warn("[GoogleAuth/OAuth] admin approval notification failed (best-effort)", {
+            userId,
+            error: notifyErr instanceof Error ? notifyErr.message : String(notifyErr),
+          });
+        });
       }
+    }
+
+    // ✅ ADMIN APPROVAL GATE (owner directive, 2026-11-24): the OAuth callback
+    // is a session-issuance path — pending/rejected accounts are redirected
+    // back with a marker the login page renders as the respectful "under
+    // review" / "rejected" panel. No token, no cookies are issued.
+    const gate = approvalGateVerdict({ id: userId, username, role: userRole, approvalStatus: approvalStatusForGate });
+    if (!gate.allowed) {
+      logger.warn("[GoogleAuth/OAuth] Sign-in refused by approval gate", { userId, gate: gate.gate });
+      return c.redirect(`/?approval=${gate.gate}`);
     }
 
     // ✅ SECURITY FIX (audit run-1, google-oauth-login-skips-totp): fail closed
     // for 2FA-enrolled accounts — no session without the second factor.
-    if (await totpEnrolledFor(userId)) {
+    if (!newlyCreated && (await totpEnrolledFor(userId))) {
       logger.warn("[GoogleAuth/OAuth] Sign-in refused: TOTP enrolled (use password login)", { userId });
       return c.redirect("/?google_error=totp_required");
     }
@@ -512,6 +550,15 @@ googleAuthRouter.get("/callback", async (c) => { // NOSONAR — complex function
  */
 class TotpRequiredError extends Error {}
 
+/** Thrown by issueSessionForUser when the approval gate blocks the account. */
+class ApprovalGateError extends Error {
+  gate: "pending" | "rejected";
+  constructor(gate: "pending" | "rejected") {
+    super(gate);
+    this.gate = gate;
+  }
+}
+
 async function totpEnrolledFor(userId: number): Promise<boolean> {
   const db = getDb();
   const [row] = await db
@@ -536,7 +583,14 @@ function buildUserResponseData(user: { id: number; username: string; name: strin
 
 // ─── Helper: issue a JWT + set auth cookies for an existing user record ───
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function issueSessionForUser(c: any, user: { id: number; username: string; role: string; tokenVersion: number }, logLabel: string): Promise<string> {
+async function issueSessionForUser(c: any, user: { id: number; username: string; role: string; tokenVersion: number; approvalStatus?: string | null }, logLabel: string): Promise<string> {
+  // ✅ ADMIN APPROVAL GATE (owner directive, 2026-11-24): Google sign-in can
+  // never become the side door around the owner's approval. Fail-closed.
+  const gate = approvalGateVerdict(user as GateUser);
+  if (!gate.allowed) {
+    logger.warn("[GoogleAuth] Sign-in refused by approval gate", { userId: user.id, gate: gate.gate });
+    throw new ApprovalGateError(gate.gate);
+  }
   // ✅ SECURITY FIX (audit run-1, google-oauth-login-skips-totp): fail closed
   // for 2FA-enrolled accounts on the GIS flow too.
   if (await totpEnrolledFor(user.id)) {
@@ -623,6 +677,9 @@ googleAuthRouter.post("/", async (c) => {
         if (err instanceof TotpRequiredError) {
           return c.json({ success: false, error: "totp_required", message: "هذا الحساب مفعّل فيه التحقق بخطوتين — استخدم تسجيل الدخول بكلمة المرور" }, 403);
         }
+        if (err instanceof ApprovalGateError) {
+          return c.json({ success: false, error: err.gate === "pending" ? "approval_pending" : "approval_rejected" }, 403);
+        }
         throw err;
       }
       return successResponse(c, buildUserResponseData(user));
@@ -658,6 +715,9 @@ googleAuthRouter.post("/", async (c) => {
           if (err instanceof TotpRequiredError) {
             return c.json({ success: false, error: "totp_required", message: "هذا الحساب مفعّل فيه التحقق بخطوتين — استخدم تسجيل الدخول بكلمة المرور" }, 403);
           }
+          if (err instanceof ApprovalGateError) {
+            return c.json({ success: false, error: err.gate === "pending" ? "approval_pending" : "approval_rejected" }, 403);
+          }
           throw err;
         }
         return successResponse(c, buildUserResponseData(user));
@@ -677,6 +737,8 @@ googleAuthRouter.post("/", async (c) => {
       name: googleName || username,
       email: googleEmail,
       avatar: googlePicture || null,
+      // ✅ ADMIN APPROVAL GATE: Google sign-ups join the same approval queue.
+      approvalStatus: "pending",
     });
 
     const resultArr = Array.isArray(insertResult) ? insertResult : [insertResult];
@@ -687,25 +749,24 @@ googleAuthRouter.post("/", async (c) => {
       return c.json({ success: false, error: "Account creation failed" }, 500);
     }
 
-    const token = await createToken({
+    // ✅ ADMIN APPROVAL GATE: NO session for a pending account — the GIS
+    // response mirrors the local-register contract (the client renders the
+    // respectful "under review" panel). The owner is alerted best-effort.
+    logger.info("Google auth — new user created (pending approval)", { userId, username, email: maskEmail(googleEmail) });
+    void notifyAdminsOfRegistration({
       userId,
-      username: username,
-      role: "user",
-      tokenVersion: 0,
-    });
-
-    setAuthCookies(c, token);
-    // ✅ SECURITY FIX (pre-launch audit run-2, logs.pii-emails): mask PII.
-    logger.info("Google auth — new user created", { userId, username, email: maskEmail(googleEmail) });
-
-    return successResponse(c, {
-      id: userId,
-      username: username,
+      username,
       name: googleName || username,
       email: googleEmail,
-      role: "user",
-      avatar: googlePicture || null,
+      frontendUrl: env.FRONTEND_URL,
+    }).catch((notifyErr) => {
+      logger.warn("[GoogleAuth] admin approval notification failed (best-effort)", {
+        userId,
+        error: notifyErr instanceof Error ? notifyErr.message : String(notifyErr),
+      });
     });
+
+    return c.json({ success: false, pendingApproval: true, error: "approval_pending" }, 403);
   } catch (err) {
     logger.error("Google auth — unexpected error", { error: String(err) });
     return c.json({ success: false, error: "Internal server error" }, 500);

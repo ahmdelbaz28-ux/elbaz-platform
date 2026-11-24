@@ -5,7 +5,7 @@ import { Link, useNavigate } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
 import { trpc } from "@/providers/trpc";
 import { toast } from "sonner";
-import { Zap, Eye, EyeOff } from "lucide-react";
+import { Zap, Eye, EyeOff, Hourglass, ShieldX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,6 +62,17 @@ export default function Login() {
   const [showTotpInput, setShowTotpInput] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleClientId, setGoogleClientId] = useState("");
+  // ✅ ADMIN APPROVAL GATE (owner directive, 2026-11-24): the login page
+  // renders the respectful "under review" / "rejected" panel when the
+  // server's gate stops a pending/rejected account — set by the server
+  // message sentinels, the ?approval= redirect marker (OAuth flow), or the
+  // GIS JSON error codes. Presentation only: the gate itself is server-side.
+  // Lazy initializer reads the OAuth redirect marker at first paint (no
+  // effect-setState cascading render).
+  const [approvalState, setApprovalState] = useState<null | "pending" | "rejected">(() => {
+    const marker = new URLSearchParams(globalThis.location.search).get("approval");
+    return marker === "pending" || marker === "rejected" ? marker : null;
+  });
   // ✨ Cinematic login background: the video fades in only once it can play,
   // so users on slow connections see the poster image immediately (no flash).
   const [bgVideoReady, setBgVideoReady] = useState(false);
@@ -88,6 +99,8 @@ export default function Login() {
 
   useEffect(() => {
     const params = new URLSearchParams(globalThis.location.search);
+    // (the ?approval= OAuth marker is consumed by the lazy state initializer
+    // above — first paint already shows the respectful panel)
     const googleError = params.get("google_error");
     if (googleError) {
       const googleDetail = params.get("google_detail");
@@ -180,6 +193,12 @@ export default function Login() {
         toast.success(lang === "ar" ? "تم تسجيل الدخول بنجاح" : "Logged in successfully");
         navigate(safeRedirectTarget(), { replace: true });
       } else {
+        // ✅ ADMIN APPROVAL GATE: GIS flow blocks pending/rejected accounts
+        // with these stable error codes (no session is issued server-side).
+        if (data.error === "approval_pending" || data.error === "approval_rejected") {
+          setApprovalState(data.error === "approval_pending" ? "pending" : "rejected");
+          return;
+        }
         const errMsg = data.error || (lang === "ar" ? "فشل تسجيل الدخول بجوجل" : "Google login failed");
         setError(errMsg); toast.error(errMsg);
       }
@@ -247,6 +266,14 @@ export default function Login() {
     },
     onError: (err) => {
       trackPlatform("login_failed");
+      // ✅ ADMIN APPROVAL GATE: stable message sentinels from the server gate —
+      // render the respectful panels instead of a red error box. A pending
+      // user retrying does not consume the per-account failure throttle.
+      if (err.message === "APPROVAL_PENDING" || err.message === "APPROVAL_REJECTED") {
+        setApprovalState(err.message === "APPROVAL_PENDING" ? "pending" : "rejected");
+        setError("");
+        return;
+      }
       let errorMsg: string;
       const errorCode = (err.data as { code?: string })?.code;
       if (errorCode === "TOO_MANY_REQUESTS") errorMsg = lang === "ar" ? "محاولات كثيرة. انتظر قليلاً ثم حاول مرة أخرى." : "Too many login attempts. Please wait a moment and try again.";
@@ -330,6 +357,45 @@ export default function Login() {
           <h1 className="mt-4 text-2xl font-bold text-foreground drop-shadow-lg">{t("welcomeBack")}</h1>
           <p className="mt-1 text-sm text-text-secondary drop-shadow-md">{t("loginToContinue")}</p>
         </div>
+
+        {/* ✅ ADMIN APPROVAL GATE — respectful review/rejection panels (2026-11-24).
+            Owner's exact copy: the user is welcomed warmly and told that
+            Eng. Ahmed Elbaz will review their request and approve it soon —
+            in the language the user chose. NOT styled as an error. */}
+        {approvalState === "pending" && (
+          <div className="mb-4 rounded-2xl border border-amber-400/30 bg-amber-400/10 p-5" role="status" data-testid="approval-pending-panel">
+            <div className="flex items-start gap-3">
+              <Hourglass className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+              <div>
+                <h2 className="text-[15px] font-bold text-amber-200">
+                  {lang === "ar" ? "أهلاً بك في منصة المهندس أحمد الباز! 🌟" : "Welcome to Eng. Ahmed Elbaz's platform! 🌟"}
+                </h2>
+                <p className="mt-1.5 text-[13.5px] leading-relaxed text-amber-100/90">
+                  {lang === "ar"
+                    ? "تم استلام طلب انضمامك بنجاح. المهندس أحمد الباز سيراجع طلبك وسيتم الموافقة عليه في أقرب وقت إن شاء الله — بعدها يمكنك تسجيل الدخول مباشرة. شكراً لانتظارك وصدقك."
+                    : "Your join request has been received. Eng. Ahmed Elbaz will review it and approve it as soon as possible — you will be able to sign in right after. Thank you for your patience."}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+        {approvalState === "rejected" && (
+          <div className="mb-4 rounded-2xl border border-red-400/30 bg-red-400/10 p-5" role="alert" data-testid="approval-rejected-panel">
+            <div className="flex items-start gap-3">
+              <ShieldX className="mt-0.5 h-5 w-5 shrink-0 text-red-300" />
+              <div>
+                <h2 className="text-[15px] font-bold text-red-200">
+                  {lang === "ar" ? "لم يتم اعتماد هذا الحساب" : "This account was not approved"}
+                </h2>
+                <p className="mt-1.5 text-[13.5px] leading-relaxed text-red-100/90">
+                  {lang === "ar"
+                    ? "نعتذر — لم يتم قبول طلب الانضمام لهذا الحساب، لذلك لا يمكن تسجيل الدخول به. إن كنت ترى أن هذا خطأ فنحن نأسف لذلك — يرجى التواصل مع الدعم لمراجعة القرار."
+                    : "We're sorry — the join request for this account was not accepted, so it cannot sign in. If you believe this is a mistake, please contact support to review the decision."}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Premium panel — everything (Google + form) lives in one dark
             panel so the video stays visible around the edges. Note: NO

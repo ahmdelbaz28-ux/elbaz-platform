@@ -102,6 +102,11 @@ const envSchema = z.object({
   FRONTEND_URL: z.string().url().default("https://ahmedelbaz.qzz.io"),
   CORS_ORIGINS: z.string().optional(),
 
+  /** Inbox the registration-approval alert lands in (owner directive 2026-11).
+   *  Optional — when unset the in-app admin notification stream still fires,
+   *  only the email alert is skipped. */
+  ADMIN_ALERT_EMAIL: z.string().email().optional(),
+
   REDIS_URL: z.string().url().optional(),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60000),
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().default(300),

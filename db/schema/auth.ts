@@ -60,6 +60,23 @@ export const users = mysqlTable(
     referralCode: varchar("referralCode", { length: 24 }),
     /** The user who invited this account (set once at registration). */
     referredByUserId: bigint("referredByUserId", { mode: "number", unsigned: true }),
+    /**
+     * ADMIN APPROVAL GATE (owner directive, 2026-11-24): new self-service
+     * registrations start as "pending" and can NEVER log in (or receive a
+     * session through any path — local, Google OAuth, GIS) until the admin
+     * approves them from the dashboard or the approval email. "rejected"
+     * blocks login AND revokes any live session (tokenVersion bump). The
+     * column DEFAULT is "approved" so pre-gate accounts are grandfathered
+     * automatically by the migration — registration always writes the
+     * explicit "pending" value.
+     */
+    approvalStatus: varchar("approvalStatus", { length: 20 })
+      .notNull()
+      .default("approved"),
+    /** When the admin approved/rejected (null = still undecided). */
+    approvalDecidedAt: timestamp("approvalDecidedAt", { mode: "date" }),
+    /** Which admin made the decision (null = still undecided). */
+    approvalDecidedByUserId: bigint("approvalDecidedByUserId", { mode: "number", unsigned: true }),
   },
   (table) => [
     uniqueIndex("users_email_unique").on(table.email),
@@ -67,6 +84,7 @@ export const users = mysqlTable(
     uniqueIndex("users_google_id_unique").on(table.googleId),
     uniqueIndex("users_referral_code_unique").on(table.referralCode),
     index("users_role_idx").on(table.role),
+    index("users_approval_status_idx").on(table.approvalStatus),
   ]
 );
 

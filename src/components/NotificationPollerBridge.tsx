@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useNavigate } from "react-router";
 import { useRealtimeNotifications, useShowNotification } from "@/components/NotificationCenter";
+import { playApprovalChime, vibrateApproval, showDeviceNotification } from "@/lib/approval-chime";
 
 const KNOWN_TOAST_TYPES = new Set(["youtube", "lesson", "file", "software"]);
 
@@ -41,6 +42,7 @@ export default function NotificationPollerBridge() {
       message: string;
       url?: string;
       channelUrl?: string;
+      data?: unknown;
     }) => {
       const isRtl = document.documentElement.dir !== "ltr";
       const openUrl = (url: string) => {
@@ -49,6 +51,24 @@ export default function NotificationPollerBridge() {
         // javascript:/data: destination from a notification payload.
         else if (/^https?:\/\//i.test(url)) window.open(url, "_blank", "noopener,noreferrer");
       };
+
+      // ✅ ADMIN APPROVAL GATE (owner directive, 2026-11-24): a registration
+      // that needs approval is the ONE event class that must break through —
+      // chime + haptic buzz + device-level notification on every open client
+      // of an admin (the toast below still fires; only admins ever receive
+      // these events because the fan-out targets admin streams only).
+      const approvalData = (event.data as { approvalRequest?: { username?: string; name?: string } } | undefined)?.approvalRequest;
+      if (approvalData) {
+        playApprovalChime();
+        vibrateApproval();
+        showDeviceNotification(
+          isRtl ? "طلب انضمام جديد للمنصة" : "New join request",
+          isRtl
+            ? `${approvalData.name || approvalData.username || "مستخدم جديد"} سجل في المنصة ويحتاج موافقتك`
+            : `${approvalData.name || approvalData.username || "A new user"} registered and needs your approval`,
+          `approval-${approvalData.username ?? event.id}`,
+        );
+      }
 
       const actionLabel = (() => {
         if (!event.url) return undefined;

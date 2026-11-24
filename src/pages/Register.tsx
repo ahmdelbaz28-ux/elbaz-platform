@@ -6,7 +6,7 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { isValidEmail, hasPasswordStrengthChars } from "@/lib/validation";
 import { trpc } from "@/providers/trpc";
 import { toast } from "sonner";
-import { Zap, Eye, EyeOff, Gift } from "lucide-react";
+import { Zap, Eye, EyeOff, Gift, Hourglass } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -84,6 +84,11 @@ export default function Register() {
   const [error, setError] = useState("");
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleClientId, setGoogleClientId] = useState("");
+  // ✅ ADMIN APPROVAL GATE (owner directive, 2026-11-24): after a successful
+  // registration the account is PENDING the owner's approval — the form is
+  // replaced by the respectful welcome panel (in the user's language) and NO
+  // session is established (the server issues no cookies/token either).
+  const [pendingApproval, setPendingApproval] = useState(false);
 
   // ── Referral capture: /register?ref=CODE ──
   // Persisted to localStorage so the code survives the Google-OAuth round
@@ -130,6 +135,13 @@ export default function Register() {
         toast.success(lang === "ar" ? "تم إنشاء الحساب بنجاح" : "Account created successfully");
         navigate("/", { replace: true });
       } else {
+        // ✅ ADMIN APPROVAL GATE: the GIS flow creates the account as pending
+        // and returns approval_pending (403, no session) — show the same
+        // respectful panel as the local path.
+        if (data.error === "approval_pending") {
+          setPendingApproval(true);
+          return;
+        }
         setError(data.error || (lang === "ar" ? "فشل تسجيل الدخول بجوجل" : "Google sign-in failed"));
         toast.error(data.error || "Google sign-in failed");
       }
@@ -184,11 +196,23 @@ export default function Register() {
   const registerMutation = trpc.auth.register.useMutation({
     onSuccess: (data) => {
       trackPlatform("register_success");
-      // ✅ SECURITY FIX (audit run-1): local registration establishing a new
-      // identity also purges the previous account's cached private queries.
+      try { localStorage.removeItem("elbaz_ref"); } catch { /* ignore */ }
+      // ✅ ADMIN APPROVAL GATE (owner directive, 2026-11-24): the account was
+      // created but is pending the owner's approval — no session was issued
+      // server-side. Show the respectful welcome panel INSTEAD of entering
+      // the platform (the old flow navigated straight to "/").
+      if (data?.pendingApproval) {
+        setPendingApproval(true);
+        toast.success(lang === "ar"
+          ? "تم استلام طلب انضمامك بنجاح — بانتظار موافقة المهندس أحمد الباز"
+          : "Your join request was received — awaiting Eng. Ahmed Elbaz's approval");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+      // Legacy/no-gate path (should not occur while the gate is deployed —
+      // kept as a safe fallback so a session is never silently dropped).
       try { localStorage.removeItem("ELBAZ_QUERY_CACHE"); } catch { /* ignore */ }
       queryClient.clear();
-      try { localStorage.removeItem("elbaz_ref"); } catch { /* ignore */ }
       if (data?.user?.id && data?.user?.username) identifyUser(data.user.id, data.user.username, { role: "user", isNewUser: true });
       if (isNativePlatform() && data?.token) setStoredToken(data.token);
       toast.success(refCode
@@ -233,6 +257,32 @@ export default function Register() {
           <h1 className="mt-4 text-2xl font-bold text-foreground">{t("joinPlatform")}</h1>
           <p className="mt-1 text-sm text-text-muted">{t("startLearning")}</p>
         </div>
+
+        {/* ✅ ADMIN APPROVAL GATE — the respectful welcome panel replaces the
+            form once the request is in (owner's exact copy, user's language). */}
+        {pendingApproval ? (
+          <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-6" role="status" data-testid="register-pending-panel">
+            <div className="flex items-start gap-3">
+              <Hourglass className="mt-0.5 h-6 w-6 shrink-0 text-amber-300" />
+              <div>
+                <h2 className="text-lg font-bold text-amber-200">
+                  {lang === "ar" ? "أهلاً بك في منصة المهندس أحمد الباز! 🌟" : "Welcome to Eng. Ahmed Elbaz's platform! 🌟"}
+                </h2>
+                <p className="mt-2 text-[14px] leading-relaxed text-amber-100/90">
+                  {lang === "ar"
+                    ? "شكراً لتسجيلك! تم استلام طلب انضمامك بنجاح وهو الآن بانتظار المراجعة. المهندس أحمد الباز سيراجع طلبك وسيتم الموافقة عليه في أقرب وقت إن شاء الله — وسنبلغك فور التفعيل، وبعدها تستطيع تسجيل الدخول مباشرة والبدء في التعلم."
+                    : "Thank you for signing up! Your join request has been received and is now awaiting review. Eng. Ahmed Elbaz will review it and approve it as soon as possible — you'll be notified once it's activated, and then you can sign in and start learning right away."}
+                </p>
+                <p className="mt-3 rounded-lg bg-amber-400/10 p-3 text-[12.5px] leading-relaxed text-amber-200/80">
+                  {lang === "ar"
+                    ? "يمكنك الآن إغلاق هذه الصفحة بأمان — حاول تسجيل الدخول بعد وصول إشعار الموافقة."
+                    : "You can safely close this page now — try signing in after you receive the approval notification."}
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+        <>
 
         {googleClientId && (
           <div className="mb-4">
@@ -316,6 +366,8 @@ export default function Register() {
           {t("alreadyHaveAccount")}{" "}
           <Link to="/login" className="font-medium text-accent-secondary hover:underline">{t("login")}</Link>
         </p>
+        </>
+        )}
       </div>
     </div>
   );
