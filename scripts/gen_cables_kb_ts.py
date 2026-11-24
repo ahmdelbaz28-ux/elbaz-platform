@@ -190,7 +190,7 @@ def voltage_of(key):
 
 def fmt_num(k, v):
     if isinstance(v, str):
-        return v
+        return json.dumps(v, ensure_ascii=False)
     if k in ("dc20", "ac", "capUfKm", "indMhKm"):
         return repr(round(float(v), 6))
     if float(v).is_integer():

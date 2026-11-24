@@ -168,7 +168,7 @@ describe("sizing engine — happy path", () => {
     expect(result.requiredTabulatedAmp!).toBeCloseTo(200 / 0.69, 0);
     const t = AMPACITY_TABLES.find((x) => x.id === result.final!.tableId)!;
     const chosen = t.rows.find((r) => r.csa === result.final!.csa)!;
-    expect(chosen.ground * 0.69).toBeGreaterThanOrEqual(200);
+    expect(chosen.ground! * 0.69).toBeGreaterThanOrEqual(200);
   });
 
   it("raises the section when voltage drop governs on a long line", () => {
@@ -341,8 +341,6 @@ describe("enforceCablesCitations", () => {
   });
 
   it("leaves an already-cited reply untouched", () => {
-    const citations = enforceCablesCitations.__internal; // no internal hack — resolve directly
-    expect(citations).toBeUndefined();
     const result = sizeCable(parseSizingRequest(query)!);
     const reply = `المقطع ${result.final!.csa}مم².\n\n${result.citations.join(" ")}`;
     const enforced = enforceCablesCitations(reply, query, "ar", "thinking");

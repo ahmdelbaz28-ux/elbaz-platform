@@ -24,7 +24,7 @@ export interface EgyCodeSection {
   /** Verbatim-derived rule text (Arabic) — citable content. */
   text: string;
   /** Structured key numbers when the clause is tabular. */
-  data?: Record<string, string | number | number[] | string[]>;
+  data?: Record<string, string | number | number[] | string[] | Record<string, string | number>>;
   /** Bilingual retrieval keywords (Arabic normalized + Latin). */
   keywords: string[];
 }

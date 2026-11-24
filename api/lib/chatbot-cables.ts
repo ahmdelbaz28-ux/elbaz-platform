@@ -147,7 +147,7 @@ function ampTableDoc(t: CableAmpacityTable): CablesDoc {
   };
   const rowsText = t.rows
     .map((r: CableAmpacityRow) => {
-      const vals = t.cols.map((c) => `${colNamesAr[c] ?? c}=${(r as Record<string, number | undefined>)[c]}`).join("، ");
+      const vals = t.cols.map((c) => `${colNamesAr[c] ?? c}=${(r as unknown as Record<string, number | undefined>)[c]}`).join("، ");
       return `${fmtCsa(r.csaLabel)}مم²: ${vals}`;
     })
     .join(" | ");
@@ -281,6 +281,7 @@ export interface CablesHit {
   id: string;
   score: number;
   citation: string;
+  citationEn: string;
   page: number | null;
   excerpt: string;
   reason: "bm25";
@@ -375,6 +376,7 @@ export function retrieveCables(query: string, k = 3): CablesHit[] {
       id: s.doc.doc.id,
       score: Math.round(s.score * 100) / 100,
       citation: s.doc.doc.citation,
+      citationEn: s.doc.doc.citationEn,
       page: s.doc.doc.page,
       excerpt: s.doc.doc.text.length > 1700 ? `${s.doc.doc.text.slice(0, 1650)} …` : s.doc.doc.text,
       reason: "bm25",
