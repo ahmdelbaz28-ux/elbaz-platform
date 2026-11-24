@@ -1164,10 +1164,15 @@ export interface BreakerCandidate extends SchneiderItem {
   rating: number | null;
 }
 
+/** Mounting parts that must never compete with real devices on price
+ *  (they are chassis/fixing/interlocking PARTS, printed as separate lines). */
+const NON_DEVICE_RE = /chassis|chaasis|fixture|interlock|interlocking|set of|adaptation/i;
+
 export function selectBreaker(req: BreakerRequest, limit = 4): BreakerCandidate[] {
   let pool = SCHNEIDER_ITEMS.slice();
   if (req.kind && req.kind !== "any") {
-    pool = pool.filter((it) => itemKind(it) === req.kind);
+    const isDeviceKind = req.kind !== "accessory";
+    pool = pool.filter((it) => itemKind(it) === req.kind && (!isDeviceKind || !NON_DEVICE_RE.test(it.desc)));
   }
   if (req.poles) {
     const byPoles = pool.filter((it) => it.poles === req.poles);

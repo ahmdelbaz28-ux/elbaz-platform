@@ -404,6 +404,14 @@ describe("BRK-SELECT engine (Schneider)", () => {
     expect(vfd.every((c) => c.family.includes("Drive"))).toBe(true);
   });
 
+  it("never recommends chassis/fixture parts as breakers", () => {
+    const cands = selectBreaker({ amps: 1600, kind: "acb", poles: 3 });
+    expect(cands.length).toBeGreaterThan(0);
+    for (const c of cands) {
+      expect(/chassis|chaasis|fixture|interlock/i.test(c.desc)).toBe(false);
+    }
+  });
+
   it("handles the split myPact accessory references (re-joined)", () => {
     const merged = SCHNEIDER_ITEMS.filter((it) => it.ref.includes("EETNNN"));
     expect(merged.length).toBeGreaterThan(10);
