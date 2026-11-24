@@ -186,14 +186,14 @@ const WELCOME_MESSAGES: Record<string, Message> = {
     id: "welcome",
     role: "assistant",
     content:
-      "Welcome to Elbaz Bot — your electrical engineering AI assistant.\n\nI can help you with:\n• Power systems analysis (load flow, short circuit, arc flash)\n• ETAP, SKM Power*Tools & DIgSILENT PowerFactory\n• Relay coordination & protection systems\n• Network analysis & fault studies\n• IEEE / IEC standards\n• Generating real files for you in-chat: PDF / Word / Markdown reports with tables and source citations\n\nAsk me any electrical engineering question.",
+      "Welcome to Elbaz Bot — your electrical engineering AI assistant.\n\nI can help you with:\n• Power systems analysis (load flow, short circuit, arc flash)\n• ETAP, SKM Power*Tools & DIgSILENT PowerFactory\n• Relay coordination & protection systems\n• Network analysis & fault studies\n• IEEE / IEC standards\n\nAsk me any electrical engineering question.",
     timestamp: new Date(),
   },
   ar: {
     id: "welcome",
     role: "assistant",
     content:
-      "مرحباً بك في بوت الباز — مساعدك الذكي للهندسة الكهربية.\n\nأستطيع مساعدتك في:\n• تحليل أنظمة القوى (تدفق الأحمال، الدوائر القصيرة، القوس الكهربي)\n• برنامج ETAP و SKM Power*Tools و DIgSILENT PowerFactory\n• تنسيق الريليه وأنظمة الحماية\n• تحليل الشبكات ودراسات الأعطال\n• معايير IEEE و IEC\n• توليد ملفات حقيقية داخل الشات: تقارير PDF / وورد / مارك داون بجداول ومصادر موثقة\n\nاسألني أي سؤال في الهندسة الكهربية.",
+      "مرحباً بك في بوت الباز — مساعدك الذكي للهندسة الكهربية.\n\nأستطيع مساعدتك في:\n• تحليل أنظمة القوى (تدفق الأحمال، الدوائر القصيرة، القوس الكهربي)\n• برنامج ETAP و SKM Power*Tools و DIgSILENT PowerFactory\n• تنسيق الريليه وأنظمة الحماية\n• تحليل الشبكات ودراسات الأعطال\n• معايير IEEE و IEC\n\nاسألني أي سؤال في الهندسة الكهربية.",
     timestamp: new Date(),
   },
 };

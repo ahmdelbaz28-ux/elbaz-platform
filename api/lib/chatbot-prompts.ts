@@ -129,7 +129,7 @@ import {
  *          exercise real CJK code points at runtime). The stable prefix
  *          remains byte-identical to v3.7.0/v3.6.0; prefix caching unaffected.
  */
-export const PROMPT_VERSION = "3.9.0";
+export const PROMPT_VERSION = "3.9.1";
 
 // ── v3.8.1 full-fallback size guard constants ──
 // Mirrors the evolution meter's THINKING_CHAR_CEILING: the degenerate

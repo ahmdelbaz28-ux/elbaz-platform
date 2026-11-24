@@ -265,6 +265,49 @@ describe("routeSkills — edge cases", () => {
     expect(en).toContain("DOCUMENT-GENERATION SKILL");
   });
 
+  it("docgen skill: EXPLICIT-REQUEST-ONLY hard gate (owner directive 2026-11-24, both languages + both lanes)", () => {
+    // The hard gate must exist in every variant of the docgen skill text.
+    for (const skill of SKILL_REGISTRY.filter((s) => s.id === "docgen-file-export")) {
+      const arThinking = skill.build("ar", "thinking");
+      const arInstant = skill.build("ar", "instant");
+      const enThinking = skill.build("en", "thinking");
+      const enInstant = skill.build("en", "instant");
+
+      // GATE PRESENT: generation only on an explicit user request…
+      expect(arThinking).toContain("لا تولّد أي ملف إلا إذا طلب المستخدم طلباً صريحاً");
+      expect(arInstant).toContain("لا ملف أبداً إلا بطلب صريح من المستخدم");
+      expect(enThinking).toContain("Never generate a file unless the user EXPLICITLY requests one");
+      expect(enInstant).toContain("never a file without an explicit user request");
+
+      // …and NO proactive suggestion/offer of file generation, ever.
+      expect(arThinking).toContain("ممنوع منعاً باتاً اقتراح توليد ملف أو عرضه على المستخدم");
+      expect(enThinking).toContain("Strictly forbidden to suggest or offer file generation");
+
+      // AUTO-TRIGGER REMOVED: the old "long answer deserves a file" clause
+      // must be gone from every lane and language.
+      for (const text of [arThinking, arInstant, enThinking, enInstant]) {
+        expect(text).not.toContain("يستحق ملفاً");
+        expect(text).not.toContain("deserve one");
+        expect(text).not.toContain("any file/report request → a docgen board");
+      }
+
+      // OFFER REMOVED: no post-delivery offer to convert to another format.
+      for (const text of [arThinking, enThinking]) {
+        expect(text).not.toContain("اعرض تحويلها");
+        expect(text).not.toContain("offer the other on request");
+      }
+
+      // FORMAT FOLLOWS THE USER verbatim.
+      expect(arThinking).toContain("الصيغة كما طلبها المستخدم حرفياً");
+      expect(enThinking).toContain("The format follows the user's request verbatim");
+    }
+
+    // The routed prompt for a mere format QUESTION (no file request) still
+    // carries the gate that forbids a board — prose-only answer contract.
+    const formatQuestion = getSystemPrompt("ar", "thinking", undefined, false, undefined, undefined, false, "ما الفرق بين pdf و docx؟");
+    expect(formatQuestion).toContain("لو ذكر المستخدم صيغة (pdf/docx/وورد/مارك داون) في سؤال أو استفسار دون طلب ملف");
+  });
+
   it("prompt level: discovery question injects the find-skills protocol with vetting rules", () => {
     const p = getSystemPrompt("ar", "thinking", undefined, false, undefined, undefined, false, "هل توجد مهارة تساعدني في كتابة تقارير LaTeX للأبحاث الهندسية؟");
     expect(p).toContain("مهارة اكتشاف المهارات");
