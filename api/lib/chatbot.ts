@@ -35,6 +35,7 @@ import { env } from "../lib/env";
 import { getSystemPrompt, MODE_TUNING, type ChatbotMode, type ModeTuning } from "./chatbot-prompts.js";
 
 import { buildSaadatContextBlock, enforcePinnedCitation } from "./chatbot-saadat.js";
+import { buildCablesContextBlock, enforceCablesCitations } from "./chatbot-cables.js";
 import { extractRoutingSignal } from "./chatbot-skillnet.js";
 import { webIntentFromMessages } from "./chatbot-intent.js";
 import { reportTokenUsage } from "./token-usage.js";
@@ -1027,9 +1028,14 @@ async function runTextCascade(request: {
   // the Solutions-Manual knowledge base ("" for non-academic queries →
   // prompt unchanged). Built once here; the same block serves every lane.
   const saadatContext = buildSaadatContextBlock(routingSignal, request.language === "ar" ? "ar" : "en", mode);
+  // ✅ CABLES & EGYPTIAN-CODE EXPERT CORE (v1.0.0): cables-intent-gated block
+  // from the Elsewedy-catalogue + Egyptian-Code knowledge bases ("" for
+  // non-cables queries → prompt unchanged). Built once here; the same block
+  // serves every lane; the deterministic CALC-SHEET rides inside it.
+  const cablesContext = buildCablesContextBlock(routingSignal, request.language === "ar" ? "ar" : "en", mode);
   // ✅ ROOT-CURE (2026-11-13): the vision flag now threads into the prompt —
   // vision pass-2 requests carry the screen-teacher / image-analysis block.
-  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, request.vision === true, request.historySummary, request.screen, request.screenCapture, routingSignal, false, request.catalogMode, saadatContext);
+  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, request.vision === true, request.historySummary, request.screen, request.screenCapture, routingSignal, false, request.catalogMode, saadatContext, cablesContext);
   // ✅ v1.1.2 DETERMINISTIC CITATION COMPLIANCE (live E2E finding): prompt-side
   // prefill alone is not deterministic — thinking-lane models omitted the
   // [Saadat, ...] tag in 3 of 4 pinned-problem live answers (numbers were
@@ -1039,7 +1045,12 @@ async function runTextCascade(request: {
   // appendOnly guard at the router's terminator seam).
   const finishSaadatCitation = (reply: string, model: string) =>
     buildSuccessResult({
-      reply: enforcePinnedCitation(reply, routingSignal, request.language === "ar" ? "ar" : "en", mode),
+      reply: enforceCablesCitations(
+        enforcePinnedCitation(reply, routingSignal, request.language === "ar" ? "ar" : "en", mode),
+        routingSignal,
+        request.language === "ar" ? "ar" : "en",
+        mode,
+      ),
       model,
     });
   // WEB GROUNDING policy: thinking mode (the accuracy lane) gets live web

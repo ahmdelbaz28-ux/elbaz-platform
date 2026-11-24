@@ -23,6 +23,7 @@
 import { getSystemPrompt, MODE_TUNING, sanitizeReplyOutput, type ModeTuning } from "./chatbot-prompts.js";
 
 import { buildSaadatContextBlock } from "./chatbot-saadat.js";
+import { buildCablesContextBlock } from "./chatbot-cables.js";
 import { extractRoutingSignal } from "./chatbot-skillnet.js";
 import type { ParsedScreenContext } from "./chatbot-screen.js";
 import { logger } from "./logger.js";
@@ -196,8 +197,11 @@ export async function pickWorkingModel(
   // ✅ SAADAT ACADEMIC CORE (v1.1.0): academic-intent-gated RAG block from
   // the Solutions-Manual knowledge base ("" → prompt unchanged).
   const saadatContext = buildSaadatContextBlock(routingSignal, language === "ar" ? "ar" : "en", mode);
+  // ✅ CABLES & EGYPTIAN-CODE EXPERT CORE (v1.0.0): cables-intent-gated block
+  // (CALC-SHEET + catalogue/Code excerpts) — "" → prompt unchanged.
+  const cablesContext = buildCablesContextBlock(routingSignal, language === "ar" ? "ar" : "en", mode);
   // ✅ ROOT-CURE (2026-11-13): the vision flag threads into the legacy prompt.
-  const systemPrompt = getSystemPrompt(language, mode, catalog, vision === true, historySummary, screen, screenCapture, routingSignal, false, catalogMode, saadatContext);
+  const systemPrompt = getSystemPrompt(language, mode, catalog, vision === true, historySummary, screen, screenCapture, routingSignal, false, catalogMode, saadatContext, cablesContext);
 
   if (mode === "instant") {
     // ─── INSTANT: fastest first — Groq → OpenRouter (fast model) → NVIDIA ───
@@ -843,11 +847,15 @@ async function getVisionStreamResponse(request: {
   // handwritten problem from the textbook — the academic RAG block rides
   // along whenever the caption/description text matches academic intent.
   const saadatContext = buildSaadatContextBlock(routingSignal, request.language === "ar" ? "ar" : "en", mode);
+  // ✅ CABLES & EGYPTIAN-CODE EXPERT CORE (v1.0.0): the caption/description
+  // text can describe a panel or cable drawing — the cables block rides along
+  // on the same intent gate as the text path.
+  const cablesContext = buildCablesContextBlock(routingSignal, request.language === "ar" ? "ar" : "en", mode);
   // ✅ ROOT-CURE (2026-11-13, vision block was dead in production): the vision
   // pass-2 IS a vision request — the screen-teacher block (live frames) or
   // the generic image-analysis block (ordinary attachments) must reach the
   // persona prompt on EVERY lane (dynamic router, legacy backbone, fallback).
-  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, true, request.historySummary, request.screen, request.screenCapture, routingSignal, true, request.catalogMode, saadatContext);
+  const systemPrompt = getSystemPrompt(request.language, mode, request.catalog, true, request.historySummary, request.screen, request.screenCapture, routingSignal, true, request.catalogMode, saadatContext, cablesContext);
 
   // ── PASS 2 (ANSWER): streaming reasoning-first cascade over the TEXT
   // description — the strongest available model writes the answer.
@@ -970,10 +978,11 @@ export async function getStreamResponse(request: {
     const byokTuning = MODE_TUNING[routerMode];
     const byokSignal = extractRoutingSignal(request.messages);
     const byokSaadatContext = buildSaadatContextBlock(byokSignal, request.language === "ar" ? "ar" : "en", routerMode);
+    const byokCablesContext = buildCablesContextBlock(byokSignal, request.language === "ar" ? "ar" : "en", routerMode);
     const byokResult = await tryByokStream({
       config: request.byok,
       messages: request.messages,
-      systemPrompt: getSystemPrompt(request.language, routerMode, request.catalog, false, request.historySummary, request.screen, request.screenCapture, byokSignal, false, request.catalogMode, byokSaadatContext),
+      systemPrompt: getSystemPrompt(request.language, routerMode, request.catalog, false, request.historySummary, request.screen, request.screenCapture, byokSignal, false, request.catalogMode, byokSaadatContext, byokCablesContext),
       tuning: byokTuning,
       abortSignal: request.abortSignal,
     });
@@ -1003,9 +1012,10 @@ export async function getStreamResponse(request: {
     // numbers, prefilled citation). Same build as runTextCascade in chatbot.ts.
     const routerSignal = extractRoutingSignal(request.messages);
     const routerSaadatContext = buildSaadatContextBlock(routerSignal, request.language === "ar" ? "ar" : "en", routerMode);
+    const routerCablesContext = buildCablesContextBlock(routerSignal, request.language === "ar" ? "ar" : "en", routerMode);
     const routed = await routeChatStream({
       messages: request.messages,
-      systemPrompt: getSystemPrompt(request.language, routerMode, request.catalog, false, request.historySummary, request.screen, request.screenCapture, routerSignal, false, request.catalogMode, routerSaadatContext),
+      systemPrompt: getSystemPrompt(request.language, routerMode, request.catalog, false, request.historySummary, request.screen, request.screenCapture, routerSignal, false, request.catalogMode, routerSaadatContext, routerCablesContext),
       mode: routerMode,
       vision: false,
       language: request.language,

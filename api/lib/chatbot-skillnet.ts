@@ -62,6 +62,10 @@ import {
 // it carries its own local normalizer to avoid a cycle).
 import { SAADAT_CORE_BLOCKS } from "./chatbot-saadat.js";
 
+// CABLES & EGYPTIAN-CODE EXPERT CORE (v1.0.0): same one-way pattern —
+// skillnet → cables → {cables-kb, egycode-kb}; cables imports nothing here.
+import { CABLES_CORE_BLOCKS } from "./chatbot-cables.js";
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export type SkillnetLang = "ar" | "en";
@@ -478,6 +482,37 @@ export const SKILL_REGISTRY: SkillDefinition[] = [
     softwareAffinity: [/saadat/i, /solution\s?manual/i, /سعدت/],
     modes: ["thinking", "instant"],
     build: (lang, mode) => SAADAT_CORE_BLOCKS[mode][lang],
+  },
+  {
+    id: "cables-expert-core",
+    label: "نواة خبير الكابلات والكود المصري (السويدي + كود المباني)",
+    description: "Elsewedy Power Cables catalogue mastery (20 ampacity tables, SC/VD/derating, deterministic sizing engine CALC-SHEET) + Egyptian Code design volume rules, with the ±0.5% verification and dual citation contract.",
+    category: "study-pack",
+    version: "1.0.0",
+    phrases: [
+      "اختيار الكابل", "مساحة المقطع", "مقطع الكابل", "تحجيم الكابل", "cable sizing", "cable selection",
+      "امبيراسيه", "الأمبيراسية", "أمبيراسية", "ampacity", "current rating",
+      "كابلات السويدي", "السويدي", "elsewedy", "كتالوج السويدي",
+      "الكود المصري", "كود مصري", "egyptian code", "الدليل الإرشادي",
+      "هبوط الجهد", "تيار القصر", "معاملات التصحيح", "معامل التجميع", "معامل الفراغ",
+      "voltage drop", "short circuit current", "derating factor",
+      "السراير", "حوامل الكابلات", "غرف التفتيش", "خنادق الكابلات", "سعة المواسير",
+    ],
+    keywords: [
+      "كابل", "كابلات", "cable", "cables", "مقطع", "امبير", "أمبير", "ampacity",
+      "نحاس", "ألومنيوم", "الومنيوم", "copper", "aluminum", "aluminium",
+      "xlpe", "pvc", "جدار سميك", "مصعد", "مصاعد", "سلالم متحركة", "تكييف",
+      "طلمبات", "مضخات", "سخانات", "انارة", "إنارة", "إضاءة", "لوكس", "lux",
+      "ماسورة", "ماسوره", "مواسير", "conduit", "مجرى", "مجارى", "duct", "tray", "trunking", "سرير", "سراير",
+      "خنادق", "حفر", "دفن", "مدفون", "buried", "underground", "غرف التفتيش",
+      "trefoil", "مثلثي", "مسطح", "flat", "تلامس", "grouping", "تجميع", "derating", "تصحيح",
+      "هبوط", "الجهد", "قصر", "fault", "kA", "كيلو أمبير", "voltage drop", "vd",
+      "معامل القدرة", "مكثفات", "kvar", "معامل الطلب", "demand factor",
+      "كود", "code", "بند", "clause", "جدول", "table",
+    ],
+    softwareAffinity: [/elsewedy/i, /السويدي/, /كود مصري/, /الكود المصري/],
+    modes: ["thinking", "instant"],
+    build: (lang, mode) => CABLES_CORE_BLOCKS[mode][lang],
   },
   {
     id: "arc-flash-pack",
