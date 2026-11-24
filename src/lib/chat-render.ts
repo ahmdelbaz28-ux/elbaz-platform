@@ -138,6 +138,61 @@ function renderSldFence(rawCode: string): string | null {
   }
 }
 
+// ─── Docgen fence → one-tap file-download card (PDF / DOCX / MD) ─────────────
+
+const DOCGEN_FORMATS = new Set(["pdf", "docx", "md"]);
+
+/** UTF-8-safe base64 (btoa is latin-1 only; chunked to avoid stack overflow). */
+function utf8ToBase64(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let bin = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(bin);
+}
+
+/**
+ * Cheap shape check + card HTML for a ```docgen fence. The spec travels
+ * base64-encoded in a data attribute; the click handler (ChatBot.tsx, event
+ * delegation) POSTs it to /api/docs/gen and triggers a blob download. The
+ * server re-validates everything — here we only guarantee the card renders
+ * for specs that look right, and a malformed fence degrades to a code block.
+ */
+function renderDocgenFence(rawCode: string): string | null {
+  try {
+    const spec = JSON.parse(rawCode) as { format?: unknown; filename?: unknown; title?: unknown; sections?: unknown } | null;
+    if (!spec || typeof spec !== "object") return null;
+    const format = typeof spec.format === "string" && DOCGEN_FORMATS.has(spec.format) ? spec.format : "pdf";
+    const title = typeof spec.title === "string" && spec.title.trim() ? spec.title.trim().slice(0, 160) : "";
+    const filename = typeof spec.filename === "string" && spec.filename.trim() ? spec.filename.trim().replace(/[^A-Za-z0-9-_]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase() : "elbaz-document";
+    const sections = Array.isArray(spec.sections) ? spec.sections : [];
+    if (!title || sections.length === 0 || sections.length > 30) return null;
+    const fileLabel = `${filename}.${format}`;
+
+    const badge = format === "pdf" ? "PDF" : format === "docx" ? "DOCX" : "MD";
+    const isAr = ARABIC_RE.test(title);
+    const label = isAr ? "تحميل الملف" : "Download file";
+    const meta = isAr ? "مُولَّد داخل المنصة — يُبنى من مواصفات متحقق منها" : "Generated in-platform from a verified spec";
+
+    const payload = utf8ToBase64(JSON.stringify({ spec, format }));
+    return (
+      `<div class="docgen-card" data-docgen="${payload}" dir="${isAr ? "rtl" : "ltr"}" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 0;padding:12px 14px;border:1px solid #1e2d3d;border-radius:12px;background:linear-gradient(135deg,rgba(14,116,144,.12),rgba(30,45,61,.35))">` +
+      `<span style="flex:none;display:inline-flex;align-items:center;justify-content:center;min-width:44px;height:32px;padding:0 8px;border-radius:8px;background:#0e7490;color:#fff;font-size:11px;font-weight:700;letter-spacing:.5px" dir="ltr">${badge}</span>` +
+      `<span style="flex:1;min-width:180px">` +
+      `<span style="display:block;color:#e6f1ff;font-size:13.5px;font-weight:600">${escapeHtml(title)}</span>` +
+      `<span style="display:block;color:#8fa8c7;font-size:11px;margin-top:2px" dir="ltr">${escapeHtml(fileLabel)}</span>` +
+      `<span style="display:block;color:#64798f;font-size:10.5px;margin-top:2px">${escapeHtml(meta)}</span>` +
+      `</span>` +
+      `<button type="button" data-docgen-dl style="flex:none;cursor:pointer;border:1px solid #22d3ee;background:rgba(34,211,238,.12);color:#67e8f9;font-size:13px;font-weight:600;padding:8px 16px;border-radius:10px;transition:background .15s">${escapeHtml(label)}</button>` +
+      `</div>`
+    );
+  } catch {
+    return null;
+  }
+}
+
 /**
  * ─── Unfulfilled diagram-promise detector (pure, React-free) ────────────────
  * Powers the "📐 ارسمها دلوقتي" chip: when an assistant reply PROMISES a
@@ -225,6 +280,13 @@ export function renderMarkdown(text: string): string {
         const img = renderSldFence(raw);
         if (img) {
           html += img;
+          continue;
+        }
+      }
+      if (lang === "docgen") {
+        const card = renderDocgenFence(raw);
+        if (card) {
+          html += card;
           continue;
         }
       }

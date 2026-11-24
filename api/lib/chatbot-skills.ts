@@ -557,3 +557,67 @@ IMMEDIATE EXECUTION RULE (top priority — mandatory, no exceptions):
 - Strictly forbidden: promising ("I'll draw it for you", "I'll prepare the diagram", "soon"), deferring to a later reply, or asking permission ("want me to draw it?") — when drawing is requested and data is sufficient, the board itself is first in the reply.
 - ONE essential fact missing and drawing without it would mislead (e.g. grid voltage, feeder count) → ask exactly ONE specific question whose answer enables the drawing immediately — never a list of questions.
 - The missing piece can be replaced by a sound engineering assumption → do NOT ask: draw with the assumption and add one line after the board: "Assumed: X".`;
+
+// ════════════════════════════════════════════════════════════════════════
+// 12) DOCGEN — permanent document-export skill (PDF / DOCX / Markdown)
+//     The bot builds real files for the user in-chat: a ```docgen fence
+//     carries the whole document as JSON; api/lib/docgen renders it
+//     server-side (Arabic shaping + bidi + embedded fonts) and the chat UI
+//     turns it into a one-tap download card. Same contract as the sld fence.
+// ════════════════════════════════════════════════════════════════════════
+
+export const docgenSkillAr = `
+
+📄 مهارة توليد الملفات (PDF / Word / Markdown — إجبارية عند طلب أي ملف):
+حين يطلب المستخدم ملفاً أو تقريراً أو مستنداً («اعمل PDF»، «ولد تقرير»، «ابعت ملف وورد»، «export»، «ملف مارك داون»)، أو عندما يكون الجواب طويلاً وجدولياً ويستحق ملفاً، أخرج المستند كاملاً داخل لوحة docgen بهذا الشكل EXACTLY (بلغة اللوحة docgen):
+
+\`\`\`docgen
+{"format":"pdf","filename":"cable-selection-report","title":"تقرير اختيار كابل التغذية","subtitle":"المشروع: مصنع النصر — MCC-2","sections":[{"heading":"الملخص التنفيذي","paragraphs":["اختيار المقطع 70 مم² ..."],"bullets":["الأمبيراسية: 187 أ"],"table":{"headers":["المقطع مم²","الأمبيراسية"],"rows":[["70","187"]]}},{"heading":"المصادر"}],"citations":["Elsewedy Power Cables 2015 — ص 12، جدول 4"]}
+\`\`\`
+
+قواعد اللوحة (إجبارية):
+- format إحدى: pdf (الافتراضي والرسمي) أو docx (لو يحتاج تعديل بعدين في وورد) أو md (لنسخ سريع). لو حدد المستخدم الصيغة استخدمها حرفياً؛ لو لم يحدد: pdf للتقارير والاختيارات الفنية، docx لو طلب «وورد»، md لو طلب مارك داون أو نص للنسخ.
+- filename بالإنجليزية ASCII قصير بشرطات (cable-sizing-report) بلا امتداد — الامتداد يُبنى تلقائياً.
+- كل محتوى الملف يكون داخل اللوحة نفسها (المستند يُبنى من اللوحة فقط — النص خارجها لا يدخل الملف). أجزاء sections: heading اختياري، وparagraphs/bullets/table اختيارية وممكن دمجها في نفس القسم.
+- الأرقام حرفية من مصادرنا المتحقق منها — لا تخمين داخل الملف أبداً، والجدول أداة الاختيار الأولى: مقارنة القطع/المقاطع/الأسعار بأعمدة مرقمة (Product ID والسعر والصفحة لقطع الكتالوج).
+- citations إجبارية لأي بيانات مأخوذة من مراجعنا (كتالوجات/أكواد/كتب) بنفس صيغة الاستشهاد المعتادة (الاسم — الصفحة/الجدول). أضف قسم «المصادر» تلقائياً عبر citations ولا تكتبه بنفسك في sections.
+- الحدود: حتى 25 قسماً؛ الفقرة حتى ~700 حرف؛ جدول حتى 60 صفاً و8 أعمدة؛ لا تحشو HTML أو markdown داخل النصوص (نص خام فقط).
+
+قاعدة التنفيذ الفوري (أعلى أولوية — إجبارية بلا استثناء):
+- بيانات كافية لبناء الملف → أبِن اللوحة فوراً في أول رد: الملف يظهر في نفس الرد على الإطلاق، بلا استئذان وبلا وعود («سأجهز لك الملف» ممنوعة منعاً باتاً).
+- ناقص بيان جوهري يجعل الملف مضللاً (اسم المشروع؟ الصيغة المطلوبة؟ نطاق المحتوى؟) → سؤال واحد محدد فقط يجعل الإجابة عليه تكفي للبناء فوراً.
+- الناقص قابل لافتراض هندسي منطقي → لا تسأل: ابنِ بالافتراض واكتب سطراً بعد اللوحة: «افترضت: X».
+- الرد النصي حول اللوحة موجز (سطران: ماذا يحوي الملف + المصادر) — الملف هو النجم.
+- ممنوع لوحتان docgen في رد واحد: ملف واحد لكل رد، ولو طلب صيغتين ابنِ الأهم واعرض تحويلها لصيغة أخرى بطلب واحد.`;
+
+export const docgenSkillEn = `
+
+📄 DOCUMENT-GENERATION SKILL (PDF / Word / Markdown — mandatory whenever a file is requested):
+When the user asks for a file, report or document ("make a PDF", "generate a report", "send a Word file", "export", "markdown file"), or the answer is long/tabular enough to deserve one, output the whole document inside a docgen board EXACTLY in this shape (language tag docgen):
+
+\`\`\`docgen
+{"format":"pdf","filename":"cable-selection-report","title":"Cable Selection Report","subtitle":"Project: El-Nasr factory — MCC-2","sections":[{"heading":"Executive summary","paragraphs":["Selected 70 mm2 ..."],"bullets":["Ampacity: 187 A"],"table":{"headers":["Cross-section mm2","Ampacity"],"rows":[["70","187"]]}}],"citations":["Elsewedy Power Cables 2015 — p12, table 4"]}
+\`\`\`
+
+Board rules (mandatory):
+- format is one of: pdf (default, formal) / docx (user wants to edit in Word) / md (quick copy). If the user named a format, use it verbatim.
+- filename is short ASCII with dashes (cable-sizing-report), no extension — it is appended automatically.
+- ALL document content lives INSIDE the board (the file is built from the board only — prose outside it never reaches the file). Section parts: optional heading; optional paragraphs/bullets/table, combinable within one section.
+- Numbers verbatim from verified sources — never guessed inside a file; tables are the primary selection tool: numbered columns comparing parts/sections/prices (Product ID, price, page for catalogue parts).
+- citations are mandatory for any data taken from our references (catalogues/codes/books) in the usual citation form (name — page/table). Add a "Sources" section via citations — never hand-write it in sections.
+- Caps: ≤ 25 sections; paragraph ≤ ~700 chars; table ≤ 60 rows × 8 columns; no HTML/markdown inside strings (plain text only).
+
+IMMEDIATE EXECUTION RULE (top priority — mandatory, no exceptions):
+- Sufficient data to build → build IMMEDIATELY in the first reply: the file appears in the very same reply, no permission-seeking, no promises ("I'll prepare the file" is strictly forbidden).
+- One essential fact missing (project name? requested format? content scope?) → exactly ONE specific question whose answer enables the build immediately.
+- The missing piece is replaceable by a sound engineering assumption → do NOT ask: build with the assumption and add one line after the board: "Assumed: X".
+- Prose around the board stays brief (two lines: what the file contains + sources) — the file is the star.
+- Never two docgen boards in one reply: one file per reply; if two formats are requested, build the more important one and offer the other on request.`;
+
+export const docgenQuickAr = `
+
+📄 مرسى توليد الملفات: أي طلب ملف/تقرير → لوحة docgen فوراً في أول رد (المحتوى كله داخل اللوحة JSON: format/filename/title/subtitle/sections/citations) — pdf افتراضياً وdocx للوورد وmd للنسخ — أرقام متحقق منها فقط + citations إجبارية للمراجع — filename ASCII قصير — بلا وعود أو استئذان، ملف واحد لكل رد، والنص حول اللوحة سطران.`;
+
+export const docgenQuickEn = `
+
+📄 Docgen anchor: any file/report request → a docgen board immediately in the first reply (all content inside the JSON board: format/filename/title/subtitle/sections/citations) — pdf default, docx for Word, md for copy — verified numbers only + mandatory citations — short ASCII filename — no promises, one file per reply, two prose lines around the board.`;

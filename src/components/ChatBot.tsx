@@ -186,14 +186,14 @@ const WELCOME_MESSAGES: Record<string, Message> = {
     id: "welcome",
     role: "assistant",
     content:
-      "Welcome to Elbaz Bot — your electrical engineering AI assistant.\n\nI can help you with:\n\u2022 Power systems analysis (load flow, short circuit, arc flash)\n\u2022 ETAP, SKM Power*Tools & DIgSILENT PowerFactory\n\u2022 Relay coordination & protection systems\n\u2022 Network analysis & fault studies\n\u2022 IEEE / IEC standards\n\nAsk me any electrical engineering question.",
+      "Welcome to Elbaz Bot — your electrical engineering AI assistant.\n\nI can help you with:\n• Power systems analysis (load flow, short circuit, arc flash)\n• ETAP, SKM Power*Tools & DIgSILENT PowerFactory\n• Relay coordination & protection systems\n• Network analysis & fault studies\n• IEEE / IEC standards\n• Generating real files for you in-chat: PDF / Word / Markdown reports with tables and source citations\n\nAsk me any electrical engineering question.",
     timestamp: new Date(),
   },
   ar: {
     id: "welcome",
     role: "assistant",
     content:
-      "\u0645\u0631\u062d\u0628\u0627\u064b \u0628\u0643 \u0641\u064a \u0628\u0648\u062a \u0627\u0644\u0628\u0627\u0632 \u2014 \u0645\u0633\u0627\u0639\u062f\u0643 \u0627\u0644\u0630\u0643\u064a \u0644\u0644\u0647\u0646\u062f\u0633\u0629 \u0627\u0644\u0643\u0647\u0631\u0628\u064a\u0629.\n\n\u0623\u0633\u0637\u064a\u0639 \u0645\u0633\u0627\u0639\u062f\u062a\u0643 \u0641\u064a:\n\u2022 \u062a\u062d\u0644\u064a\u0644 \u0623\u0646\u0638\u0645\u0629 \u0627\u0644\u0642\u0648\u0649 (\u062a\u062f\u0641\u0642 \u0627\u0644\u0623\u062d\u0645\u0627\u0644\u060c \u0627\u0644\u062f\u0648\u0627\u0626\u0631 \u0627\u0644\u0642\u0635\u064a\u0631\u0629\u060c \u0627\u0644\u0642\u0648\u0633 \u0627\u0644\u0643\u0647\u0631\u0628\u064a)\n\u2022 \u0628\u0631\u0646\u0627\u0645\u062c ETAP \u0648 SKM Power*Tools \u0648 DIgSILENT PowerFactory\n\u2022 \u062a\u0646\u0633\u064a\u0642 \u0627\u0644\u0631\u064a\u0644\u064a\u0647 \u0648\u0623\u0646\u0638\u0645\u0629 \u0627\u0644\u062d\u0645\u0627\u064a\u0629\n\u2022 \u062a\u062d\u0644\u064a\u0644 \u0627\u0644\u0634\u0628\u0643\u0627\u062a \u0648\u062f\u0631\u0627\u0633\u0627\u062a \u0627\u0644\u0623\u0639\u0637\u0627\u0644\n\u2022 \u0645\u0639\u0627\u064a\u064a\u0631 IEEE \u0648 IEC\n\n\u0627\u0633\u0623\u0644\u0646\u064a \u0623\u064a \u0633\u0624\u0627\u0644 \u0641\u064a \u0627\u0644\u0647\u0646\u062f\u0633\u0629 \u0627\u0644\u0643\u0647\u0631\u0628\u064a\u0629.",
+      "مرحباً بك في بوت الباز — مساعدك الذكي للهندسة الكهربية.\n\nأستطيع مساعدتك في:\n• تحليل أنظمة القوى (تدفق الأحمال، الدوائر القصيرة، القوس الكهربي)\n• برنامج ETAP و SKM Power*Tools و DIgSILENT PowerFactory\n• تنسيق الريليه وأنظمة الحماية\n• تحليل الشبكات ودراسات الأعطال\n• معايير IEEE و IEC\n• توليد ملفات حقيقية داخل الشات: تقارير PDF / وورد / مارك داون بجداول ومصادر موثقة\n\nاسألني أي سؤال في الهندسة الكهربية.",
     timestamp: new Date(),
   },
 };
@@ -1108,6 +1108,72 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   // Component teardown safety (the widget effectively never unmounts, but
   // an interval must never outlive its owner).
   useEffect(() => () => stopReveal(), [stopReveal]);
+
+  // ─── Docgen download cards (event delegation) ───
+  // renderMarkdown() emits the file cards as innerHTML (no React handlers),
+  // so ONE document-level listener decodes the base64 spec from the card and
+  // POSTs it to /api/docs/gen (public, deterministic, same-origin — the
+  // /api/diagrams/sld contract) and triggers a blob download with the
+  // server-provided filename. Busy/error states live on the button itself.
+  useEffect(() => {
+    const handler = (ev: MouseEvent) => {
+      const target = ev.target;
+      if (!(target instanceof HTMLElement)) return;
+      const btn = target.closest<HTMLButtonElement>("[data-docgen-dl]");
+      if (!btn) return;
+      const card = btn.closest<HTMLElement>("[data-docgen]");
+      if (!card?.dataset.docgen) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (btn.dataset.busy === "1") return;
+      const original = btn.textContent;
+      const restore = (ms = 0) => {
+        if (ms) window.setTimeout(() => { btn.textContent = original; }, ms);
+        else btn.textContent = original;
+      };
+      btn.dataset.busy = "1";
+      btn.textContent = lang === "ar" ? "⏳ جارٍ البناء…" : "⏳ Building…";
+      btn.style.opacity = "0.75";
+      void (async () => {
+        try {
+          const bin = atob(card.dataset.docgen ?? "");
+          const bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          const payload = JSON.parse(new TextDecoder().decode(bytes)) as { spec: unknown; format: string };
+          const res = await fetch(`${API_BASE}/api/docs/gen`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (!res.ok) throw new Error(`docs/gen ${res.status}`);
+          const blob = await res.blob();
+          const disposition = res.headers.get("Content-Disposition") ?? "";
+          const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
+          const asciiMatch = /filename="([^"]+)"/i.exec(disposition);
+          const filename = utf8Match ? decodeURIComponent(utf8Match[1]) : asciiMatch ? asciiMatch[1] : "elbaz-document";
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+          btn.textContent = lang === "ar" ? "✓ تم التحميل" : "✓ Downloaded";
+          restore(2200);
+        } catch {
+          btn.textContent = lang === "ar" ? "✕ تعذر التحميل" : "✕ Download failed";
+          restore(2600);
+        } finally {
+          btn.dataset.busy = "0";
+          btn.style.opacity = "1";
+        }
+      })();
+    };
+    document.addEventListener("click", handler, true);
+    return () => document.removeEventListener("click", handler, true);
+    // lang is read at click time via closure refresh; re-bind on lang change.
+  }, [lang]);
 
   const historySyncedRef = useRef(false);
   // ─── Server history sync (logged-in users) ───

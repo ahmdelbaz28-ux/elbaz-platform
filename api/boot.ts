@@ -8,6 +8,7 @@ import { healthRouter } from "./health-router.js";
 import { maintenanceRouter } from "./maintenance-router.js";
 import { promoRouter } from "./promo-router.js";
 import { diagramsRouter } from "./diagrams-router.js";
+import { docsRouter } from "./docs-router.js";
 import { paymobWebhook, paymobWebhookAlias } from "./paymob-webhook.js";
 import { chatbotRouter } from "./chatbot-router.js";
 import { googleAuthRouter } from "./google-auth-router.js";
@@ -151,6 +152,9 @@ app.use(
 app.route("/api", healthRouter);
 app.route("/api", maintenanceRouter);
 app.route("/api", diagramsRouter);
+// ── Chat document exports (docgen skill): PDF / DOCX / MD from a validated
+// DocSpec — stateless, zero storage, deterministic (see api/docs-router.ts).
+app.route("/api", docsRouter);
 app.route("/api/promo", promoRouter);
 app.route("/api/paymob", paymobWebhook);
 

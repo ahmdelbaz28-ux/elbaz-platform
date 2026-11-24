@@ -216,14 +216,53 @@ describe("routeSkills — edge cases", () => {
     }
   });
 
-  it("prompt level: full-fallback carries both skills; lean carries caveman only", () => {
+  it("prompt level: full-fallback carries the protected set; lean carries caveman only", () => {
+    // v3.9.0: the docgen skill joins the registry — the full-fallback size
+    // guard (smallest-first drops, see chatbot-prompts.ts) now drops the
+    // discovery pack with the other routable packs; the guarantee that MATTERS
+    // is the protected set: caveman (always-on) + saadat + cables + SLD.
+    // Discovery/docgen ride their ROUTED lanes (asserted below).
     const full = getSystemPrompt("ar", "thinking");
     expect(full).toContain("مهارة الإيجاز الذكي");
-    expect(full).toContain("مهارة اكتشاف المهارات");
+    expect(full).toContain("SAADAT");
+    expect(full).toContain("قاعدة التنفيذ الفوري"); // sld skill intact
 
     const lean = getSystemPrompt("ar", "thinking", undefined, false, undefined, undefined, false, "شكراً جزيلاً على الرد اللطيف");
     expect(lean).toContain("مهارة الإيجاز الذكي");
     expect(lean).not.toContain("مهارة اكتشاف المهارات");
+  });
+
+  it("docgen skill: file-request signal routes the export skill, technical signals do not", () => {
+    const decision = routeSkills({ signal: "اعمل لي ملف PDF بتقرير اختيار الكابلات للمشروع", lang: "ar", mode: "thinking" });
+    const sel = decision.selected.find((s) => s.id === "docgen-file-export");
+    expect(sel).toBeDefined();
+    expect(sel!.score).toBeGreaterThan(0);
+    expect(decision.strategy).toBe("routed");
+
+    // instant lane carries the quick anchor
+    const instant = routeSkills({ signal: "ابعت التقرير في ملف pdf", lang: "ar", mode: "instant" });
+    expect(instant.selected.map((s) => s.id)).toContain("docgen-file-export");
+
+    // no false positives on historical signals
+    for (const signal of [
+      "كيف أعمل دراسة arc flash في ETAP خطوة بخطوة؟",
+      "أنا أستخدم PVSyst لمشروع طاقة شمسية وأريد تحجيم السلاسل",
+      "شكراً جزيلاً على الرد اللطيف",
+      "اكتب لي قصة قصيرة",
+    ]) {
+      const decision = routeSkills({ signal, lang: "ar", mode: "thinking" });
+      expect(decision.selected.map((s) => s.id)).not.toContain("docgen-file-export");
+    }
+  });
+
+  it("docgen skill: prompt level carries the fence contract for a file request (both lanes)", () => {
+    const thinking = getSystemPrompt("ar", "thinking", undefined, false, undefined, undefined, false, "اعمل لي ملف PDF بتقرير اختيار الكابلات");
+    expect(thinking).toContain("مهارة توليد الملفات");
+    expect(thinking).toContain("docgen");
+    const instant = getSystemPrompt("ar", "instant", undefined, false, undefined, undefined, false, "اعمل لي ملف PDF للعرض");
+    expect(instant).toContain("مرسى توليد الملفات");
+    const en = getSystemPrompt("en", "thinking", undefined, false, undefined, undefined, false, "generate a PDF report for the cable selection");
+    expect(en).toContain("DOCUMENT-GENERATION SKILL");
   });
 
   it("prompt level: discovery question injects the find-skills protocol with vetting rules", () => {

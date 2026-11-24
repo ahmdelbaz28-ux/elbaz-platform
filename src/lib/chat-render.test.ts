@@ -200,3 +200,63 @@ describe("detectUnfulfilledDiagramPromise — 📐 draw-now chip trigger", () =>
     expect(detectUnfulfilledDiagramPromise(`\`\`\`sld\n${GOOD}\n\`\`\``)).toBe(false);
   });
 });
+
+describe("renderMarkdown — docgen file-export fences", () => {
+  const GOOD = JSON.stringify({
+    format: "pdf",
+    filename: "cable-selection-report",
+    title: "تقرير اختيار كابل التغذية",
+    sections: [
+      { heading: "الملخص التنفيذي", paragraphs: ["اختيار 70 مم² بعد التحقق."], bullets: ["الأمبيراسية: 187 أ"] },
+    ],
+    citations: ["Elsewedy Power Cables 2015 — ص 12"],
+  });
+
+  it("renders a valid docgen fence as a download card with base64 payload", () => {
+    const out = renderMarkdown(`قبل\n\`\`\`docgen\n${GOOD}\n\`\`\`\nبعدها`);
+    expect(out).toContain('class="docgen-card" data-docgen="');
+    expect(out).toContain("data-docgen-dl");
+    expect(out).toContain("تحميل الملف");
+    expect(out).toContain("cable-selection-report.pdf");
+    expect(out).not.toContain("<pre");
+    // payload must round-trip: decode the base64 attribute and compare specs
+    const m = /data-docgen="([^"]+)"/.exec(out)!;
+    const payload = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(m[1]), (ch) => ch.charCodeAt(0))));
+    expect(payload.format).toBe("pdf");
+    expect(payload.spec.title).toBe("تقرير اختيار كابل التغذية");
+  });
+
+  it("defaults the format to pdf when the spec omits it", () => {
+    const noFormat = JSON.stringify({ title: "Doc", filename: "doc", sections: [{ heading: "h" }] });
+    const out = renderMarkdown(`\`\`\`docgen\n${noFormat}\n\`\`\``);
+    expect(out).toContain("doc.pdf");
+  });
+
+  it("falls back to an escaped code block when the fence is malformed", () => {
+    const out = renderMarkdown("```docgen\n{broken json\n```");
+    expect(out).toContain("<pre");
+    expect(out).not.toContain("docgen-card");
+  });
+
+  it("falls back when title or sections are missing (shape check)", () => {
+    const bad = JSON.stringify({ filename: "x", sections: [] });
+    const out = renderMarkdown(`\`\`\`docgen\n${bad}\n\`\`\``);
+    expect(out).toContain("<pre");
+    expect(out).not.toContain("docgen-card");
+  });
+
+  it("never lets fence content become markup (XSS invariant holds for docgen)", () => {
+    const evil = JSON.stringify({
+      title: '<script>alert(1)</script>',
+      filename: "x",
+      sections: [{ heading: "<img src=x onerror=alert(1)>" }],
+    });
+    const out = renderMarkdown(`\`\`\`docgen\n${evil}\n\`\`\``);
+    if (out.includes("docgen-card")) {
+      expect(out).not.toContain("<script>");
+      expect(out).toContain("&lt;script&gt;");
+    } else {
+      expect(out).toContain("<pre");
+    }
+  });
+});

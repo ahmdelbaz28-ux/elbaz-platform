@@ -55,6 +55,10 @@ import {
   pvsystCore,
   sldSkillAr,
   sldSkillEn,
+  docgenSkillAr,
+  docgenSkillEn,
+  docgenQuickAr,
+  docgenQuickEn,
 } from "./chatbot-skills.js";
 
 // SAADAT ACADEMIC CORE (v1.0.0): imported from the leaf module — one-way
@@ -73,8 +77,10 @@ export type SkillnetLang = "ar" | "en";
 export type SkillnetMode = "thinking" | "instant";
 /** v3.7.0 adds ecosystem skills: the caveman voice discipline (always-on,
  *  output-token savings) and the find-skills discovery protocol (routed on
- *  tool/skill discovery intent — sourced from vercel-labs/skills). */
-export type SkillCategory = "software-core" | "study-pack" | "drawing" | "voice-discipline" | "discovery";
+ *  tool/skill discovery intent — sourced from vercel-labs/skills).
+ *  v3.9.0 adds the docgen export skill (permanent in-chat PDF/DOCX/MD file
+ *  generation — routed on file/export intent). */
+export type SkillCategory = "software-core" | "study-pack" | "drawing" | "voice-discipline" | "discovery" | "export";
 
 export interface SkillDefinition {
   /** Stable id (telemetry + tests). ASCII snake_case — log-safe. */
@@ -686,6 +692,26 @@ export const SKILL_REGISTRY: SkillDefinition[] = [
     softwareAffinity: [],
     modes: ["thinking", "instant"],
     build: (lang, mode) => (lang === "ar" ? (mode === "instant" ? findSkillsQuickAr : findSkillsPackAr) : (mode === "instant" ? findSkillsQuickEn : findSkillsPackEn)),
+  },
+  {
+    id: "docgen-file-export",
+    label: "مهارة توليد الملفات (PDF / Word / Markdown)",
+    description: "Permanent in-chat document export: emits a docgen DocSpec fence; the server renders a real PDF/DOCX/MD file (Arabic RTL typesetting, tables, citations) served as a one-tap download.",
+    category: "export",
+    version: "1.0.0",
+    phrases: [
+      "ملف pdf", "تقرير pdf", "خلاصة pdf", "ملف تقرير", "ملف وورد", "تقرير وورد",
+      "ملف docx", "ملف word", "ملف مارك داون", "ملف markdown", "تقرير docx",
+      "ولد ملف", "اعمل ملف", "أعمل ملف", "جهز ملف", "صنع ملف", "ابعت ملف",
+      "أرسل ملف", "ارسل ملف", "ابعت تقرير", "أرسل التقرير", "صدّر", "حوّل لملف",
+      "تحويل المحادثة لملف", "export file", "generate a pdf", "generate pdf",
+      "generate a report", "generate report", "make a pdf", "make a doc", "make a file",
+      "create a pdf", "create a file", "pdf file", "word file", "docx file", "pdf report",
+    ],
+    keywords: ["pdf", "docx", "export", "تصدير", "وورد", "markdown", "مارك داون"],
+    softwareAffinity: [],
+    modes: ["thinking", "instant"],
+    build: (lang, mode) => (lang === "ar" ? (mode === "instant" ? docgenQuickAr : docgenSkillAr) : (mode === "instant" ? docgenQuickEn : docgenSkillEn)),
   },
   {
     id: "sld-drawing-skill",
