@@ -218,6 +218,9 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
   });
   const pendingApprovals = approvalsData?.items ?? [];
   const pendingApprovalsCount = approvalsData?.total ?? 0;
+  // IDs already sitting in the approval queue — the users table hides its
+  // re-review button for them (they are already gated).
+  const pendingApprovalIds = new Set(pendingApprovals.map((u) => u.id));
   const invalidateUsersLists = useCallback(() => {
     void refetchApprovals();
     void refetchUsers();
@@ -239,6 +242,19 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
   const resendApprovalEmailMutation = trpc.admin.resendApprovalEmail.useMutation({
     onSuccess: () => {
       toast.success(isRTL ? "أعيد إرسال بريد الموافقة إلى صندوقك" : "Approval email re-sent to your inbox");
+    },
+    onError: (err) => toast.error(err.message),
+  });
+  // ✅ ROOT FIX (owner report 2026-11-24): pre-gate accounts were grandfathered
+  // 'approved' — the owner's authority must reach them too. Re-open puts any
+  // non-admin account back into the pending queue (gate + alert email) and
+  // kills its live session.
+  const reopenApprovalMutation = trpc.admin.reopenApproval.useMutation({
+    onSuccess: () => {
+      toast.success(isRTL
+        ? "أعيد الحساب لطابور المراجعة — جلسته أُوقفت وبريد الموافقة في طريقه إلى صندوقك"
+        : "Account re-opened for review — its session was revoked and the approval email is on its way");
+      invalidateUsersLists();
     },
     onError: (err) => toast.error(err.message),
   });
@@ -1214,6 +1230,28 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                                 {u.role === "admin" ? <Shield className="h-3 w-3 mr-1" /> : <Users className="h-3 w-3 mr-1" />}
                                 {u.role}
                               </Badge>
+                              {/* ✅ ROOT FIX (owner report 2026-11-24): re-gate any
+                                  non-admin account from the users table — it leaves
+                                  with revoked access and lands in the approval queue. */}
+                              {u.role !== "admin" && !pendingApprovalIds.has(u.id) && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="ms-2 h-7 px-2 text-xs text-amber-300 hover:bg-amber-500/10 hover:text-amber-200"
+                                  disabled={reopenApprovalMutation.isPending}
+                                  title={isRTL ? "إعادة الحساب لطابور المراجعة: يُوقف دخوله فورًا ويصلك بريد القبول/الرفض" : "Re-open for review: access is revoked now and the approval email is sent to you"}
+                                  data-testid={`reopen-${u.username}`}
+                                  onClick={() => {
+                                    if (!window.confirm(isRTL
+                                      ? "إعادة فتح المراجعة ستوقف دخول هذا الحساب فورًا وتعيده لطابور الموافقة حتى تقبله أنت. متأكد؟"
+                                      : "Re-opening for review will revoke this account's access immediately and put it back into the approval queue until you approve it. Continue?")) return;
+                                    reopenApprovalMutation.mutate({ userId: u.id });
+                                  }}
+                                >
+                                  <RotateCcw className="h-3.5 w-3.5" />
+                                  {isRTL ? "إعادة مراجعة" : "Re-review"}
+                                </Button>
+                              )}
                             </td>
                           </tr>
                         ))}

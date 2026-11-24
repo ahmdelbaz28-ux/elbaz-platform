@@ -226,4 +226,30 @@ describe("admin approval gate — source contract pins", () => {
     // reject carries a destructive-action confirm (owner authority is irreversible)
     expect(adminPage).toContain("window.confirm");
   });
+
+  // ── 8. ROOT FIX (owner report 2026-11-24): re-open reaches pre-gate accounts ──
+  it("reopenApproval re-gates a grandfathered account: pending + decision cleared + session revoked", () => {
+    const adminUsers = src("../api/admin-users.ts");
+    const reopenIdx = adminUsers.indexOf("reopenApproval: adminMutation");
+    expect(reopenIdx).toBeGreaterThan(-1);
+    const reopenBody = adminUsers.slice(reopenIdx, adminUsers.indexOf("};", reopenIdx));
+    // admins are untouchable and an already-pending row is a no-op error
+    expect(reopenBody).toContain('target.role === "admin"');
+    expect(reopenBody).toContain('target.approvalStatus === "pending"');
+    // the re-gate clears the decision AND pulls live access in ONE write
+    expect(reopenBody).toContain('approvalStatus: "pending"');
+    expect(reopenBody).toContain("approvalDecidedAt: null");
+    expect(reopenBody).toContain("approvalDecidedByUserId: null");
+    expect(reopenBody).toContain("tokenVersion: target.tokenVersion + 1");
+    expect(reopenBody).toContain("evictUserAuthCache(input.userId)");
+    // the owner still gets the alert email with fresh signed action links
+    expect(reopenBody).toContain("notifyAdminsOfRegistration(");
+  });
+
+  it("the users table exposes re-review for non-admin rows outside the pending queue", () => {
+    const adminPage = src("../src/pages/Admin.tsx");
+    expect(adminPage).toContain("trpc.admin.reopenApproval.useMutation");
+    expect(adminPage).toContain("pendingApprovalIds.has(u.id)");
+    expect(adminPage).toContain("reopenApprovalMutation.mutate({ userId: u.id })");
+  });
 });

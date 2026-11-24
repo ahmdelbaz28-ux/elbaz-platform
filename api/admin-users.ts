@@ -201,4 +201,71 @@ export const adminUsersProcedures = {
       logger.info("[Admin] approval email re-sent", { userId: input.userId, to: maskEmail(to) });
       return { success: true };
     }),
+
+  // ✅ ROOT FIX (owner report 2026-11-24, "راجع المشكلة من جذورها"): the v17
+  // migration grandfathered every PRE-GATE account as 'approved' — the owner
+  // signed in with his old @AHMEDBAZ account and the gate never stopped him.
+  // The owner's authority must reach those accounts too: re-open puts ANY
+  // non-admin account back into the pending queue (gate panel + alert email
+  // with signed action links) and KILLS its live session (tokenVersion bump
+  // + cache eviction — pending means no access, not just "no NEW sessions").
+  reopenApproval: adminMutation
+    .input(z.object({ userId: z.number().int().positive() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = getDb();
+      const [target] = await db
+        .select({
+          username: users.username,
+          name: users.name,
+          email: users.email,
+          role: users.role,
+          approvalStatus: users.approvalStatus,
+          tokenVersion: users.tokenVersion,
+        })
+        .from(users)
+        .where(eq(users.id, input.userId))
+        .limit(1);
+      if (!target) throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
+      // The authority can never be re-gated out of its own platform.
+      if (target.role === "admin") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "لا يمكن إعادة فتح مراجعة حسابات المشرفين" });
+      }
+      if (target.approvalStatus === "pending") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "هذا الحساب بانتظار المراجعة بالفعل" });
+      }
+
+      await db
+        .update(users)
+        .set({
+          approvalStatus: "pending",
+          approvalDecidedAt: null,
+          approvalDecidedByUserId: null,
+          // Same semantics as reject: an account whose access the owner is
+          // re-deciding must not keep the session it holds right now.
+          tokenVersion: target.tokenVersion + 1,
+        })
+        .where(eq(users.id, input.userId));
+      evictUserAuthCache(input.userId);
+      logger.info("[Admin] approval re-opened — account re-gated to pending, live session revoked", {
+        userId: input.userId,
+        username: target.username,
+        by: ctx.user.id,
+      });
+
+      // Owner alert (best-effort): in-app stream + the approval email with
+      // fresh signed action links — the owner decides from inbox or dashboard.
+      void notifyAdminsOfRegistration({
+        userId: input.userId,
+        username: target.username,
+        name: target.name,
+        email: target.email,
+        frontendUrl: env.FRONTEND_URL,
+      }).catch((notifyErr) => {
+        logger.warn("[Admin] reopen alert failed (best-effort)", {
+          userId: input.userId,
+          error: notifyErr instanceof Error ? notifyErr.message : String(notifyErr),
+        });
+      });
+      return { success: true, status: "pending" as const };
+    }),
 };
