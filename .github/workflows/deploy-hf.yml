@@ -212,8 +212,9 @@ jobs:
             npx tsx scripts/chatbot-refs-live-proof.ts 2>&1 | tee live-proof.log
           fi
 
-      - name: Publish proof summary (log-embedded — the security contract pins
-        every action ref to a verified SHA, so no artifact action is added)
+      # Publish proof summary (log-embedded — the security contract pins every
+      # action ref to a verified SHA, so no artifact action is added)
+      - name: Publish proof summary
         if: always()
         run: |
           echo "### Chatbot references live proof" >> "$GITHUB_STEP_SUMMARY"
