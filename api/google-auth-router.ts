@@ -505,7 +505,12 @@ googleAuthRouter.get("/callback", async (c) => { // NOSONAR — complex function
     const gate = approvalGateVerdict({ id: userId, username, role: userRole, approvalStatus: approvalStatusForGate });
     if (!gate.allowed) {
       logger.warn("[GoogleAuth/OAuth] Sign-in refused by approval gate", { userId, gate: gate.gate });
-      return c.redirect(`/?approval=${gate.gate}`);
+      // FIX (owner review 2026-11-24): the marker must land on /login — only
+      // Login.tsx reads `?approval=` (lazy first-paint initializer). The bare
+      // root route renders the public landing page and silently swallowed the
+      // marker: a Google sign-up that needed approval got NO confirmation at
+      // all that their request was received.
+      return c.redirect(`/login?approval=${gate.gate}`);
     }
 
     // ✅ SECURITY FIX (audit run-1, google-oauth-login-skips-totp): fail closed

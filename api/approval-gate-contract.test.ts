@@ -102,12 +102,15 @@ describe("admin approval gate — source contract pins", () => {
     expect(gisCount).toBe(2);
   });
 
-  it("OAuth callback gates BEFORE createToken and redirects with the marker", () => {
+  it("OAuth callback gates BEFORE createToken and redirects the marker to /login", () => {
     const gateIdx = googleAuth.indexOf("const gate = approvalGateVerdict({ id: userId, username, role: userRole, approvalStatus: approvalStatusForGate });");
     const tokenIdx = googleAuth.indexOf("const token = await createToken({ userId, username, role: userRole, tokenVersion: tokenVersionForSession })");
     expect(gateIdx).toBeGreaterThan(-1);
     expect(gateIdx).toBeLessThan(tokenIdx);
-    expect(googleAuth).toContain("c.redirect(`/?approval=${gate.gate}`)");
+    // FIX (owner review 2026-11-24): the marker MUST land on /login — only
+    // Login.tsx consumes `?approval=` (the root landing page ignored it,
+    // leaving a pending Google sign-up without any confirmation).
+    expect(googleAuth).toContain("c.redirect(`/login?approval=${gate.gate}`)");
   });
 
   it("Google sign-ups insert pending and alert the owner in BOTH flows", () => {
