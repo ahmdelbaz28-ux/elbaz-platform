@@ -21,7 +21,8 @@ import { finalizeReply, opaqueModelKey } from "./lib/finalize-reply.js";
 // ✅ v1.1.2: deterministic citation compliance — the stream terminator seam
 // appends the pinned problem's citation when the model omitted it.
 import { enforcePinnedCitation } from "./lib/chatbot-saadat.js";
-import { enforceCablesCitations } from "./lib/chatbot-cables.js";
+import { enforceCablesCitations, hasCablesIntent } from "./lib/chatbot-cables.js";
+import { enforceRefsCitations } from "./lib/chatbot-refs.js";
 import { getUserByokConfig } from "./lib/chatbot-byok.js";
 import { chatbotError, logSafeError, scrubCredentials, type ChatbotErrorCode } from "./lib/chatbot-errors.js";
 import { getClientIpFromHono as getChatbotIp } from "./lib/client-ip";
@@ -842,11 +843,19 @@ chatbotRouter.post("/stream", async (c) => {
           // the persisted copy. Refusals / concept queries are never cited
           // (anti-attribution guard inside enforcePinnedCitation).
           if (!leakDetected) {
-            const enforced = enforceCablesCitations(
-              enforcePinnedCitation(accumulatedReply, extractRoutingSignal(messages), language === "ar" ? "ar" : "en", mode, { appendOnly: true }),
-              extractRoutingSignal(messages),
+            const seamSignal = extractRoutingSignal(messages);
+            const seamCablesIntent = hasCablesIntent(seamSignal);
+            const enforced = enforceRefsCitations(
+              enforceCablesCitations(
+                enforcePinnedCitation(accumulatedReply, seamSignal, language === "ar" ? "ar" : "en", mode, { appendOnly: true }),
+                seamSignal,
+                language === "ar" ? "ar" : "en",
+                mode,
+              ),
+              seamSignal,
               language === "ar" ? "ar" : "en",
               mode,
+              { cablesIntentActive: seamCablesIntent },
             );
             if (enforced !== accumulatedReply) {
               const extra = enforced.slice(accumulatedReply.length);

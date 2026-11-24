@@ -65,6 +65,7 @@ import { SAADAT_CORE_BLOCKS } from "./chatbot-saadat.js";
 // CABLES & EGYPTIAN-CODE EXPERT CORE (v1.0.0): same one-way pattern —
 // skillnet → cables → {cables-kb, egycode-kb}; cables imports nothing here.
 import { CABLES_CORE_BLOCKS } from "./chatbot-cables.js";
+import { SAUDI_CORE_BLOCKS, ABB_CORE_BLOCKS, BRK_CORE_BLOCKS, GILANY_CORE_BLOCKS } from "./chatbot-refs.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -513,6 +514,92 @@ export const SKILL_REGISTRY: SkillDefinition[] = [
     softwareAffinity: [/elsewedy/i, /السويدي/, /كود مصري/, /الكود المصري/],
     modes: ["thinking", "instant"],
     build: (lang, mode) => CABLES_CORE_BLOCKS[mode][lang],
+  },
+  {
+    id: "saudi-load-core",
+    label: "نواة خبير الكود السعودي DPS-01 (تقدير أحمال العملاء)",
+    description: "SEC DPS-01 mastery: connected/demand/coincident load (Tables 3-12), C1-C29 types, §12 interpolation, §14/§16/§17 adjustments, deterministic SAUDI-CALC engine with ±0.5% verification and SEC citation contract.",
+    category: "study-pack",
+    version: "1.0.0",
+    phrases: [
+      "الحمل المتصل", "حمل الطلب", "حمل التزامان", "connected load", "demand load", "coincident demand",
+      "الكود السعودي", "كود سعودي", "الشركة السعودية للكهرباء", "saudi electricity", "DPS-01",
+      "كثافة الحمل", "load density", "معامل التزامان", "coincidence factor", "معامل التنوع",
+      "تقدير أحمال", "تقدير الاحمال", "customer load estimation", "منحنى C1", "C1", "C2", "C29",
+    ],
+    keywords: [
+      "سعودي", "saudi", "sec", "dps", "حمل", "load", "عدادات", "مeters", "مeters",
+      "قاطع", "breaker", "خدمة", "service", "تكييف مركزي", "district cooling", "شتوي", "winter",
+      "c3", "c4", "c5", "c6", "c7", "c8", "c9", "c18", "c21", "c29", "va/m", "كثافة",
+      "جداول", "tables", "معامل", "factor",
+    ],
+    softwareAffinity: [/dps/i, /\bsaudi\b/i, /السعودي/],
+    modes: ["thinking", "instant"],
+    build: (lang, mode) => SAUDI_CORE_BLOCKS[mode][lang],
+  },
+  {
+    id: "abb-transformer-core",
+    label: "نواة خبير محولات ABB (كتالوج محولات التوزيع)",
+    description: "ABB Distribution Transformers catalogue mastery: oil small/medium/large + single-phase + dry VCC/RESIBLOC + IP00 dims, item selection with full printed data (vector group, impedance, losses, tank, weights) and page citations.",
+    category: "study-pack",
+    version: "1.0.0",
+    phrases: [
+      "اختيار المحول", "تحجيم المحول", "transformer selection", "كتالوج المحولات",
+      "محولات ABB", "محول ABB", "ABB transformer", "المحولات الجافة", "dry type transformer",
+      "cast coil", "resibloc", "مجموعة المتجهات", "vector group", "معاوقة المحول",
+      "فقد لا حمل", "فقد الحمل", "no-load loss", "load loss", "محول توزيع", "distribution transformer",
+    ],
+    keywords: [
+      "abb", "محول", "محوّل", "transformer", "kva", "ك ف ا", "dyn11", "dyn5", "yzn5", "yzn11",
+      "معاوقه", "impedance", "فواقد", "losses", "وزن", "weight", "زيتي", "oil", "جافه", "dry",
+      "خزان", "tank", "موسع زيت", "هرميتيك", "hermetic", "pad mount", "reactor", "مفاعلات",
+    ],
+    softwareAffinity: [/\babb\b/i, /محولات?/],
+    modes: ["thinking", "instant"],
+    build: (lang, mode) => ABB_CORE_BLOCKS[mode][lang],
+  },
+  {
+    id: "schneider-price-core",
+    label: "نواة خبير قواطع شنايدر (قائمة أسعار 2026)",
+    description: "Schneider Egypt Breakers & Switches Price List 2026 mastery: 3320 priced items (Masterpact MTZ1/MTZ2/NT/NW, Easypact ENW/MVS, GoPact MCCB, Acti9/Resi9 MCB/RCD, TeSys, ATV drives) — item selection by amps/poles/Icu/family with Product ID + EGP price + page, deterministic BRK-SELECT engine.",
+    category: "study-pack",
+    version: "1.0.0",
+    phrases: [
+      "قائمة أسعار شنايدر", "قائمة اسعار شنايدر", "سعر القاطع", "أسعار القواطع", "price list schneider",
+      "اختيار القاطع", "تحديد القاطع", "breaker selection", "ماستر باكت", "Masterpact", "MTZ1", "MTZ2",
+      "Easypact", "GoPact", "قاطع هوائي", "ACB", "قاطع مقولب", "MCCB", "كونتاكتور", "contactor",
+      "انفرتر", "ATV", "Product ID", "بند الكتالوج", "القطعة المناسبة",
+    ],
+    keywords: [
+      "شنايدر", "schneider", "se.com", "قاطع", "breaker", "قواطع", "nw", "nt", "mvs", "enw",
+      "g12", "g20", "g25", "g40", "g80", "ic60", "acti9", "resi9", "easy9", "mcb", "rccb", "rcbo",
+      "lc1", "lr2", "gv2", "tesys", "تلسيس", "xb7", "harmony", "tm3", "modicon", "dm1", "dm3",
+      "gologic", "atv", "altivar", "altistart", "varplus", "مكثفات", "سعر", "price", "egp",
+      "جنيه", "غير شامل", "vat", "product", "reference", "مرجع",
+    ],
+    softwareAffinity: [/schneider/i, /شنايدر/, /masterpact/i, /my\s?pact/i],
+    modes: ["thinking", "instant"],
+    build: (lang, mode) => BRK_CORE_BLOCKS[mode][lang],
+  },
+  {
+    id: "gilany-pse-core",
+    label: "نواة مرجع هندسة القوى الكهربية (د. محمود جيلاني)",
+    description: "Full page-level index of Dr. Gilany's Power System Engineering (957 pages, 6 parts) — conceptual power-engineering answers grounded in retrieved page excerpts with book/page citations.",
+    category: "study-pack",
+    version: "1.0.0",
+    phrases: [
+      "كتاب جيلاني", "كتاب جيلانى", "هندسة القوى الكهربية", "دكتور جيلاني", "المرجع في القوى",
+      "الشبكة الموحدة", "الاحتياطي الدوار", "spinning reserve", "الإظلام التام", "blackout",
+      "محطات التحويل", "substation", "شبكات التوزيع", "منحنى الحمل", "load curve",
+    ],
+    keywords: [
+      "جيلان", "هندسة قوى", "توليد", "generation", "نقل", "transmission", "توزيع", "distribution",
+      "استقرار", "stability", "عابر", "transient", "iec 61850", "اورتماتيون", "automation",
+      "وحدات توليد", "base load", "peak load", "مركز تحكم",
+    ],
+    softwareAffinity: [/جيلان/],
+    modes: ["thinking", "instant"],
+    build: (lang, mode) => GILANY_CORE_BLOCKS[mode][lang],
   },
   {
     id: "arc-flash-pack",

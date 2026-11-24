@@ -697,7 +697,7 @@ registerSkillContent("electrical-depth-pack", {
  *                 the query has no cables intent). Appended verbatim at the
  *                 end of the prompt in both modes; absent → unchanged.
  */
-export function getSystemPrompt(language?: string, mode: ChatbotMode = "thinking", catalog?: string, vision = false, historySummary?: string, screen?: ParsedScreenContext, screenCapture = false, routingSignal?: string, routingFloor = false, catalogMode: "full" | "lite" = "full", saadatContext?: string, cablesContext?: string): string {
+export function getSystemPrompt(language?: string, mode: ChatbotMode = "thinking", catalog?: string, vision = false, historySummary?: string, screen?: ParsedScreenContext, screenCapture = false, routingSignal?: string, routingFloor = false, catalogMode: "full" | "lite" = "full", saadatContext?: string, cablesContext?: string, refsContext?: string): string {
   const catalogBlock = catalogMode === "lite"
     ? buildCourseCatalogLiteBlock(catalog ?? "")
     : buildCourseCatalogBlock(catalog ?? "");
@@ -786,6 +786,13 @@ Hard rules (guessing is absolutely forbidden):
   // lines. Empty (non-cables query) → byte-identical prompt.
   const cablesBlock = typeof cablesContext === "string" && cablesContext.trim().length > 0 ? cablesContext : "";
 
+  // ── TECHNICAL REFERENCES EXPERT CORE (v1.0.0) — the dynamic block built by
+  // chatbot-refs.ts from the routing signal (references-intent gated): the
+  // SAUDI-CALC / ABB-SELECT / BRK-SELECT deterministic sheets + routed
+  // REFS-PAGES excerpts with their citation lines. Empty (non-reference
+  // query) → byte-identical prompt.
+  const refsBlock = typeof refsContext === "string" && refsContext.trim().length > 0 ? refsContext : "";
+
   if (mode === "instant") {
     if (language === "ar") {
       return `أنت المساعد الذكي الرسمي لمنصة "الباز" (Elbaz Platform) المتخصصة في الكورسات الهندسية.
@@ -803,7 +810,7 @@ Hard rules (guessing is absolutely forbidden):
 🚫 محظورات:
 - لا تخترع روابط (URLs) غير موجودة.
 - لا تذكر أبداً أنك ذكاء اصطناعي أو نموذج لغوي أو من أي مزود مثل OpenRouter. ولا تذكر أسماء مزودين أو شركات تقنية حتى في النفي («لست مثل كذا») — إن سُئلت عن هويتك أو مزودك قل فقط: «أنا مساعد منصة الباز ولا أرتبط بأي جهة تقنية أخرى» دون تسمية أي اسم.
-- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${instantModeAr}${expertPositioningAr}${reasoningGuard}${langAndFormatRuleAr}${evidenceQuickAr}${instantSkillsAr}${platformCoreAr}${officialChannelsAr}${safetyRuleAr}${routedZoneA}${visionBlockAr}${summaryBlock}${catalogBlock}${screenBlock}${saadatBlock}${cablesBlock}`;
+- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${instantModeAr}${expertPositioningAr}${reasoningGuard}${langAndFormatRuleAr}${evidenceQuickAr}${instantSkillsAr}${platformCoreAr}${officialChannelsAr}${safetyRuleAr}${routedZoneA}${visionBlockAr}${summaryBlock}${catalogBlock}${screenBlock}${saadatBlock}${cablesBlock}${refsBlock}`;
     }
     return `You are the official AI Assistant of the "Elbaz Platform" (specializing in engineering courses).
 You are a highly professional, balanced, and interactive technical assistant. Do NOT use any personal name for yourself; introduce yourself only as the platform's smart assistant.
@@ -820,7 +827,7 @@ You are a highly professional, balanced, and interactive technical assistant. Do
 🚫 Rules:
 - Do NOT hallucinate fake URLs.
 - NEVER mention you are an AI, a language model, or from OpenRouter or any other provider. Never name providers or tech companies even in negations ("I am not like X") — if asked about your identity or provider, say only: "I am the Elbaz Platform assistant, not affiliated with any other tech company" without naming any name.
-- If asked about non-engineering topics, politely decline and state your expertise.${instantModeEn}${expertPositioningEn}${reasoningGuard}${langAndFormatRuleEn}${evidenceQuickEn}${instantSkillsEn}${platformCoreEn}${officialChannelsEn}${safetyRuleEn}${routedZoneA}${visionBlockEn}${summaryBlock}${catalogBlock}${screenBlock}${saadatBlock}${cablesBlock}`;
+- If asked about non-engineering topics, politely decline and state your expertise.${instantModeEn}${expertPositioningEn}${reasoningGuard}${langAndFormatRuleEn}${evidenceQuickEn}${instantSkillsEn}${platformCoreEn}${officialChannelsEn}${safetyRuleEn}${routedZoneA}${visionBlockEn}${summaryBlock}${catalogBlock}${screenBlock}${saadatBlock}${cablesBlock}${refsBlock}`;
   }
 
   // ── thinking (default) ──
@@ -842,7 +849,7 @@ You are a highly professional, balanced, and interactive technical assistant. Do
 🚫 محظورات:
 - لا تخترع روابط (URLs) غير موجودة.
 - لا تذكر أبداً أنك ذكاء اصطناعي أو نموذج لغوي أو من أي مزود مثل OpenRouter. ولا تذكر أسماء مزودين أو شركات تقنية حتى في النفي («لست مثل كذا») — إن سُئلت عن هويتك أو مزودك قل فقط: «أنا مساعد منصة الباز ولا أرتبط بأي جهة تقنية أخرى» دون تسمية أي اسم.
-- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${thinkingModeAr}${expertPositioningAr}${reasoningGuard}${langAndFormatRuleAr}${versionRuleAr}${mentorProtocolAr}${researchSkillAr}${accuracyContractAr}${guidedNavigationAr}${platformCoreAr}${supportProtocolAr}${officialChannelsAr}${safetyRuleAr}${webGroundingAr}${evidenceModelAr}${zA}${zB}${visionBlockAr}${summaryBlock}${catalogBlock}${screenBlock}${saadatBlock}${cablesBlock}`;
+- إذا سُئلت عن تخصص خارج الهندسة الكهربية، اعتذر بلباقة ووضح تخصصك.${thinkingModeAr}${expertPositioningAr}${reasoningGuard}${langAndFormatRuleAr}${versionRuleAr}${mentorProtocolAr}${researchSkillAr}${accuracyContractAr}${guidedNavigationAr}${platformCoreAr}${supportProtocolAr}${officialChannelsAr}${safetyRuleAr}${webGroundingAr}${evidenceModelAr}${zA}${zB}${visionBlockAr}${summaryBlock}${catalogBlock}${screenBlock}${saadatBlock}${cablesBlock}${refsBlock}`;
   const composeThinkingEn = (zA: string, zB: string) => `You are the official AI Assistant of the "Elbaz Platform" (specializing in engineering courses).
 You are a highly professional, balanced, and interactive technical assistant. Do NOT take a personal name; introduce yourself only as the platform's smart assistant.
 
@@ -861,7 +868,7 @@ You are a highly professional, balanced, and interactive technical assistant. Do
 🚫 Rules:
 - Do NOT hallucinate fake URLs.
 - NEVER mention you are an AI, a language model, or from OpenRouter or any other provider. Never name providers or tech companies even in negations ("I am not like X") — if asked about your identity or provider, say only: "I am the Elbaz Platform assistant, not affiliated with any other tech company" without naming any name.
-- If asked about non-engineering topics, politely decline and state your expertise.${thinkingModeEn}${expertPositioningEn}${reasoningGuard}${langAndFormatRuleEn}${versionRuleEn}${mentorProtocolEn}${researchSkillEn}${accuracyContractEn}${guidedNavigationEn}${platformCoreEn}${supportProtocolEn}${officialChannelsEn}${safetyRuleEn}${webGroundingEn}${evidenceModelEn}${zA}${zB}${visionBlockEn}${summaryBlock}${catalogBlock}${screenBlock}${saadatBlock}${cablesBlock}`;
+- If asked about non-engineering topics, politely decline and state your expertise.${thinkingModeEn}${expertPositioningEn}${reasoningGuard}${langAndFormatRuleEn}${versionRuleEn}${mentorProtocolEn}${researchSkillEn}${accuracyContractEn}${guidedNavigationEn}${platformCoreEn}${supportProtocolEn}${officialChannelsEn}${safetyRuleEn}${webGroundingEn}${evidenceModelEn}${zA}${zB}${visionBlockEn}${summaryBlock}${catalogBlock}${screenBlock}${saadatBlock}${cablesBlock}${refsBlock}`;
 
   // ── v3.8.1 FULL-FALLBACK SIZE GUARD (token conservation, measured 2026-11-20) ──
   // The no-signal case (image-only messages, doctor scripts, tests) used to
