@@ -340,9 +340,12 @@ async function announceNewLessons(added: { videoId: string; title: string }[]): 
     const eventId = await pushNotification({
       type: "youtube",
       title: "🎬 حلقة جديدة على قناة اليوتيوب",
+      // ✅ MOBILE COMPACT (owner report 2026-11-26): shortened the broadcast
+      // message (was ~200 chars → ~7 toast lines on phones). Same copy as the
+      // youtube-watcher announcement — short message, CTA kept.
       message:
-        `«${item.title || "حلقة جديدة"}» نزلت الآن على قناة AhmedEtap — كورس ETAP كامل بالعربي. ` +
-        `شوفها الأول وخليك دايمًا متقدم: فعّل الجرس 🔔 على القناة عشان يوصلك كل شرح جديد أول بأول وانت في الأولين.`,
+        `«${item.title || "حلقة جديدة"}» نزلت الآن على قناة AhmedEtap 🎬 ` +
+        `فعّل الجرس 🔔 ليوصلك كل شرح جديد أول بأول.`,
       url: buildYouTubeWatchUrl(item.videoId),
       channelUrl: getChannelUrl(),
       data: { videoId: item.videoId, playlistId: getPlaylistId() },

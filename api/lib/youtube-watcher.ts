@@ -442,9 +442,14 @@ export async function checkForNewEpisodes(): Promise<{ announced: ParsedVideo[];
     const results = await Promise.allSettled(fresh.map((video) => pushNotification({
       type: "youtube",
       title: "🎬 حلقة جديدة على قناة اليوتيوب",
+      // ✅ MOBILE COMPACT (owner report 2026-11-26): the broadcast message used
+      // to carry a long marketing tail (~200 chars) that rendered the entry
+      // toast ~7 text lines tall on phones — several stacked toasts walled off
+      // the screen. Short message + client-side line-clamp keep the card
+      // compact; the full context lives in the bell history and the video page.
       message:
-        `«${video.title || "حلقة جديدة"}» نزلت الآن على قناة AhmedEtap — كورس ETAP كامل بالعربي. ` +
-        `شوفها الأول وخليك دايمًا متقدم: فعّل الجرس 🔔 على القناة عشان يوصلك كل شرح جديد أول بأول وانت في الأولين.`,
+        `«${video.title || "حلقة جديدة"}» نزلت الآن على قناة AhmedEtap 🎬 ` +
+        `فعّل الجرس 🔔 ليوصلك كل شرح جديد أول بأول.`,
       url: watchUrl(video.videoId),
       channelUrl: CHANNEL_URL,
       data: { videoId: video.videoId, playlistId: PLAYLIST_ID },
