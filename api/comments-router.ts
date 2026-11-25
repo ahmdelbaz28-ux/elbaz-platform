@@ -43,9 +43,20 @@ export const commentsRouter = createRouter({
         })
         .from(lessonComments)
         .innerJoin(users, eq(lessonComments.userId, users.id))
+        // ✅ SECURITY FIX (audit run-1, fp api/comments-router.ts:list
+        // -unpublished-parent-comment-read): the list only filtered isHidden —
+        // comments of an unpublished lesson (or of a lesson inside an
+        // unpublished course) stayed anonymously readable after a withdraw,
+        // leaking the discussion text + commenter display metadata past the
+        // documented lifecycle. The same publish predicate as create (and
+        // every sibling content surface) now travels with the read.
+        .innerJoin(lessons, eq(lessonComments.lessonId, lessons.id))
+        .innerJoin(courses, eq(lessons.courseId, courses.id))
         .where(and(
           eq(lessonComments.lessonId, input.lessonId),
           eq(lessonComments.isHidden, false),
+          eq(lessons.isPublished, true),
+          eq(courses.isPublished, true),
         ))
         .orderBy(desc(lessonComments.isPinned), desc(lessonComments.createdAt))
         .limit(input.limit);

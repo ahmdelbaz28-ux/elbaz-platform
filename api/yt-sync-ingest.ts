@@ -17,12 +17,17 @@
  * ✅ REPLAY HARDENING (2026-11-13): the bare body-HMAC had no freshness — a
  * captured payload could be replayed weeks later, re-inserting videos that
  * had since LEFT the playlist as published lessons. Relays now also send
- * `x-sync-ts` (epoch ms) and sign `body + "." + ts`; when the header is
- * present the body-only signature is rejected and timestamps outside a
- * 10-minute window are refused. The legacy body-only signature stays
- * accepted for one rolling-deploy window so an old relay never breaks
- * against a new server; once every relay sends the header, body-only
- * captures are dead on arrival.
+ * `x-sync-ts` (epoch ms) and sign `body + "." + ts`; timestamps outside a
+ * 10-minute window are refused.
+ *
+ * ✅ SECURITY FIX (audit run-2, fp yt-sync-ingest.legacy-body-only-hmac
+ * .unbounded-replay-lane — STEP 2): the legacy body-only fallback lane is now
+ * REMOVED. The phased transition (STEP 1: dual-accept + deprecation logging;
+ * relay migration shipped in the same commit) is complete — every relay in
+ * .github/workflows/yt-playlist-relay.yml → scripts/yt_playlist_relay.py
+ * signs `body + "." + ts` and sends `x-sync-ts`. A request WITHOUT the
+ * timestamp header is hard-401'd: captured body-only requests are dead on
+ * arrival, and the deprecation warning is gone from the log surface.
  *
  * MOUNTED at /api/yt-sync in boot.ts:
  *   POST /api/yt-sync/ingest  → applies the playlist sync, returns SyncSummary
@@ -31,7 +36,6 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import crypto from "node:crypto";
 import { logger } from "./lib/logger";
 import {
   applyPlaylistSync,
@@ -39,6 +43,7 @@ import {
   getSyncSettings,
   isPlaceholderTitle,
 } from "./lib/playlist-sync.js";
+import { authenticateIngest, computeSignature, signatureMatches } from "./lib/yt-sync-auth.js";
 
 // ✅ ROOT-CURE (2026-11-13): the old caps (100 videos / 16 KB) rejected legal
 // payloads — 100 Arabic titles escape to ~2 bytes/char and long course titles
@@ -47,8 +52,8 @@ import {
 // fitting every real playlist with headroom.
 const MAX_VIDEOS = 300;
 const MAX_BODY_CHARS = 64_000;
-/** Anti-replay window for signed `x-sync-ts` timestamps. */
-const TS_WINDOW_MS = 10 * 60_000;
+// Anti-replay window + signature helpers now live in lib/yt-sync-auth.ts
+// (extracted for unit-testing the STEP 2 replay contract).
 
 const ingestSchema = z.object({
   videos: z
@@ -71,59 +76,8 @@ function ingestSecret(): string | null {
   return value.length >= 16 ? value : null;
 }
 
-/** Hex HMAC-SHA256 over an arbitrary signing payload. */
-function computeSignature(secret: string, payload: string): string {
-  return crypto.createHmac("sha256", secret).update(payload, "utf8").digest("hex");
-}
-
-function signatureMatches(expected: string, received: string | undefined): boolean {
-  if (!received) return false;
-  const a = Buffer.from(expected, "hex");
-  const b = Buffer.from(received.trim().toLowerCase(), "hex");
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
-}
-
-interface AuthOutcome {
-  ok: boolean;
-  status?: 401;
-  replayProtected: boolean;
-}
-
-/**
- * Verify the request with replay protection when the relay sends
- * `x-sync-ts` (body + "." + ts), falling back to the legacy body-only
- * signature otherwise.
- */
-function authenticateIngest(secret: string, raw: string, c: { req: { header: (name: string) => string | undefined } }): AuthOutcome {
-  const received = c.req.header("x-sync-signature");
-  const tsHeader = c.req.header("x-sync-ts");
-  if (tsHeader !== undefined) {
-    const ts = Number(tsHeader);
-    if (!Number.isFinite(ts) || Math.abs(Date.now() - ts) > TS_WINDOW_MS) {
-      return { ok: false, status: 401, replayProtected: true };
-    }
-    if (!signatureMatches(computeSignature(secret, `${raw}.${tsHeader.trim()}`), received)) {
-      return { ok: false, status: 401, replayProtected: true };
-    }
-    return { ok: true, replayProtected: true };
-  }
-  // ✅ SECURITY FIX (audit run-2, fp.yt-sync.body-only-replay-lane — STEP 1):
-  // the legacy body-only fallback stays during the phased transition (the
-  // worker cron migration ships in the same commit; dual-accept guarantees
-  // the cron never 401s mid-deploy). Every body-only accept now logs a
-  // deprecation warning so ops can see when the lane is fully retired —
-  // STEP 2 (removal commit, gated on the CF deploy green + one cron tick)
-  // hard-401s this branch and makes replays dead on arrival.
-  const ok = signatureMatches(computeSignature(secret, raw), received);
-  if (ok) {
-    logger.warn("[YtSyncIngest] DEPRECATED body-only HMAC accepted — sender must migrate to x-sync-ts (removal commit pending)");
-  }
-  return {
-    ok,
-    status: 401,
-    replayProtected: false,
-  };
-}
+// computeSignature / signatureMatches / authenticateIngest live in
+// lib/yt-sync-auth.ts (STEP 2 replay contract — unit-tested there).
 
 export const ytSyncIngestRoute = new Hono();
 

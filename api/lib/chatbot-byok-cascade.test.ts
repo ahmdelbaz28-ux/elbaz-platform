@@ -1,6 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+// audit run-1 hardening: the BYOK lanes now fetch through the DNS-pinned
+// dispatcher (pinnedPublicFetch). The cascade tests stub the GLOBAL fetch —
+// route the pinned seam through the same stub so every existing assertion
+// (call order, headers, body) keeps holding against the identical contract.
+vi.mock("./public-url-dispatcher.js", () => ({
+  pinnedPublicFetch: (url: string, init?: unknown) => globalThis.fetch(url, init as RequestInit),
+}));
+
 /**
  * BYOK CASCADE ORDER TESTS — the owner's product contract (2026-11):
  *

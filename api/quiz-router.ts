@@ -3,11 +3,30 @@ import { eq, and } from "drizzle-orm";
 import { randomInt } from "node:crypto";
 import { createRouter, authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
-import { quizQuestions, lessonProgress, enrollments, lessons } from "@db/schema";
+import { quizQuestions, lessonProgress, enrollments, lessons, courses } from "@db/schema";
 import { TRPCError } from "@trpc/server";
 import { recalcEnrollmentProgress } from "./lib/progress";
 import { activeEnrollmentWhere } from "./lib/enrollment";
 import { checkRateLimit } from "./lib/rate-limiter";
+import { scoreQuizSubmission } from "./lib/quiz-scoring";
+
+// ✅ SECURITY FIX (audit run-1, fp api/quiz-router.ts:quiz.submit
+// :duplicate-answer-score-inflation): the wire format previously accepted
+// `[{questionId} × N]` duplicates and the route scored every element —
+// N copies of one correct answer summed to totalPoints → persisted 100% on
+// any quiz. The input contract now REJECTS duplicate questionIds outright,
+// and scoring itself deduplicates (defense in depth, quiz-scoring.ts).
+const answerSchema = z.object({
+  questionId: z.number(),
+  selectedOption: z.number(),
+});
+const submitSchema = z.object({
+  lessonId: z.number(),
+  answers: z.array(answerSchema).refine(
+    (answers) => new Set(answers.map((a) => a.questionId)).size === answers.length,
+    { message: "Duplicate question IDs are not allowed — submit each question exactly once" },
+  ),
+});
 
 export const quizRouter = createRouter({
   // ✅ SECURITY FIX: byLesson now uses authedQuery to prevent answer leaking
@@ -23,10 +42,20 @@ export const quizRouter = createRouter({
       // lesson-content surface enforces (course-watching.ts:58/:140/:178,
       // course-browse.ts:219/:272) — draft lessons resolve only for admins.
       // Draft ids fall through to the existing NOT_FOUND below.
+      // ✅ SECURITY FIX (audit run-1, fp api/quiz-router.ts:byLesson+submit
+      // :missing-course-level-publish-gate): the COURSE-level publish gate
+      // now travels with the same lookup — a withdrawn (unpublished) course
+      // must stop serving its quizzes (questions + answer attempts) even
+      // when its lessons stay published. Same predicate as course-watching.
       const [lesson] = await db
-        .select({ courseId: lessons.courseId, isFree: lessons.isFree })
+        .select({ courseId: lessons.courseId, isFree: lessons.isFree, courseIsPublished: courses.isPublished })
         .from(lessons)
-        .where(and(eq(lessons.id, input.lessonId), eq(lessons.isPublished, true)))
+        .innerJoin(courses, eq(lessons.courseId, courses.id))
+        .where(and(
+          eq(lessons.id, input.lessonId),
+          eq(lessons.isPublished, true),
+          eq(courses.isPublished, true),
+        ))
         .limit(1);
 
       if (!lesson) {
@@ -78,17 +107,7 @@ export const quizRouter = createRouter({
 
   // ✅ SECURITY FIX: submit now uses authedQuery — userId comes from ctx, NOT from client
   submit: authedQuery
-    .input(
-      z.object({
-        lessonId: z.number(),
-        answers: z.array(
-          z.object({
-            questionId: z.number(),
-            selectedOption: z.number(),
-          })
-        ),
-      })
-    )
+    .input(submitSchema)
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
       const userId = ctx.user.id; // ✅ Cannot be forged
@@ -110,11 +129,18 @@ export const quizRouter = createRouter({
           )
           .limit(1),
         db
-          .select({ courseId: lessons.courseId, isFree: lessons.isFree })
+          .select({ courseId: lessons.courseId, isFree: lessons.isFree, courseIsPublished: courses.isPublished })
           .from(lessons)
           // ✅ SECURITY FIX (audit run-2): same publish gate as byLesson —
           // draft lessons are indistinguishable from nonexistent ones.
-          .where(and(eq(lessons.id, input.lessonId), eq(lessons.isPublished, true)))
+          // ✅ SECURITY FIX (audit run-1): course-level publish gate joins the
+          // same lookup — withdrawn courses stop accepting quiz submissions.
+          .innerJoin(courses, eq(lessons.courseId, courses.id))
+          .where(and(
+            eq(lessons.id, input.lessonId),
+            eq(lessons.isPublished, true),
+            eq(courses.isPublished, true),
+          ))
           .limit(1),
         db
           .select()
@@ -176,32 +202,13 @@ export const quizRouter = createRouter({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Too many answers submitted" });
       }
 
-      let score = 0;
-      const totalPoints = questions.reduce((sum, q) => sum + q.points, 0);
-
-      // ✅ ANTI-CHEAT FIX: Do NOT reveal correct answers for wrong responses!
-      // Previously, returning correctAnswer + explanation for every question
-      // allowed students to: submit wrong → see all answers → retake with 100%
-      //
-      // New strategy: Only show if each answer was correct/incorrect,
-      // but do NOT reveal the correct answer or explanation for wrong ones.
-      // Students must study the material to find the right answer.
-      const results = input.answers.map((ans) => {
-        const question = questions.find((q) => q.id === ans.questionId);
-        const isCorrect = question?.correctIndex === ans.selectedOption;
-        if (isCorrect) score += question?.points || 0;
-        return {
-          questionId: ans.questionId,
-          isCorrect,
-          // ✅ Only reveal correct answer if the student got it right
-          // Wrong answers: no hint given — student must review the material
-          correctAnswer: isCorrect ? question?.correctIndex : undefined,
-          explanation: undefined,
-        };
-      });
-
-      const percentage = totalPoints > 0 ? Math.round((score / totalPoints) * 100) : 0;
-      const passed = percentage >= 70;
+      // ✅ SECURITY FIX (audit run-1, duplicate-answer-score-inflation): the
+      // scoring now lives in the pure, deduplicating, 100%-clamped helper
+      // (quiz-scoring.ts) — see the layer notes there. The zod refine above
+      // already rejects duplicates; the helper is the second layer.
+      // Anti answer-key contract preserved: correct answers revealed only for
+      // responses the student got right.
+      const { score, totalPoints, percentage, passed, results } = scoreQuizSubmission(questions, input.answers);
 
       // Update lesson progress — atomic upsert to prevent race conditions
       await db.insert(lessonProgress).values({

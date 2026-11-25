@@ -125,3 +125,121 @@ export async function incrementImageQuota(key: string, n: number): Promise<void>
     logger.warn("[ImageQuota] DB write failed — memory mirror still counts", { error: err instanceof Error ? err.message : String(err) });
   }
 }
+
+// ── Reserve-then-refund admission (audit run-1 fix) ─────────────────────────
+// ✅ SECURITY FIX (audit run-1, fp ai.chatbot.vision-quota-check-increment-race):
+// the old admission was `SELECT used → compare → …later… INSERT used+n` — a
+// 30-70s check-to-increment window (the vision dispatch duration) let a
+// concurrent burst read the same `used` and ALL pass the pre-dispatch check,
+// burning up to ~30 two-pass provider dispatches (≤60 images) past the 5/day
+// cap. Admission is now ONE atomic, locking transaction: SELECT … FOR UPDATE
+// serializes every reservation for the same (quotaKey, quotaDay) row, and
+// the conditional INSERT … ON DUPLICATE KEY UPDATE lands the count in the
+// same transaction. Callers REFUND on every failure path (refundImageQuota).
+
+interface PoolConn {
+  execute: (sql: string, params?: unknown[]) => Promise<unknown>;
+  beginTransaction: () => Promise<unknown>;
+  commit: () => Promise<unknown>;
+  rollback: () => Promise<unknown>;
+  release: () => void;
+}
+
+interface QuotaPool {
+  execute: (sql: string, params?: unknown[]) => Promise<unknown>;
+  getConnection: () => Promise<PoolConn>;
+}
+
+/** The image-quota pool is the shared MySQL pool (same driver as increment). */
+function quotaPool(): QuotaPool {
+  return pool as unknown as QuotaPool;
+}
+
+function addToMirror(key: string, day: string, n: number): void {
+  evictMemQuotaIfNeeded(day);
+  const entry = memQuota.get(key);
+  if (entry && entry.day === day) {
+    entry.used += n;
+  } else {
+    memQuota.set(key, { day, used: n });
+  }
+}
+
+function subtractFromMirror(key: string, day: string, n: number): void {
+  const entry = memQuota.get(key);
+  if (entry && entry.day === day) {
+    entry.used = Math.max(0, entry.used - n);
+  }
+}
+
+/**
+ * Atomically reserve `n` image slots for `key` today against `limit`.
+ *
+ * Returns `{ admitted: true, used }` when the reservation succeeded (the
+ * dispatch may proceed — the count is ALREADY consumed) and
+ * `{ admitted: false, used }` when the lane is exhausted (`used` feeds the
+ * quota-exceeded copy). The DB reservation is one InnoDB transaction
+ * (SELECT … FOR UPDATE → conditional upsert → COMMIT); the in-memory mirror
+ * always mirrors the decision so a DB outage can never reset the day's
+ * usage (larger-wins read, same contract as getImageQuotaUsed).
+ */
+export async function tryConsumeImageQuota(key: string, n: number, limit: number): Promise<{ admitted: boolean; used: number }> {
+  if (!Number.isFinite(n) || n <= 0) return { admitted: true, used: memUsed(key) };
+  const day = todayUtc();
+  const conn = await quotaPool().getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows] = (await conn.execute(
+      "SELECT imagesUsed FROM `chatbotImageQuota` WHERE quotaKey = ? AND quotaDay = ? LIMIT 1 FOR UPDATE",
+      [key, day],
+    )) as unknown as [{ imagesUsed?: number | string }[]];
+    const dbUsed = Number(rows[0]?.imagesUsed ?? 0);
+    // Larger-wins vs the mirror: a DB outage can never reset the day's usage.
+    const effective = Math.max(dbUsed, memUsed(key));
+    let admitted = false;
+    if (effective + n <= limit) {
+      await conn.execute(
+        "INSERT INTO `chatbotImageQuota` (quotaKey, quotaDay, imagesUsed) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE imagesUsed = imagesUsed + ?",
+        [key, day, n, n],
+      );
+      addToMirror(key, day, n);
+      admitted = true;
+    }
+    await conn.commit();
+    return { admitted, used: admitted ? effective + n : effective };
+  } catch (err) {
+    try { await conn.rollback(); } catch { /* connection already dead */ }
+    logger.warn("[ImageQuota] atomic reserve failed — mirror-only fallback", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    // Mirror-only fallback (DB unavailable): same larger-wins contract.
+    const mem = memUsed(key);
+    if (mem + n <= limit) {
+      addToMirror(key, day, n);
+      return { admitted: true, used: mem + n };
+    }
+    return { admitted: false, used: mem };
+  } finally {
+    conn.release();
+  }
+}
+
+/**
+ * Refund a previously RESERVED `n` image slots for `key` today — every
+ * failed vision dispatch path (walk exhausted, abort, hard cap, exception)
+ * must call this exactly once when the reservation is no longer needed.
+ * Floor at 0 in both stores; best-effort (mirrors increment's contract).
+ */
+export async function refundImageQuota(key: string, n: number): Promise<void> {
+  if (!Number.isFinite(n) || n <= 0) return;
+  const day = todayUtc();
+  subtractFromMirror(key, day, n);
+  try {
+    await pool.execute(
+      "UPDATE `chatbotImageQuota` SET imagesUsed = GREATEST(imagesUsed - ?, 0) WHERE quotaKey = ? AND quotaDay = ?",
+      [n, key, day],
+    );
+  } catch (err) {
+    logger.warn("[ImageQuota] DB refund failed — mirror already refunded", { error: err instanceof Error ? err.message : String(err) });
+  }
+}

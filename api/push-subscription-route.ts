@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { eq, count } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { resolveOptionalUser } from "./context";
-import { getDb } from "./queries/connection";
+import { getDb, withTransaction } from "./queries/connection";
 import { pushSubscriptions } from "@db/schema";
 import { getVapidPublicKey, isAllowedPushEndpoint } from "./lib/push-delivery";
 import { logger } from "./lib/logger";
@@ -84,31 +84,61 @@ pushSubscriptionRoute.post("/subscribe", async (c) => {
       .where(eq(pushSubscriptions.endpoint, endpoint))
       .limit(1);
     if (!existingEndpoint) {
-      const [{ userCount }] = await db
-        .select({ userCount: count() })
-        .from(pushSubscriptions)
-        .where(eq(pushSubscriptions.userId, user.id));
-      if (userCount >= MAX_SUBSCRIPTIONS_PER_USER) {
+      // ✅ SECURITY FIX (audit run-1, fp push-subscribe.user-cap
+      // .toctou-insert-race): the cap check and the INSERT are now ONE
+      // transaction holding a FOR UPDATE lock on the user's subscription
+      // index range (push_sub_user_idx) — concurrent subscribes serialize:
+      // the loser re-reads the count AFTER the winner committed and is
+      // rejected. The previously separate count-then-insert admitted N
+      // concurrent rows past the documented bound.
+      const admitted = await withTransaction(async (tx) => {
+        const rows = await tx
+          .select({ userId: pushSubscriptions.userId })
+          .from(pushSubscriptions)
+          .where(eq(pushSubscriptions.userId, user.id))
+          .for("update");
+        if (rows.length >= MAX_SUBSCRIPTIONS_PER_USER) return false;
+        await tx
+          .insert(pushSubscriptions)
+          .values({
+            endpoint,
+            p256dh: keys.p256dh,
+            auth: keys.auth,
+            userId: user.id,
+            userAgent: (userAgent ?? c.req.header("User-Agent") ?? "").slice(0, 300) || null,
+          })
+          .onDuplicateKeyUpdate({
+            set: {
+              p256dh: keys.p256dh,
+              auth: keys.auth,
+              userId: user.id,
+              lastSeenAt: new Date(),
+            },
+          });
+        return true;
+      });
+      if (!admitted) {
         return c.json({ error: "Too many push subscriptions for this account" }, 429);
       }
-    }
-    await db
-      .insert(pushSubscriptions)
-      .values({
-        endpoint,
-        p256dh: keys.p256dh,
-        auth: keys.auth,
-        userId: user.id,
-        userAgent: (userAgent ?? c.req.header("User-Agent") ?? "").slice(0, 300) || null,
-      })
-      .onDuplicateKeyUpdate({
-        set: {
+    } else {
+      await db
+        .insert(pushSubscriptions)
+        .values({
+          endpoint,
           p256dh: keys.p256dh,
           auth: keys.auth,
           userId: user.id,
-          lastSeenAt: new Date(),
-        },
-      });
+          userAgent: (userAgent ?? c.req.header("User-Agent") ?? "").slice(0, 300) || null,
+        })
+        .onDuplicateKeyUpdate({
+          set: {
+            p256dh: keys.p256dh,
+            auth: keys.auth,
+            userId: user.id,
+            lastSeenAt: new Date(),
+          },
+        });
+    }
     logger.info("[Push] subscription stored", { userId: user.id, endpointHost: new URL(endpoint).host });
     return c.json({ ok: true });
   } catch (err) {

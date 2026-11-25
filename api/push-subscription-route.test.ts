@@ -5,7 +5,10 @@ const resolveOptionalUser = vi.hoisted(() => vi.fn());
 vi.mock("./context", () => ({ resolveOptionalUser }));
 
 const getDb = vi.hoisted(() => vi.fn());
-vi.mock("./queries/connection", () => ({ getDb }));
+// audit run-1: the cap check + insert run inside ONE FOR UPDATE transaction —
+// the mock passes the SAME db-like machinery as the tx object.
+const withTransaction = vi.hoisted(() => vi.fn());
+vi.mock("./queries/connection", () => ({ getDb, withTransaction }));
 
  
 const getVapidPublicKey = vi.hoisted(() => vi.fn<() => string | null>(() => "BElbazTestPublicKey__aaaaaaaaaaaaaaaaaa"));
@@ -32,32 +35,32 @@ const VALID_SUB = {
   keys: { p256dh: "k".repeat(87), auth: "a".repeat(24) },
 };
 
-function mockDb(opts: { existingEndpointRows?: unknown[]; countRows?: unknown[] } = {}) {
+function mockDb(opts: { existingEndpointRows?: unknown[]; userRows?: unknown[] } = {}) {
   const onDuplicateKeyUpdate = vi.fn().mockResolvedValue(undefined);
   const values = vi.fn().mockReturnValue({ onDuplicateKeyUpdate });
   const insert = vi.fn().mockReturnValue({ values });
   const deleteWhere = vi.fn().mockResolvedValue(undefined);
   const del = vi.fn().mockReturnValue({ where: deleteWhere });
-  // The subscribe path (audit run-1) first looks up the endpoint row, then
-  // counts the user's stored subscriptions. The projection discriminates the
-  // two select shapes: { userCount } → count query, else endpoint lookup.
-  const select = vi.fn().mockImplementation((projection: Record<string, unknown>) => {
-    const result = projection && "userCount" in projection
-      ? (opts.countRows ?? [{ userCount: 0 }])
-      : (opts.existingEndpointRows ?? []);
-    const step: Promise<unknown> & { limit: ReturnType<typeof vi.fn> } = Object.assign(
-      Promise.resolve(result),
-      { limit: vi.fn().mockResolvedValue(result) },
-    );
+  // Both select shapes now project { userId } (audit run-1): the ENDPOINT
+  // lookup terminates in .limit(1); the USER-ROW cap query terminates in
+  // .for("update"). The builder resolves by the TERMINAL call.
+  const select = vi.fn().mockImplementation(() => {
+    const step = {
+      limit: vi.fn().mockResolvedValue(opts.existingEndpointRows ?? []),
+      for: vi.fn().mockResolvedValue(opts.userRows ?? []),
+    };
     return { from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue(step) }) };
   });
-  getDb.mockReturnValue({ insert, delete: del, select });
-  return { insert, values, onDuplicateKeyUpdate, del, deleteWhere, select };
+  const dbLike = { insert, delete: del, select };
+  getDb.mockReturnValue(dbLike);
+  withTransaction.mockImplementation(async (fn: (tx: typeof dbLike) => Promise<unknown>) => fn(dbLike));
+  return { insert, values, onDuplicateKeyUpdate, del, deleteWhere, select, dbLike };
 }
 
 beforeEach(() => {
   resolveOptionalUser.mockReset();
   getDb.mockReset();
+  withTransaction.mockReset();
 });
 
 describe("GET /public-key", () => {
@@ -139,20 +142,22 @@ describe("POST /subscribe", () => {
     expect(res.status).toBe(500);
   });
 
-  it("enforces the per-user subscription cap (audit run-1 amplification bound)", async () => {
+  it("enforces the per-user subscription cap (audit run-1: cap + insert in ONE FOR UPDATE tx)", async () => {
     resolveOptionalUser.mockResolvedValue(USER);
-    mockDb({ countRows: [{ userCount: 10 }] });
+    const db = mockDb({ userRows: Array.from({ length: 10 }, () => ({ userId: 7 })) });
     const res = await pushSubscriptionRoute.request("/subscribe", {
       method: "POST",
       body: JSON.stringify(VALID_SUB),
       headers: { "Content-Type": "application/json" },
     });
     expect(res.status).toBe(429);
+    // Nothing was stored past the bound.
+    expect(db.insert).not.toHaveBeenCalled();
   });
 
   it("allows re-subscribing an existing endpoint beyond the cap (upsert update)", async () => {
     resolveOptionalUser.mockResolvedValue(USER);
-    const db = mockDb({ existingEndpointRows: [{ userId: 7 }], countRows: [{ userCount: 10 }] });
+    const db = mockDb({ existingEndpointRows: [{ userId: 7 }], userRows: Array.from({ length: 10 }, () => ({ userId: 7 })) });
     const res = await pushSubscriptionRoute.request("/subscribe", {
       method: "POST",
       body: JSON.stringify(VALID_SUB),

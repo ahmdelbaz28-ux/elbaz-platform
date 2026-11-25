@@ -40,10 +40,14 @@ const VIDEOS = {
   source: "gh-actions",
 };
 
+// audit run-2 STEP 2: the relay contract REQUIRES the timestamp header —
+// the signature covers `body + "." + ts`, so every replay-protected request
+// carries a 10-minute freshness commitment.
 function signedBody(payload: unknown, secret: string = SECRET): { body: string; headers: Record<string, string> } {
   const body = JSON.stringify(payload);
-  const sig = crypto.createHmac("sha256", secret).update(body, "utf8").digest("hex");
-  return { body, headers: { "content-type": "application/json", "x-sync-signature": sig } };
+  const ts = String(Date.now());
+  const sig = crypto.createHmac("sha256", secret).update(`${body}.${ts}`, "utf8").digest("hex");
+  return { body, headers: { "content-type": "application/json", "x-sync-signature": sig, "x-sync-ts": ts } };
 }
 
 beforeEach(() => {
@@ -68,6 +72,19 @@ describe("POST /ingest", () => {
       method: "POST",
       body,
       headers: { "content-type": "application/json", "x-sync-signature": "de".repeat(32) },
+    });
+    expect(res.status).toBe(401);
+    expect(applyPlaylistSync).not.toHaveBeenCalled();
+  });
+
+  it("audit run-2 STEP 2: a captured body-only request is hard-rejected even with a valid signature", async () => {
+    vi.stubEnv("SYNC_INGEST_SECRET", SECRET);
+    const body = JSON.stringify(VIDEOS);
+    const sig = crypto.createHmac("sha256", SECRET).update(body, "utf8").digest("hex");
+    const res = await ytSyncIngestRoute.request("/ingest", {
+      method: "POST",
+      body,
+      headers: { "content-type": "application/json", "x-sync-signature": sig },
     });
     expect(res.status).toBe(401);
     expect(applyPlaylistSync).not.toHaveBeenCalled();

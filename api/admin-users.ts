@@ -8,7 +8,7 @@
 
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { asc, desc, eq, count } from "drizzle-orm";
+import { asc, desc, eq, count, and, sql } from "drizzle-orm";
 import { adminQuery, adminMutation } from "./middleware";
 import { getDb } from "./queries/connection";
 import { users } from "@db/schema";
@@ -68,19 +68,50 @@ export const adminUsersProcedures = {
       if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
       if (user.role === input.role) return { success: true }; // no-op
 
-      // ✅ LAST-ADMIN GUARD (dashboard audit 2026-11-15): never allow removing
-      // the final administrator — the platform would become unmanageable.
-      if (user.role === "admin" && input.role === "user") {
-        const [{ admins }] = await db
-          .select({ admins: count() })
-          .from(users)
-          .where(eq(users.role, "admin"));
-        if ((admins ?? 0) <= 1) {
+      if (input.role === "user" && user.role === "admin") {
+        // ✅ SECURITY FIX (audit run-1, fp admin-users.updateUserRole
+        // .last-admin-guard.race-to-zero-admins): the old guard was a separate
+        // SELECT-then-act — two concurrent demotes both read "admins = 2" and
+        // BOTH demoted, leaving zero administrators, and ADMIN_RECOVERY cannot
+        // restore the role (it has nobody to promote). The guard now travels
+        // WITH the write: one conditional UPDATE that only fires while more
+        // than one admin remains. MySQL forbids selecting the target table in
+        // a subquery (ERROR 1093) — the derived table materializes it.
+        // Concurrent demotes serialize on the row lock: the winner affects 1
+        // row, the loser 0 rows → clean BAD_REQUEST, never zero admins.
+        const [updateResult] = await db
+          .update(users)
+          .set({ role: input.role, tokenVersion: user.tokenVersion + 1, updatedAt: new Date() })
+          .where(
+            and(
+              eq(users.id, input.userId),
+              eq(users.role, "admin"),
+              sql`(SELECT adminCount FROM (SELECT COUNT(*) AS adminCount FROM users WHERE role = 'admin') AS adminGuard) > 1`,
+            ),
+          );
+        const affected = Number((updateResult as unknown as { affectedRows?: number }).affectedRows ?? 0);
+        if (affected === 0) {
+          // Zero rows: either a concurrent demote already removed this admin
+          // (intent satisfied — success) or this IS the last admin (guard).
+          const [fresh] = await db
+            .select({ role: users.role })
+            .from(users)
+            .where(eq(users.id, input.userId))
+            .limit(1);
+          if (fresh && fresh.role !== "admin") {
+            evictUserAuthCache(user.id);
+            return { success: true };
+          }
           throw new TRPCError({
             code: "BAD_REQUEST",
             message: "لا يمكن إزالة صلاحية المشرف الأخير — يجب أن يبقى مشرف واحد على الأقل",
           });
         }
+        // ✅ INSTANT EFFECT: tokenVersion bump (in the same SET) kills ALL of
+        // the target's existing sessions immediately, and the auth cache is
+        // evicted so even the 30s user-cache window cannot serve the old role.
+        evictUserAuthCache(user.id);
+        return { success: true };
       }
 
       // ✅ INSTANT EFFECT (dashboard audit 2026-11-15): bump tokenVersion so a

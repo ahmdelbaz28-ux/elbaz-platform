@@ -62,6 +62,11 @@ describe("audit run-2 (Cloudflare security-audit-skill) fix regression guards", 
     "utf8",
   );
   const ingestSource = src("./yt-sync-ingest.ts");
+  const ingestAuthSource = src("./lib/yt-sync-auth.ts");
+  const relaySource = readFileSync(
+    fileURLToPath(new URL("../scripts/yt_playlist_relay.py", import.meta.url)),
+    "utf8",
+  );
 
   it("settings getAll serves only allowlisted sections (deny-by-default partition)", () => {
     expect(settingsSource).toContain("PUBLIC_SETTINGS_SECTIONS");
@@ -177,13 +182,19 @@ describe("audit run-2 (Cloudflare security-audit-skill) fix regression guards", 
     expect(trpcProviderSource).toContain("queryClient.clear()");
   });
 
-  it("yt-sync STEP 1: worker cron signs body+'.'+ts with x-sync-ts; ingest warns on body-only", () => {
+  it("yt-sync STEP 2: both senders sign body+'.'+ts with x-sync-ts; the legacy body-only lane is retired", () => {
     // worker must NOT sign the raw body alone anymore
     expect(workerSource).toContain("enc.encode(`${body}.${ts}`)");
     expect(workerSource).toContain("'x-sync-ts': ts");
     expect(workerSource).not.toContain("enc.encode(body));");
-    // ingest keeps the dual-accept transition lane but flags every accept
-    expect(ingestSource).toContain("DEPRECATED body-only HMAC accepted");
-    expect(ingestSource).toContain("replayProtected: false");
+    // the GitHub Actions relay script carries the same freshness commitment
+    expect(relaySource).toContain('"x-sync-ts"');
+    expect(relaySource).toContain('"x-sync-signature"');
+    // ingest routes auth through the unit-tested STEP 2 module and
+    // hard-rejects any request without the timestamp header
+    expect(ingestSource).toContain('from "./lib/yt-sync-auth.js"');
+    expect(ingestAuthSource).toContain("legacy body-only HMAC no longer accepted");
+    expect(ingestAuthSource).toContain("replayProtected: false");
+    expect(ingestSource).not.toContain("DEPRECATED body-only HMAC accepted");
   });
 });

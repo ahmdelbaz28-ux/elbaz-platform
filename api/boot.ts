@@ -18,7 +18,7 @@ import { appRouter } from "./router.js";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { ensureDatabase } from "./lib/db-init.js";
 import { discoverAllProviders } from "./lib/ai-router.js";
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 
 /**
  * Build ID — loaded from build-id.json at startup.
@@ -343,33 +343,53 @@ app.get("/sitemap.xml", async (c) => {
 
 // ── Webhook status (internal) ──
 app.get("/__webhook/status", async (c) => {
-  // BUG FIX: was using .pop() which returns the LAST proxy IP, not the client.
-  // Now uses unified getClientIpFromHono which correctly takes the first IP.
-  const clientIp = getClientIpFromHono(c);
-  // Private/internal CIDR ranges for the trust check. These are IANA
-  // reserved blocks (RFC 1918) — they cannot be reached from the public
-  // internet, so the values are intentionally hardcoded. NOSONAR —
-  // reviewed against SonarCloud S1313.
-  const internalRanges = ["127.1", "10/8", "172.16/12", "192.168/16", "::1"]; // NOSONAR
-  const isInternal = internalRanges.some((range) => {
-    if (!clientIp) return false;
-    if (!range.includes("/")) return clientIp === range;
-    const parts = range.split("/");
-    const networkStr = parts[0];
-    const cidrBits = Number.parseInt(parts[1], 10);
-    const networkParts = networkStr.split(".").map(Number);
-    const ipParts = clientIp.split(".").map(Number);
-    if (networkParts.length !== 4 || ipParts.length !== 4 || networkParts.some(Number.isNaN) || ipParts.some(Number.isNaN)) {
-      return clientIp === range;
+  // ✅ SECURITY FIX (audit run-1, needs_validation fp
+  // shield.rate-limit-key.client-controlled-forwarded-headers): the internal
+  // gate previously trusted only the client-IP derivation — which CAN be
+  // header-influenced behind a proxy that passes client headers through (the
+  // exact unresolved deployment fact). A shared-status-token gate is now the
+  // PRIMARY control in production: set WEBHOOK_STATUS_TOKEN (≥16 chars, HF
+  // secret) and callers must send `x-status-token` — no header-trust
+  // dependency remains. When the token is unset, the legacy RFC1918 IP gate
+  // stays as the fallback (ops tooling keeps working unchanged).
+  const statusToken = (process.env.WEBHOOK_STATUS_TOKEN ?? "").trim();
+  if (statusToken.length >= 16) {
+    const provided = (c.req.header("x-status-token") ?? "").trim();
+    const providedBuf = Buffer.from(provided);
+    const expectedBuf = Buffer.from(statusToken);
+    const tokenOk = providedBuf.length === expectedBuf.length && timingSafeEqual(providedBuf, expectedBuf);
+    if (!tokenOk) {
+      return c.json({ error: "Not Found" }, 404);
     }
-    const ipNum = ((ipParts[0] << 24) | (ipParts[1] << 16) | (ipParts[2] << 8) | ipParts[3]) >>> 0;
-    const netNum = ((networkParts[0] << 24) | (networkParts[1] << 16) | (networkParts[2] << 8) | networkParts[3]) >>> 0;
-    const mask = cidrBits > 0 ? (~((1 << (32 - cidrBits)) - 1)) >>> 0 : 0 >>> 0;
-    return (ipNum & mask) === (netNum & mask);
-  });
+  } else {
+    // BUG FIX: was using .pop() which returns the LAST proxy IP, not the client.
+    // Now uses unified getClientIpFromHono which correctly takes the first IP.
+    const clientIp = getClientIpFromHono(c);
+    // Private/internal CIDR ranges for the trust check. These are IANA
+    // reserved blocks (RFC 1918) — they cannot be reached from the public
+    // internet, so the values are intentionally hardcoded. NOSONAR —
+    // reviewed against SonarCloud S1313.
+    const internalRanges = ["127.1", "10/8", "172.16/12", "192.168/16", "::1"]; // NOSONAR
+    const isInternal = internalRanges.some((range) => {
+      if (!clientIp) return false;
+      if (!range.includes("/")) return clientIp === range;
+      const parts = range.split("/");
+      const networkStr = parts[0];
+      const cidrBits = Number.parseInt(parts[1], 10);
+      const networkParts = networkStr.split(".").map(Number);
+      const ipParts = clientIp.split(".").map(Number);
+      if (networkParts.length !== 4 || ipParts.length !== 4 || networkParts.some(Number.isNaN) || ipParts.some(Number.isNaN)) {
+        return clientIp === range;
+      }
+      const ipNum = ((ipParts[0] << 24) | (ipParts[1] << 16) | (ipParts[2] << 8) | ipParts[3]) >>> 0;
+      const netNum = ((networkParts[0] << 24) | (networkParts[1] << 16) | (networkParts[2] << 8) | networkParts[3]) >>> 0;
+      const mask = cidrBits > 0 ? (~((1 << (32 - cidrBits)) - 1)) >>> 0 : 0 >>> 0;
+      return (ipNum & mask) === (netNum & mask);
+    });
 
-  if (env.NODE_ENV === "production" && !isInternal) {
-    return c.json({ error: "Not Found" }, 404);
+    if (env.NODE_ENV === "production" && !isInternal) {
+      return c.json({ error: "Not Found" }, 404);
+    }
   }
 
   return c.json({

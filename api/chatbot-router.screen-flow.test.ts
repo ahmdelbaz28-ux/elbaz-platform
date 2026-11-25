@@ -27,11 +27,11 @@ const getChatResponse = vi.hoisted(() => vi.fn());
 const getStreamResponse = vi.hoisted(() => vi.fn());
 vi.mock("./lib/chatbot.js", () => ({ getChatResponse, getStreamResponse }));
 
-const getImageQuotaUsed = vi.hoisted(() => vi.fn());
-const incrementImageQuota = vi.hoisted(() => vi.fn());
+const tryConsumeImageQuota = vi.hoisted(() => vi.fn());
+const refundImageQuota = vi.hoisted(() => vi.fn());
 vi.mock("./lib/image-quota.js", () => ({
-  getImageQuotaUsed,
-  incrementImageQuota,
+  tryConsumeImageQuota,
+  refundImageQuota,
   DAILY_IMAGE_LIMIT: 5,
   DAILY_SCREEN_FRAME_LIMIT: 60,
   visionQuotaLane: (screenCapture: boolean, ip: string) =>
@@ -81,8 +81,9 @@ const plainParts = (text: string) => [
 
 beforeEach(() => {
   resolveOptionalUser.mockReset().mockResolvedValue(null);
-  getImageQuotaUsed.mockReset().mockResolvedValue(0);
-  incrementImageQuota.mockReset().mockResolvedValue(undefined);
+  // audit run-1 reserve-then-refund contract: admission succeeds by default.
+  tryConsumeImageQuota.mockReset().mockResolvedValue({ admitted: true, used: 0 });
+  refundImageQuota.mockReset().mockResolvedValue(undefined);
   getLatestSummaryText.mockReset().mockResolvedValue(null);
   persistChatRound.mockReset().mockResolvedValue(undefined);
   getChatResponse.mockReset();
@@ -106,9 +107,10 @@ describe("POST /api/chatbot — live screen flow", () => {
     expect(req.vision).toBe(true);
     expect(req.screenCapture).toBe(true);
 
-    // Pre-dispatch check + success increment, BOTH on the dedicated lane.
-    expect(getImageQuotaUsed).toHaveBeenCalledWith("203.0.113.7#screen");
-    expect(incrementImageQuota).toHaveBeenCalledWith("203.0.113.7#screen", 1);
+    // Pre-dispatch ATOMIC reservation on the dedicated lane (audit run-1);
+    // the reservation is kept on success — no refund must fire.
+    expect(tryConsumeImageQuota).toHaveBeenCalledWith("203.0.113.7#screen", 1, 60);
+    expect(refundImageQuota).not.toHaveBeenCalled();
   });
 
   it("a plain attachment rides the 5/day attachment lane (unchanged)", async () => {
@@ -119,13 +121,13 @@ describe("POST /api/chatbot — live screen flow", () => {
       headers: { "Content-Type": "application/json" },
     });
     expect(res.status).toBe(200);
-    expect(getImageQuotaUsed).toHaveBeenCalledWith("203.0.113.7");
-    expect(incrementImageQuota).toHaveBeenCalledWith("203.0.113.7", 1);
+    expect(tryConsumeImageQuota).toHaveBeenCalledWith("203.0.113.7", 1, 5);
+    expect(refundImageQuota).not.toHaveBeenCalled();
   });
 
   it("an exhausted SCREEN lane answers 429 with the frame-specific message — session contract intact", async () => {
     // 60 frames already used → the NEXT frame exceeds the 60/day screen lane.
-    getImageQuotaUsed.mockResolvedValue(60);
+    tryConsumeImageQuota.mockResolvedValue({ admitted: false, used: 60 });
     const res = await chatbotRouter.request("/", {
       method: "POST",
       body: JSON.stringify({ messages: [{ role: "user", content: screenParts("الخطوة التالية؟") }], language: "ar" }),
@@ -140,7 +142,7 @@ describe("POST /api/chatbot — live screen flow", () => {
   });
 
   it("59 used frames still pass — a real session is NOT killed after five exchanges", async () => {
-    getImageQuotaUsed.mockResolvedValue(59);
+    tryConsumeImageQuota.mockResolvedValue({ admitted: true, used: 60 });
     getChatResponse.mockResolvedValue({ success: true, reply: "تمام", model: "mock/model" });
     const res = await chatbotRouter.request("/", {
       method: "POST",
@@ -152,7 +154,7 @@ describe("POST /api/chatbot — live screen flow", () => {
   });
 
   it("an exhausted ATTACHMENT lane still answers with the 5-images message", async () => {
-    getImageQuotaUsed.mockResolvedValue(5);
+    tryConsumeImageQuota.mockResolvedValue({ admitted: false, used: 5 });
     const res = await chatbotRouter.request("/", {
       method: "POST",
       body: JSON.stringify({ messages: [{ role: "user", content: plainParts("صورة") }], language: "ar" }),
@@ -180,7 +182,7 @@ describe("POST /api/chatbot — live screen flow", () => {
     const req = getChatResponse.mock.calls[0]?.[0] as { vision: boolean; screenCapture: boolean };
     expect(req.vision).toBe(false);
     expect(req.screenCapture).toBe(false);
-    expect(incrementImageQuota).not.toHaveBeenCalled();
+    expect(tryConsumeImageQuota).not.toHaveBeenCalled();
   });
 });
 
@@ -207,15 +209,16 @@ describe("POST /api/chatbot/stream — live screen flow", () => {
     const req = getStreamResponse.mock.calls[0]?.[0] as { vision: boolean; screenCapture: boolean };
     expect(req.vision).toBe(true);
     expect(req.screenCapture).toBe(true);
-    expect(getImageQuotaUsed).toHaveBeenCalledWith("203.0.113.7#screen");
+    expect(tryConsumeImageQuota).toHaveBeenCalledWith("203.0.113.7#screen", 1, 60);
 
-    // Drain the stream to completion — quota increments AFTER the reply.
+    // Drain the stream to completion — the preflight reservation is KEPT on
+    // success (no post-dispatch increment remains; no refund must fire).
     await res.text();
-    expect(incrementImageQuota).toHaveBeenCalledWith("203.0.113.7#screen", 1);
+    expect(refundImageQuota).not.toHaveBeenCalled();
   });
 
   it("an exhausted SCREEN lane rejects BEFORE the walk with the frames message", async () => {
-    getImageQuotaUsed.mockResolvedValue(60);
+    tryConsumeImageQuota.mockResolvedValue({ admitted: false, used: 60 });
     const res = await chatbotRouter.request("/stream", {
       method: "POST",
       body: JSON.stringify({ messages: [{ role: "user", content: screenParts("كمّل") }], language: "ar" }),

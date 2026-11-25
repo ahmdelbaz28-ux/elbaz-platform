@@ -33,6 +33,7 @@ import { buildUpstreamSSETransform, isPublicProviderUrl } from "./ai-router.js";
 import { headerTimeoutSignal } from "./abort-utils.js";
 import { stripThinkBlocks } from "./think-filter.js";
 import { reportTokenUsage } from "./token-usage.js";
+import { pinnedPublicFetch } from "./public-url-dispatcher.js";
 import { logger } from "./logger.js";
 import type { ChatApiMessage } from "./chatbot.js";
 import type { ModeTuning } from "./chatbot-prompts.js";
@@ -168,7 +169,13 @@ export async function tryByokChat(params: {
   const startedAt = Date.now();
   const headerTimeout = headerTimeoutSignal(abortSignal, timeoutMs);
   try {
-    const response = await fetch(`${config.baseUrl}/chat/completions`, {
+    // ✅ SECURITY HARDENING (audit run-1, needs_validation ai.chatbot
+    // .byok-dns-rebind-ssrf): the fetch goes through the DNS-pinned dispatcher
+    // — the hostname is resolved ONCE per request, every record is validated
+    // public, and the socket connects to the validated address only. A user
+    // hostname that rebinds between the isPublicProviderUrl check and connect
+    // can no longer aim the key-bearing request at an internal target.
+    const response = await pinnedPublicFetch(`${config.baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${config.apiKey}`,
@@ -246,7 +253,9 @@ export async function tryByokStream(params: {
   const headerTimeoutMs = tuning.openRouterStreamTimeoutMs ?? 120_000;
   const headerTimeout = headerTimeoutSignal(abortSignal, headerTimeoutMs);
   try {
-    const response = await fetch(`${config.baseUrl}/chat/completions`, {
+    // ✅ SECURITY HARDENING (audit run-1): same DNS-pinned dispatcher as the
+    // non-stream BYOK lane (see tryByokChat above).
+    const response = await pinnedPublicFetch(`${config.baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${config.apiKey}`,
@@ -307,7 +316,10 @@ export async function testByokProvider(params: {
   }
   const headerTimeout = headerTimeoutSignal(params.abortSignal, 15_000);
   try {
-    const response = await fetch(`${baseUrl}/chat/completions`, {
+    // ✅ SECURITY HARDENING (audit run-1): same DNS-pinned dispatcher as the
+    // chat lanes — the /test oracle can no longer be aimed at internal
+    // targets through a rebinding hostname.
+    const response = await pinnedPublicFetch(`${baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${params.apiKey}`,

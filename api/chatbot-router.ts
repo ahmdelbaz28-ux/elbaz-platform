@@ -26,7 +26,13 @@ import { enforceRefsCitations } from "./lib/chatbot-refs.js";
 import { getUserByokConfig } from "./lib/chatbot-byok.js";
 import { chatbotError, logSafeError, scrubCredentials, type ChatbotErrorCode } from "./lib/chatbot-errors.js";
 import { getClientIpFromHono as getChatbotIp } from "./lib/client-ip";
-import { getImageQuotaUsed, incrementImageQuota, DAILY_IMAGE_LIMIT, DAILY_SCREEN_FRAME_LIMIT, visionQuotaLane } from "./lib/image-quota.js";
+import {
+  DAILY_IMAGE_LIMIT,
+  DAILY_SCREEN_FRAME_LIMIT,
+  visionQuotaLane,
+  tryConsumeImageQuota,
+  refundImageQuota,
+} from "./lib/image-quota.js";
 import { persistChatRound, getChatHistory, getLatestSummaryText, clearChatHistory } from "./lib/chat-history.js";
 import { resolveOptionalUser } from "./context.js";
 import { logger } from "./lib/logger.js";
@@ -252,6 +258,8 @@ type ChatPreflight =
       imageCount: number;
       screenCapture: boolean;
       quotaLane: ReturnType<typeof visionQuotaLane>;
+      /** ✅ SECURITY FIX (audit run-1): true when the atomic vision reservation succeeded and is still held. */
+      visionReserved: boolean;
       dailyLang: "ar" | "en";
       language: string | undefined;
       courseIntent: boolean;
@@ -307,52 +315,72 @@ async function chatRequestPreflight(c: Context): Promise<ChatPreflight> {
   // ✅ ROOT-CURE (2026-11-13): live screen frames ride their own 60/day lane
   // (visionQuotaLane) — the 5/day attachment cap can no longer kill an
   // ongoing screen-teacher session after five frames.
+  // ✅ SECURITY FIX (audit run-1, fp ai.chatbot.vision-quota-check-increment
+  // -race): the old admission read `used` then consumed it only AFTER the
+  // 30-70s dispatch — a concurrent burst all read the same `used` and ALL
+  // passed. Admission is now an atomic RESERVATION (tryConsumeImageQuota:
+  // SELECT … FOR UPDATE + conditional upsert in one transaction) taken in
+  // the preflight; every failure path below REFUNDS it exactly once. The
+  // reservation is intentionally held across post-preflight awaits — any
+  // throw before the endpoint returns is caught here and refunded first.
   const quotaLane = visionQuotaLane(screenCapture, ip);
+  let visionReserved = false;
   if (vision) {
-    const used = await getImageQuotaUsed(quotaLane.key);
-    if (used + imageCount > quotaLane.limit) {
-      const msg = quotaLane.screen ? screenQuotaExceededResponse(used) : imageQuotaExceededResponse(used);
+    const reservation = await tryConsumeImageQuota(quotaLane.key, imageCount, quotaLane.limit);
+    if (!reservation.admitted) {
+      const msg = quotaLane.screen ? screenQuotaExceededResponse(reservation.used) : imageQuotaExceededResponse(reservation.used);
       const lang = resolveChatLanguage(body.language, messages);
       return { error: errorResponse(c, "QUOTA_EXCEEDED", { lang: lang === "en" ? "en" : "ar", chatId: body.chatId, message: lang === "ar" ? msg.ar : msg.en }) };
     }
+    visionReserved = true;
   }
 
-  // Real course catalog (SWR-cached 10 min, fail-open to "") — lets the bot
-  // quote actual course names/levels/prices instead of hallucinating them.
-  // ✅ TOKEN OPTIMIZATION (v3.6.0): the FULL catalog rides only on course /
-  // platform intent (sticky over recent history) or the vision lane — pure
-  // technical questions carry the featured sample instead.
-  // PERF: catalog and user resolution are independent — start both, await
-  // each only where its value is first needed (saves one serial DB round
-  // trip per chat message on the critical path).
-  const courseIntent = vision || courseIntentFromMessages(messages);
-  const catalogPromise = courseIntent ? getCourseCatalogText() : getCourseCatalogLiteText();
+  try {
+    // Real course catalog (SWR-cached 10 min, fail-open to "") — lets the bot
+    // quote actual course names/levels/prices instead of hallucinating them.
+    // ✅ TOKEN OPTIMIZATION (v3.6.0): the FULL catalog rides only on course /
+    // platform intent (sticky over recent history) or the vision lane — pure
+    // technical questions carry the featured sample instead.
+    // PERF: catalog and user resolution are independent — start both, await
+    // each only where its value is first needed (saves one serial DB round
+    // trip per chat message on the critical path).
+    const courseIntent = vision || courseIntentFromMessages(messages);
+    const catalogPromise = courseIntent ? getCourseCatalogText() : getCourseCatalogLiteText();
 
-  // ── Chat-history continuity (logged-in users only, fail-open) ──
-  const chatUser = await resolveOptionalUser(c.req.raw);
-  const historySummary = chatUser ? await getLatestSummaryText(chatUser.id).catch(() => null) : null;
-  const catalog = await catalogPromise;
+    // ── Chat-history continuity (logged-in users only, fail-open) ──
+    const chatUser = await resolveOptionalUser(c.req.raw);
+    const historySummary = chatUser ? await getLatestSummaryText(chatUser.id).catch(() => null) : null;
+    const catalog = await catalogPromise;
 
-  // ✅ SECURITY FIX (pre-launch audit run-2): daily per-USER message quota —
-  // generous headroom for real students; only an automated loop hits it.
-  if (chatUser && !bumpAndCheckChatbotDaily(`user:${chatUser.id}`, CHATBOT_DAILY_USER_LIMIT)) {
-    return { error: errorResponse(c, "RATE_LIMITED", { lang: dailyLang, chatId: body.chatId, message: chatbotDailyQuotaMessage(CHATBOT_DAILY_USER_LIMIT, dailyLang) }) };
+    // ✅ SECURITY FIX (pre-launch audit run-2): daily per-USER message quota —
+    // generous headroom for real students; only an automated loop hits it.
+    if (chatUser && !bumpAndCheckChatbotDaily(`user:${chatUser.id}`, CHATBOT_DAILY_USER_LIMIT)) {
+      return { error: errorResponse(c, "RATE_LIMITED", { lang: dailyLang, chatId: body.chatId, message: chatbotDailyQuotaMessage(CHATBOT_DAILY_USER_LIMIT, dailyLang) }) };
+    }
+
+    return {
+      body,
+      messages,
+      vision,
+      imageCount,
+      screenCapture,
+      quotaLane,
+      visionReserved,
+      dailyLang,
+      language: resolveChatLanguage(body.language, messages),
+      courseIntent,
+      catalog,
+      chatUser,
+      historySummary,
+    };
+  } catch (err) {
+    // ✅ SECURITY FIX (audit run-1): a reservation must never leak when the
+    // preflight itself dies after admission — refund before the throw escapes.
+    if (visionReserved) {
+      await refundImageQuota(quotaLane.key, imageCount).catch(() => {});
+    }
+    throw err;
   }
-
-  return {
-    body,
-    messages,
-    vision,
-    imageCount,
-    screenCapture,
-    quotaLane,
-    dailyLang,
-    language: resolveChatLanguage(body.language, messages),
-    courseIntent,
-    catalog,
-    chatUser,
-    historySummary,
-  };
 }
 
 // ── Chat-history persistence helpers (logged-in users only) ──
@@ -416,12 +444,17 @@ chatbotRouter.delete("/history", async (c) => {
 
 // ── Non-streaming chat endpoint ──
 chatbotRouter.post("/", async (c) => {
+  // ✅ SECURITY FIX (audit run-1): vision-reservation bookkeeping lives OUTSIDE
+  // the try so every failure path (UPSTREAM_EXHAUSTED, exception) can refund
+  // exactly the reservation the preflight took.
+  let heldReservation: { key: string; n: number } | null = null;
   try {
     // ✅ ANTI-KOSHARY AUDIT FIX: the whole admission sequence is ONE shared
     // preflight (chatRequestPreflight above) — see its unified-contract notes.
     const pre = await chatRequestPreflight(c);
     if ("error" in pre) return pre.error;
-    const { body, messages, vision, imageCount, screenCapture, quotaLane, dailyLang, language, courseIntent, catalog, chatUser, historySummary } = pre;
+    const { body, messages, vision, imageCount, screenCapture, quotaLane, visionReserved, dailyLang, language, courseIntent, catalog, chatUser, historySummary } = pre;
+    if (visionReserved) heldReservation = { key: quotaLane.key, n: imageCount };
     const nonStreamPersistDeadline = Date.now()
       + (Number.isFinite(Number(process.env.CHATBOT_NONSTREAM_PERSIST_MS)) && Number(process.env.CHATBOT_NONSTREAM_PERSIST_MS) > 0
         ? Number(process.env.CHATBOT_NONSTREAM_PERSIST_MS)
@@ -469,9 +502,10 @@ chatbotRouter.post("/", async (c) => {
     }
 
     if (result.success) {
-      // Quota is only consumed by SUCCESSFUL image analysis — in the SAME
-      // lane the pre-dispatch check used (screen frames ≠ attachments).
-      if (vision) await incrementImageQuota(quotaLane.key, imageCount);
+      // ✅ SECURITY FIX (audit run-1): the vision quota was already consumed
+      // ATOMICALLY in the preflight (reserve-then-refund) — no post-success
+      // increment remains, so the 30-70s dispatch window can no longer be
+      // raced by a concurrent burst.
       // ✅ ARCH-AUDIT FIX (unified egress pipeline): the reply now goes
       // through the ONE shared finalizeReply contract (think-strip → sanitize
       // → leak gate → deterministic truncation policy) — the same pipeline
@@ -497,12 +531,25 @@ chatbotRouter.post("/", async (c) => {
     // UPSTREAM_EXHAUSTED — the provider walk failed. Agent-Reach rule: the
     // upstream detail must never leak credentials, and the message must never
     // read like a login/permission problem.
+    // ✅ SECURITY FIX (audit run-1): the held vision reservation is refunded —
+    // a failed walk must not consume the lane (same contract as the old
+    // success-only increment).
+    if (heldReservation) {
+      await refundImageQuota(heldReservation.key, heldReservation.n).catch(() => {});
+      heldReservation = null;
+    }
     return errorResponse(c, "UPSTREAM_EXHAUSTED", {
       chatId: body.chatId,
       message: scrubCredentials(result.error || "Unknown error"),
     });
   } catch (err) {
     logger.error("[Chatbot] Error in /api/chatbot", { error: logSafeError(err) });
+    // ✅ SECURITY FIX (audit run-1): refund any held vision reservation on the
+    // exception path too — a reservation must never leak on a failure.
+    if (heldReservation) {
+      await refundImageQuota(heldReservation.key, heldReservation.n).catch(() => {});
+      heldReservation = null;
+    }
     return errorResponse(c, "INTERNAL");
   }
 });
@@ -560,7 +607,7 @@ chatbotRouter.post("/stream", async (c) => {
   // non-stream endpoint — one admission sequence, no drift.
   const pre = await chatRequestPreflight(c);
   if ("error" in pre) return pre.error;
-  const { body, messages, vision, imageCount, screenCapture, quotaLane, language, courseIntent, catalog, chatUser, historySummary } = pre;
+  const { body, messages, vision, imageCount, screenCapture, quotaLane, visionReserved, language, courseIntent, catalog, chatUser, historySummary } = pre;
 
   const startedAt = Date.now();
   const mode: "thinking" | "instant" = body.mode === "instant" ? "instant" : "thinking";
@@ -866,10 +913,9 @@ chatbotRouter.post("/stream", async (c) => {
           const reply = accumulatedReply.trim();
           if (reply) {
             served = true;
-            // Quota is only consumed by SUCCESSFUL image analysis — a dud
-            // stream that delivered nothing must not burn the user's quota.
-            // ✅ ROOT-CURE (2026-11-13): same lane as the pre-dispatch check.
-            if (vision) await incrementImageQuota(quotaLane.key, imageCount);
+            // ✅ SECURITY FIX (audit run-1): the vision quota was consumed
+            // ATOMICALLY in the preflight (reserve-then-refund) — no
+            // post-success increment remains to race (was: incrementImageQuota).
             // ✅ AUDIT RUN-2 FIX: persist the OPAQUE model key (same contract
             // as the non-stream persist — the raw provider tag never lands
             // in chatMessages.metadata).
@@ -888,6 +934,9 @@ chatbotRouter.post("/stream", async (c) => {
 
         if (timeoutController.signal.aborted) {
           // Hard cap (or client disconnect — enqueue is a no-op then).
+          // ✅ SECURITY FIX (audit run-1): refund the held vision reservation —
+          // the aborted walk never served a reply.
+          if (visionReserved) await refundImageQuota(quotaLane.key, imageCount).catch(() => {});
           safeEnqueue(encoder.encode(`data: ${JSON.stringify({ error: softBusyText(language) })}\n\n`));
           safeEnqueue(encoder.encode("data: [DONE]\n\n"));
           finalize();
@@ -898,6 +947,9 @@ chatbotRouter.post("/stream", async (c) => {
           // Every round failed within the deadline — one soft busy event.
           // The client retries silently; only a total blackout ever shows it.
           logger.error("[Chatbot] stream persistence exhausted", { mode, rounds, elapsedMs: Date.now() - startedAt });
+          // ✅ SECURITY FIX (audit run-1): refund the held vision reservation —
+          // nothing was served, the dispatch must not consume the lane.
+          if (visionReserved) await refundImageQuota(quotaLane.key, imageCount).catch(() => {});
           safeEnqueue(encoder.encode(`data: ${JSON.stringify({ error: softBusyText(language) })}\n\n`));
           safeEnqueue(encoder.encode("data: [DONE]\n\n"));
           finalize();
@@ -910,6 +962,9 @@ chatbotRouter.post("/stream", async (c) => {
         finalize();
       } catch (err) {
         logger.warn("[Chatbot] stream handler error", { error: err instanceof Error ? err.message : String(err) });
+        // ✅ SECURITY FIX (audit run-1): refund any held vision reservation on
+        // the stream-handler exception path too.
+        if (visionReserved) await refundImageQuota(quotaLane.key, imageCount).catch(() => {});
         safeEnqueue(encoder.encode(`data: ${JSON.stringify({ error: softBusyText(language) })}\n\n`));
         safeEnqueue(encoder.encode("data: [DONE]\n\n"));
         finalize();

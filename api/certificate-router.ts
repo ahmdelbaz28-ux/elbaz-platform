@@ -78,29 +78,38 @@ export const certificateRouter = createRouter({
       // Previously grade was hardcoded to "Distinction" — total fraud!
       // PERF: these four reads are mutually independent — run them in parallel
       // (phase 2: grade + certificate payload).
-      const [progressRows, quizRows, courseRows, studentRows] = await Promise.all([
+      // ✅ SECURITY FIX (audit run-1, fp certificate-router.grade-gate
+      // .passed-only-denominator): the denominator was "progress rows WHERE
+      // isQuizPassed = true" — the gate `avg >= 70` could never fail once ANY
+      // quiz passed (N passed at 100 / N passed = 100), so one passed quiz
+      // minted a public "Distinction" certificate regardless of the other
+      // quizzes. The average now runs over EVERY published quiz lesson of the
+      // course — missing/failed attempts count as 0 — so the gate is a real
+      // ≥70 across the whole assessment.
+      const [quizLessonRows, progressAllRows, courseRows, studentRows] = await Promise.all([
         db
-          .select({ quizScore: lessonProgress.quizScore })
+          .select({ lessonId: lessons.id })
+          .from(quizQuestions)
+          .innerJoin(lessons, eq(quizQuestions.lessonId, lessons.id))
+          .where(
+            and(
+              eq(lessons.courseId, input.courseId),
+              // Same publish predicate as the progress engine's total side —
+              // draft/withdrawn lessons must never enter the denominator.
+              eq(lessons.isPublished, true),
+            ),
+          ),
+        db
+          .select({ lessonId: lessonProgress.lessonId, quizScore: lessonProgress.quizScore })
           .from(lessonProgress)
           .innerJoin(lessons, eq(lessonProgress.lessonId, lessons.id))
           .where(
             and(
               eq(lessonProgress.userId, userId),
               eq(lessons.courseId, input.courseId),
-              // ✅ SECURITY FIX (audit run-2, progress-draft-completion-asymmetry):
-              // draft/withdrawn-lesson quiz scores must never contribute to
-              // the certificate grade — same publish predicate as the progress
-              // engine's total side.
               eq(lessons.isPublished, true),
-              eq(lessonProgress.isQuizPassed, true),
             ),
           ),
-        db
-          .select({ id: quizQuestions.id })
-          .from(quizQuestions)
-          .innerJoin(lessons, eq(quizQuestions.lessonId, lessons.id))
-          .where(eq(lessons.courseId, input.courseId))
-          .limit(1),
         db
           .select()
           .from(courses)
@@ -115,8 +124,13 @@ export const certificateRouter = createRouter({
       const [course] = courseRows;
       const [student] = studentRows;
 
-      const avgScore = progressRows.length > 0
-        ? Math.round(progressRows.reduce((sum, r) => sum + (r.quizScore ?? 0), 0) / progressRows.length)
+      const quizLessonIds = [...new Set(quizLessonRows.map((r) => r.lessonId))];
+      const scoreByLesson = new Map(progressAllRows.map((r) => [r.lessonId, r.quizScore ?? 0]));
+      const avgScore = quizLessonIds.length > 0
+        ? Math.round(
+            quizLessonIds.reduce((sum, lessonId) => sum + (scoreByLesson.get(lessonId) ?? 0), 0)
+            / quizLessonIds.length,
+          )
         : 0;
 
       // ✅ SECURITY FIX (audit run-1): enforce the documented contract
@@ -124,7 +138,7 @@ export const certificateRouter = createRouter({
       // quizzes. Previously calculateGrade(0) returned "Pass", so a student
       // who claimed completion via the API without passing anything could
       // mint a publicly verifiable certificate with grade Pass / score 0.
-      const courseHasQuizzes = quizRows.length > 0;
+      const courseHasQuizzes = quizLessonIds.length > 0;
       if (courseHasQuizzes && avgScore < 70) {
         throw new TRPCError({
           code: "FORBIDDEN",
