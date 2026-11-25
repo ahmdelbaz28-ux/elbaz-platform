@@ -183,16 +183,16 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
           },
         },
         {
-          // ✅ ROOT FIX (admin dashboard audit, 2026-11-25): the quizQuestions
-          // table existed only in the drizzle schema (db/schema/courses.ts) and
-          // in drizzle-kit push — but the production boot path (this file) never
-          // created it. Result: admin.adminQuizByLesson (and every quiz admin
-          // mutation) 500'd with an unhandled "table doesn't exist" DB error on
-          // production, breaking the quiz section of the Lessons dialog. The
-          // ledger step below lands the exact same shape the drizzle schema
-          // declares (columns, defaults, qq_lesson_idx, fk_qq_lesson_id → lessons).
+          // ✅ ROOT FIX (admin dashboard audit, 2026-11-25): production's
+          // `quizQuestions` table exists but is MISSING drizzle-declared columns
+          // (the student quiz endpoint — which projects only 7 columns — works,
+          // while every admin quiz path uses `db.select()`/INSERT over ALL
+          // drizzle columns and 500'd on the missing ones). CREATE IF NOT
+          // EXISTS alone is a no-op on the drifted table, so this step also
+          // probes INFORMATION_SCHEMA.COLUMNS and ALTER-ADDs anything missing,
+          // then guarantees the lesson index + FK to lessons.
           id: "v19-quiz-questions-table",
-          description: "quiz builder storage: quizQuestions table + lesson index + FK to lessons",
+          description: "quiz builder storage: quizQuestions table shape + lesson index + FK to lessons",
           run: async (c) => {
             // Table first (no inline FK — stays robust even on a fresh DB where
             // `lessons` could theoretically not exist yet at this point).
@@ -212,7 +212,27 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
                  KEY \`qq_lesson_idx\` (\`lessonId\`)
                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
             );
-            // FK second — only when the parent table exists and the FK is absent.
+            // Column drift repair — every drizzle-declared column must exist.
+            // (adminQuizByLesson does db.select() → SELECT of ALL columns here;
+            //  a missing one turns into ER_BAD_FIELD_ERROR → HTTP 500.)
+            const quizColumns: Array<[string, string]> = [
+              ["lessonId", "BIGINT UNSIGNED NOT NULL"],
+              ["questionEn", "TEXT NOT NULL"],
+              ["questionAr", "TEXT NOT NULL"],
+              ["optionsEn", "JSON NULL"],
+              ["optionsAr", "JSON NULL"],
+              ["correctIndex", "INT NULL"],
+              ["points", "INT NOT NULL DEFAULT 10"],
+              ["sortOrder", "INT NOT NULL DEFAULT 0"],
+              ["createdAt", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"],
+            ];
+            for (const [column, definition] of quizColumns) {
+              if (!(await dbColumnExists(c, "quizQuestions", column))) {
+                await c.execute(`ALTER TABLE \`quizQuestions\` ADD COLUMN \`${column}\` ${definition}`);
+                logger.info(`[DB]   + quizQuestions.${column} (drift repair)`);
+              }
+            }
+            // FK last — only when the parent table exists and the FK is absent.
             // NOTE: FK constraints live in REFERENTIAL_CONSTRAINTS, NOT in
             // INFORMATION_SCHEMA.STATISTICS (which is what dbIndexExists probes),
             // so the FK presence is checked with a dedicated query here.
