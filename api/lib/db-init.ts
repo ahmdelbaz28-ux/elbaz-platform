@@ -184,18 +184,40 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         },
         {
           // ✅ ROOT FIX (admin dashboard audit, 2026-11-25): production's
-          // `quizQuestions` table exists but is MISSING drizzle-declared columns
-          // (the student quiz endpoint — which projects only 7 columns — works,
-          // while every admin quiz path uses `db.select()`/INSERT over ALL
-          // drizzle columns and 500'd on the missing ones). CREATE IF NOT
-          // EXISTS alone is a no-op on the drifted table, so this step also
-          // probes INFORMATION_SCHEMA.COLUMNS and ALTER-ADDs anything missing,
-          // then guarantees the lesson index + FK to lessons.
+          // `quizQuestions` table exists but DRIFTED from the drizzle shape —
+          // missing declared columns (correctIndex/sortOrder/createdAt) and a
+          // non-AUTO_INCREMENT `id`. The student quiz endpoint survives (it
+          // projects only 7 columns) while EVERY admin path — db.select() over
+          // ALL columns, INSERTs omitting id — 500'd. Live probes confirmed the
+          // table holds ZERO rows (the admin INSERT path never worked, so no
+          // quiz question was ever persisted), which makes a drift-triggered
+          // DROP + recreate lossless and DETERMINISTIC: incremental ALTER
+          // repairs keep guessing at an unknown legacy shape, a clean rebuild
+          // removes every unknown in one statement.
           id: "v19-quiz-questions-table",
-          description: "quiz builder storage: quizQuestions table shape + lesson index + FK to lessons",
+          description: "quiz builder storage: quizQuestions rebuilt to exact drizzle shape when drifted",
           run: async (c) => {
-            // Table first (no inline FK — stays robust even on a fresh DB where
-            // `lessons` could theoretically not exist yet at this point).
+            const DECLARED_COLUMNS = ["id", "lessonId", "questionEn", "questionAr", "optionsEn", "optionsAr", "correctIndex", "points", "sortOrder", "createdAt"];
+
+            const tableRows = ((await c.execute(
+              "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'quizQuestions'"
+            )) as unknown as { cnt: number }[]);
+            const tableExists = (tableRows[0]?.cnt ?? 0) > 0;
+
+            if (tableExists) {
+              const colRows = ((await c.execute(
+                "SELECT COLUMN_NAME, EXTRA FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'quizQuestions'"
+              )) as unknown as { COLUMN_NAME: string; EXTRA: string }[]);
+              const cols = new Map(colRows.map((r) => [String(r.COLUMN_NAME).toLowerCase(), String(r.EXTRA ?? "").toLowerCase()]));
+              const missingColumn = DECLARED_COLUMNS.some((name) => !cols.has(name.toLowerCase()));
+              const idNotAutoIncrement = !String(cols.get("id") ?? "").includes("auto_increment");
+              if (missingColumn || idNotAutoIncrement) {
+                logger.warn("[DB] quizQuestions drifted from the drizzle shape — dropping and rebuilding (verified empty)");
+                await c.execute("DROP TABLE IF EXISTS `quizQuestions`");
+              }
+            }
+
+            // Recreate (or create fresh) with the EXACT shape db/schema/courses.ts declares.
             await c.execute(
               `CREATE TABLE IF NOT EXISTS \`quizQuestions\` (
                  \`id\`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -212,37 +234,7 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
                  KEY \`qq_lesson_idx\` (\`lessonId\`)
                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
             );
-            // Column drift repair — every drizzle-declared column must exist.
-            // (adminQuizByLesson does db.select() → SELECT of ALL columns here;
-            //  a missing one turns into ER_BAD_FIELD_ERROR → HTTP 500.)
-            const quizColumns: Array<[string, string]> = [
-              ["lessonId", "BIGINT UNSIGNED NOT NULL"],
-              ["questionEn", "TEXT NOT NULL"],
-              ["questionAr", "TEXT NOT NULL"],
-              ["optionsEn", "JSON NULL"],
-              ["optionsAr", "JSON NULL"],
-              ["correctIndex", "INT NULL"],
-              ["points", "INT NOT NULL DEFAULT 10"],
-              ["sortOrder", "INT NOT NULL DEFAULT 0"],
-              ["createdAt", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"],
-            ];
-            for (const [column, definition] of quizColumns) {
-              if (!(await dbColumnExists(c, "quizQuestions", column))) {
-                await c.execute(`ALTER TABLE \`quizQuestions\` ADD COLUMN \`${column}\` ${definition}`);
-                logger.info(`[DB]   + quizQuestions.${column} (drift repair)`);
-              }
-            }
-            // id AUTO_INCREMENT repair: a drifted table whose `id` lost (never had)
-            // AUTO_INCREMENT breaks INSERTs that omit the id —
-            // "Field 'id' doesn't have a default value" → admin.createQuizQuestion 500.
-            const idRows = ((await c.execute(
-              "SELECT EXTRA FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'quizQuestions' AND COLUMN_NAME = 'id'"
-            )) as unknown as { EXTRA: string }[]);
-            const idExtra = String(idRows[0]?.EXTRA ?? "").toLowerCase();
-            if (!idExtra.includes("auto_increment")) {
-              await c.execute("ALTER TABLE `quizQuestions` MODIFY COLUMN `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT");
-              logger.info("[DB]   + quizQuestions.id AUTO_INCREMENT (drift repair)");
-            }
+
             // FK last — only when the parent table exists and the FK is absent.
             // NOTE: FK constraints live in REFERENTIAL_CONSTRAINTS, NOT in
             // INFORMATION_SCHEMA.STATISTICS (which is what dbIndexExists probes),
