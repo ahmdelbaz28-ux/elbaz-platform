@@ -203,6 +203,11 @@ jobs:
           echo "::warning::Space stage never reached RUNNING within 10 minutes — probing anyway"
 
       - name: Run the references live proof (2 attempts)
+        # The chatbot requires a session (owner directive 2026-11-25) — the
+        # proof logs in as the dedicated approved probe account.
+        env:
+          PROBE_USER: ${{ secrets.PROBE_USER }}
+          PROBE_PASSWORD: ${{ secrets.PROBE_PASSWORD }}
         run: |
           set -o pipefail
           npx tsx scripts/chatbot-refs-live-proof.ts 2>&1 | tee live-proof.log && STATUS=0 || STATUS=$?

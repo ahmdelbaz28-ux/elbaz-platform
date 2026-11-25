@@ -20,6 +20,42 @@ const H: Record<string, string> = {
   "X-Forwarded-Proto": "https",
 };
 
+// ✅ OWNER DIRECTIVE (2026-11-25): the chatbot is a logged-in feature — the
+// proof authenticates as a dedicated approved probe account (repo secrets
+// PROBE_USER / PROBE_PASSWORD, bootstrapped once by the operator) and rides
+// the same HttpOnly-cookie session a real user gets.
+const PROBE_USER = process.env.PROBE_USER || "";
+const PROBE_PASSWORD = process.env.PROBE_PASSWORD || "";
+
+async function loginProbe(): Promise<string> {
+  if (!PROBE_USER || !PROBE_PASSWORD) {
+    console.error("PROBE_USER / PROBE_PASSWORD secrets are missing — cannot authenticate the live proof");
+    process.exit(2);
+  }
+  const res = await fetch(`${BASE}/api/trpc/auth.login`, {
+    method: "POST",
+    headers: H,
+    body: JSON.stringify({ json: { username: PROBE_USER, password: PROBE_PASSWORD, remember: false } }),
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (res.status !== 200) {
+    console.error(`probe login failed: HTTP ${res.status} — check the PROBE_USER/PROBE_PASSWORD secrets`);
+    process.exit(1);
+  }
+  const jar: string[] = [];
+  const anyHeaders = res.headers as unknown as { getSetCookie?: () => string[] };
+  if (typeof anyHeaders.getSetCookie === "function") jar.push(...anyHeaders.getSetCookie());
+  const sc = res.headers.get("set-cookie");
+  if (sc && jar.length === 0) jar.push(sc);
+  const pairs = jar.map((c) => c.split(";")[0]).filter(Boolean);
+  if (pairs.length === 0) {
+    console.error("probe login returned no session cookie — refusing to continue unauthenticated");
+    process.exit(1);
+  }
+  console.log(`probe login OK (${pairs.length} cookie(s))`);
+  return pairs.join("; ");
+}
+
 let pass = 0;
 let fail = 0;
 let warn = 0;
@@ -53,10 +89,10 @@ interface ChatResponse {
   message?: string;
 }
 
-async function chat(body: Record<string, unknown>, timeoutMs = 180_000): Promise<{ status: number; data: ChatResponse }> {
+async function chat(cookie: string, body: Record<string, unknown>, timeoutMs = 180_000): Promise<{ status: number; data: ChatResponse }> {
   const res = await fetch(`${BASE}/api/chatbot`, {
     method: "POST",
-    headers: H,
+    headers: { ...H, Cookie: cookie },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(timeoutMs),
   });
@@ -71,10 +107,11 @@ async function chat(body: Record<string, unknown>, timeoutMs = 180_000): Promise
 
 async function main(): Promise<void> {
   console.log(`LIVE REFS PROOF → ${BASE}\n`);
+  const cookie = await loginProbe();
 
   // ── A. SAUDI DPS-01 ──
   {
-    const { status, data } = await chat({
+    const { status, data } = await chat(cookie, {
       messages: [{ role: "user", content: "وفق الكود السعودي DPS-01: فيلا سكنية C1 مساحة 300 متر مربع على نظام 230/400 فولت — احسب الحمل المتصل وحمل الطلب ورتبة القاطع مع الخطوات." }],
       language: "ar",
       mode: "thinking",
@@ -87,7 +124,7 @@ async function main(): Promise<void> {
 
   // ── B. ABB ──
   {
-    const { status, data } = await chat({
+    const { status, data } = await chat(cookie, {
       messages: [{ role: "user", content: "من كتالوج ABB اختر لي محول توزيع 1000 kVA جهد 11/0.4 ك.ف زيتي بكل بياناته (مجموعة المتجهات والمعاوقة والفواقد)." }],
       language: "ar",
       mode: "thinking",
@@ -100,7 +137,7 @@ async function main(): Promise<void> {
 
   // ── C. SCHNEIDER ──
   {
-    const { status, data } = await chat({
+    const { status, data } = await chat(cookie, {
       messages: [{ role: "user", content: "من قائمة أسعار شنايدر مصر 2026: اختر قاطع هوائي Masterpact بتيار 1600 أمبير 3 أقطار واعطني الـ Product ID والسعر." }],
       language: "ar",
       mode: "thinking",
@@ -113,7 +150,7 @@ async function main(): Promise<void> {
 
   // ── D. GILANY ──
   {
-    const { status, data } = await chat({
+    const { status, data } = await chat(cookie, {
       messages: [{ role: "user", content: "ما هو المقصود بالاحتياطي الدوار spinning reserve كما يشرح كتاب دكتور جيلاني في هندسة القوى الكهربية؟" }],
       language: "ar",
       mode: "thinking",
@@ -126,7 +163,7 @@ async function main(): Promise<void> {
 
   // ── E. scope contract still holds ──
   {
-    const { status, data } = await chat({
+    const { status, data } = await chat(cookie, {
       messages: [{ role: "user", content: "اكتب لي برنامج بايثون لإدارة متجر إلكتروني كامل." }],
       language: "ar",
       mode: "thinking",
