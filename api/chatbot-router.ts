@@ -311,6 +311,19 @@ async function chatRequestPreflight(c: Context): Promise<ChatPreflight> {
     return { error: errorResponse(c, "RATE_LIMITED", { lang: dailyLang, chatId: body.chatId, message: chatbotDailyQuotaMessage(lane.dailyLimit, dailyLang) }) };
   }
 
+  // ✅ OWNER DIRECTIVE (2026-11-25, "الشات بوت أو أي حاجة في المنصة ما يتمش
+  // تشغيلها إلا لمسجل دخول"): the chatbot REST surface was INTENTIONALLY
+  // anonymous — the UI already redirected guests, but direct API callers
+  // could burn provider quota with no account at all. The whole admission
+  // sequence now requires a session: the identity resolves FIRST (cached,
+  // shared with every other route through the same pipeline) and a guest is
+  // answered with the stable 401 AUTH copy BEFORE anything else runs — no
+  // provider call, no quota burn, no history read, no BYOK resolution.
+  const chatUser = await resolveOptionalUser(c.req.raw);
+  if (!chatUser) {
+    return { error: errorResponse(c, "UNAUTHORIZED", { lang: dailyLang, chatId: body.chatId }) };
+  }
+
   // Vision quota — enforced BEFORE dispatch so no provider call is wasted.
   // ✅ ROOT-CURE (2026-11-13): live screen frames ride their own 60/day lane
   // (visionQuotaLane) — the 5/day attachment cap can no longer kill an
@@ -348,7 +361,8 @@ async function chatRequestPreflight(c: Context): Promise<ChatPreflight> {
     const catalogPromise = courseIntent ? getCourseCatalogText() : getCourseCatalogLiteText();
 
     // ── Chat-history continuity (logged-in users only, fail-open) ──
-    const chatUser = await resolveOptionalUser(c.req.raw);
+    // ✅ OWNER DIRECTIVE (2026-11-25): the identity was resolved (and required)
+    // in the admission gate above — this await is a cheap cache hit now.
     const historySummary = chatUser ? await getLatestSummaryText(chatUser.id).catch(() => null) : null;
     const catalog = await catalogPromise;
 

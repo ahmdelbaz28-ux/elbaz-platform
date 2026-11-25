@@ -136,11 +136,6 @@ export function createSpaHandler(getBuildId: () => string | null) {
     const wantsHtml = accept.includes("text/html");
     const path = c.req.path;
 
-    // Skip if this isn't a browser navigation request
-    if (!wantsHtml) {
-      return next(); // → serveStatic handles static assets
-    }
-
     // Skip API routes
     if (path.startsWith("/api/")) {
       return next();
@@ -153,6 +148,9 @@ export function createSpaHandler(getBuildId: () => string | null) {
     // served byte-for-byte by serveStatic. The Google verifier sends an
     // `Accept: text/html` header, so without this entry the request would be
     // captured below, rewritten to index.html (404) and verification would fail.
+    // MUST also run BEFORE the cache headers below: hashed assets carry their
+    // own long-lived Cache-Control from cacheMiddleware and must not be
+    // overwritten with no-cache.
     if (path.match(/\.(js|css|html?|png|jpg|jpeg|svg|ico|woff2?|ttf|eot|webmanifest|webp|avif|gif|map|txt|xml|json)$/)) {
       return next(); // → serveStatic serves the raw file (or 404 if missing)
     }
@@ -165,10 +163,28 @@ export function createSpaHandler(getBuildId: () => string | null) {
     // (referencing dead hashed assets) served white screens after deploys.
     // "no-cache" keeps repeat navigations fast while forcing revalidation,
     // so a new deploy is picked up on the NEXT navigation, never masked.
+    // ✅ ROOT-CURE (owner report 2026-11-25, "الموقع لا يفتح على الكمبيوتر"):
+    // these headers used to be set AFTER the browser-navigation check, so a
+    // request WITHOUT Accept: text/html (UptimeRobot, prefetchers, curl-based
+    // checkers, some edge fetches) fell through to serveStatic, which served
+    // index.html with Last-Modified and NO Cache-Control — heuristic-
+    // freshness bait. The Cloudflare edge cache key does not vary on Accept,
+    // so one cached no-header copy of "/" could then be served to REAL
+    // browser navigations from the same PoP: a stale shell referencing
+    // deleted hashed assets → the desktop-class white screen, while another
+    // PoP/device (mobile, fresh cache) worked fine. The headers now travel
+    // with EVERY response for an extension-less, non-API path — whichever
+    // handler ends up producing it — and are set BEFORE the wantsHtml
+    // fall-through below.
     c.header("Cache-Control", "no-cache, must-revalidate");
     // Surrogate-Control: CDNs that cache HTML despite Cache-Control (HF Space
     // edge) must never keep the bootstrap HTML — it changes on every deploy.
     c.header("Surrogate-Control", "no-store");
+
+    // Skip if this isn't a browser navigation request
+    if (!wantsHtml) {
+      return next(); // → serveStatic handles static assets
+    }
 
     const routePath = normalizePath(path);
     const knownRoute = isKnownSpaRoute(routePath);

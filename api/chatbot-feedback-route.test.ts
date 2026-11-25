@@ -37,18 +37,14 @@ beforeEach(() => {
 });
 
 describe("POST / (chatbot feedback)", () => {
-  it("records an anonymous vote", async () => {
+  it("rejects anonymous votes with 401 (owner directive: chatbot is a logged-in feature)", async () => {
     const res = await chatbotFeedbackRoute.request("/", {
       method: "POST",
       body: JSON.stringify(VALID_VOTE),
       headers: { "Content-Type": "application/json" },
     });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { ok: boolean };
-    expect(body.ok).toBe(true);
-    expect(recordChatbotFeedback).toHaveBeenCalledWith(
-      expect.objectContaining({ rating: "up", source: "web", userId: null })
-    );
+    expect(res.status).toBe(401);
+    expect(recordChatbotFeedback).not.toHaveBeenCalled();
   });
 
   it("attaches the site user id when logged in", async () => {
@@ -83,6 +79,7 @@ describe("POST / (chatbot feedback)", () => {
   });
 
   it("maps a storage failure to a clean 500 (never throws)", async () => {
+    resolveOptionalUser.mockResolvedValue({ id: 9, username: "student", role: "user" });
     recordChatbotFeedback.mockResolvedValue(false);
     const res = await chatbotFeedbackRoute.request("/", {
       method: "POST",

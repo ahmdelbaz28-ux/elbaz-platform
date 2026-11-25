@@ -69,19 +69,23 @@ export type ApprovalGateVerdict =
  * The ONE gate every session-issuance path must pass. Admins bypass it: the
  * authority that approves accounts can never be locked out of its own
  * dashboard (also covers the seeded admin whose row predates the column).
+ *
+ * ✅ SECURITY FIX (owner directive 2026-11-25, "لا يدخل أحد للمنصة بدون تأكيد
+ * الإيميل من الأدمن"): the verdict is now FAIL-CLOSED for EVERYTHING that is
+ * not literally 'approved'. The previous verdict allowed NULL/legacy rows
+ * through ("grandfathered pre-gate accounts"), which is exactly how a
+ * pre-gate registration kept entering the platform — and kept its old live
+ * session — with no admin confirmation, ever. The db-init v18 backfill flips
+ * those rows to 'pending' (one time), so the owner sees them in the approval
+ * queue; from that point on, approval is granted exactly once and the account
+ * is never asked again (decideApproval 'approve' — no re-confirmation loop).
  */
 export function approvalGateVerdict(user: GateUser): ApprovalGateVerdict {
   if (user.role === "admin") return { allowed: true };
-  if (user.approvalStatus === "pending") return { allowed: false, gate: "pending" };
   if (user.approvalStatus === "rejected") return { allowed: false, gate: "rejected" };
-  // 'approved' or any legacy/NULL value — the column default grandfathered
-  // pre-gate accounts, and an unknown value must never widen access…
-  // but 'approved' is the only widening state by design, so treat unknown
-  // values as pending (fail-closed) unless they are literally 'approved'.
-  if (user.approvalStatus && user.approvalStatus !== "approved") {
-    return { allowed: false, gate: "pending" };
-  }
-  return { allowed: true };
+  if (user.approvalStatus === "approved") return { allowed: true };
+  // pending, NULL, missing, or any unknown value → pending gate (fail-closed).
+  return { allowed: false, gate: "pending" };
 }
 
 /** Convenience wrapper — true when the user may receive a session NOW. */
@@ -154,6 +158,12 @@ export async function decideApproval(params: {
         approvalStatus: params.action === "approve" ? "approved" : "rejected",
         approvalDecidedAt: now,
         approvalDecidedByUserId: params.adminUserId,
+        // ✅ OWNER DIRECTIVE (2026-11-25): the admin approval IS the email
+        // confirmation — an approved account must NEVER be asked to verify
+        // (or wait) again. Stamping emailVerifiedAt here anchors that promise:
+        // pre-gate accounts flipped to pending by the v18 backfill come out
+        // of approval with a verified email, and no UI state can nag them.
+        ...(params.action === "approve" ? { emailVerifiedAt: now } : {}),
         ...(params.action === "reject" ? { tokenVersion: row.tokenVersion + 1 } : {}),
       })
       .where(eq(users.id, params.userId));

@@ -80,7 +80,10 @@ const plainParts = (text: string) => [
 ];
 
 beforeEach(() => {
-  resolveOptionalUser.mockReset().mockResolvedValue(null);
+  // ✅ OWNER DIRECTIVE (2026-11-25): the chatbot now requires a session —
+  // default the identity mock to a logged-in user so every HTTP-level test
+  // below exercises the AUTHED path; the new guest tests override per-case.
+  resolveOptionalUser.mockReset().mockResolvedValue({ id: 7, username: "student", name: "Student", email: "s@test", role: "user", emailVerifiedAt: null, createdAt: new Date() });
   // audit run-1 reserve-then-refund contract: admission succeeds by default.
   tryConsumeImageQuota.mockReset().mockResolvedValue({ admitted: true, used: 0 });
   refundImageQuota.mockReset().mockResolvedValue(undefined);
@@ -167,6 +170,20 @@ describe("POST /api/chatbot — live screen flow", () => {
     expect(getChatResponse).not.toHaveBeenCalled();
   });
 
+  it("a GUEST gets 401 before anything runs — no provider call, no quota burn (owner directive)", async () => {
+    resolveOptionalUser.mockResolvedValueOnce(null);
+    const res = await chatbotRouter.request("/", {
+      method: "POST",
+      body: JSON.stringify({ messages: [{ role: "user", content: plainParts("حلل الصورة") }], language: "ar" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(401);
+    const body = await res.json() as { error: string };
+    expect(body.error).toContain("تسجيل الدخول");
+    expect(getChatResponse).not.toHaveBeenCalled();
+    expect(tryConsumeImageQuota).not.toHaveBeenCalled();
+  });
+
   it("a screen-tagged HISTORY image does NOT arm the lane (only the last user message counts)", async () => {
     getChatResponse.mockResolvedValue({ success: true, reply: "رد نصي", model: "mock/model" });
     const res = await chatbotRouter.request("/", {
@@ -215,6 +232,17 @@ describe("POST /api/chatbot/stream — live screen flow", () => {
     // success (no post-dispatch increment remains; no refund must fire).
     await res.text();
     expect(refundImageQuota).not.toHaveBeenCalled();
+  });
+
+  it("a GUEST gets 401 on /stream before the walk (owner directive)", async () => {
+    resolveOptionalUser.mockResolvedValueOnce(null);
+    const res = await chatbotRouter.request("/stream", {
+      method: "POST",
+      body: JSON.stringify({ messages: [{ role: "user", content: screenParts("كمّل") }], language: "ar" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(401);
+    expect(getStreamResponse).not.toHaveBeenCalled();
   });
 
   it("an exhausted SCREEN lane rejects BEFORE the walk with the frames message", async () => {

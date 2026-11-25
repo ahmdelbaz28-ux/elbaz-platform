@@ -1463,6 +1463,36 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
         logger.warn("[DB] v17 approval gate migration warning", { error: (err as Error).message });
       }
 
+      // ── v18 backfill: UNIVERSAL approval enforcement (owner directive 2026-11-25) ──
+      // "لا يدخل أحد للمنصة بدون تأكيد الإيميل من الأدمن" — the v17 column
+      // DEFAULT 'approved' grandfathered every pre-gate account, so users
+      // registered BEFORE the gate kept entering (and keeping live sessions)
+      // with no admin confirmation, ever. This one-time, idempotent backfill
+      // flips every NON-admin account that was never explicitly decided by an
+      // admin (approvalDecidedAt IS NULL) from 'approved' to 'pending':
+      //   • queue-approved accounts carry approvalDecidedAt → untouched.
+      //   • pending registrants → untouched (already awaiting the queue).
+      //   • rejected accounts → untouched.
+      //   • admins → excluded (the authority can never lock itself out).
+      // Each flipped row ALSO gets tokenVersion+1 — its live 30-day session
+      // dies on the very next request, so the account truly waits for the
+      // owner's decision. After the flip the row is 'pending', so the WHERE
+      // clause no longer matches it on the next boot → runs exactly once.
+      try {
+        const [backfill] = await conn.query(
+          "UPDATE `users` SET `approvalStatus` = 'pending', `tokenVersion` = `tokenVersion` + 1 " +
+          "WHERE `role` <> 'admin' AND `approvalStatus` = 'approved' AND `approvalDecidedAt` IS NULL",
+        );
+        const flipped = Number((backfill as { affectedRows?: number }).affectedRows ?? 0);
+        if (flipped > 0) {
+          logger.info(`[DB] v18 approval-gate backfill: ${flipped} pre-gate account(s) -> pending (owner must confirm from the dashboard queue)`);
+        } else {
+          logger.info("[DB] v18 approval-gate backfill verified (no undecided pre-gate accounts)");
+        }
+      } catch (err) {
+        logger.warn("[DB] v18 approval backfill warning", { error: (err as Error).message });
+      }
+
       // ── Admin password sync (existing deployments) ──
       // ✅ SECURITY FIX (audit run-1, db-init.admin-password-env-sync):
       // ADMIN_PASSWORD is SEED-ONLY. Previously every boot re-synced the admin

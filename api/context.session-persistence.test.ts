@@ -64,6 +64,11 @@ const TEST_USER = {
   email: "test@example.com",
   role: "user",
   avatar: null,
+  // ✅ OWNER DIRECTIVE (2026-11-25): the per-request boundary re-checks the
+  // approval gate — the fixture represents an APPROVED account (any other
+  // status now de-authenticates by design; the gate verdict has its own
+  // fail-closed tests in lib/approval.test.ts).
+  approvalStatus: "approved",
   tokenVersion: 7,
   passwordHash: "$2a$12$dummy-hash-not-a-real-hash-at-all",
 };

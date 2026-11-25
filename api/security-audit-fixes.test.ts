@@ -152,6 +152,7 @@ vi.mock("./queries/connection.js", () => ({
 
 import { tryConsumeImageQuota, refundImageQuota } from "./lib/image-quota.js";
 import { authenticateIngest, computeSignature, TS_WINDOW_MS } from "./lib/yt-sync-auth.js";
+import { approvalGateVerdict } from "./lib/approval.js";
 const ctxWith = (headers: Record<string, string>) => ({ req: { header: (n: string) => headers[n.toLowerCase()] } });
 
 describe("audit run-1 fixes: vision quota reserve-then-refund", () => {
@@ -309,5 +310,70 @@ describe("audit run-1 fixes: source pins (revert guards)", () => {
     const relay = repo("../scripts/yt_playlist_relay.py");
     expect(relay).toContain('"x-sync-ts"');
     expect(relay).toContain('"x-sync-signature"');
+  });
+});
+
+// ── Owner directives (2026-11-25): universal approval + login-only chatbot ──
+describe("owner directives 2026-11-25 (revert guards)", () => {
+  it("the approval gate verdict fails CLOSED for everything that is not 'approved'", () => {
+    // behavioral — pure function, real implementation
+    const v1 = approvalGateVerdict({ id: 1, username: "legacy", role: "user" });
+    expect(v1).toEqual({ allowed: false, gate: "pending" });
+    const v2 = approvalGateVerdict({ id: 2, username: "p", role: "user", approvalStatus: "pending" });
+    expect(v2).toEqual({ allowed: false, gate: "pending" });
+    const v3 = approvalGateVerdict({ id: 3, username: "a", role: "user", approvalStatus: "approved" });
+    expect(v3).toEqual({ allowed: true });
+    const v4 = approvalGateVerdict({ id: 4, username: "admin", role: "admin", approvalStatus: null });
+    expect(v4).toEqual({ allowed: true });
+  });
+
+  it("the auth boundary re-checks approval on EVERY request (per-request enforcement)", () => {
+    const src = repo("./context.ts");
+    expect(src).toContain('user.role !== "admin" && user.approvalStatus !== "approved"');
+    expect(src).toContain("return null;");
+  });
+
+  it("db-init carries the one-time idempotent pre-gate backfill (flip + tokenVersion bump)", () => {
+    const src = repo("./lib/db-init.ts");
+    // the statement is written as a two-fragment concatenation in db-init.ts
+    expect(src).toContain("SET `approvalStatus` = 'pending', `tokenVersion` = `tokenVersion` + 1 ");
+    expect(src).toContain("WHERE `role` <> 'admin' AND `approvalStatus` = 'approved' AND `approvalDecidedAt` IS NULL");
+  });
+
+  it("admin approval stamps emailVerifiedAt — no second confirmation, ever", () => {
+    const src = repo("./lib/approval.ts");
+    expect(src).toContain('emailVerifiedAt: now');
+  });
+
+  it("the chatbot admission gate answers guests 401 before any quota or dispatch", () => {
+    const src = repo("./chatbot-router.ts");
+    expect(src).toContain('if (!chatUser) {\n    return { error: errorResponse(c, "UNAUTHORIZED"');
+    // the gate sits BEFORE the vision reservation in the preflight
+    const gateIdx = src.indexOf('if (!chatUser) {');
+    const reserveIdx = src.indexOf("tryConsumeImageQuota(quotaLane.key, imageCount, quotaLane.limit)");
+    expect(gateIdx).toBeGreaterThan(-1);
+    expect(reserveIdx).toBeGreaterThan(gateIdx);
+  });
+
+  it("chatbot feedback votes require a session too", () => {
+    const src = repo("./chatbot-feedback-route.ts");
+    expect(src).toContain('if (!user) {\n    return c.json({ error: "Sign-in required" }, 401);\n  }');
+  });
+
+  it("the SPA shell carries no-cache for EVERY Accept variant (stale-edge white-screen cure)", () => {
+    const src = repo("./lib/spa-handler.ts");
+    // headers are set BEFORE the wantsHtml fall-through
+    const headerIdx = src.indexOf('c.header("Cache-Control", "no-cache, must-revalidate")');
+    // there are TWO !wantsHtml checks in the file — the fix requires the
+    // headers to land BEFORE the LAST one (the effective fall-through)
+    const fallthroughIdx = src.lastIndexOf("if (!wantsHtml)");
+    const apiSkipIdx = src.indexOf('if (path.startsWith("/api/"))');
+    const assetSkipIdx = src.indexOf('if (path.match(/\\.(js|css');
+    expect(headerIdx).toBeGreaterThan(-1);
+    expect(assetSkipIdx).toBeGreaterThan(-1);
+    expect(apiSkipIdx).toBeLessThan(headerIdx);
+    expect(assetSkipIdx).toBeLessThan(headerIdx);
+    expect(fallthroughIdx).toBeGreaterThan(headerIdx);
+    expect(src).toContain('c.header("Surrogate-Control", "no-store")');
   });
 });

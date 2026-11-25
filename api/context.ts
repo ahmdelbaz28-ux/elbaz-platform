@@ -308,6 +308,23 @@ async function loadUserFromDb(
     return null;
   }
 
+  // ✅ SECURITY FIX (owner directive 2026-11-25, "لا يدخل أحد للمنصة بدون
+  // تأكيد الإيميل من الأدمن"): the approval gate previously ran ONLY at
+  // session issuance (login). A live session minted before the gate (or kept
+  // by a grandfathered account) therefore rode its 30-day cookie with NO
+  // admin confirmation — the exact report of a pre-gate user whose old
+  // session opened the chatbot without ever logging in again. The boundary
+  // now re-checks the gate on EVERY request (this function feeds BOTH the
+  // tRPC context and resolveOptionalUser, so every REST route agrees):
+  // a non-admin user whose approvalStatus is not literally 'approved' is
+  // de-authenticated here — pending/rejected/NULL/unknown all fail closed.
+  // Revocation latency is bounded by the SAME mechanisms as tokenVersion:
+  // every status flip (reject, the v18 backfill) bumps tokenVersion, which
+  // changes the cache key and kills the session on the very next request.
+  if (user.role !== "admin" && user.approvalStatus !== "approved") {
+    return null;
+  }
+
   // ✅ SECURITY FIX (audit run-2): explicit curated projection — replaces the
   // passwordHash-only destructure. The context now carries ONLY the 7 fields
   // the UI/server logic consume; every secret column (totpSecret,

@@ -86,7 +86,13 @@ chatbotFeedbackRoute.post("/", async (c) => {
     return c.json({ error: "Too many votes — slow down" }, 429);
   }
 
+  // ✅ OWNER DIRECTIVE (2026-11-25): the chatbot — including its 👍/👎
+  // feedback — is a logged-in feature. Anonymous votes were rate-limited by
+  // IP only; now the identity is REQUIRED before anything is stored.
   const user = await resolveOptionalUser(c.req.raw);
+  if (!user) {
+    return c.json({ error: "Sign-in required" }, 401);
+  }
   const data = parsed.data;
 
   const stored = await recordChatbotFeedback({

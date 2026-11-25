@@ -63,10 +63,15 @@ describe("approval gate verdict", () => {
     expect(v).toEqual({ allowed: false, gate: "pending" });
   });
 
-  it("treats null/undefined status as approved (grandfathered pre-gate rows)", () => {
-    expect(approvalGateVerdict(u({ approvalStatus: null }))).toEqual({ allowed: true });
+  it("fails CLOSED on null/undefined status (owner directive 2026-11-25 — no grandfathering)", () => {
+    // The v17 column DEFAULT grandfathered pre-gate rows as 'approved'; the
+    // 2026-11-25 directive ("لا يدخل أحد للمنصة بدون تأكيد الأدمن") makes the
+    // verdict fail-closed: a NULL/missing status can never widen access. The
+    // db-init v18 backfill flips those rows to 'pending' (with a tokenVersion
+    // bump that kills their live sessions) so the owner decides on each one.
+    expect(approvalGateVerdict(u({ approvalStatus: null }))).toEqual({ allowed: false, gate: "pending" });
     const legacy = { id: 7, username: "someone", role: "user" };
-    expect(approvalGateVerdict(legacy)).toEqual({ allowed: true });
+    expect(approvalGateVerdict(legacy)).toEqual({ allowed: false, gate: "pending" });
   });
 
   it("status guard helper accepts exactly the three statuses", () => {
