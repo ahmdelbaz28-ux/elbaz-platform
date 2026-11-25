@@ -14,17 +14,17 @@
  */
 
 import crypto from "node:crypto";
-import { eq, sql } from "drizzle-orm";
-import { getDb } from "../queries/connection";
 import { users } from "@db/schema";
-import { env, getActiveFrontendUrl } from "./env";
-import { logger, maskEmail } from "./logger.js";
-import { generateOtpCode, hashOtpCode, isOtpFormat, otpAttemptsExhaustedAfterFailure, OTP_MAX_ATTEMPTS } from "./otp.js";
-import { buildResetEmail, buildVerificationEmail, resolveEmailLang } from "./email-templates.js";
+import { eq, sql } from "drizzle-orm";
 // ✅ SECURITY FIX (pre-launch audit run-2): instant cache eviction after
 // password reset revokes sessions (no 30s cache window for the old JWT).
 // Import direction is safe: context.ts does not import email.ts.
 import { evictUserAuthCache } from "../context.js";
+import { getDb } from "../queries/connection";
+import { buildResetEmail, buildVerificationEmail, resolveEmailLang } from "./email-templates.js";
+import { env, getActiveFrontendUrl } from "./env";
+import { logger, maskEmail } from "./logger.js";
+import { generateOtpCode, hashOtpCode, isOtpFormat, OTP_MAX_ATTEMPTS, otpAttemptsExhaustedAfterFailure } from "./otp.js";
 
 // ─── Configuration ───
 const RESET_TOKEN_EXPIRY_MINUTES = 15;
@@ -473,7 +473,7 @@ export async function initiateEmailVerification(userId: number, newEmail?: strin
 export async function completeEmailVerification(
   userId: number,
   tokenOrCode: string,
-): Promise<{ success: boolean; message: string; emailChanged: boolean }> {
+): Promise<{ success: boolean; message: string; emailChanged: boolean; approvalPending?: boolean }> {
   const db = getDb();
 
   const [user] = await db
@@ -559,7 +559,12 @@ export async function completeEmailVerification(
   // through — this is the exact fix that un-breaks email changes for users
   // who verify first and change their address afterwards (the normal order).
   if (user.emailVerifiedAt && !pendingEmail) {
-    return { success: true, message: "Email already verified.", emailChanged: false };
+    return {
+      success: true,
+      message: "Email already verified.",
+      emailChanged: false,
+      approvalPending: user.role !== "admin" && user.approvalStatus !== "approved",
+    };
   }
 
   const updateData: Record<string, unknown> = {
@@ -603,9 +608,20 @@ export async function completeEmailVerification(
     return { success: false, message: genericError, emailChanged: false };
   }
 
+  // ✅ ROOT-CURE (owner report 2026-11-26): a pending account completing email
+  // verification must NOT be told it is "fully secured" — email confirmation
+  // and the ADMIN APPROVAL GATE are two independent milestones, and the old
+  // message actively fed the "the admin confirmed my email, why can't I log
+  // in?" confusion. The response now carries the REAL gate state so every
+  // UI surface (VerifyEmail page, profile OTP flow) can say the truth:
+  // verified ≠ approved; sign-in unlocks ONLY after the admin approves.
+  const approvalPending = user.role !== "admin" && user.approvalStatus !== "approved";
+
   const message = pendingEmail
     ? "Email address updated and verified successfully."
-    : "Email verified successfully. Your account is now fully secured.";
+    : approvalPending
+      ? "Email verified successfully. Your account is now awaiting admin approval — sign-in unlocks once it is approved."
+      : "Email verified successfully. Your account is now fully secured.";
 
-  return { success: true, message, emailChanged: Boolean(pendingEmail) };
+  return { success: true, message, emailChanged: Boolean(pendingEmail), approvalPending };
 }

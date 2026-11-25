@@ -1,18 +1,18 @@
-import { useState, useEffect } from "react";
-import { useSearchParams, Link, useNavigate } from "react-router";
-import { useTranslation } from "@/hooks/useTranslation";
-import { trpc } from "@/providers/trpc";
-import { toast } from "sonner";
 import {
+  ArrowLeft,
+  Loader2,
   MailCheck,
   MailX,
-  Loader2,
-  ArrowLeft,
-  ShieldCheck,
   RefreshCw,
+  ShieldCheck,
 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "@/hooks/useTranslation";
 import { bilingualByLang } from "@/lib/i18n";
+import { trpc } from "@/providers/trpc";
 
 type VerifyState = "idle" | "loading" | "success" | "error" | "expired" | "already";
 
@@ -33,11 +33,16 @@ export default function VerifyEmail() {
   // below requires BOTH params while the initial state read "has uid" as OK.
   const [state, setState] = useState<VerifyState>(token && uid ? "loading" : "error");
   const [errorMessage, setErrorMessage] = useState(token && uid ? "" : incompleteLinkMessage);
+  // ✅ ROOT-CURE (2026-11-26): the server now reports whether the account still
+  // awaits the ADMIN APPROVAL GATE — the success screen must never claim the
+  // account is "fully secured" while sign-in is still locked behind approval.
+  const [approvalPending, setApprovalPending] = useState(false);
 
   const verifyMutation = trpc.auth.verifyEmail.useMutation({
     onSuccess: (data) => {
       if (data.success) {
         setState("success");
+        setApprovalPending(Boolean(data.approvalPending));
         toast.success(lang === "ar" ? "تم تأكيد بريدك الإلكتروني بنجاح!" : "Your email has been verified successfully!");
       }
     },
@@ -91,6 +96,21 @@ export default function VerifyEmail() {
               <h1 className="text-2xl font-bold text-foreground">{lang === "ar" ? "تم التحقق بنجاح!" : "Email Verified!"}</h1>
               <p className="mt-2 text-sm text-text-muted">{lang === "ar" ? "تم تأكيد بريدك الإلكتروني بنجاح. حسابك الآن موثق ومؤمن بالكامل." : "Your email has been verified successfully. Your account is now fully verified and secured."}</p>
             </div>
+
+            {/* ✅ ROOT-CURE (2026-11-26): verified ≠ approved. A pending account
+                must see the REAL reason it cannot sign in yet, in the same
+                breath as the success message — this is the exact confusion the
+                "admin confirmed my email but the site asks me to log in every
+                time" report came from. */}
+            {approvalPending && (
+              <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 text-start" role="status" data-testid="approval-pending-note">
+                <p className="text-[13.5px] leading-relaxed text-amber-200">
+                  {lang === "ar"
+                    ? "ملاحظة مهمة: تأكيد البريد خطوة أولى فقط — الدخول إلى المنصة يتطلب موافقة الأدمن على حسابك أولاً. ستتمكن من تسجيل الدخول مباشرة بعد قبول طلبك."
+                    : "Important note: email confirmation is only the first step — entering the platform requires the admin's approval of your account first. You will be able to sign in right after your request is accepted."}
+                </p>
+              </div>
+            )}
 
             <div className="mx-auto flex w-fit items-center gap-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-4 py-2">
               <MailCheck className="h-4 w-4 text-emerald-500" />

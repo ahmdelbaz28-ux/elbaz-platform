@@ -6,18 +6,18 @@
  *             (the ADMIN APPROVAL GATE queue, owner directive 2026-11-24)
  */
 
-import { z } from "zod";
-import { TRPCError } from "@trpc/server";
-import { asc, desc, eq, count, and, sql } from "drizzle-orm";
-import { adminQuery, adminMutation } from "./middleware";
-import { getDb } from "./queries/connection";
 import { users } from "@db/schema";
+import { TRPCError } from "@trpc/server";
+import { and, asc, count, desc, eq, sql } from "drizzle-orm";
+import { z } from "zod";
 import type { SafeUser } from "./context";
 import { evictUserAuthCache } from "./context";
-import { decideApproval, notifyAdminsOfRegistration, adminAlertEmail } from "./lib/approval";
+import { adminAlertEmail, decideApproval, notifyAdminsOfRegistration } from "./lib/approval";
 import { maybeSendWelcomeEmail } from "./lib/email-drip";
 import { env } from "./lib/env";
 import { logger, maskEmail } from "./lib/logger";
+import { adminMutation, adminQuery } from "./middleware";
+import { getDb } from "./queries/connection";
 
 export const adminUsersProcedures = {
   // Users list — used by Admin.tsx frontend (trpc.admin.users.useQuery)
@@ -43,6 +43,15 @@ export const adminUsersProcedures = {
           // includes emailVerifiedAt — the admin list select must carry it for
           // the `as SafeUser[]` cast to hold.
           emailVerifiedAt: users.emailVerifiedAt,
+          // ✅ ROOT-CURE (owner report 2026-11-26, "user says the admin confirmed
+          // his email but the site still asks him to log in every time"): the
+          // all-users table previously had NO gate column — a pending user looked
+          // identical to an approved one, while emailVerifiedAt ('verified ✓')
+          // actively suggested the account was done. The owner could not see
+          // WHO was blocked or WHY. The REAL gate state now rides with every
+          // row so the dashboard surfaces it (see Admin.tsx status column).
+          approvalStatus: users.approvalStatus,
+          approvalDecidedAt: users.approvalDecidedAt,
           createdAt: users.createdAt,
           updatedAt: users.updatedAt,
           lastSignInAt: users.lastSignInAt,
@@ -146,6 +155,11 @@ export const adminUsersProcedures = {
             role: users.role,
             preferredLanguage: users.preferredLanguage,
             createdAt: users.createdAt,
+            // ✅ ROOT-CURE (2026-11-26): the queue shows whether the registrant
+            // already completed THEIR part (email confirmation) — the only thing
+            // left is the owner's decision, so "email confirmed but can't enter"
+            // reports become one-glance diagnosable.
+            emailVerifiedAt: users.emailVerifiedAt,
           })
           .from(users)
           .where(eq(users.approvalStatus, "pending"))

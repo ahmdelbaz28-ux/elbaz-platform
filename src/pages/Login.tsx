@@ -1,18 +1,18 @@
-import { useState, useEffect, useCallback, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { initiateGoogleOAuth } from "@/lib/google-auth";
+import { Eye, EyeOff, Hourglass, ShieldX, Zap } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { useTranslation } from "@/hooks/useTranslation";
-import { trpc } from "@/providers/trpc";
 import { toast } from "sonner";
-import { Zap, Eye, EyeOff, Hourglass, ShieldX } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
-import { trackPlatform, identifyUser } from "@/lib/clarity";
+import { useTranslation } from "@/hooks/useTranslation";
 import { isNativePlatform, setStoredToken } from "@/lib/auth-storage";
+import { identifyUser, trackPlatform } from "@/lib/clarity";
+import { initiateGoogleOAuth } from "@/lib/google-auth";
 import { bilingualByLang } from "@/lib/i18n";
+import { trpc } from "@/providers/trpc";
 
 interface GoogleCredentialResponse {
   credential?: string;
@@ -374,6 +374,17 @@ export default function Login() {
                   {lang === "ar"
                     ? "تم استلام طلب انضمامك بنجاح. المهندس أحمد الباز سيراجع طلبك وسيتم الموافقة عليه في أقرب وقت إن شاء الله — بعدها يمكنك تسجيل الدخول مباشرة. شكراً لانتظارك وصدقك."
                     : "Your join request has been received. Eng. Ahmed Elbaz will review it and approve it as soon as possible — you will be able to sign in right after. Thank you for your patience."}
+                </p>
+                {/* ✅ ROOT-CURE (owner report 2026-11-26, "the admin confirmed my
+                    email but the site asks me to log in every time"): the gate
+                    and the email confirmation are two independent milestones.
+                    This panel now says so explicitly — a user who verified their
+                    email but is still pending understands the REAL blocker
+                    instead of concluding the site "forgets" them. */}
+                <p className="mt-2 text-[12.5px] leading-relaxed text-amber-200/80">
+                  {lang === "ar"
+                    ? "ملاحظة: تأكيد البريد الإلكتروني خطوة أولى فقط — فتح الدخول يتم بموافقة الأدمن على الحساب. وإذا سجّلت سابقاً باسم مستخدم وكلمة مرور فاستخدم نفس الطريقة للدخول (دخول جوجل ببريد مختلف ينشئ طلباً جديداً)."
+                    : "Note: email confirmation is only the first step — sign-in unlocks with the admin's approval of the account. If you previously registered with a username and password, sign in the same way (Google sign-in with a different address creates a new request)."}
                 </p>
               </div>
             </div>

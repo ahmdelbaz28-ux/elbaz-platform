@@ -1,39 +1,39 @@
-import { useState, useEffect, useRef, type ChangeEvent } from "react";
-import { useNavigate } from "react-router";
-import { useAuth } from "@/hooks/useAuth";
-import { useTranslation } from "@/hooks/useTranslation";
-import { isValidEmail } from "@/lib/validation";
-import { fileToAvatarDataUrl, avatarErrorMessage, AvatarError } from "@/lib/avatar";
-import { trpc } from "@/providers/trpc";
-import { toast } from "sonner";
 import {
-  User,
-  Mail,
-  Shield,
+  AlertTriangle,
+  Award,
   Calendar,
+  Camera,
+  CheckCircle2,
+  Copy,
   Edit3,
-  Save,
-  X,
-  Lock,
   Eye,
   EyeOff,
-  Award,
+  Gift,
   GraduationCap,
-  Zap,
-  CheckCircle2,
-  AlertTriangle,
+  Loader2,
+  Lock,
+  Mail,
   MailCheck,
   MailWarning,
+  Save,
   Send,
-  Gift,
+  Shield,
+  User,
   Users,
-  Copy,
-  Camera,
-  Loader2,
+  X,
+  Zap,
 } from "lucide-react";
+import { type ChangeEvent, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAuth } from "@/hooks/useAuth";
+import { useTranslation } from "@/hooks/useTranslation";
+import { AvatarError, avatarErrorMessage, fileToAvatarDataUrl } from "@/lib/avatar";
+import { isValidEmail } from "@/lib/validation";
+import { trpc } from "@/providers/trpc";
 
 export default function Profile() {
   const { user, isAuthenticated, isLoading, logout } = useAuth();
@@ -237,7 +237,16 @@ export default function Profile() {
       setEmailChangePending(false);
       setVerificationCode("");
       void utils.auth.me.invalidate();
-      if (data.emailChanged) {
+      // ✅ ROOT-CURE (2026-11-26): verified ≠ approved. When the account still
+      // awaits the admin approval gate, the toast must say so — never imply the
+      // account is done while sign-in stays locked behind the approval.
+      if (data.approvalPending) {
+        toast.info(
+          lang === "en"
+            ? "Email verified — your account still awaits admin approval before you can sign in."
+            : "تم تأكيد البريد الإلكتروني — حسابك لا يزال بانتظار موافقة الأدمن قبل تسجيل الدخول.",
+        );
+      } else if (data.emailChanged) {
         toast.success(lang === "en" ? "Your email address has been changed and verified!" : "تم تغيير بريدك الإلكتروني وتأكيده بنجاح!");
       } else {
         toast.success(data.message || (lang === "en" ? "Email verified!" : "تم تأكيد البريد الإلكتروني!"));

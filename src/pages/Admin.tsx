@@ -1,34 +1,33 @@
-import { useEffect, useState, useRef, useCallback, type CSSProperties } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "@/hooks/useTranslation";
 import { trpc } from "@/providers/trpc";
-import { motion, AnimatePresence } from "framer-motion";
 import "@/elite-animations.css";
-import {
-  LayoutDashboard, Users, BookOpen, Headphones, DollarSign, Phone, FileText, Palette, Tag, Megaphone, Bot, Bell, Quote,
-  Plus, Pencil, Trash2, Save, Eye, Zap, TrendingUp, CheckCircle, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
-  LogOut, ArrowUpRight, Shield, PlayCircle, Newspaper, X, Menu, MessageSquareText, ThumbsUp, ThumbsDown, Download,
-  Youtube, Loader2, ListVideo,
-  CalendarDays, ExternalLink, RefreshCw, ImageOff,
-  FolderTree, ListChecks, UserPlus, UserMinus, RotateCcw, GraduationCap, HelpCircle, ShieldCheck, Star,
-  UserCheck, UserX, Hourglass, BellRing, MailPlus,
+import {ArrowUpRight, Bell, BellRing, BookOpen, Bot, 
+  CalendarDays, CheckCircle, ChevronDown,ChevronLeft, ChevronRight, ChevronUp, DollarSign, Download,ExternalLink, Eye, FileText, 
+  FolderTree, GraduationCap, Headphones, HelpCircle, Hourglass, ImageOff,
+  LayoutDashboard, ListChecks, ListVideo,Loader2, 
+  LogOut, MailPlus,Megaphone, Menu, MessageSquareText, Newspaper, Palette, Pencil, Phone, PlayCircle, 
+  Plus, Quote,RefreshCw, RotateCcw, Save, Shield, ShieldCheck, Star,Tag, ThumbsDown, ThumbsUp, Trash2, TrendingUp, 
+  UserCheck, UserMinus, UserPlus, Users, UserX, X, 
+  Youtube, Zap, 
 } from "lucide-react";
-import { requestDeviceNotificationPermission, playApprovalChime } from "@/lib/approval-chime";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { AiProvidersPanel } from "@/components/admin/AiProvidersPanel";
 import AdminNotificationPanel from "@/components/AdminNotificationPanel";
-import { extractYouTubeId, buildYouTubeThumbnailUrl } from "@/lib/youtube-url";
+import { AiProvidersPanel } from "@/components/admin/AiProvidersPanel";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { playApprovalChime, requestDeviceNotificationPermission } from "@/lib/approval-chime";
 import { bilingual } from "@/lib/i18n";
+import { buildYouTubeThumbnailUrl, extractYouTubeId } from "@/lib/youtube-url";
 
 interface SettingItem { id?: string; key: string; value: string; section: string; type?: string; }
 interface ThemeItem { id: string; name: string; primaryColor: string; secondaryColor: string; accentColor: string; bgColor: string; textColor: string; cardBgColor: string; borderColor: string; isActive: boolean; createdAt: string; }
@@ -1138,7 +1137,19 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                             <div className="flex items-center gap-3">
                               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[rgba(245,158,11,0.12)] text-xs font-bold text-amber-300">{(u.name || u.username || "?").charAt(0).toUpperCase()}</div>
                               <div>
-                                <p className="text-sm font-medium text-foreground">{u.name || u.username}</p>
+                                <p className="text-sm font-medium text-foreground">
+                                  {u.name || u.username}
+                                  {/* ✅ ROOT-CURE (2026-11-26): the queue tells the
+                                      owner the registrant already finished THEIR
+                                      part — "email confirmed but can't enter"
+                                      reports diagnose at a glance: only the
+                                      approval click remains. */}
+                                  {u.emailVerifiedAt && (
+                                    <span className="ms-2 inline-flex items-center rounded-full border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">
+                                      {isRTL ? "البريد مؤكد ✓" : "Email confirmed ✓"}
+                                    </span>
+                                  )}
+                                </p>
                                 <p className="text-xs text-text-faint">
                                   @{u.username}{u.email ? ` · ${u.email}` : ""}{u.createdAt ? ` · ${new Date(u.createdAt).toLocaleDateString()}` : ""}
                                 </p>
@@ -1196,6 +1207,12 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                           <th className="p-4 text-text-muted text-start font-medium">{t("email")}</th>
                           <th className="p-4 text-text-muted text-start font-medium">{t("role")}</th>
                           <th className="p-4 text-text-muted text-start font-medium">{isRTL ? "تاريخ التسجيل" : "Joined"}</th>
+                          {/* ✅ ROOT-CURE (owner report 2026-11-26): the gate state
+                              is now visible on EVERY row — a pending user can no
+                              longer masquerade as a done account (the exact blind
+                              spot behind the "admin confirmed his email but the
+                              site asks him to log in every time" report). */}
+                          <th className="p-4 text-text-muted text-start font-medium">{isRTL ? "حالة الدخول" : "Entry status"}</th>
                           <th className="p-4 text-text-muted text-start font-medium">{isRTL ? "إجراءات" : "Actions"}</th>
                         </tr>
                       </thead>
@@ -1225,6 +1242,30 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                               </Select>
                             </td>
                             <td className="p-4 text-text-faint text-xs">{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—"}</td>
+                            <td className="p-4">
+                              {u.role === "admin" ? (
+                                <Badge variant="outline" className="border-border text-xs text-text-muted">{isRTL ? "أدمن — بدون بوابة" : "Admin — bypasses gate"}</Badge>
+                              ) : u.approvalStatus === "approved" ? (
+                                <Badge variant="outline" className="border-emerald-500/40 text-xs text-emerald-300" data-testid={`status-approved-${u.username}`}>{isRTL ? "موافق عليه ✓" : "Approved ✓"}</Badge>
+                              ) : u.approvalStatus === "rejected" ? (
+                                <Badge variant="outline" className="border-red-500/40 text-xs text-red-300" data-testid={`status-rejected-${u.username}`}>{isRTL ? "مرفوض ✗" : "Rejected ✗"}</Badge>
+                              ) : (
+                                <span className="inline-flex items-center gap-2">
+                                  <Badge variant="outline" className="border-amber-500/40 text-xs text-amber-300" data-testid={`status-pending-${u.username}`}>{isRTL ? "بانتظار موافقتك" : "Awaiting your approval"}</Badge>
+                                  <Button
+                                    size="sm"
+                                    className="h-7 bg-emerald-600 px-2 text-xs text-white hover:bg-emerald-500"
+                                    disabled={approveUserMutation.isPending}
+                                    title={isRTL ? "قبول الحساب من هنا مباشرة — الدخول سيتاح فورًا" : "Approve right here — sign-in unlocks immediately"}
+                                    data-testid={`approve-row-${u.username}`}
+                                    onClick={() => approveUserMutation.mutate({ userId: u.id })}
+                                  >
+                                    <UserCheck className="h-3.5 w-3.5" />
+                                    {isRTL ? "قبول" : "Approve"}
+                                  </Button>
+                                </span>
+                              )}
+                            </td>
                             <td className="p-4">
                               <Badge variant="outline" className={`border-border text-xs ${u.role === "admin" ? "text-accent-secondary border-[#06b6d4]/30" : "text-text-muted"}`}>
                                 {u.role === "admin" ? <Shield className="h-3 w-3 mr-1" /> : <Users className="h-3 w-3 mr-1" />}
