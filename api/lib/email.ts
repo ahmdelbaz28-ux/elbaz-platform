@@ -105,6 +105,11 @@ export async function sendEmailWithDiagnostics(message: EmailMessage): Promise<S
       subject: message.subject,
       html: message.html,
       text: message.text,
+      // ✅ DELIVERABILITY (2026-11-25 audit): a monitored Reply-To raises
+      // mailbox-provider trust (users can answer — "no-reply" domains with no
+      // reply path score worse in spam filters) and routes real replies to the
+      // owner's alert inbox. Resend's reply_to accepts a bare address.
+      ...(env.ADMIN_ALERT_EMAIL ? { reply_to: env.ADMIN_ALERT_EMAIL } : {}),
     }),
   });
 
