@@ -950,6 +950,15 @@ const MessageBubble = memo(function MessageBubble({ msg, lang, copied, onCopy, o
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
+/**
+ * History flag for the mobile back-button gate (owner report 2026-11-26).
+ * While the fullscreen chat is open on mobile, the pinned history entry
+ * carries this flag in its state object — it marks the entry that must be
+ * popped by the FIRST back press (closing the chat) instead of leaving the
+ * site. Preserved alongside the router's own state (idx) on push.
+ */
+const CHATBOT_HISTORY_FLAG = "__ahmdrChatbotOpen";
+
 export default function ChatBot() { // NOSONAR — chatbot component with SSE streaming, abort, copy, minimize, scroll-sync, localStorage; extraction would require prop-drilling many refs/state
   const { lang } = useTranslation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
@@ -1307,6 +1316,76 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
   }, []);
+
+  // ─── ANDROID BACK GATE (owner report 2026-11-26) ───
+  // On mobile the chat is fullscreen, so users reach for the hardware back
+  // button to leave the chat — and used to exit the whole site instead of
+  // just closing the chat window. Cure: while the fullscreen chat is open on
+  // mobile we pin ONE extra history entry (same URL, flagged state). The
+  // first back press pops THAT entry — a same-URL popstate the router reads
+  // as a no-op — and the handler closes the chat instead of leaving. The X
+  // button consumes the pinned entry via history.back() so the stack never
+  // grows stale entries, and minimize unpins too (the bubble does not cover
+  // the screen, so back must navigate normally while it shows).
+  const suppressNextPopRef = useRef(false);
+
+  /** Consume the pinned entry (X close / minimize). No-op when flagless. */
+  const unpinChatHistory = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (!window.history.state?.[CHATBOT_HISTORY_FLAG]) return;
+    if (window.history.length > 1) {
+      suppressNextPopRef.current = true;
+      window.history.back();
+    } else {
+      // Pinned entry is the only entry (chat opened as the very first action
+      // in a fresh tab) — nothing to pop; the flag stays until a later
+      // navigation replaces the entry.
+      suppressNextPopRef.current = false;
+    }
+  }, []);
+
+  const closeChat = useCallback(() => {
+    setIsOpen(false);
+    unpinChatHistory();
+  }, [unpinChatHistory]);
+
+  useEffect(() => {
+    const fullscreen = isOpen && !isMinimized && isMobileViewport;
+    if (!fullscreen) return;
+    // Idempotent: skip when the current entry is already pinned (React
+    // StrictMode double-invoke in dev, or a reload restored the pinned
+    // entry — in the reload case the stale entry is the one to consume, so
+    // skipping the duplicate push is exactly right).
+    if (window.history.state?.[CHATBOT_HISTORY_FLAG]) {
+      // The listener below is still required — without it the pinned entry
+      // restored by a reload would navigate on back instead of closing.
+    } else {
+      try {
+        // Preserve the router's state (idx) so direction detection and the
+        // router's own popstate handling stay fully intact.
+        window.history.pushState(
+          { ...window.history.state, [CHATBOT_HISTORY_FLAG]: true },
+          "",
+        );
+      } catch {
+        // History unavailable (sandboxed iframe etc.) — native behavior persists.
+        return;
+      }
+    }
+
+    const onPopState = () => {
+      if (suppressNextPopRef.current) {
+        suppressNextPopRef.current = false; // entry consumed by an explicit close
+        return;
+      }
+      // Back pressed while the fullscreen chat is open → close the chat only.
+      // After this pop the pinned entry is gone, so closeChat's unpin is a
+      // no-op here (never a double-back).
+      closeChat();
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [isOpen, isMinimized, isMobileViewport, closeChat]);
 
   // When the keyboard opens, keep the latest message + the caret in view
   const prevKbOpenRef = useRef(false);
@@ -2219,17 +2298,23 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
-                      {/* Minimize button */}
+                      {/* Minimize button — unpin the history entry too: the
+                          bubble does not cover the screen, so back must
+                          navigate normally while it shows. */}
                       <button
-                        onClick={() => setIsMinimized(true)}
+                        onClick={() => {
+                          setIsMinimized(true);
+                          unpinChatHistory();
+                        }}
                         className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-cyan-400/10 hover:text-cyan-400"
                         title={lang === "ar" ? "\u062a\u0635\u063a\u064a\u0631" : "Minimize"}
                       >
                         <ChevronDown className="w-4 h-4" />
                       </button>
-                      {/* Close button */}
+                      {/* Close button — closeChat also consumes the pinned
+                          history entry so the NEXT back press leaves cleanly. */}
                       <button
-                        onClick={() => setIsOpen(false)}
+                        onClick={closeChat}
                         className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-400/10 hover:text-red-400"
                         title={lang === "ar" ? "\u0625\u063a\u0644\u0627\u0642" : "Close"}
                       >
