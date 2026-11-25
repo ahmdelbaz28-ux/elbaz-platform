@@ -224,6 +224,54 @@ export const quizAdminProcedures = {
       await db.delete(quizQuestions).where(eq(quizQuestions.id, input.id));
       return { success: true };
     }),
+
+  // ─── Quiz storage self-test (admin ops diagnostic) ───
+  // Runs the FULL write path (INSERT → SELECT → DELETE) against quizQuestions
+  // with a canary row and reports the RAW database error per step. Admin quiz
+  // quiz paths surfaced generic 500s while the student read path worked —
+  // this probe returns the underlying driver message instead of guessing.
+  quizStorageSelfTest: adminMutation
+    .mutation(async () => {
+      const db = getDb();
+      const steps: Array<{ step: string; ok: boolean; error?: string; id?: number }> = [];
+      // Canary needs a REAL lesson (FK target) — pick the smallest lesson id.
+      const [lesson] = await db.select({ id: lessons.id }).from(lessons).orderBy(asc(lessons.id)).limit(1);
+      if (!lesson) {
+        return { ok: false, steps: [{ step: "lesson-lookup", ok: false, error: "no lessons exist — cannot run the quiz storage self-test" }] };
+      }
+      let canaryId: number | undefined;
+      try {
+        const [created] = await db.insert(quizQuestions).values({
+          lessonId: lesson.id,
+          questionEn: "SELFTEST canary — safe to delete",
+          questionAr: "اختبار ذاتي — يُحذف فورًا",
+          optionsEn: ["a", "b", "c", "d"],
+          optionsAr: ["أ", "ب", "ج", "د"],
+          correctIndex: 0,
+          points: 1,
+          sortOrder: 9999,
+        }).$returningId();
+        canaryId = (created as { id?: number })?.id;
+        steps.push({ step: "insert", ok: true, id: canaryId });
+      } catch (err) {
+        steps.push({ step: "insert", ok: false, error: (err as Error).message });
+      }
+      if (canaryId !== undefined) {
+        try {
+          const rows = await db.select().from(quizQuestions).where(eq(quizQuestions.id, canaryId)).limit(1);
+          steps.push({ step: "select", ok: rows.length === 1 });
+        } catch (err) {
+          steps.push({ step: "select", ok: false, error: (err as Error).message });
+        }
+        try {
+          await db.delete(quizQuestions).where(eq(quizQuestions.id, canaryId));
+          steps.push({ step: "delete", ok: true });
+        } catch (err) {
+          steps.push({ step: "delete", ok: false, error: (err as Error).message });
+        }
+      }
+      return { ok: steps.every((s) => s.ok), steps };
+    }),
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
