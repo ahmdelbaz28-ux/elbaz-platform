@@ -232,6 +232,17 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
                 logger.info(`[DB]   + quizQuestions.${column} (drift repair)`);
               }
             }
+            // id AUTO_INCREMENT repair: a drifted table whose `id` lost (never had)
+            // AUTO_INCREMENT breaks INSERTs that omit the id —
+            // "Field 'id' doesn't have a default value" → admin.createQuizQuestion 500.
+            const idRows = ((await c.execute(
+              "SELECT EXTRA FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'quizQuestions' AND COLUMN_NAME = 'id'"
+            )) as unknown as { EXTRA: string }[]);
+            const idExtra = String(idRows[0]?.EXTRA ?? "").toLowerCase();
+            if (!idExtra.includes("auto_increment")) {
+              await c.execute("ALTER TABLE `quizQuestions` MODIFY COLUMN `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT");
+              logger.info("[DB]   + quizQuestions.id AUTO_INCREMENT (drift repair)");
+            }
             // FK last — only when the parent table exists and the FK is absent.
             // NOTE: FK constraints live in REFERENTIAL_CONSTRAINTS, NOT in
             // INFORMATION_SCHEMA.STATISTICS (which is what dbIndexExists probes),
