@@ -283,6 +283,34 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
             }
           },
         },
+        {
+          // ✅ AVATAR (owner request 2026-11-26): profile photos are stored in
+          // users.avatar as base64 data URLs (the HF Space disk is ephemeral).
+          // Google OAuth URLs always fit the original TEXT column, but a
+          // self-uploaded photo needs room: MEDIUMTEXT holds 16MB — a resized
+          // 256px JPEG (~15-40KB) rides comfortably with a huge safety margin.
+          // Idempotent: the probe re-ALTERs only while the column is still
+          // plain TEXT.
+          id: "v20-users-avatar-mediumtext",
+          description: "profile photos: users.avatar widened TEXT→MEDIUMTEXT for base64 data URLs",
+          run: async (c) => {
+            const rowsOf = async (sql: string): Promise<Array<Record<string, unknown>>> => {
+              const raw = (await c.execute(sql)) as unknown;
+              if (Array.isArray(raw) && raw.length === 2 && Array.isArray(raw[0]) && Array.isArray(raw[1])) {
+                return raw[0] as Array<Record<string, unknown>>;
+              }
+              return (Array.isArray(raw) ? raw : []) as Array<Record<string, unknown>>;
+            };
+            const colRows = await rowsOf(
+              "SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'avatar'"
+            );
+            const dataType = String(colRows[0]?.DATA_TYPE ?? "").toLowerCase();
+            if (dataType === "text") {
+              await c.execute("ALTER TABLE `users` MODIFY COLUMN `avatar` MEDIUMTEXT NULL");
+              logger.info("[DB] users.avatar widened TEXT→MEDIUMTEXT (avatar uploads enabled)");
+            }
+          },
+        },
       ];
       await runMigrations(conn, MIGRATIONS);
 

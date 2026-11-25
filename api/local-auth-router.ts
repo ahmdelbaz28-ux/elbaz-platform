@@ -682,6 +682,62 @@ export const localAuthRouter = createRouter({
       return { success: true, emailVerificationRequired: false, message: "Profile updated." };
     }),
 
+  // ─── AVATAR (owner request 2026-11-26) ───
+  // Profile photo self-service: the user's dashboard avatar box (initials
+  // fallback) becomes an uploadable picture. The HF Space disk is EPHEMERAL
+  // (rebuilt on every deploy), so the photo is stored in the users.avatar
+  // column itself as a small base64 data URL — the client resizes/crops to a
+  // 256px JPEG before it ever leaves the browser, and the column was widened
+  // TEXT→MEDIUMTEXT by migration v20. Google OAuth pictures (http URLs) ride
+  // the same column; both forms render as plain <img src>.
+  updateAvatar: authedQuery
+    .input(
+      z.object({
+        // null = remove the photo (falls back to the initials box)
+        avatar: z.string().nullable(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const ip = getClientIpFromHeaders(ctx.req.headers);
+      await checkRateLimit(ip, "avatarUpdate");
+
+      const db = getDb();
+      let value: string | null = null;
+
+      if (input.avatar !== null) {
+        // Strict shape validation: ONLY png/jpeg/webp data URLs. SVG is
+        // rejected outright (script-bearing markup must never reach an <img>
+        // field), and http(s) URLs are rejected here too — remote-image
+        // writes stay the exclusive right of the Google OAuth callback.
+        const MAX_AVATAR_CHARS = 400_000; // ~300KB binary after base64 expansion
+        const match = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/.exec(input.avatar);
+        if (!match) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "صورة غير مدعومة — استخدم صورة PNG أو JPG أو WEBP",
+          });
+        }
+        if (input.avatar.length > MAX_AVATAR_CHARS) {
+          throw new TRPCError({
+            code: "PAYLOAD_TOO_LARGE",
+            message: "حجم الصورة كبير جداً — الحد الأقصى 300KB بعد الضغط",
+          });
+        }
+        value = input.avatar;
+      }
+
+      await db
+        .update(users)
+        .set({ avatar: value, updatedAt: new Date() })
+        .where(eq(users.id, ctx.user.id));
+
+      // The 30s SafeUser cache must not serve the old photo.
+      evictUserAuthCache(ctx.user.id);
+
+      logger.info("[Auth] avatar updated", { userId: ctx.user.id, removed: value === null });
+      return { success: true, avatar: value };
+    }),
+
   changePassword: authedQuery
     .input(
       z.object({

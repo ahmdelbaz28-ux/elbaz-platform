@@ -106,7 +106,7 @@ export async function rateLimitPerWindow(
   return limiter.consume(key, 1);
 }
 
-type RateLimitAction = "login" | "register" | "forgotPassword" | "resetPassword" | "sendVerification" | "verifyEmail" | "quizAttempt" | "api";
+type RateLimitAction = "login" | "register" | "forgotPassword" | "resetPassword" | "sendVerification" | "verifyEmail" | "quizAttempt" | "avatarUpdate" | "api";
 
 // 🔒 SECURITY FIX (Task ID 6): Per-action rate limits for sensitive auth flows.
 // These are SEPARATE from the global API rate limit (300 req / 60s) — each auth
@@ -131,6 +131,10 @@ const AUTH_ACTION_LIMITS: Record<Exclude<RateLimitAction, "api">, { points: numb
   resetPassword:    { points: 10, durationSec: 900, blockSec: 900 },
   sendVerification: { points: 5,  durationSec: 900, blockSec: 1800 },
   verifyEmail:      { points: 20, durationSec: 900, blockSec: 900 },
+  // ✅ AVATAR (owner request 2026-11-26): photo uploads are human-paced —
+  // 10 changes / 15 min / IP is far above any real usage pattern while
+  // capping DB write volume from a scripted client.
+  avatarUpdate:     { points: 10, durationSec: 900, blockSec: 900 },
 };
 
 const authActionLimiters = new Map<string, RateLimiterMemory>();

@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, type ChangeEvent } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "@/hooks/useTranslation";
 import { isValidEmail } from "@/lib/validation";
+import { fileToAvatarDataUrl, avatarErrorMessage, AvatarError } from "@/lib/avatar";
 import { trpc } from "@/providers/trpc";
 import { toast } from "sonner";
 import {
@@ -27,6 +28,8 @@ import {
   Gift,
   Users,
   Copy,
+  Camera,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -110,6 +113,42 @@ export default function Profile() {
     },
     onError: (err) => toast.error(err.message),
   });
+
+  // ─── AVATAR (owner request 2026-11-26) ───
+  // Upload pipeline: pick → client-side square-crop + resize + JPEG encode
+  // (src/lib/avatar.ts) → updateAvatar mutation → auth.me refresh. The photo
+  // never leaves the browser unscaled, so the DB payload stays ~15-40KB.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [avatarProcessing, setAvatarProcessing] = useState(false);
+  const avatarMutation = trpc.auth.updateAvatar.useMutation({
+    onSuccess: (res) => {
+      void utils.auth.me.invalidate();
+      toast.success(
+        res.avatar
+          ? (lang === "en" ? "Profile photo updated" : "تم تحديث الصورة الشخصية")
+          : (lang === "en" ? "Profile photo removed" : "تمت إزالة الصورة الشخصية"),
+      );
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const handleAvatarPick = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = ""; // allow re-picking the same file later
+    if (!file) return;
+    try {
+      setAvatarProcessing(true);
+      const dataUrl = await fileToAvatarDataUrl(file);
+      avatarMutation.mutate({ avatar: dataUrl });
+    } catch (err) {
+      const code = err instanceof AvatarError ? err.code : "unknown";
+      toast.error(avatarErrorMessage(code, lang));
+    } finally {
+      setAvatarProcessing(false);
+    }
+  };
+
+  const handleAvatarRemove = () => avatarMutation.mutate({ avatar: null });
 
   const changePasswordMutation = trpc.auth.changePassword.useMutation({
     onSuccess: () => {
@@ -269,20 +308,71 @@ export default function Profile() {
 
         <div className="mb-6 rounded-xl border border-border bg-primary p-8">
           <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-start">
-            <div className="relative">
-              <div className="flex h-24 w-24 items-center justify-center rounded-2xl bg-gradient-to-br from-accent-secondary to-accent text-4xl font-bold text-background shadow-[0_0_32px_rgba(6,182,212,0.3)]">
-                {(user.name || user.username || "U").charAt(0).toUpperCase()}
+            {/* ✅ AVATAR (owner request 2026-11-26): the initials box becomes a
+                real uploadable profile photo — the camera badge opens the file
+                picker, the picked image is cropped/resized client-side
+                (src/lib/avatar.ts) and persisted via auth.updateAvatar into
+                users.avatar (data URL — the HF Space disk is ephemeral).
+                Google OAuth pictures render through the same <img>. The name
+                sits UNDER the photo, per the owner's layout requirement. */}
+            <div className="flex shrink-0 flex-col items-center gap-2">
+              <div className="relative">
+                {user.avatar ? (
+                  <img
+                    src={user.avatar}
+                    alt={user.name || user.username || "avatar"}
+                    className="h-24 w-24 rounded-2xl object-cover shadow-[0_0_32px_rgba(6,182,212,0.3)]"
+                  />
+                ) : (
+                  <div className="flex h-24 w-24 items-center justify-center rounded-2xl bg-gradient-to-br from-accent-secondary to-accent text-4xl font-bold text-background shadow-[0_0_32px_rgba(6,182,212,0.3)]">
+                    {(user.name || user.username || "U").charAt(0).toUpperCase()}
+                  </div>
+                )}
+                {/* Camera badge — bottom-LEFT corner: the admin shield owns
+                    bottom-right. Double duty: upload + replace. */}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={avatarMutation.isPending || avatarProcessing}
+                  aria-label={lang === "ar" ? "تغيير الصورة الشخصية" : "Change profile photo"}
+                  title={lang === "ar" ? "تغيير الصورة الشخصية" : "Change profile photo"}
+                  className="absolute -bottom-1 -left-1 flex h-8 w-8 items-center justify-center rounded-full border-2 border-primary bg-accent-secondary text-background transition-transform hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {avatarMutation.isPending || avatarProcessing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Camera className="h-4 w-4" />
+                  )}
+                </button>
+                {user.role === "admin" && (
+                  <div className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full border-2 border-primary bg-amber-500">
+                    <Shield className="h-3.5 w-3.5 text-background" />
+                  </div>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={handleAvatarPick}
+                />
               </div>
-              {user.role === "admin" && (
-                <div className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full border-2 border-primary bg-amber-500">
-                  <Shield className="h-3.5 w-3.5 text-background" />
-                </div>
+              {/* The name lives UNDER the photo (owner layout requirement). */}
+              <h2 className="text-center text-lg font-bold leading-tight text-foreground">{user.name || user.username}</h2>
+              {user.avatar && (
+                <button
+                  type="button"
+                  onClick={handleAvatarRemove}
+                  disabled={avatarMutation.isPending || avatarProcessing}
+                  className="text-[11px] text-text-muted transition-colors hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {lang === "ar" ? "إزالة الصورة" : "Remove photo"}
+                </button>
               )}
             </div>
 
             <div className="flex-1 text-center sm:text-start">
-              <h2 className="text-2xl font-bold text-foreground">{user.name || user.username}</h2>
-              <p className="mt-1 text-sm text-accent-secondary">@{user.username}</p>
+              <p className="text-sm text-accent-secondary">@{user.username}</p>
               {user.email && (
                 <p className="mt-1 flex items-center justify-center gap-1.5 text-sm text-text-muted sm:justify-start">
                   <Mail className="h-3.5 w-3.5" />

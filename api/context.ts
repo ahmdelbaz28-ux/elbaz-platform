@@ -25,12 +25,15 @@ import { logger } from "./lib/logger";
 // BOTH identity endpoints (auth.me + session.me).
 export type SafeUser = Pick<
   User,
-  "id" | "username" | "name" | "email" | "role" | "emailVerifiedAt" | "createdAt"
+  "id" | "username" | "name" | "email" | "role" | "emailVerifiedAt" | "createdAt" | "avatar"
 >;
 
 // ✅ SECURITY FIX (audit run-2): the runtime projection schema for identity
 // endpoints. tRPC v11 .output() strips anything unlisted from the serialized
 // response even if a future code path widens SafeUser again.
+// ✅ AVATAR (owner request 2026-11-26): avatar rides along — it is either a
+// Google OAuth picture URL or a small self-uploaded data URL (see
+// local-auth-router.updateAvatar); both are plain <img src> values.
 export const AuthMeOutput = z.object({
   id: z.number(),
   username: z.string(),
@@ -39,6 +42,7 @@ export const AuthMeOutput = z.object({
   role: z.string(),
   emailVerifiedAt: z.date().nullable(),
   createdAt: z.date(),
+  avatar: z.string().nullable(),
 });
 
 export type TrpcContext = {
@@ -340,6 +344,7 @@ async function loadUserFromDb(
     role: user.role,
     emailVerifiedAt: user.emailVerifiedAt,
     createdAt: user.createdAt,
+    avatar: user.avatar,
   };
 
   evictOldestCacheEntries();

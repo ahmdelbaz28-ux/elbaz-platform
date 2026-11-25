@@ -198,7 +198,14 @@ export default function Navbar() {
             {isAuthenticated ? (
               <div className="relative" data-user-menu>
                 <button onClick={() => setUserMenuOpen(!userMenuOpen)} aria-expanded={userMenuOpen} aria-haspopup="true" aria-label={lang === "ar" ? "قائمة المستخدم" : "User menu"} className="flex items-center gap-2 rounded-lg border border-border bg-primary px-3 py-1.5 text-[13px] transition-all hover:border-accent">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-accent text-[11px] font-bold text-white">{(user?.name || user?.username || "U").charAt(0).toUpperCase()}</div>
+                  {/* ✅ AVATAR (owner request 2026-11-26): the chip shows the
+                      user's profile photo when one is set (uploaded via
+                      /profile or the Google picture) — initials fallback. */}
+                  {user?.avatar ? (
+                    <img src={user.avatar} alt="" className="h-6 w-6 rounded-full object-cover" />
+                  ) : (
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-accent text-[11px] font-bold text-white">{(user?.name || user?.username || "U").charAt(0).toUpperCase()}</div>
+                  )}
                   <span className="max-w-[100px] truncate text-text-secondary">{user?.name || user?.username}</span>
                   <ChevronDown className={`h-3.5 w-3.5 text-text-muted transition-transform duration-200 ${userMenuOpen ? "rotate-180" : ""}`} />
                 </button>
