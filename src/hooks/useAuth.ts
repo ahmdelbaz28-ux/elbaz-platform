@@ -11,6 +11,12 @@ import {
   isSessionProbeDone,
   isNativePlatform,
 } from "@/lib/auth-storage";
+import {
+  isConfirmedAuthRejection,
+  authMeRetry,
+  authMeRetryDelay,
+  authMeRefetchInterval,
+} from "@/lib/auth-verification";
 
 /**
  * ✅ ROOT-CURE (remember-device): the boot probe phase, SHARED by every
@@ -59,6 +65,16 @@ export function useAuth() {
   
   const [hasMounted, setHasMounted] = useState(false);
   const [storedAuth, setStoredAuth] = useState(false);
+  // ✅ ROOT-CURE (remember-device round 3, 2026-11-26): true while the session
+  // verification is stuck on a TRANSIENT failure (edge challenge 403, Space
+  // cold start, network blip) — i.e. the server never actually ANSWERED about
+  // the session. While pending, ProtectedRoute keeps the spinner instead of
+  // bouncing to /login (a bounce here WAS the reported bug: the user landed
+  // on the login page with a perfectly valid 30-day cookie and had to log in
+  // a second time), and auth.me keeps auto-reconnecting (see its
+  // refetchInterval below) until the server can answer. Only a confirmed
+  // UNAUTHORIZED clears this flag and destroys the session.
+  const [verificationPending, setVerificationPending] = useState(false);
   // ✅ ROOT-CURE (remember-device): shared boot probe — see computeProbePhase().
   // While ANY instance is in "active", the auth.me query stays enabled for ALL
   // of them and protected routes keep showing the spinner — never a login-page
@@ -97,7 +113,15 @@ export function useAuth() {
     enabled: hasMounted && storedAuth,
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 10,
-    retry: false,
+    // ✅ ROOT-CURE (remember-device round 3): the flat `retry: false` treated
+    // ANY boot failure as a session death and flipped the user to /login.
+    // Now: confirmed UNAUTHORIZED stays terminal (immediately, no retry —
+    // the destruction path must not be delayed), while transient failures
+    // (challenge 403, 5xx, network) get 2 quick retries, then the slow
+    // reconnect cadence below keeps asking until the server answers.
+    retry: authMeRetry,
+    retryDelay: authMeRetryDelay,
+    refetchInterval: authMeRefetchInterval,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
@@ -151,6 +175,22 @@ export function useAuth() {
   // server rejected every authed call (e.g. payment.create → raw
   // "UNAUTHORIZED" banner in the payment modal). On a 401 from auth.me we
   // now drop the stale user immediately so the app flips to logged-out.
+  // ✅ ROOT-CURE (remember-device round 3): classify the auth.me failure the
+  // moment it lands. UNAUTHORIZED = the server VERIFIED the token and
+  // rejected it → session really dead → destroy (below). Anything else =
+  // verification UNAVAILABLE → keep the session, mark verificationPending so
+  // the UI holds the spinner and the refetchInterval keeps reconnecting.
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (error) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setVerificationPending(!isConfirmedAuthRejection(error));
+    } else {
+      // Recovered (or never failed): clear the pending state.
+      setVerificationPending(false);
+    }
+  }, [error, hasMounted]);
+
   useEffect(() => {
     if (!error || !hasMounted) return;
     const code = (error as { data?: { code?: string } } | null)?.data?.code;
@@ -182,6 +222,7 @@ export function useAuth() {
       } catch { /* ignore */ }
        
       setStoredAuth(false); // disable the auth.me query — nothing fires again
+      setVerificationPending(false); // confirmed death — nothing left to verify
     } else if (hasMounted && probePhase === "active") {
       // ✅ ROOT-CURE: a NON-auth error (network hiccup, HF Space cold start,
       // 5xx) is NOT a definitive answer about the session. Conclude the probe
@@ -258,7 +299,14 @@ export function useAuth() {
   // to false the moment auth.me was found disabled and ProtectedRoute would
   // bounce to /login BEFORE the sessionProbe concluded (the exact race the
   // probe design exists to prevent).
-  const isLoading = !hasMounted || queryLoading || probePhase === "active";
+  // ✅ ROOT-CURE (remember-device round 3): verificationPending holds the
+  // loading state while the session answer is UNAVAILABLE (challenge/5xx/
+  // network) so ProtectedRoute never mistakes "could not verify" for "not
+  // logged in". auth.me auto-reconnects in the background; when the server
+  // finally answers, the user object returns and the same route renders —
+  // no bounce, no re-login, the Remember-this-device promise intact.
+  const isLoading =
+    !hasMounted || queryLoading || probePhase === "active" || verificationPending;
 
   return useMemo(
     () => ({
@@ -266,10 +314,11 @@ export function useAuth() {
       isAuthenticated: !!user,
       isAdmin: user?.role === "admin",
       isLoading,
+      verificationPending,
       error,
       logout,
       refresh: refetch,
     }),
-    [user, isLoading, error, logout, refetch]
+    [user, isLoading, verificationPending, error, logout, refetch]
   );
 }
