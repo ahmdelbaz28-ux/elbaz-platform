@@ -182,6 +182,60 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
             }
           },
         },
+        {
+          // ✅ ROOT FIX (admin dashboard audit, 2026-11-25): the quizQuestions
+          // table existed only in the drizzle schema (db/schema/courses.ts) and
+          // in drizzle-kit push — but the production boot path (this file) never
+          // created it. Result: admin.adminQuizByLesson (and every quiz admin
+          // mutation) 500'd with an unhandled "table doesn't exist" DB error on
+          // production, breaking the quiz section of the Lessons dialog. The
+          // ledger step below lands the exact same shape the drizzle schema
+          // declares (columns, defaults, qq_lesson_idx, fk_qq_lesson_id → lessons).
+          id: "v19-quiz-questions-table",
+          description: "quiz builder storage: quizQuestions table + lesson index + FK to lessons",
+          run: async (c) => {
+            // Table first (no inline FK — stays robust even on a fresh DB where
+            // `lessons` could theoretically not exist yet at this point).
+            await c.execute(
+              `CREATE TABLE IF NOT EXISTS \`quizQuestions\` (
+                 \`id\`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+                 \`lessonId\`    BIGINT UNSIGNED NOT NULL,
+                 \`questionEn\`  TEXT            NOT NULL,
+                 \`questionAr\`  TEXT            NOT NULL,
+                 \`optionsEn\`   JSON            NULL,
+                 \`optionsAr\`   JSON            NULL,
+                 \`correctIndex\` INT            NULL,
+                 \`points\`      INT             NOT NULL DEFAULT 10,
+                 \`sortOrder\`   INT             NOT NULL DEFAULT 0,
+                 \`createdAt\`   TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                 PRIMARY KEY (\`id\`),
+                 KEY \`qq_lesson_idx\` (\`lessonId\`)
+               ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+            );
+            // FK second — only when the parent table exists and the FK is absent.
+            // NOTE: FK constraints live in REFERENTIAL_CONSTRAINTS, NOT in
+            // INFORMATION_SCHEMA.STATISTICS (which is what dbIndexExists probes),
+            // so the FK presence is checked with a dedicated query here.
+            const lessonsRows = ((await c.execute(
+              "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lessons'"
+            )) as unknown as { cnt: number }[]);
+            const lessonsExists = (lessonsRows[0]?.cnt ?? 0) > 0;
+            let fkExists = false;
+            if (lessonsExists) {
+              const fkRows = ((await c.execute(
+                "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'quizQuestions' AND CONSTRAINT_NAME = 'fk_qq_lesson_id'"
+              )) as unknown as { cnt: number }[]);
+              fkExists = (fkRows[0]?.cnt ?? 0) > 0;
+            }
+            if (lessonsExists && !fkExists) {
+              await c.execute(
+                `ALTER TABLE \`quizQuestions\` ADD CONSTRAINT \`fk_qq_lesson_id\`
+                   FOREIGN KEY (\`lessonId\`) REFERENCES \`lessons\`(\`id\`)
+                   ON DELETE CASCADE ON UPDATE CASCADE`
+              );
+            }
+          },
+        },
       ];
       await runMigrations(conn, MIGRATIONS);
 
