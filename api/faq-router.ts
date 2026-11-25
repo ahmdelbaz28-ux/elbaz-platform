@@ -1,11 +1,12 @@
 /**
  * FAQ Router — tRPC procedures for FAQ entries
  */
-import { z } from "zod";
-import { desc, eq, sql } from "drizzle-orm";
-import { createRouter, publicQuery, publicMutation, adminMutation, adminQuery } from "./middleware";
-import { getDb } from "./queries/connection";
+
 import { faqEntries } from "@db/schema";
+import { desc, eq, sql } from "drizzle-orm";
+import { z } from "zod";
+import { adminMutation, adminQuery, createRouter, publicMutation, publicQuery } from "./middleware";
+import { getDb } from "./queries/connection";
 
 export const faqRouter = createRouter({
   list: publicQuery

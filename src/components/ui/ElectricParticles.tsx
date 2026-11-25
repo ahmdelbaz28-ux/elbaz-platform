@@ -1,5 +1,6 @@
+import { useCallback, useEffect, useRef, useState } from "react";
 import { visualRandom } from "@/lib/random";
-import { useEffect, useRef, useState, useCallback } from "react";
+
 // Note: `motion` and `AnimatePresence` from framer-motion were previously
 // imported here but never used. Removed to satisfy TS6192 / SonarCloud S1128.
 

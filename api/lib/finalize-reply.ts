@@ -27,8 +27,8 @@
  */
 
 import { createHash } from "node:crypto";
+import { containsPromptLeak, promptLeakRefusal, sanitizeReplyOutput } from "./chatbot-prompts.js";
 import { stripThinkBlocks } from "./think-filter.js";
-import { sanitizeReplyOutput, containsPromptLeak, promptLeakRefusal } from "./chatbot-prompts.js";
 
 // ✅ ROOT-CURE (2026-11-13, Arabic question mark): U+061F ؟ was missing, so
 // EVERY complete Arabic answer ending in a question ("…هل تريد شرح الخطوات؟")

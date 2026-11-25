@@ -21,17 +21,17 @@
  *   - This module never throws: a failure degrades to the note path.
  */
 
-import { routeChatCompletion, isDiscoveredModelId } from "./ai-router.js";
+import { isDiscoveredModelId, routeChatCompletion } from "./ai-router.js";
 import {
-  tryGroq,
-  tryOpenRouterVision,
-  GROQ_API_KEY,
-  GROQ_VISION_MODEL,
   type ChatApiMessage,
   type ContentPart,
+  GROQ_API_KEY,
+  GROQ_VISION_MODEL,
+  tryGroq,
+  tryOpenRouterVision,
 } from "./chatbot.js";
-import { stripThinkBlocks } from "./think-filter.js";
 import { logger } from "./logger.js";
+import { stripThinkBlocks } from "./think-filter.js";
 
 /** Overall PASS-1 budget — must leave room for the reasoning cascade. */
 const VISION_READ_BUDGET_MS = 45_000;

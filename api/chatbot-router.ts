@@ -6,37 +6,38 @@
  *   POST /api/chatbot/stream  — SSE streaming response
  */
 
-import { Hono, type Context } from "hono";
 import crypto from "node:crypto";
-import { getChatResponse, getStreamResponse, type ChatApiMessage, type ContentPart } from "./lib/chatbot.js";
+import { type Context, Hono } from "hono";
+import { chatbotFeedbackRoute } from "./chatbot-feedback-route.js";
+import { resolveOptionalUser } from "./context.js";
+import { clearChatHistory, getChatHistory, getLatestSummaryText, persistChatRound } from "./lib/chat-history.js";
+import { type ChatApiMessage, type ContentPart, getChatResponse, getStreamResponse } from "./lib/chatbot.js";
+import { getUserByokConfig } from "./lib/chatbot-byok.js";
+import { enforceCablesCitations, hasCablesIntent } from "./lib/chatbot-cables.js";
+import { type ChatbotErrorCode, chatbotError, logSafeError, scrubCredentials } from "./lib/chatbot-errors.js";
+import { courseIntentFromMessages } from "./lib/chatbot-intent.js";
 // ✅ Extracted (2026-11): input normalization lives in api/lib/chatbot-normalize.js —
 // pure + unit-testable without the router's import graph (no Hono, no DB).
-import { normalizeChatInput, MAX_MESSAGE_CHARS, MAX_TOTAL_CHARS, ARABIC_CHAR_RE } from "./lib/chatbot-normalize.js";
-import { parseScreenContext } from "./lib/chatbot-screen.js";
-import { getCourseCatalogText, getCourseCatalogLiteText } from "./lib/course-catalog.js";
-import { courseIntentFromMessages } from "./lib/chatbot-intent.js";
-import { extractRoutingSignal } from "./lib/chatbot-skillnet.js";
+import { ARABIC_CHAR_RE, MAX_MESSAGE_CHARS, MAX_TOTAL_CHARS, normalizeChatInput } from "./lib/chatbot-normalize.js";
 import { containsPromptLeak, promptLeakRefusal } from "./lib/chatbot-prompts.js";
-import { finalizeReply, opaqueModelKey } from "./lib/finalize-reply.js";
+import { enforceRefsCitations } from "./lib/chatbot-refs.js";
 // ✅ v1.1.2: deterministic citation compliance — the stream terminator seam
 // appends the pinned problem's citation when the model omitted it.
 import { enforcePinnedCitation } from "./lib/chatbot-saadat.js";
-import { enforceCablesCitations, hasCablesIntent } from "./lib/chatbot-cables.js";
-import { enforceRefsCitations } from "./lib/chatbot-refs.js";
-import { getUserByokConfig } from "./lib/chatbot-byok.js";
-import { chatbotError, logSafeError, scrubCredentials, type ChatbotErrorCode } from "./lib/chatbot-errors.js";
+import { parseScreenContext } from "./lib/chatbot-screen.js";
+import { extractRoutingSignal } from "./lib/chatbot-skillnet.js";
 import { getClientIpFromHono as getChatbotIp } from "./lib/client-ip";
+import { getCourseCatalogLiteText, getCourseCatalogText } from "./lib/course-catalog.js";
+import { finalizeReply, opaqueModelKey } from "./lib/finalize-reply.js";
 import {
   DAILY_IMAGE_LIMIT,
   DAILY_SCREEN_FRAME_LIMIT,
-  visionQuotaLane,
-  tryConsumeImageQuota,
   refundImageQuota,
+  tryConsumeImageQuota,
+  visionQuotaLane,
 } from "./lib/image-quota.js";
-import { persistChatRound, getChatHistory, getLatestSummaryText, clearChatHistory } from "./lib/chat-history.js";
-import { resolveOptionalUser } from "./context.js";
 import { logger } from "./lib/logger.js";
-import { chatbotFeedbackRoute } from "./chatbot-feedback-route.js";
+
 // Removed checkRateLimit
 
 const chatbotRouter = new Hono();

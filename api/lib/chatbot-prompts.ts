@@ -29,41 +29,41 @@
  * screen precisely instead of guessing.
  */
 
-import { buildScreenBlock, type ParsedScreenContext } from "./chatbot-screen.js";
-import { SKILL_REGISTRY, registerSkillContent, routeSkills, logSkillRouting } from "./chatbot-skillnet.js";
 import { routeRefsQuery } from "./chatbot-refs.js";
+import { buildScreenBlock, type ParsedScreenContext } from "./chatbot-screen.js";
+import { logSkillRouting, registerSkillContent, routeSkills, SKILL_REGISTRY } from "./chatbot-skillnet.js";
 
 import {
-  versionRuleAr,
-  versionRuleEn,
-  researchSkillAr,
-  researchSkillEn,
   accuracyContractAr,
   accuracyContractEn,
-  expertPositioningAr,
-  expertPositioningEn,
-  guidedNavigationAr,
-  guidedNavigationEn,
-  mentorProtocolAr,
-  mentorProtocolEn,
-  platformCoreAr,
-  platformCoreEn,
-  officialChannelsAr,
-  officialChannelsEn,
-  supportProtocolAr,
-  supportProtocolEn,
+  buildCourseCatalogBlock,
+  buildCourseCatalogLiteBlock,
   evidenceModelAr,
   evidenceModelEn,
   evidenceQuickAr,
   evidenceQuickEn,
-  safetyRuleAr,
-  safetyRuleEn,
+  expertPositioningAr,
+  expertPositioningEn,
+  guidedNavigationAr,
+  guidedNavigationEn,
   instantSkillsAr,
   instantSkillsEn,
+  mentorProtocolAr,
+  mentorProtocolEn,
+  officialChannelsAr,
+  officialChannelsEn,
+  platformCoreAr,
+  platformCoreEn,
+  researchSkillAr,
+  researchSkillEn,
+  safetyRuleAr,
+  safetyRuleEn,
   sldSkillAr,
   sldSkillEn,
-  buildCourseCatalogBlock,
-  buildCourseCatalogLiteBlock,
+  supportProtocolAr,
+  supportProtocolEn,
+  versionRuleAr,
+  versionRuleEn,
 } from "./chatbot-skills.js";
 
 // ════════════════════════════════════════════════════════════════════════

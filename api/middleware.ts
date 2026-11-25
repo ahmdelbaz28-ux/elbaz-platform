@@ -1,11 +1,11 @@
+import { adminAuditLog } from "@db/schema";
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { TrpcContext } from "./context";
-import { checkRateLimit } from "./lib/rate-limiter";
-import { env } from "./lib/env";
 import { getClientIpFromHeaders } from "./lib/client-ip";
+import { env } from "./lib/env";
+import { checkRateLimit } from "./lib/rate-limiter";
 import { getDb } from "./queries/connection";
-import { adminAuditLog } from "@db/schema";
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
@@ -28,9 +28,8 @@ const t = initTRPC.context<TrpcContext>().create({
 });
 
 export const createRouter = t.router;
-export { checkRateLimit };
 export { clearRateLimit, type RateLimitAction } from "./lib/rate-limiter";
-export { authRateLimit };
+export { authRateLimit, checkRateLimit };
 
 const globalRateLimit = t.middleware(async (opts) => {
   // Unified IP extraction (cf-connecting-ip > x-real-ip > first x-forwarded-for)

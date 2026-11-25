@@ -1,50 +1,51 @@
 /* eslint-disable react-refresh/only-export-components */
-import { visualRandom } from "@/lib/random";
-import {
-  useState,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useCallback,
-  type ReactNode,
-} from "react";
-import { useNavigate } from "react-router";
+
 import {
   Bell,
   BellOff,
+  BellRing,
   BookOpen,
-  Gift,
-  Loader2,
-  Sparkles,
   Check,
   CheckCheck,
+  Gift,
   Inbox,
+  Loader2,
   RefreshCw,
   Send,
+  Sparkles,
   TriangleAlert,
   X,
-  BellRing,
   Youtube,
 } from "lucide-react";
-import { useTranslation } from "@/hooks/useTranslation";
-import { useAuth } from "@/hooks/useAuth";
-import { useNotification } from "@/components/NotificationToast";
 import {
-  describePushState,
-  PUSH_ERROR_CODES,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { useNavigate } from "react-router";
+import { useNotification } from "@/components/NotificationToast";
+import { useAuth } from "@/hooks/useAuth";
+import { useTranslation } from "@/hooks/useTranslation";
+import {
   classifyPushEnvironment,
   classifyPushException,
-  pushEnvironmentErrorCode,
-  validateVapidPublicKey,
   clearPushDeviceBlock,
-  readPushDeviceBlock,
-  savePushDeviceBlock,
+  describePushState,
+  PUSH_ERROR_CODES,
   type PushDeviceBlockState,
   type PushOutcome,
   type PushStateDescriptor,
   type PushStatus,
   type PushTone,
+  pushEnvironmentErrorCode,
+  readPushDeviceBlock,
+  savePushDeviceBlock,
+  validateVapidPublicKey,
 } from "@/lib/push-state";
+import { visualRandom } from "@/lib/random";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Types

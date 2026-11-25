@@ -11,12 +11,12 @@
  * the `catalog` argument of getSystemPrompt (see api/lib/chatbot-skills.ts).
  */
 
-import { eq, asc, desc } from "drizzle-orm";
-import { getDb } from "../queries/connection.js";
 import { courses } from "@db/schema";
+import { asc, desc, eq } from "drizzle-orm";
+import { getDb } from "../queries/connection.js";
 import { fetchWithSWR } from "./cache.js";
-import { logger } from "./logger.js";
 import { sliceCatalogLite } from "./chatbot-intent.js";
+import { logger } from "./logger.js";
 
 /** Hard cap to bound prompt tokens even if the catalog grows large. */
 const MAX_COURSES = 40;

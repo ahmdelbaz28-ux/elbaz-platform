@@ -1,6 +1,6 @@
+import { TRPCError } from "@trpc/server";
 import { Redis } from "ioredis";
 import type { RateLimiterMemory, RateLimiterRes } from "rate-limiter-flexible";
-import { TRPCError } from "@trpc/server";
 import { logger } from "./logger.js";
 
 let redisClient: Redis | null = null;
@@ -236,5 +236,5 @@ function clearRateLimit(ip: string, action: RateLimitAction): void {
   }
 }
 
-export { initRedis, rateLimit, checkRateLimit, clearRateLimit };
 export type { RateLimitAction };
+export { checkRateLimit, clearRateLimit, initRedis, rateLimit };

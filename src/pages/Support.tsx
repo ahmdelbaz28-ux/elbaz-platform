@@ -1,20 +1,20 @@
-import { useState } from "react";
-import { useAuth } from "@/hooks/useAuth";
-import { useTranslation } from "@/hooks/useTranslation";
-import { trpc } from "@/providers/trpc";
-import { useNavigate } from "react-router";
 import {
-  Headphones,
-  Plus,
-  Ticket as TicketIcon,
-  Send,
   ChevronDown,
   ChevronUp,
+  Headphones,
+  Plus,
+  Send,
+  Ticket as TicketIcon,
 } from "lucide-react";
+import { useState } from "react";
+import { useNavigate } from "react-router";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+import { useTranslation } from "@/hooks/useTranslation";
+import { trpc } from "@/providers/trpc";
 
 function TicketThread({ ticketId, initialMessage, lang }: { readonly ticketId: number, readonly initialMessage: string, readonly lang: "en" | "ar" }) {
   const { t } = useTranslation();

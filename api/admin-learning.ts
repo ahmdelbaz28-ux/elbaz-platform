@@ -16,13 +16,13 @@
  * the public site reflects changes immediately.
  */
 
-import { z } from "zod";
-import { and, asc, count, desc, eq, like, max, or, sql } from "drizzle-orm";
-import { TRPCError } from "@trpc/server";
-import { adminQuery, adminMutation } from "./middleware";
-import { getDb } from "./queries/connection";
 import { categories, courses, enrollments, lessons, quizQuestions, users } from "@db/schema";
+import { TRPCError } from "@trpc/server";
+import { and, asc, count, desc, eq, like, max, or, sql } from "drizzle-orm";
+import { z } from "zod";
 import { invalidateCourseCache, invalidateStatsCache } from "./lib/cache.js";
+import { adminMutation, adminQuery } from "./middleware";
+import { getDb } from "./queries/connection";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CATEGORIES — full CRUD
@@ -264,6 +264,7 @@ export const quizAdminProcedures = {
         canaryId = (created as { id?: number })?.id;
         steps.push({ step: "insert", ok: true, id: canaryId });
       } catch (err) {
+        // biome-ignore lint/correctness/usePlaywrightValidDescribeCallback: NOT Playwright — `describe` is the local error formatter above (line 238) for the DB canary diagnostics
         steps.push({ step: "insert", ok: false, error: describe(err) });
       }
       if (canaryId !== undefined) {
@@ -271,12 +272,14 @@ export const quizAdminProcedures = {
           const rows = await db.select().from(quizQuestions).where(eq(quizQuestions.id, canaryId)).limit(1);
           steps.push({ step: "select", ok: rows.length === 1 });
         } catch (err) {
+          // biome-ignore lint/correctness/usePlaywrightValidDescribeCallback: NOT Playwright — local error formatter, not a test runner describe
           steps.push({ step: "select", ok: false, error: describe(err) });
         }
         try {
           await db.delete(quizQuestions).where(eq(quizQuestions.id, canaryId));
           steps.push({ step: "delete", ok: true });
         } catch (err) {
+          // biome-ignore lint/correctness/usePlaywrightValidDescribeCallback: NOT Playwright — local error formatter, not a test runner describe
           steps.push({ step: "delete", ok: false, error: describe(err) });
         }
       }

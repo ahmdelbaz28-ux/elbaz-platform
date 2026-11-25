@@ -1,12 +1,14 @@
-import devServer from "@hono/vite-dev-server"
-import path from "node:path"
 import { randomBytes } from "node:crypto"
 import { writeFile } from "node:fs/promises"
+import path from "node:path"
+import devServer from "@hono/vite-dev-server"
+
 const __dirname = import.meta.dirname
+
 import react from "@vitejs/plugin-react"
 import { defineConfig, type Plugin, type Rollup } from "vite"
-import { VitePWA } from 'vite-plugin-pwa'
 import viteCompression from 'vite-plugin-compression'
+import { VitePWA } from 'vite-plugin-pwa'
 
 /**
  * Build ID Plugin — generates a unique build-id.json on every build.

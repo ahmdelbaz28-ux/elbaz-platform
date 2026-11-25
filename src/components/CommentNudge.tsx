@@ -15,11 +15,12 @@
  * The button opens the watch URL in a new tab (noopener) — commenting
  * physically happens on YouTube; there is no embeddable comment composer.
  */
-import { useEffect, useState } from "react";
+
 import { MessageCircle, X } from "lucide-react";
-import { buildYouTubeWatchUrl } from "@/lib/youtube-url";
-import { commentNudgeState, markCommentNudge } from "@/lib/comment-nudge";
+import { useEffect, useState } from "react";
 import { trackEvent } from "@/lib/clarity";
+import { commentNudgeState, markCommentNudge } from "@/lib/comment-nudge";
+import { buildYouTubeWatchUrl } from "@/lib/youtube-url";
 
 interface CommentNudgeProps {
   readonly videoId: string;

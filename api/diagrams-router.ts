@@ -13,8 +13,8 @@
  * 422. Size-capped to keep this endpoint uninteresting for abuse.
  */
 import { Hono } from "hono";
-import { repairSpec } from "./lib/sld/repair.js";
 import { renderSld } from "./lib/sld/render.js";
+import { repairSpec } from "./lib/sld/repair.js";
 import type { SldSpec } from "./lib/sld/types.js";
 
 export const diagramsRouter = new Hono({ strict: false });

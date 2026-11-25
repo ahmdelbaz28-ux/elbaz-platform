@@ -47,38 +47,38 @@
  */
 
 import {
-  SAUDI_AREA_TABLES,
-  SAUDI_DENSITY_TABLES,
-  SAUDI_DEMAND_FACTORS,
-  SAUDI_COINCIDENCE,
-  SAUDI_TYPES,
-  SAUDI_RULES,
-  SAUDI_SECTIONS,
-  SAUDI_INTEGRITY_SAMPLER,
-  type SaudiAreaTable,
-} from "./chatbot-saudi-kb.js";
-import {
-  ABB_ITEMS,
-  ABB_LARGE_ITEMS,
-  ABB_LOSS_ITEMS,
-  ABB_IP00_DIMS,
   ABB_DESCRIPTIVE,
   ABB_FLAGS,
   ABB_INTEGRITY_SAMPLER,
+  ABB_IP00_DIMS,
+  ABB_ITEMS,
+  ABB_LARGE_ITEMS,
+  ABB_LOSS_ITEMS,
   type AbbItem,
 } from "./chatbot-abb-kb.js";
 import {
-  SCHNEIDER_ITEMS,
-  SCHNEIDER_META,
-  SCHNEIDER_INTEGRITY_SAMPLER,
-  type SchneiderItem,
-} from "./chatbot-schneider-kb.js";
-import {
   REF_PAGES_CHUNKS,
-  REF_PAGES_META,
   REF_PAGES_INTEGRITY_SAMPLER,
+  REF_PAGES_META,
   type RefsPageChunk,
 } from "./chatbot-refs-pages-kb.js";
+import {
+  SAUDI_AREA_TABLES,
+  SAUDI_COINCIDENCE,
+  SAUDI_DEMAND_FACTORS,
+  SAUDI_DENSITY_TABLES,
+  SAUDI_INTEGRITY_SAMPLER,
+  SAUDI_RULES,
+  SAUDI_SECTIONS,
+  SAUDI_TYPES,
+  type SaudiAreaTable,
+} from "./chatbot-saudi-kb.js";
+import {
+  SCHNEIDER_INTEGRITY_SAMPLER,
+  SCHNEIDER_ITEMS,
+  SCHNEIDER_META,
+  type SchneiderItem,
+} from "./chatbot-schneider-kb.js";
 
 // ─── Prompt language / mode (mirrors Cables/Saadat without importing them) ──
 

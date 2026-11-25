@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
-import { trpc } from "@/providers/trpc";
+import { ArrowLeft, ArrowRight, CheckCircle, RotateCcw, XCircle } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { useTranslation } from "@/hooks/useTranslation";
 import { trackLearning } from "@/lib/clarity";
-import { Button } from "@/components/ui/button";
-import { CheckCircle, XCircle, ArrowRight, ArrowLeft, RotateCcw } from "lucide-react";
+import { trpc } from "@/providers/trpc";
 
 interface QuizComponentProps {
   readonly lessonId: number;

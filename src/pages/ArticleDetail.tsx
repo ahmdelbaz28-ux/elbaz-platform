@@ -1,11 +1,11 @@
-import { useMemo, type ReactNode } from "react";
+import { ArrowRight, Clock, Eye, Loader2, Newspaper, User } from "lucide-react";
+import { type ReactNode, useMemo } from "react";
 import { Link, useParams } from "react-router";
+import Seo from "@/components/SEO";
+import { Button } from "@/components/ui/button";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useScreenDetails } from "@/lib/screen-context";
 import { trpc } from "@/providers/trpc";
-import Seo from "@/components/SEO";
-import { Button } from "@/components/ui/button";
-import { Loader2, Clock, Eye, ArrowRight, Newspaper, User } from "lucide-react";
 
 /* ── Helpers ── */
 

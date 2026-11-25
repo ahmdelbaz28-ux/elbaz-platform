@@ -14,90 +14,86 @@
  *               promotions, softwareDownloads, referenceFiles, faqEntries
  */
 
+
 export {
-  // Auth
-  users,
-  passwordResetTokens,
-  userSessions,
+  type AiModel,
+  type AiProvider,
+  aiModels,
+  // AI Router (dynamic multi-provider chatbot gateway)
+  aiProviders,
+  type InsertUserAiProvider,
+  type UserAiProvider,
+  userAiProviders,
+} from "./schema/ai.js";
+export {
+  type InsertUser,
+  type NotificationPreference,
   notificationPreferences,
+  passwordResetTokens,
   referrals,
   // Auth types
   type User,
-  type InsertUser,
-  type NotificationPreference,
+  userSessions,
+  // Auth
+  users,
 } from "./schema/auth.js";
-
 export {
+  type ChatbotFeedback,
+  // Chatbot (feedback loop — 👍/👎 votes on assistant replies)
+  chatbotFeedback,
+  type InsertChatbotFeedback,
+} from "./schema/chatbot.js";
+export {
+  type CommentLike,
   // Courses
   categories,
-  courses,
-  lessons,
-  enrollments,
-  lessonProgress,
   certificates,
-  reviews,
-  lessonComments,
-  commentLikes,
-  quizQuestions,
-  userNotes,
-  wishlists,
   chatMessages,
+  commentLikes,
+  courses,
+  enrollments,
+  type LessonComment,
+  lessonComments,
+  lessonProgress,
+  lessons,
   licenses,
+  quizQuestions,
+  reviews,
+  userNotes,
   // Course types
   type Wishlist,
-  type LessonComment,
-  type CommentLike,
+  wishlists,
 } from "./schema/courses.js";
-
 export {
   // Payments
   payments,
   promoCodes,
   promoCodeUsage,
 } from "./schema/payments.js";
-
 export {
-  // Shared
-  supportTickets,
-  ticketReplies,
-  testimonials,
-  siteSettings,
-  themes,
-  promotions,
-  softwareDownloads,
-  referenceFiles,
-  faqEntries,
-  articles,
-  notifications,
-  pushSubscriptions,
-  emailDripLog,
+  type AdminAuditLogRow,
+  type Article,
   adminAuditLog,
+  articles,
+  type EmailDripLogRow,
+  emailDripLog,
   // Shared types
   type FaqEntry,
-  type ReferenceFile,
-  type InsertReferenceFile,
-  type Article,
+  faqEntries,
   type InsertArticle,
+  type InsertReferenceFile,
   type NotificationRow,
+  notifications,
   type PushSubscriptionRow,
-  type EmailDripLogRow,
-  type AdminAuditLogRow,
+  promotions,
+  pushSubscriptions,
+  type ReferenceFile,
+  referenceFiles,
+  siteSettings,
+  softwareDownloads,
+  // Shared
+  supportTickets,
+  testimonials,
+  themes,
+  ticketReplies,
 } from "./schema/shared.js";
-
-export {
-  // AI Router (dynamic multi-provider chatbot gateway)
-  aiProviders,
-  aiModels,
-  userAiProviders,
-  type AiProvider,
-  type AiModel,
-  type UserAiProvider,
-  type InsertUserAiProvider,
-} from "./schema/ai.js";
-
-export {
-  // Chatbot (feedback loop — 👍/👎 votes on assistant replies)
-  chatbotFeedback,
-  type ChatbotFeedback,
-  type InsertChatbotFeedback,
-} from "./schema/chatbot.js";

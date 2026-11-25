@@ -32,15 +32,15 @@
  */
 
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { and, eq, ne } from "drizzle-orm";
-import { getDb } from "../queries/connection.js";
 import { users } from "@db/schema";
-import { env } from "./env.js";
-import { logger, maskEmail } from "./logger.js";
+import { and, eq, ne } from "drizzle-orm";
 import { evictUserAuthCache } from "../context.js";
 import { pushNotificationEvent } from "../notification-poll-router.js";
-import { buildAdminApprovalRequestEmail } from "./email-templates.js";
+import { getDb } from "../queries/connection.js";
 import { sendEmail } from "./email.js";
+import { buildAdminApprovalRequestEmail } from "./email-templates.js";
+import { env } from "./env.js";
+import { logger, maskEmail } from "./logger.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Statuses + the gate

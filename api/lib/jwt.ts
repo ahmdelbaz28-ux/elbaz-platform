@@ -1,4 +1,4 @@
-import { SignJWT, jwtVerify, compactVerify } from "jose";
+import { compactVerify, jwtVerify, SignJWT } from "jose";
 import { env } from "./env";
 import { logger } from "./logger.js";
 

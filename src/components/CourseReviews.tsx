@@ -15,13 +15,14 @@
  *  - Server enforces entitlement (premium: active enrollment) — the client
  *    only surfaces a friendly message on FORBIDDEN.
  */
+
+import { Lock, MessageSquareText, Star } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
-import { Star, MessageSquareText, Lock } from "lucide-react";
-import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "@/hooks/useTranslation";
+import { trpc } from "@/providers/trpc";
 
 interface ReviewItem {
   id: number;

@@ -1,22 +1,22 @@
-import { trpc } from "@/providers/trpc";
-import { useCallback, useMemo, useEffect, useRef, useState } from "react";
-import { useNavigate, useLocation } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { identifyUser } from "@/lib/clarity";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router";
 import {
-  hasStoredAuth,
-  removeStoredToken,
   clearAuthFlagCookie,
-  markSessionProbeDone,
-  isSessionProbeDone,
+  hasStoredAuth,
   isNativePlatform,
+  isSessionProbeDone,
+  markSessionProbeDone,
+  removeStoredToken,
 } from "@/lib/auth-storage";
 import {
-  isConfirmedAuthRejection,
+  authMeRefetchInterval,
   authMeRetry,
   authMeRetryDelay,
-  authMeRefetchInterval,
+  isConfirmedAuthRejection,
 } from "@/lib/auth-verification";
+import { identifyUser } from "@/lib/clarity";
+import { trpc } from "@/providers/trpc";
 
 /**
  * ✅ ROOT-CURE (remember-device): the boot probe phase, SHARED by every

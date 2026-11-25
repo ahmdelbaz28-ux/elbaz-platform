@@ -20,12 +20,12 @@
  * text renderer — no raw HTML is ever injected (XSS-safe by design).
  */
 import { randomBytes } from "node:crypto";
-import { z } from "zod";
-import { and, desc, eq, like, or, sql } from "drizzle-orm";
-import { createRouter, publicQuery, authedQuery, adminQuery, adminMutation } from "./middleware";
-import { logger } from "./lib/logger.js";
-import { getDb } from "./queries/connection";
 import { articles } from "@db/schema";
+import { and, desc, eq, like, or, sql } from "drizzle-orm";
+import { z } from "zod";
+import { logger } from "./lib/logger.js";
+import { adminMutation, adminQuery, authedQuery, createRouter, publicQuery } from "./middleware";
+import { getDb } from "./queries/connection";
 
 /** Build a URL-safe slug from a Latin title; falls back to a random token. */
 function buildSlug(titleEn: string): string {

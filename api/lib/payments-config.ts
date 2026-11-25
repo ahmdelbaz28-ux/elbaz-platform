@@ -8,14 +8,14 @@
  * The Secret Key + HMAC secret are env-only by design (never stored in DB).
  */
 
+import { siteSettings } from "@db/schema";
 import { eq } from "drizzle-orm";
 import { getDb } from "../queries/connection";
-import { siteSettings } from "@db/schema";
 import { env } from "./env";
 import {
+  type ManualPaymentDetails,
   mapManualDetailsFromSettings,
   PAYMENT_SETTINGS_SECTION,
-  type ManualPaymentDetails,
 } from "./payments-core";
 import type { PaymobRuntimeConfig } from "./paymob";
 

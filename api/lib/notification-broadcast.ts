@@ -1,6 +1,6 @@
+import { notifications } from "@db/schema";
 import { and, desc, eq, isNull, lt } from "drizzle-orm";
 import { getDb } from "../queries/connection";
-import { notifications } from "@db/schema";
 import { logger } from "./logger.js";
 import { makeEventId } from "./notification-utils.js";
 

@@ -1,11 +1,12 @@
 /**
  * Search Router — global search across courses, references, FAQ
  */
+
+import { courses, faqEntries, referenceFiles } from "@db/schema";
+import { and, eq, like, or } from "drizzle-orm";
 import { z } from "zod";
-import { eq, like, or, and } from "drizzle-orm";
 import { createRouter, publicQuery } from "./middleware";
 import { getDb } from "./queries/connection";
-import { courses, referenceFiles, faqEntries } from "@db/schema";
 
 export const searchRouter = createRouter({
   global: publicQuery

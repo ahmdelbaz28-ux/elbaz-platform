@@ -21,11 +21,11 @@
  * immutable edge cache stays correct).
  */
 import {
-  CELL,
-  MARGIN,
-  elementExtent,
-  rectsOverlap,
   type BBox,
+  CELL,
+  elementExtent,
+  MARGIN,
+  rectsOverlap,
   type SldElement,
   type SldSpec,
 } from "./types";

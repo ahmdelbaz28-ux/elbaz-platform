@@ -1,25 +1,25 @@
-import { useState } from "react";
-import { useSearchParams, Link, useNavigate } from "react-router";
-import { useTranslation } from "@/hooks/useTranslation";
-import { hasPasswordStrengthChars } from "@/lib/validation";
-import { trpc } from "@/providers/trpc";
-import { toast } from "sonner";
 import {
-  KeyRound,
-  Eye,
-  EyeOff,
-  Loader2,
-  ShieldCheck,
   AlertTriangle,
   ArrowLeft,
-  Lock,
   CheckCircle2,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Loader2,
+  Lock,
+  ShieldCheck,
 } from "lucide-react";
+import { useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useTranslation } from "@/hooks/useTranslation";
 import { trackPlatform } from "@/lib/clarity";
 import { bilingualByLang } from "@/lib/i18n";
+import { hasPasswordStrengthChars } from "@/lib/validation";
+import { trpc } from "@/providers/trpc";
 
 type ResetState = "form" | "submitting" | "success" | "error" | "invalid";
 

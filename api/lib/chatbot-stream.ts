@@ -20,55 +20,54 @@
  * System prompts live in chatbot-prompts.ts.
  */
 
-import { getSystemPrompt, MODE_TUNING, sanitizeReplyOutput, type ModeTuning } from "./chatbot-prompts.js";
-
-import { buildSaadatContextBlock } from "./chatbot-saadat.js";
-import { buildCablesContextBlock, hasCablesIntent } from "./chatbot-cables.js";
-import { buildRefsContextBlock } from "./chatbot-refs.js";
-import { extractRoutingSignal } from "./chatbot-skillnet.js";
-import type { ParsedScreenContext } from "./chatbot-screen.js";
-import { logger } from "./logger.js";
-import { ThinkStreamFilter } from "./think-filter.js";
-import { buildAugmentedTextMessages, buildVisionFailureMessages, readImageViaVisionModels } from "./chatbot-vision.js";
+import { headerTimeoutSignal } from "./abort-utils.js";
+import { buildUpstreamSSETransform, disableWebPluginFor, isChatLaneModel, isDiscoveredModelId, isWebPluginDisabled, noteOpenRouterDailyLimit, routeChatStream, WEB_PLUGIN_BODY } from "./ai-router.js";
 import {
-  // ── Config constants ──
-  NVIDIA_API_KEY,
-  NVIDIA_ENDPOINT,
-  NVIDIA_MODEL,
-  GROQ_API_KEY,
-  GROQ_ENDPOINT,
-  GROQ_MODELS,
-  OPENROUTER_API_KEY,
   AI_MODELS,
-  INSTANT_FAST_MODELS,
 
   // ── Shared types ──
   type ChatApiMessage,
 
   // ── Health state (mutable via properties; direct scalar reassignments crash in ESM) ──
   chatHealth,
-  modelFailCount,
-
-  // ── Availability checks ──
-  nvidiaIsAvailable,
-  groqIsAvailable,
+  GROQ_API_KEY,
+  GROQ_ENDPOINT,
+  GROQ_MODELS,
 
   // ── Fallback functions ──
   groqFallback,
+  groqIsAvailable,
+  INSTANT_FAST_MODELS,
   liveGroqModels,
+  modelFailCount,
+  // ── Config constants ──
+  NVIDIA_API_KEY,
+  NVIDIA_ENDPOINT,
+  NVIDIA_MODEL,
   nvidiaFallback,
+
+  // ── Availability checks ──
+  nvidiaIsAvailable,
+  OPENROUTER_API_KEY,
   openRouterFallback,
+  validateGroqKey,
 
   // ── Validation functions ──
   validateNvidiaKey,
-  validateGroqKey,
   validateOpenRouterKey,
 } from "./chatbot.js";
-import { routeChatStream, buildUpstreamSSETransform, isWebPluginDisabled, disableWebPluginFor, WEB_PLUGIN_BODY, noteOpenRouterDailyLimit, isChatLaneModel, isDiscoveredModelId } from "./ai-router.js";
-import { tryByokStream, type ByokConfig } from "./chatbot-byok.js";
+import { type ByokConfig, tryByokStream } from "./chatbot-byok.js";
+import { buildCablesContextBlock, hasCablesIntent } from "./chatbot-cables.js";
 import { webIntentFromMessages } from "./chatbot-intent.js";
+import { getSystemPrompt, MODE_TUNING, type ModeTuning, sanitizeReplyOutput } from "./chatbot-prompts.js";
+import { buildRefsContextBlock } from "./chatbot-refs.js";
+import { buildSaadatContextBlock } from "./chatbot-saadat.js";
+import type { ParsedScreenContext } from "./chatbot-screen.js";
+import { extractRoutingSignal } from "./chatbot-skillnet.js";
+import { buildAugmentedTextMessages, buildVisionFailureMessages, readImageViaVisionModels } from "./chatbot-vision.js";
+import { logger } from "./logger.js";
+import { ThinkStreamFilter } from "./think-filter.js";
 import { reportTokenUsage } from "./token-usage.js";
-import { headerTimeoutSignal } from "./abort-utils.js";
 
 // ════════════════════════════════════════════════════════════════════════
 // STREAMING — provider selection

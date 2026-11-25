@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
 import { ArrowUp } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useFabScrollVisibility } from "@/hooks/useFabScrollVisibility";
 
 export default function ScrollToTop() {

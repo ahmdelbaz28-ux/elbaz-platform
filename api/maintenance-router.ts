@@ -1,5 +1,5 @@
-import { gzipSync } from "node:zlib";
 import { timingSafeEqual } from "node:crypto";
+import { gzipSync } from "node:zlib";
 import { Hono } from "hono";
 import type { RowDataPacket } from "mysql2";
 import { escape as sqlEscape, escapeId as sqlEscapeId } from "mysql2";

@@ -1,6 +1,6 @@
+import { type HTMLMotionProps, motion } from "framer-motion";
+import React, { useCallback, useRef, useState } from "react";
 import { visualRandom } from "@/lib/random";
-import React, { useState, useRef, useCallback } from "react";
-import { motion, type HTMLMotionProps } from "framer-motion";
 
 // Omit React's conflicting drag/animation handlers so they don't clash with
 // framer-motion's typed versions when spread into motion.div.

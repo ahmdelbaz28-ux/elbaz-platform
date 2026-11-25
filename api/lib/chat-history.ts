@@ -15,9 +15,10 @@
  *   • Content caps mirror chatbot-router's MAX_MESSAGE_CHARS so a poisoned
  *     history row can never blow the provider context window.
  */
+
+import { chatMessages } from "@db/schema";
 import { and, desc, eq, gt, lt, ne, sql } from "drizzle-orm";
 import { getDb } from "../queries/connection.js";
-import { chatMessages } from "@db/schema";
 import { getChatResponse } from "./chatbot.js";
 import { finalizeReply, toOpaqueWireModel } from "./finalize-reply.js";
 import { logger } from "./logger.js";

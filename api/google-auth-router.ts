@@ -13,20 +13,20 @@
  *   - Detailed error logging + user-friendly redirect with localized error codes.
  */
 
-import { Hono } from "hono";
-import { eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { users } from "@db/schema";
-import { getDb } from "./queries/connection";
-import { createToken } from "./lib/jwt";
-import { serializeAuthCookie, serializeAuthFlagCookie, serializeIdentitySwitchCookie } from "./lib/cookies";
-import { env } from "./lib/env";
-import { checkRateLimit } from "./lib/rate-limiter";
-import { logger, maskEmail } from "./lib/logger";
-import { getClientIpFromHono as getClientIp } from "./lib/client-ip";
+import { eq } from "drizzle-orm";
+import { Hono } from "hono";
 // ✅ ADMIN APPROVAL GATE (owner directive, 2026-11-24): Google sign-in is a
 // session-issuance path — pending/rejected accounts get NO session here.
-import { approvalGateVerdict, notifyAdminsOfRegistration, type GateUser } from "./lib/approval.js";
+import { approvalGateVerdict, type GateUser, notifyAdminsOfRegistration } from "./lib/approval.js";
+import { getClientIpFromHono as getClientIp } from "./lib/client-ip";
+import { serializeAuthCookie, serializeAuthFlagCookie, serializeIdentitySwitchCookie } from "./lib/cookies";
+import { env } from "./lib/env";
+import { createToken } from "./lib/jwt";
+import { logger, maskEmail } from "./lib/logger";
+import { checkRateLimit } from "./lib/rate-limiter";
+import { getDb } from "./queries/connection";
 
 const googleAuthRouter = new Hono();
 

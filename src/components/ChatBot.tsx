@@ -1,32 +1,32 @@
-import { useState, useRef, useEffect, useLayoutEffect, useCallback, memo, forwardRef, useImperativeHandle, useSyncExternalStore } from "react";
-import { useNavigate, useLocation } from "react-router";
-import { buildChatPageContext, pushTrail, type ScreenAuth } from "@/lib/screen-context";
+import {
+  Bot,
+  Brain,
+  ChevronDown,
+  Copy,
+  ImagePlus,
+  KeyRound,
+  Loader2,
+  MonitorUp,
+  MonitorX,
+  RotateCcw,
+  Send,
+  Square,
+  ThumbsDown,
+  ThumbsUp,
+  Trash2,
+  User,
+  X,
+} from "lucide-react";
+import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useLocation, useNavigate } from "react-router";
 import { toast } from "sonner";
-import { useTranslation } from "@/hooks/useTranslation";
+import ByokSettingsPanel from "@/components/chatbot/ByokSettingsPanel";
 import { useAuth } from "@/hooks/useAuth";
 import { useChatFabAnimation } from "@/hooks/useChatFabAnimation";
 import { useFabScrollVisibility } from "@/hooks/useFabScrollVisibility";
-import {
-  X,
-  Send,
-  Bot,
-  User,
-  Loader2,
-  ChevronDown,
-  Trash2,
-  Copy,
-  RotateCcw,
-  Brain,
-  ImagePlus,
-  MonitorUp,
-  MonitorX,
-  ThumbsUp,
-  ThumbsDown,
-  Square,
-  KeyRound,
-} from "lucide-react";
-import ByokSettingsPanel from "@/components/chatbot/ByokSettingsPanel";
-import { resolveAfterAttempts, shouldAttemptNext, type StreamAttemptOutcome } from "@/lib/chat-stop-flow";
+import { useTranslation } from "@/hooks/useTranslation";
+import { resolveAfterAttempts, type StreamAttemptOutcome, shouldAttemptNext } from "@/lib/chat-stop-flow";
+import { buildChatPageContext, pushTrail, type ScreenAuth } from "@/lib/screen-context";
 import {
   captureScreenFrame,
   captureScreenPreview,

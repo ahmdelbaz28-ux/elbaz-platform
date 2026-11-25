@@ -1,11 +1,11 @@
+import { Session } from "@contracts/constants";
+import { users } from "@db/schema";
 import * as cookie from "cookie";
 import { eq, sql } from "drizzle-orm";
-import { evictUserAuthCache, AuthMeOutput } from "./context";
-import { Session } from "@contracts/constants";
-import { getSessionCookieOptions, AUTH_FLAG_COOKIE_NAME } from "./lib/cookies";
-import { createRouter, authedQuery } from "./middleware";
+import { AuthMeOutput, evictUserAuthCache } from "./context";
+import { AUTH_FLAG_COOKIE_NAME, getSessionCookieOptions } from "./lib/cookies";
+import { authedQuery, createRouter } from "./middleware";
 import { getDb } from "./queries/connection";
-import { users } from "@db/schema";
 
 export const authRouter = createRouter({
   // ✅ SECURITY FIX (audit run-2, api/local-auth-router.ts:auth.me:SafeUser-secret-projection):

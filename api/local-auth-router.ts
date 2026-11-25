@@ -1,29 +1,29 @@
 import { randomBytes } from "node:crypto";
-import { z } from "zod";
+import { certificates, enrollments, lessonProgress, payments, supportTickets, users } from "@db/schema";
 import { TRPCError } from "@trpc/server";
-import { and, eq, sql } from "drizzle-orm";
-import { users, enrollments, lessonProgress, payments, certificates, supportTickets } from "@db/schema";
-import { createRouter, publicQuery, authedQuery, checkRateLimit, clearRateLimit, authRateLimit } from "./middleware";
-import { getDb } from "./queries/connection";
-import { hashPassword, verifyPassword } from "./lib/password";
-import { createToken } from "./lib/jwt";
-import { initiatePasswordReset, completePasswordReset, initiateEmailVerification, completeEmailVerification, sendEmailWithDiagnostics, augmentAdminEmailMessage } from "./lib/email";
-// ✅ SECURITY FIX: Import auth cookie helpers for httpOnly cookie auth
-import { serializeAuthCookie, serializeAuthFlagCookie, clearAuthCookies, AUTH_COOKIE_NAME } from "./lib/cookies";
 import { parse as parseCookieHeader } from "cookie";
-import { logger, maskEmail } from "./lib/logger";
-import { getClientIpFromHeaders } from "./lib/client-ip";
-import { env } from "./lib/env";
+import { and, eq, sql } from "drizzle-orm";
+import { z } from "zod";
 // ✅ SECURITY FIX (pre-launch audit run-2): instant auth-cache eviction on
 // every revocation site (logout / password change) — closes the 30s window.
-import { evictUserAuthCache, AuthMeOutput } from "./context.js";
-// ✅ SECURITY FIX (audit run-1): enforce the enrolled second factor at login.
-import { verifyTotp, hashToken } from "./twofa-router";
-// Growth features: referral rewards + educational email drip.
-import { applyReferral } from "./lib/referral";
+import { AuthMeOutput, evictUserAuthCache } from "./context.js";
 // ✅ ADMIN APPROVAL GATE (owner directive, 2026-11-24): server-side gate on
 // login + the owner alert fan-out on registration.
 import { approvalGateVerdict, notifyAdminsOfRegistration } from "./lib/approval.js";
+import { getClientIpFromHeaders } from "./lib/client-ip";
+// ✅ SECURITY FIX: Import auth cookie helpers for httpOnly cookie auth
+import { AUTH_COOKIE_NAME, clearAuthCookies, serializeAuthCookie, serializeAuthFlagCookie } from "./lib/cookies";
+import { augmentAdminEmailMessage, completeEmailVerification, completePasswordReset, initiateEmailVerification, initiatePasswordReset, sendEmailWithDiagnostics } from "./lib/email";
+import { env } from "./lib/env";
+import { createToken } from "./lib/jwt";
+import { logger, maskEmail } from "./lib/logger";
+import { hashPassword, verifyPassword } from "./lib/password";
+// Growth features: referral rewards + educational email drip.
+import { applyReferral } from "./lib/referral";
+import { authedQuery, authRateLimit, checkRateLimit, clearRateLimit, createRouter, publicQuery } from "./middleware";
+import { getDb } from "./queries/connection";
+// ✅ SECURITY FIX (audit run-1): enforce the enrolled second factor at login.
+import { hashToken, verifyTotp } from "./twofa-router";
 
 // ─── Dummy hash for constant-time login ───────────────────────────────────────
 // To prevent username enumeration via response timing, when a login attempt

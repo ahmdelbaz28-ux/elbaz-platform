@@ -39,8 +39,8 @@ import { z } from "zod";
 import { logger } from "./lib/logger";
 import {
   applyPlaylistSync,
-  getSyncState,
   getSyncSettings,
+  getSyncState,
   isPlaceholderTitle,
 } from "./lib/playlist-sync.js";
 import { authenticateIngest, computeSignature, signatureMatches } from "./lib/yt-sync-auth.js";

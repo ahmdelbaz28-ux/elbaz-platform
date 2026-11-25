@@ -1,20 +1,20 @@
-import { Routes, Route, useLocation, useNavigationType } from "react-router";
-import { lazy, Suspense, useEffect, useState } from "react";
 import { MotionConfig } from "framer-motion";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { Route, Routes, useLocation, useNavigationType } from "react-router";
 import { Toaster } from "sonner";
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
 import CookieConsent from "@/components/CookieConsent";
-import ScrollToTop from "@/components/ScrollToTop";
-import ProtectedRoute from "@/components/ProtectedRoute";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import StarfieldBackground from "@/components/StarfieldBackground";
-import { NotificationProvider } from "@/components/NotificationToast";
-import NotificationPollerBridge from "@/components/NotificationPollerBridge";
-import ThemeProvider from "@/components/ThemeProvider";
-import { EngineeringModeProvider } from "@/components/ui/EngineeringMode";
-import AmbientOrbs from "@/components/ui/AmbientOrbs";
 import FloatingIconsBg from "@/components/FloatingIconsBg";
+import Footer from "@/components/Footer";
+import Navbar from "@/components/Navbar";
+import NotificationPollerBridge from "@/components/NotificationPollerBridge";
+import { NotificationProvider } from "@/components/NotificationToast";
+import ProtectedRoute from "@/components/ProtectedRoute";
+import ScrollToTop from "@/components/ScrollToTop";
+import StarfieldBackground from "@/components/StarfieldBackground";
+import ThemeProvider from "@/components/ThemeProvider";
+import AmbientOrbs from "@/components/ui/AmbientOrbs";
+import { EngineeringModeProvider } from "@/components/ui/EngineeringMode";
 import { useTranslation } from "@/hooks/useTranslation";
 // ✅ CLS ROOT-CURE (Lighthouse 2026-11-20): Home is NOT lazy.
 // The landing route used to mount through Suspense: the shell (navbar +

@@ -35,6 +35,7 @@ declare module 'recharts' {
 
 declare module 'cmdk' {
   import * as React from 'react';
+
   interface CommandProps { readonly children?: React.ReactNode; [key: string]: any; }
   interface CommandItemProps { children?: React.ReactNode; onSelect?: () => void; [key: string]: any; }
   const Command: React.FC<CommandProps> & {
@@ -45,11 +46,13 @@ declare module 'cmdk' {
     Group: React.FC<{ children: React.ReactNode; heading?: React.ReactNode }>;
     Separator: React.FC<any>;
   };
+
   export { Command };
 }
 
 declare module 'vaul' {
   import * as React from 'react';
+
   interface DrawerProps { open: boolean; onOpenChange: (open: boolean) => void; children: React.ReactNode; [key: string]: any; }
   interface DrawerContentProps { readonly children: React.ReactNode; [key: string]: any; }
   const Drawer: React.FC<DrawerProps> & {
@@ -61,15 +64,18 @@ declare module 'vaul' {
     Title: React.FC<{ children: React.ReactNode }>;
     Description: React.FC<{ children: React.ReactNode }>;
   };
+
   export { Drawer };
 }
 
 declare module 'input-otp' {
   import * as React from 'react';
+
   interface OTPInputProps { maxLength?: number; onChange?: (value: string) => void; [key: string]: any; }
   const OTPInput: React.FC<OTPInputProps> & {
     slots: { root: React.FC<any>; input: React.FC<any> };
   };
+
   export { OTPInput };
 }
 

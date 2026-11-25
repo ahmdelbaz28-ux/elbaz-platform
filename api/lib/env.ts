@@ -251,5 +251,5 @@ function getPublicEnvKeys(): Record<string, string> {
   };
 }
 
-export { env, getPublicEnvKeys, getActiveFrontendUrl };
+export { env, getActiveFrontendUrl, getPublicEnvKeys };
 

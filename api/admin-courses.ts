@@ -5,19 +5,19 @@
  *             listLessons, createLesson, updateLesson, deleteLesson
  */
 
-import { z } from "zod";
-import { asc, desc, eq, count, max } from "drizzle-orm";
+import { courses, enrollments, lessons, payments, reviews, siteSettings, wishlists } from "@db/schema";
 import { TRPCError } from "@trpc/server";
-import { adminQuery, adminMutation } from "./middleware";
-import { getDb } from "./queries/connection";
-import { courses, lessons, enrollments, payments, wishlists, reviews, siteSettings } from "@db/schema";
+import { asc, count, desc, eq, max } from "drizzle-orm";
+import { z } from "zod";
 import { pushNotification } from "./lib/notification-broadcast.js";
-import { fetchOembedVerdict, fetchPlaylistVideosForImport, getPlaylistId } from "./lib/youtube-watcher.js";
 import {
   applyPlaylistSync,
   getDashboardSyncInfo,
-  saveSyncSettings,
-  isPlaceholderTitle } from "./lib/playlist-sync.js";
+  isPlaceholderTitle, 
+  saveSyncSettings} from "./lib/playlist-sync.js";
+import { fetchOembedVerdict, fetchPlaylistVideosForImport, getPlaylistId } from "./lib/youtube-watcher.js";
+import { adminMutation, adminQuery } from "./middleware";
+import { getDb } from "./queries/connection";
 
 export const adminCoursesProcedures = {
   listCourses: adminQuery

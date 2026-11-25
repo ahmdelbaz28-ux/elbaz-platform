@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
-import { useTranslation } from "@/hooks/useTranslation";
-import { Shield, ChevronDown, ChevronUp, Cookie } from "lucide-react";
+import { ChevronDown, ChevronUp, Cookie, Shield } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "@/hooks/useTranslation";
 import { grantConsent, revokeConsent } from "@/lib/clarity";
 
 const COOKIE_KEY = "elbaz_cookie_consent";

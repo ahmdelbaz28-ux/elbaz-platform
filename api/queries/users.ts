@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
-import * as schema from "@db/schema";
 import type { InsertUser } from "@db/schema";
+import * as schema from "@db/schema";
+import { eq } from "drizzle-orm";
 import { getDb } from "./connection";
 
 export async function findUserByUsername(username: string) {

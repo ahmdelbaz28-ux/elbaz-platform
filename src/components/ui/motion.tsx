@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
+
+import { type HTMLMotionProps, motion } from "framer-motion";
 import React, { useEffect, useState } from "react";
-import { motion, type HTMLMotionProps } from "framer-motion";
 // ✅ FIX: Import cn() from utils.ts instead of duplicating it.
 // Duplicate cn() functions cause maintenance issues and bundle size bloat.
 import { cn } from "@/lib/utils";

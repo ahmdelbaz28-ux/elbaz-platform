@@ -5,13 +5,13 @@
  * All are authedQuery (authentication required).
  */
 
+import { courses, enrollments } from "@db/schema";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { and, eq, desc, sql } from "drizzle-orm";
+import { activeEnrollmentWhere } from "./lib/enrollment";
+import { getCourseProgressDetail } from "./lib/progress";
 import { authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
-import { courses, enrollments } from "@db/schema";
-import { getCourseProgressDetail } from "./lib/progress";
-import { activeEnrollmentWhere } from "./lib/enrollment";
 
 export const courseEnrollmentProcedures = {
   enrollments: authedQuery.query(async ({ ctx }) => {

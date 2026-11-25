@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useNavigate } from "react-router";
 import { useRealtimeNotifications, useShowNotification } from "@/components/NotificationCenter";
-import { playApprovalChime, vibrateApproval, showDeviceNotification } from "@/lib/approval-chime";
+import { playApprovalChime, showDeviceNotification, vibrateApproval } from "@/lib/approval-chime";
 
 const KNOWN_TOAST_TYPES = new Set(["youtube", "lesson", "file", "software"]);
 

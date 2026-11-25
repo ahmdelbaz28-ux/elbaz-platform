@@ -1,7 +1,7 @@
-import { visualRandom } from "@/lib/random";
-import { useEffect, useState, useCallback, useMemo, createContext, useContext, type ReactNode } from "react";
-import { X, Bell, Sparkles, Gift, BookOpen, Youtube } from "lucide-react";
+import { Bell, BookOpen, Gift, Sparkles, X, Youtube } from "lucide-react";
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "@/hooks/useTranslation";
+import { visualRandom } from "@/lib/random";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

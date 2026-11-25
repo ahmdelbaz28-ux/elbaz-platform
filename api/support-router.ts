@@ -1,10 +1,10 @@
-import { z } from "zod";
-import { eq, and, desc, sql } from "drizzle-orm";
-// ✅ SECURITY FIX: Use authedQuery instead of manual token verification
-import { createRouter, authedQuery } from "./middleware";
-import { getDb } from "./queries/connection";
 import { supportTickets, ticketReplies } from "@db/schema";
 import { TRPCError } from "@trpc/server";
+import { and, desc, eq, sql } from "drizzle-orm";
+import { z } from "zod";
+// ✅ SECURITY FIX: Use authedQuery instead of manual token verification
+import { authedQuery, createRouter } from "./middleware";
+import { getDb } from "./queries/connection";
 
 export const supportRouter = createRouter({
   // ✅ SECURITY FIX: Uses authedQuery — userId from ctx.user.id, cannot be forged

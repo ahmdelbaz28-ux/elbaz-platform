@@ -1,11 +1,12 @@
 /**
  * Notification Preferences Router — user notification settings
  */
-import { z } from "zod";
-import { eq } from "drizzle-orm";
-import { createRouter, authedQuery, authMutation } from "./middleware";
-import { getDb } from "./queries/connection";
+
 import { notificationPreferences } from "@db/schema";
+import { eq } from "drizzle-orm";
+import { z } from "zod";
+import { authedQuery, authMutation, createRouter } from "./middleware";
+import { getDb } from "./queries/connection";
 
 const DEFAULT_PREFS = {
   emailNewCourses: true,

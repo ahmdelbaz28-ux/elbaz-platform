@@ -1,11 +1,11 @@
-import { useTranslation } from "@/hooks/useTranslation";
-import { useAuth } from "@/hooks/useAuth";
-import { trpc } from "@/providers/trpc";
-import Seo from "@/components/SEO";
-import { Button } from "@/components/ui/button";
-import { Heart, Trash2, BookOpen, Loader2 } from "lucide-react";
+import { BookOpen, Heart, Loader2, Trash2 } from "lucide-react";
 import { Link } from "react-router";
 import { toast } from "sonner";
+import Seo from "@/components/SEO";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
+import { useTranslation } from "@/hooks/useTranslation";
+import { trpc } from "@/providers/trpc";
 
 interface WishlistItem {
   courseId: number;

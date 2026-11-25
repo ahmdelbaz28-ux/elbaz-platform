@@ -16,8 +16,8 @@
  * filesystem/network access at render time, no user identifiers in the file.
  */
 import { Hono } from "hono";
-import { normalizeDocSpec, isDocFormat, DOC_MIME, docFilename, MAX_SPEC_RAW_CHARS } from "./lib/docgen/spec.js";
 import { buildDoc } from "./lib/docgen/build.js";
+import { DOC_MIME, docFilename, isDocFormat, MAX_SPEC_RAW_CHARS, normalizeDocSpec } from "./lib/docgen/spec.js";
 
 export const docsRouter = new Hono({ strict: false });
 

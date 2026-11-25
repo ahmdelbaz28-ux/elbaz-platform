@@ -1,5 +1,5 @@
 import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
-import { useRef, type ReactNode } from "react";
+import { type ReactNode, useRef } from "react";
 import { cn } from "@/components/ui/motion";
 
 interface BentoCardProps {

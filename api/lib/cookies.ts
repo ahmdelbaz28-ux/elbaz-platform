@@ -1,5 +1,5 @@
-import type { CookieOptions } from "hono/utils/cookie";
 import * as cookie from "cookie";
+import type { CookieOptions } from "hono/utils/cookie";
 
 function isLocalhost(headers: Headers): boolean {
   const host = headers.get("host") || "";

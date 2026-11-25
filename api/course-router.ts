@@ -1,7 +1,7 @@
-import { createRouter } from "./middleware";
 import { courseBrowseProcedures } from "./course-browse";
 import { courseEnrollmentProcedures } from "./course-enrollment";
 import { courseWatchingProcedures } from "./course-watching";
+import { createRouter } from "./middleware";
 
 /**
  * COURSE ROUTER — Composite router merging sub-domain procedure objects

@@ -16,9 +16,9 @@
  */
 
 import crypto from "node:crypto";
+import { promoCodes, referrals, users } from "@db/schema";
 import { eq, inArray } from "drizzle-orm";
 import { getDb } from "../queries/connection";
-import { users, referrals, promoCodes } from "@db/schema";
 import { logger } from "./logger.js";
 
 // ─── Coupon policy (single source of truth) ─────────────────────────────────

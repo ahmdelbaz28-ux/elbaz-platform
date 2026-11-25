@@ -1,10 +1,10 @@
-import { z } from "zod";
+import { courses, enrollments, reviews, users } from "@db/schema";
 import { TRPCError } from "@trpc/server";
-import { desc, eq, and, count } from "drizzle-orm";
-import { createRouter, authQuery, authMutation, adminQuery, adminMutation, publicMutation } from "./middleware";
-import { getDb } from "./queries/connection";
-import { reviews, courses, users, enrollments } from "@db/schema";
+import { and, count, desc, eq } from "drizzle-orm";
+import { z } from "zod";
 import { activeEnrollmentWhere } from "./lib/enrollment.js";
+import { adminMutation, adminQuery, authMutation, authQuery, createRouter, publicMutation } from "./middleware";
+import { getDb } from "./queries/connection";
 
 export const reviewRouter = createRouter({
   listByCourse: publicMutation

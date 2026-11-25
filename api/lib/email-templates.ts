@@ -225,7 +225,7 @@ export function buildAdminApprovalRequestEmail(input: AdminApprovalRequestInput)
   const who = escapeHtml(input.name || input.username);
   const handle = escapeHtml(input.username);
   const mail = input.email ? escapeHtml(input.email) : null;
-  const when = input.registeredAt.toISOString().replace("T", " ").slice(0, 16) + " UTC";
+  const when = `${input.registeredAt.toISOString().replace("T", " ").slice(0, 16)} UTC`;
 
   const infoRows = [
     ["الاسم / Name", who],

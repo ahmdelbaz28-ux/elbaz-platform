@@ -9,8 +9,9 @@
  * premium lesson forever. Every enrollment-gated procedure must use this
  * predicate: status = 'active' AND (expiresAt IS NULL OR expiresAt > now).
  */
-import { and, eq, or, isNull, gt } from "drizzle-orm";
+
 import { enrollments } from "@db/schema";
+import { and, eq, gt, isNull, or } from "drizzle-orm";
 
 export function activeEnrollmentWhere(userId: number, courseId: number) {
   return and(

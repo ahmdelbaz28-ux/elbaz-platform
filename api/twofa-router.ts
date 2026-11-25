@@ -1,11 +1,11 @@
-import { z } from "zod";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { users } from "@db/schema";
 import { TRPCError } from "@trpc/server";
 import { and, eq, sql } from "drizzle-orm";
-import { createRouter, authQuery, authMutation } from "./middleware";
-import { getDb } from "./queries/connection";
-import { users } from "@db/schema";
-import { randomBytes, createHmac, timingSafeEqual } from "node:crypto";
+import { z } from "zod";
 import { env } from "./lib/env";
+import { authMutation, authQuery, createRouter } from "./middleware";
+import { getDb } from "./queries/connection";
 
 const BASE32_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 

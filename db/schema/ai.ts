@@ -15,16 +15,16 @@
  */
 
 import {
-  mysqlTable,
   bigint,
-  varchar,
-  text,
   boolean,
-  timestamp,
-  int,
-  index,
-  uniqueIndex,
   foreignKey,
+  index,
+  int,
+  mysqlTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  varchar,
 } from "drizzle-orm/mysql-core";
 import { users } from "./auth.js";
 

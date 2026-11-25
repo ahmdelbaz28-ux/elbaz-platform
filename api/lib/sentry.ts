@@ -109,4 +109,4 @@ function flushSentry(): Promise<boolean> {
   return Sentry.flush(2000);
 }
 
-export { initSentry, captureException, captureMessage, captureSecurityEvent, flushSentry };
+export { captureException, captureMessage, captureSecurityEvent, flushSentry, initSentry };

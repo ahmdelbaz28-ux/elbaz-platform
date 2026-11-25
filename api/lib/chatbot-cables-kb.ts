@@ -212,6 +212,7 @@ export const AMPACITY_TABLES: CableAmpacityTable[] = [
     cols: ["ground", "duct", "air"],
     rows: [
     { csa: 16, csaLabel: "16", dc20: 1.91, ac: 2.295, ground: 79, duct: 57, air: 61 },
+    // biome-ignore lint/suspicious/noApproximativeNumericConstant: measured cable data — ac 1.442 Ω/km is a physical AC-resistance value for 25mm² copper (looks like log2(e), but it is IEC-table data, never a math constant)
     { csa: 25, csaLabel: "25", dc20: 1.2, ac: 1.442, ground: 102, duct: 75, air: 81 },
     { csa: 35, csaLabel: "35", dc20: 0.868, ac: 1.0432, ground: 123, duct: 90, air: 100 },
     { csa: 50, csaLabel: "50", dc20: 0.641, ac: 0.7704, ground: 151, duct: 110, air: 125 },
@@ -236,6 +237,7 @@ export const AMPACITY_TABLES: CableAmpacityTable[] = [
     page: 73,
     cols: ["ground", "duct", "air"],
     rows: [
+    // biome-ignore lint/suspicious/noApproximativeNumericConstant: measured cable data — ac 1.442 Ω/km is a physical AC-resistance value for the 25mm² aluminum row (IEC-table data, never a math constant)
     { csa: 25, csaLabel: "25 / 16", dc20: 1.2, ac: 1.442, ground: 101, duct: 74, air: 80 },
     { csa: 35, csaLabel: "35 / 16", dc20: 0.868, ac: 1.0432, ground: 122, duct: 89, air: 98 },
     { csa: 50, csaLabel: "50 / 25", dc20: 0.641, ac: 0.7704, ground: 151, duct: 110, air: 125 },

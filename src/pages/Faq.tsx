@@ -1,10 +1,10 @@
-import { useState, useMemo } from "react";
-import { useTranslation } from "@/hooks/useTranslation";
-import { trpc } from "@/providers/trpc";
+import { ChevronDown, HelpCircle, MessageCircle, Search } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Link } from "react-router";
 import Seo from "@/components/SEO";
 import { Input } from "@/components/ui/input";
-import { Search, ChevronDown, HelpCircle, MessageCircle } from "lucide-react";
-import { Link } from "react-router";
+import { useTranslation } from "@/hooks/useTranslation";
+import { trpc } from "@/providers/trpc";
 
 interface FaqItem {
   id: number;

@@ -1,20 +1,20 @@
+import { motion } from "framer-motion";
+import {
+  ArrowRight,
+  Award,
+  BookOpen,
+  CheckCircle2,
+  Clock,
+  ExternalLink,
+  GraduationCap,
+  TrendingUp,
+  Zap,
+} from "lucide-react";
 import { useEffect } from "react";
-import { useNavigate, Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "@/hooks/useTranslation";
 import { trpc } from "@/providers/trpc";
-import { motion } from "framer-motion";
-import {
-  GraduationCap,
-  Award,
-  Clock,
-  TrendingUp,
-  Zap,
-  BookOpen,
-  CheckCircle2,
-  ArrowRight,
-  ExternalLink,
-} from "lucide-react";
 
 export default function Dashboard() {
   const { user, isAuthenticated, isLoading } = useAuth();

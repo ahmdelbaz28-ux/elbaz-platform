@@ -1,24 +1,24 @@
+import { randomBytes, timingSafeEqual } from "node:crypto";
+import { serveStatic } from "@hono/node-server/serve-static";
+import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { logger as appLogger } from "./lib/logger.js";
-import { serveStatic } from "@hono/node-server/serve-static";
-import { env } from "./lib/env.js";
-import { initRedis } from "./lib/rate-limiter.js";
-import { healthRouter } from "./health-router.js";
-import { maintenanceRouter } from "./maintenance-router.js";
-import { promoRouter } from "./promo-router.js";
+import { chatbotRouter } from "./chatbot-router.js";
+import { createContext } from "./context.js";
 import { diagramsRouter } from "./diagrams-router.js";
 import { docsRouter } from "./docs-router.js";
-import { paymobWebhook, paymobWebhookAlias } from "./paymob-webhook.js";
-import { chatbotRouter } from "./chatbot-router.js";
 import { googleAuthRouter } from "./google-auth-router.js";
-import { securityMiddleware } from "./middleware/security.js";
-import { createContext } from "./context.js";
-import { appRouter } from "./router.js";
-import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
-import { ensureDatabase } from "./lib/db-init.js";
+import { healthRouter } from "./health-router.js";
 import { discoverAllProviders } from "./lib/ai-router.js";
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { ensureDatabase } from "./lib/db-init.js";
+import { env } from "./lib/env.js";
+import { logger as appLogger } from "./lib/logger.js";
+import { initRedis } from "./lib/rate-limiter.js";
+import { maintenanceRouter } from "./maintenance-router.js";
+import { securityMiddleware } from "./middleware/security.js";
+import { paymobWebhook, paymobWebhookAlias } from "./paymob-webhook.js";
+import { promoRouter } from "./promo-router.js";
+import { appRouter } from "./router.js";
 
 /**
  * Build ID — loaded from build-id.json at startup.
@@ -47,9 +47,9 @@ async function loadBuildId() {
   }
 }
 
-import { cacheMiddleware } from "./middleware/cache.js";
-import { createSpaHandler } from "./lib/spa-handler.js";
 import { buildRobotsTxt } from "./lib/seo-meta.js";
+import { createSpaHandler } from "./lib/spa-handler.js";
+import { cacheMiddleware } from "./middleware/cache.js";
 
 declare const Bun: { serve: (opts: { fetch: (r: Request) => Response | Promise<Response>; port?: number; hostname?: string }) => { close: (cb?: () => void) => void } } | undefined;
 
@@ -58,11 +58,11 @@ type AppVariables = {
   requestId: string;
 };
 
-import { shieldMiddleware } from "./middleware/shield.js";
-import { getClientIpFromHono } from "./lib/client-ip";
-import { notificationRoute } from "./notification-route.js";
 import { approvalActionRoute } from "./approval-action-route.js";
+import { getClientIpFromHono } from "./lib/client-ip";
 import { startYoutubeWatcher } from "./lib/youtube-watcher.js";
+import { shieldMiddleware } from "./middleware/shield.js";
+import { notificationRoute } from "./notification-route.js";
 
 const app = new Hono<{ Variables: AppVariables }>({ strict: false });
 
@@ -163,6 +163,7 @@ app.route("/api/paymob", paymobWebhook);
 // SYNC_INGEST_SECRET. Feeds the SAME applyPlaylistSync engine as the
 // watcher tick (see yt-sync-ingest.ts for the why). ──
 import { ytSyncIngestRoute } from "./yt-sync-ingest.js";
+
 app.route("/api/yt-sync", ytSyncIngestRoute);
 // Legacy account-level callback URLs registered in the Paymob dashboard
 // (Transaction Processed + browser Response callbacks) — same HMAC-verified
@@ -173,6 +174,7 @@ app.route("/api/google-auth", googleAuthRouter);
 
 // ── BYOK (bring-your-own-key) management for the chatbot key menu ──
 import { userAiProviderRouter } from "./user-ai-provider-router.js";
+
 app.route("/api/user-ai-provider", userAiProviderRouter);
 // ✅ ADMIN APPROVAL GATE (owner directive, 2026-11-24): signed one-time
 // approve/reject links from the registration alert email.
@@ -184,6 +186,7 @@ app.route("/api/notifications", notificationRoute);
 // ── Web Push subscriptions (closed-tab browser notifications) at
 // /api/notifications/push/* — public-key / subscribe / unsubscribe ──
 import { pushSubscriptionRoute } from "./push-subscription-route.js";
+
 app.route("/api/notifications/push", pushSubscriptionRoute);
 
 // ── tRPC handler at /api/trpc ──

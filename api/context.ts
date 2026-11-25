@@ -1,15 +1,14 @@
-import type { FetchCreateContextFnOptions } from "@trpc/server/adapters/fetch";
-import { TRPCError } from "@trpc/server";
 import type { User } from "@db/schema";
-import { verifyToken, verifyExpiredToken, createToken, getTokenRemainingSeconds, type TokenPayload } from "./lib/jwt";
-import { getDb } from "./queries/connection";
 import { users } from "@db/schema";
-import { eq } from "drizzle-orm";
-import { AUTH_COOKIE_NAME, serializeAuthCookie, serializeAuthFlagCookie } from './lib/cookies';
+import { TRPCError } from "@trpc/server";
+import type { FetchCreateContextFnOptions } from "@trpc/server/adapters/fetch";
 import { parse } from "cookie";
-
+import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { AUTH_COOKIE_NAME, serializeAuthCookie, serializeAuthFlagCookie } from './lib/cookies';
+import { createToken, getTokenRemainingSeconds, type TokenPayload, verifyExpiredToken, verifyToken } from "./lib/jwt";
 import { logger } from "./lib/logger";
+import { getDb } from "./queries/connection";
 
 // ✅ SECURITY FIX (audit run-2, api/local-auth-router.ts:auth.me:SafeUser-secret-projection):
 // SafeUser is now a curated Pick<> of EXACTLY the fields the UI consumes

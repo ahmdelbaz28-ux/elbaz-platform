@@ -1,9 +1,9 @@
-import { z } from "zod";
-import { TRPCError } from "@trpc/server";
-import { desc, eq, and, count } from "drizzle-orm";
-import { createRouter, authQuery, authMutation } from "./middleware";
-import { getDb } from "./queries/connection";
 import { userNotes } from "@db/schema";
+import { TRPCError } from "@trpc/server";
+import { and, count, desc, eq } from "drizzle-orm";
+import { z } from "zod";
+import { authMutation, authQuery, createRouter } from "./middleware";
+import { getDb } from "./queries/connection";
 
 // ─── Helper: build the values payload for a new note insertion ───
 function buildNewNoteValues(userId: number, note: {

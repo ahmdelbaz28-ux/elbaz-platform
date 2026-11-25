@@ -1,7 +1,7 @@
-import webpush from "web-push";
-import { eq } from "drizzle-orm";
-import { getDb } from "../queries/connection";
 import { pushSubscriptions } from "@db/schema";
+import { eq } from "drizzle-orm";
+import webpush from "web-push";
+import { getDb } from "../queries/connection";
 import { env } from "./env.js";
 import { logger } from "./logger.js";
 

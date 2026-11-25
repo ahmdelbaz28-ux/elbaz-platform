@@ -1,7 +1,7 @@
+import { CheckCircle2, ChevronLeft, Clock, RotateCcw, XCircle } from "lucide-react";
 import { Link } from "react-router";
-import { useTranslation } from "@/hooks/useTranslation";
 import { useContactSettings } from "@/hooks/useContactSettings";
-import { RotateCcw, ChevronLeft, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { useTranslation } from "@/hooks/useTranslation";
 
 export default function RefundPolicy() {
   const { lang } = useTranslation();

@@ -33,9 +33,10 @@
  *   TELEGRAM_GROUP_WELCOME      — custom group welcome text after approval
  *   TELEGRAM_ADMIN_CHAT_ID      — gets a one-line "worker is up" ping at boot
  */
+
+import { ARABIC_CHAR_RE } from "./chatbot-normalize.js";
 import { logger } from "./logger.js";
 import { telegramApiBase, telegramRelayHeaders } from "./telegram-transport.js";
-import { ARABIC_CHAR_RE } from "./chatbot-normalize.js";
 
 // ─── Telegram types (minimal — only what we touch) ───────────────────────────
 

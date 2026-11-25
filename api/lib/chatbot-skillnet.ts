@@ -47,29 +47,28 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { logger } from "./logger.js";
 
-import {
-  pfCore,
-  skmCore,
-  pvsystCore,
-  sldSkillAr,
-  sldSkillEn,
-  docgenSkillAr,
-  docgenSkillEn,
-  docgenQuickAr,
-  docgenQuickEn,
-} from "./chatbot-skills.js";
+// CABLES & EGYPTIAN-CODE EXPERT CORE (v1.0.0): same one-way pattern —
+// skillnet → cables → {cables-kb, egycode-kb}; cables imports nothing here.
+import { CABLES_CORE_BLOCKS } from "./chatbot-cables.js";
+import { ABB_CORE_BLOCKS, BRK_CORE_BLOCKS, GILANY_CORE_BLOCKS, SAUDI_CORE_BLOCKS } from "./chatbot-refs.js";
 
 // SAADAT ACADEMIC CORE (v1.0.0): imported from the leaf module — one-way
 // dependency (skillnet → saadat → saadat-kb; saadat imports nothing here,
 // it carries its own local normalizer to avoid a cycle).
 import { SAADAT_CORE_BLOCKS } from "./chatbot-saadat.js";
-
-// CABLES & EGYPTIAN-CODE EXPERT CORE (v1.0.0): same one-way pattern —
-// skillnet → cables → {cables-kb, egycode-kb}; cables imports nothing here.
-import { CABLES_CORE_BLOCKS } from "./chatbot-cables.js";
-import { SAUDI_CORE_BLOCKS, ABB_CORE_BLOCKS, BRK_CORE_BLOCKS, GILANY_CORE_BLOCKS } from "./chatbot-refs.js";
+import {
+  docgenQuickAr,
+  docgenQuickEn,
+  docgenSkillAr,
+  docgenSkillEn,
+  pfCore,
+  pvsystCore,
+  skmCore,
+  sldSkillAr,
+  sldSkillEn,
+} from "./chatbot-skills.js";
+import { logger } from "./logger.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 

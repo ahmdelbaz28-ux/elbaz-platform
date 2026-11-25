@@ -16,8 +16,10 @@
  *     threatens; YouTube gives no non-invasive way to VERIFY a subscription,
  *     so the flow enforces the click, not a fake "verification".
  */
-import { useState } from "react";
+
 import { BellRing, Youtube } from "lucide-react";
+import { useState } from "react";
+import { trackEvent } from "@/lib/clarity";
 import {
   buildSubscribeUrl,
   hasPressedSubscribe,
@@ -25,7 +27,6 @@ import {
   storeSubscribeTicket,
 } from "@/lib/subscribe-gate";
 import { trpc } from "@/providers/trpc";
-import { trackEvent } from "@/lib/clarity";
 
 interface SubscribeGateProps {
   readonly lang: "en" | "ar";

@@ -3,9 +3,9 @@ import { pruneOldNotifications, pushNotification } from "./notification-broadcas
 import {
   extractFromRss,
   mergeVideoSources,
+  type ParsedVideo,
   parseInnertubeBrowse,
   parsePlaylistVideos,
-  type ParsedVideo,
 } from "./notification-utils.js";
 import {
   fetchRelayOembedVerdict,

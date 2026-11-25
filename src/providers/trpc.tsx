@@ -1,12 +1,12 @@
-import { createTRPCReact } from "@trpc/react-query";
-import { httpLink, TRPCClientError } from "@trpc/client";
-import { QueryCache, QueryClient, MutationCache } from "@tanstack/react-query";
-import superjson from "superjson";
-import type { AppRouter } from "../../api/router";
-import type { ReactNode } from "react";
-import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
-import { isNativePlatform, getStoredToken, setStoredToken, removeStoredToken, clearAuthFlagCookie, hasStoredAuth } from "@/lib/auth-storage";
+import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { httpLink, TRPCClientError } from "@trpc/client";
+import { createTRPCReact } from "@trpc/react-query";
+import type { ReactNode } from "react";
+import superjson from "superjson";
+import { clearAuthFlagCookie, getStoredToken, hasStoredAuth, isNativePlatform, removeStoredToken, setStoredToken } from "@/lib/auth-storage";
+import type { AppRouter } from "../../api/router";
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const trpc = createTRPCReact<AppRouter>();

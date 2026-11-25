@@ -1,13 +1,14 @@
 /**
  * Comments Router — lesson discussion comments with likes
  */
-import { z } from "zod";
+
+import { commentLikes, courses, enrollments, lessonComments, lessons, users } from "@db/schema";
 import { TRPCError } from "@trpc/server";
-import { desc, eq, sql, and, count } from "drizzle-orm";
-import { createRouter, publicQuery, authMutation, adminMutation, adminQuery } from "./middleware";
-import { getDb } from "./queries/connection";
-import { lessonComments, commentLikes, users, lessons, courses, enrollments } from "@db/schema";
+import { and, count, desc, eq, sql } from "drizzle-orm";
+import { z } from "zod";
 import { activeEnrollmentWhere } from "./lib/enrollment.js";
+import { adminMutation, adminQuery, authMutation, createRouter, publicQuery } from "./middleware";
+import { getDb } from "./queries/connection";
 
 export const commentsRouter = createRouter({
   list: publicQuery

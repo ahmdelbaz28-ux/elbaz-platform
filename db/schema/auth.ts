@@ -5,17 +5,17 @@
  */
 
 import {
-  mysqlTable,
   bigint,
-  varchar,
-  text,
   boolean,
-  timestamp,
-  json,
-  int,
-  index,
-  uniqueIndex,
   foreignKey,
+  index,
+  int,
+  json,
+  mysqlTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  varchar,
 } from "drizzle-orm/mysql-core";
 
 // ─────────────────────────────────────────────────────────────────────────────

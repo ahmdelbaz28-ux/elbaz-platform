@@ -1,10 +1,10 @@
-import { useTranslation } from "@/hooks/useTranslation";
-import { useAuth } from "@/hooks/useAuth";
-import { trpc } from "@/providers/trpc";
-import Seo from "@/components/SEO";
-import { Loader2, Award, BookOpen, CheckCircle, DollarSign, Clock, TrendingUp } from "lucide-react";
-import { Link } from "react-router";
+import { Award, BookOpen, CheckCircle, Clock, DollarSign, Loader2, TrendingUp } from "lucide-react";
 import { type ReactNode } from "react";
+import { Link } from "react-router";
+import Seo from "@/components/SEO";
+import { useAuth } from "@/hooks/useAuth";
+import { useTranslation } from "@/hooks/useTranslation";
+import { trpc } from "@/providers/trpc";
 
 interface JourneyStats {
   totalCourses?: number;

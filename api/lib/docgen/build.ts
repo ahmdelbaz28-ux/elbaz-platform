@@ -2,10 +2,11 @@
  * Document dispatch — DocSpec + format → file bytes + filename + MIME.
  * The single entry point the router (and tests) call. Pure + deterministic.
  */
-import { docFilename, type DocFormat, type NormalizedDocSpec } from "./spec.js";
+
 import { renderDocx } from "./docx.js";
 import { renderMarkdown } from "./md.js";
 import { renderPdf } from "./pdf.js";
+import { type DocFormat, docFilename, type NormalizedDocSpec } from "./spec.js";
 
 export interface BuiltDoc {
   bytes: Uint8Array;

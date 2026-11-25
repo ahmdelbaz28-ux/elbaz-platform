@@ -4,12 +4,12 @@
  * Procedures: tickets (paginated list), updateTicketStatus, replyTicket
  */
 
-import { z } from "zod";
-import { TRPCError } from "@trpc/server";
-import { desc, eq, and } from "drizzle-orm";
-import { adminQuery, adminMutation } from "./middleware";
-import { getDb } from "./queries/connection";
 import { supportTickets, ticketReplies } from "@db/schema";
+import { TRPCError } from "@trpc/server";
+import { and, desc, eq } from "drizzle-orm";
+import { z } from "zod";
+import { adminMutation, adminQuery } from "./middleware";
+import { getDb } from "./queries/connection";
 
 export const adminTicketsProcedures = {
   // All support tickets for admin (trpc.admin.tickets.useQuery)

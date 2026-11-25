@@ -17,23 +17,24 @@
  * sheet edges) and the first zero-collision spot wins; a least-collision
  * fallback keeps output deterministic when the sheet is dense.
  */
-import { paintSymbol, THEMES, type Theme } from "./symbols";
+
 import { labelSideBand, lintSpec, sheetSize } from "./lint";
+import { paintSymbol, THEMES, type Theme } from "./symbols";
 import {
+  type BBox,
   CELL,
   LABEL_FONT,
   LABEL_GAP,
   LABEL_SIDE_GAP,
+  type PlacedElement,
   placeElements,
   rectsOverlap,
-  textWidth,
-  type BBox,
-  type PlacedElement,
   type SldSpec,
+  textWidth,
 } from "./types";
 
 // Re-exports keep the historical import surface (tests import these from here).
-export { textWidth, LABEL_FONT } from "./types";
+export { LABEL_FONT, textWidth } from "./types";
 
 export interface RenderResult {
   svg: string;

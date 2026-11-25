@@ -18,15 +18,15 @@
  *   settings — { autoImport, autoImportFree, autoCover }
  */
 
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
-import { getDb, getRawConnection } from "../queries/connection.js";
 import { courses, lessons, notifications, siteSettings } from "@db/schema";
-import { logger } from "./logger.js";
-import { invalidateCourseDetailCache } from "./cache.js";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { buildYouTubeThumbnailUrl, buildYouTubeWatchUrl, extractYouTubeId } from "../../src/lib/youtube-url";
-import { fetchPlaylistVideosForImport, getChannelUrl, getPlaylistId } from "./youtube-watcher.js";
+import { getDb, getRawConnection } from "../queries/connection.js";
+import { invalidateCourseDetailCache } from "./cache.js";
+import { logger } from "./logger.js";
 import { pushNotification } from "./notification-broadcast.js";
 import type { ParsedVideo } from "./notification-utils.js";
+import { fetchPlaylistVideosForImport, getChannelUrl, getPlaylistId } from "./youtube-watcher.js";
 
 // ─── Configuration ─────────────────────────────────────────────────────────────
 

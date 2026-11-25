@@ -25,18 +25,18 @@
  *     contract as the platform's own provider calls).
  */
 
+import { userAiProviders } from "@db/schema";
 import { eq } from "drizzle-orm";
 import { getDb } from "../queries/connection.js";
-import { userAiProviders } from "@db/schema";
-import { decryptByokKey } from "./byok-crypto.js";
-import { buildUpstreamSSETransform, isPublicProviderUrl } from "./ai-router.js";
 import { headerTimeoutSignal } from "./abort-utils.js";
-import { stripThinkBlocks } from "./think-filter.js";
-import { reportTokenUsage } from "./token-usage.js";
-import { pinnedPublicFetch } from "./public-url-dispatcher.js";
-import { logger } from "./logger.js";
+import { buildUpstreamSSETransform, isPublicProviderUrl } from "./ai-router.js";
+import { decryptByokKey } from "./byok-crypto.js";
 import type { ChatApiMessage } from "./chatbot.js";
 import type { ModeTuning } from "./chatbot-prompts.js";
+import { logger } from "./logger.js";
+import { pinnedPublicFetch } from "./public-url-dispatcher.js";
+import { stripThinkBlocks } from "./think-filter.js";
+import { reportTokenUsage } from "./token-usage.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Provider catalog shown in the chatbot's key menu (frontend mirrors this).

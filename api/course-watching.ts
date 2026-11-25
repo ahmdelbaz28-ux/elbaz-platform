@@ -7,17 +7,17 @@
  * no procedure here ever serves playback data to a logged-out visitor.
  */
 
-import { z } from "zod";
-import { eq, and, sql } from "drizzle-orm";
+import { courses, enrollments, lessonProgress, lessons } from "@db/schema";
 import { TRPCError } from "@trpc/server";
-import { authedQuery, authMutation } from "./middleware";
-import { getDb } from "./queries/connection";
-import { lessons, enrollments, lessonProgress, courses } from "@db/schema";
-import { recalcEnrollmentProgress, markLessonWatched } from "./lib/progress";
-import { getSecureVideoUrl } from "./lib/video-protection";
+import { and, eq, sql } from "drizzle-orm";
+import { z } from "zod";
 import { activeEnrollmentWhere } from "./lib/enrollment";
+import { markLessonWatched, recalcEnrollmentProgress } from "./lib/progress";
 import { getSubscribeGateConfig } from "./lib/subscribe-gate-config";
 import { issueSubscribeTicket, verifySubscribeTicket } from "./lib/subscribe-ticket";
+import { getSecureVideoUrl } from "./lib/video-protection";
+import { authedQuery, authMutation } from "./middleware";
+import { getDb } from "./queries/connection";
 
 /**
  * Owner contract (2026): subscribing to the YouTube channel is a HARD

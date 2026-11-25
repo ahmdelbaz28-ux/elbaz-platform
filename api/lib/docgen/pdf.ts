@@ -13,12 +13,13 @@
  * section, and a per-page footer with page numbers. It is a REPORT engine —
  * the shapes a technical chatbot actually produces.
  */
-import { deflateSync } from "node:zlib";
+
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { parseTtf, textWidthUnits, type FontData } from "./font.js";
-import { bidiRuns, shapeLine, isArabicText } from "./shape.js";
+import { fileURLToPath } from "node:url";
+import { deflateSync } from "node:zlib";
+import { type FontData, parseTtf, textWidthUnits } from "./font.js";
+import { bidiRuns, isArabicText, shapeLine } from "./shape.js";
 import type { NormalizedDocSpec } from "./spec.js";
 
 // ─── Geometry (pt) ───────────────────────────────────────────────────────────

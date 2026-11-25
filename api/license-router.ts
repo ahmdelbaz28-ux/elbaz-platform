@@ -1,9 +1,9 @@
-import { z } from "zod";
-import { desc, eq, and, count } from "drizzle-orm";
-import { createRouter, authQuery, adminMutation, publicMutation } from "./middleware";
-import { getDb } from "./queries/connection";
-import { licenses, users, courses } from "@db/schema";
 import { randomBytes } from "node:crypto";
+import { courses, licenses, users } from "@db/schema";
+import { and, count, desc, eq } from "drizzle-orm";
+import { z } from "zod";
+import { adminMutation, authQuery, createRouter, publicMutation } from "./middleware";
+import { getDb } from "./queries/connection";
 
 function generateLicenseKey(): string {
   const segments = [];

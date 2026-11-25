@@ -1,14 +1,14 @@
-import { z } from "zod";
-import { eq, and } from "drizzle-orm";
 import { randomInt } from "node:crypto";
-import { createRouter, authedQuery } from "./middleware";
-import { getDb } from "./queries/connection";
-import { quizQuestions, lessonProgress, enrollments, lessons, courses } from "@db/schema";
+import { courses, enrollments, lessonProgress, lessons, quizQuestions } from "@db/schema";
 import { TRPCError } from "@trpc/server";
-import { recalcEnrollmentProgress } from "./lib/progress";
+import { and, eq } from "drizzle-orm";
+import { z } from "zod";
 import { activeEnrollmentWhere } from "./lib/enrollment";
-import { checkRateLimit } from "./lib/rate-limiter";
+import { recalcEnrollmentProgress } from "./lib/progress";
 import { scoreQuizSubmission } from "./lib/quiz-scoring";
+import { checkRateLimit } from "./lib/rate-limiter";
+import { authedQuery, createRouter } from "./middleware";
+import { getDb } from "./queries/connection";
 
 // ✅ SECURITY FIX (audit run-1, fp api/quiz-router.ts:quiz.submit
 // :duplicate-answer-score-inflation): the wire format previously accepted

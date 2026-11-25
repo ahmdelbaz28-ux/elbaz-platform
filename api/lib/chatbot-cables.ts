@@ -43,12 +43,12 @@
 
 import {
   AMPACITY_TABLES,
-  SHORT_CIRCUIT_TABLES,
-  SC_DURATIONS,
-  VOLTAGE_DROP_MULTICORE,
-  VOLTAGE_DROP_SINGLE_CORE,
   type CableAmpacityRow,
   type CableAmpacityTable,
+  SC_DURATIONS,
+  SHORT_CIRCUIT_TABLES,
+  VOLTAGE_DROP_MULTICORE,
+  VOLTAGE_DROP_SINGLE_CORE,
 } from "./chatbot-cables-kb.js";
 import { EGYCODE_SECTIONS, type EgyCodeSection } from "./chatbot-egycode-kb.js";
 // ✅ v3.9.2 cross-gating (one-way dependency — refs never imports cables):

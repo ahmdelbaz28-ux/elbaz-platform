@@ -1,21 +1,21 @@
+import {
+  ArrowLeft,
+  Inbox,
+  KeyRound,
+  Loader2,
+  Mail,
+  ShieldCheck,
+} from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { useTranslation } from "@/hooks/useTranslation";
-import { isValidEmail, hasPasswordStrengthChars } from "@/lib/validation";
-import { trpc } from "@/providers/trpc";
 import { toast } from "sonner";
-import {
-  KeyRound,
-  ArrowLeft,
-  Mail,
-  Loader2,
-  ShieldCheck,
-  Inbox,
-} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useTranslation } from "@/hooks/useTranslation";
 import { trackPlatform } from "@/lib/clarity";
+import { hasPasswordStrengthChars, isValidEmail } from "@/lib/validation";
+import { trpc } from "@/providers/trpc";
 
 type Step = "enterEmail" | "sending" | "sent" | "resetDone";
 

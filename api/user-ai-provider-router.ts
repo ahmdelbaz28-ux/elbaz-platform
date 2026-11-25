@@ -24,16 +24,16 @@
  *     pattern as the chatbot router's limiter).
  */
 
-import { Hono, type Context } from "hono";
-import { eq } from "drizzle-orm";
-import { z } from "zod";
-import { getDb } from "./queries/connection";
 import { userAiProviders } from "@db/schema";
+import { eq } from "drizzle-orm";
+import { type Context, Hono } from "hono";
+import { z } from "zod";
 import { resolveOptionalUser } from "./context.js";
-import { encryptByokKey, decryptByokKey } from "./lib/byok-crypto.js";
 import { isPublicProviderUrl, maskApiKey } from "./lib/ai-router.js";
+import { decryptByokKey, encryptByokKey } from "./lib/byok-crypto.js";
 import { getUserByokConfig, isKnownUserProvider, testByokProvider, USER_PROVIDER_CATALOG } from "./lib/chatbot-byok.js";
 import { logger } from "./lib/logger.js";
+import { getDb } from "./queries/connection";
 
 const userAiProviderRouter = new Hono();
 

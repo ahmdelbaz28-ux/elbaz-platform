@@ -1,47 +1,47 @@
+import { motion, useScroll, useTransform } from "framer-motion";
 import { Link } from "react-router";
-import { useTranslation } from "@/hooks/useTranslation";
-import { trpc } from "@/providers/trpc";
 import CourseCard from "@/components/CourseCard";
 import Seo from "@/components/SEO";
-import { NeonGlow } from "@/components/ui/motion";
-import AnimatedIcon from "@/components/ui/AnimatedIcon";
-import BentoCard from "@/components/ui/BentoCard";
 import AnimatedCounter from "@/components/ui/AnimatedCounter";
-import ScrollReveal from "@/components/ui/ScrollReveal";
+import AnimatedIcon from "@/components/ui/AnimatedIcon";
 import ArcFlashButton from "@/components/ui/ArcFlashButton";
-import { motion, useScroll, useTransform } from "framer-motion";
+import BentoCard from "@/components/ui/BentoCard";
+import { NeonGlow } from "@/components/ui/motion";
+import ScrollReveal from "@/components/ui/ScrollReveal";
+import { useTranslation } from "@/hooks/useTranslation";
+import { trpc } from "@/providers/trpc";
 import "@/elite-animations.css";
 import {
-  PlayCircle,
-  Shield,
+  ArrowRight,
   Award,
-  CreditCard,
-  Star,
+  BadgeCheck,
+  BarChart3,
+  Briefcase,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
-  Briefcase,
-  GraduationCap,
-  X,
   Clock,
-  Zap,
-  Monitor,
-  Globe,
-  Trophy,
-  Users,
   Code,
   Cpu,
-  Layers,
-  BarChart3,
-  Sparkles,
-  ArrowRight,
-  CheckCircle2,
-  Rocket,
+  CreditCard,
   Eye,
+  Globe,
+  GraduationCap,
+  Layers,
+  Monitor,
   PenLine,
-  BadgeCheck,
+  PlayCircle,
+  Rocket,
+  Shield,
+  Sparkles,
+  Star,
+  Trophy,
+  Users,
+  X,
+  Zap,
 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { useState, useEffect, useRef } from "react";
 import { trackEvent } from "@/lib/clarity";
 
 type Category = {

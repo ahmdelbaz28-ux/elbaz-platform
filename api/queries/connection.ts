@@ -1,6 +1,6 @@
+import { randomInt } from "node:crypto";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { randomInt } from "node:crypto";
 import { env } from "../lib/env.js";
 import { logger } from "../lib/logger.js";
 
@@ -164,5 +164,5 @@ async function withTransaction<T>(fn: (tx: typeof db) => Promise<T>): Promise<T>
   });
 }
 
-export { db, getDb, withTransaction, poolConfig as connectionConfig, pool };
+export { db, getDb, pool, poolConfig as connectionConfig, withTransaction };
 export type Database = typeof db;

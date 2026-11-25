@@ -1,18 +1,18 @@
-import { useState, useEffect, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { initiateGoogleOAuth } from "@/lib/google-auth";
+import { Eye, EyeOff, Gift, Hourglass, Zap } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { useTranslation } from "@/hooks/useTranslation";
-import { isValidEmail, hasPasswordStrengthChars } from "@/lib/validation";
-import { trpc } from "@/providers/trpc";
 import { toast } from "sonner";
-import { Zap, Eye, EyeOff, Gift, Hourglass } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { trackPlatform, identifyUser } from "@/lib/clarity";
+import { useTranslation } from "@/hooks/useTranslation";
 import { isNativePlatform, setStoredToken } from "@/lib/auth-storage";
+import { identifyUser, trackPlatform } from "@/lib/clarity";
+import { initiateGoogleOAuth } from "@/lib/google-auth";
 import { bilingualByLang } from "@/lib/i18n";
+import { hasPasswordStrengthChars, isValidEmail } from "@/lib/validation";
+import { trpc } from "@/providers/trpc";
 
 interface GoogleCredentialResponse {
   credential?: string;

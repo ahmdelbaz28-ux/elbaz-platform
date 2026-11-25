@@ -36,14 +36,14 @@
  * DB writes are best-effort (never block or throw on the hot path).
  */
 
+import { type AiModel, type AiProvider, aiModels, aiProviders } from "@db/schema";
 import { and, asc, eq } from "drizzle-orm";
-import { aiModels, aiProviders, type AiModel, type AiProvider } from "@db/schema";
-import { logger } from "./logger.js";
-import { reportTokenUsage } from "./token-usage.js";
+import { callerAwareTimeout, withCallerAbort } from "./abort-utils.js";
 import { sanitizeReplyOutput } from "./chatbot-prompts.js";
-import { stripThinkBlocks, ThinkStreamFilter } from "./think-filter.js";
 import { looksComplete } from "./finalize-reply.js";
-import { withCallerAbort, callerAwareTimeout } from "./abort-utils.js";
+import { logger } from "./logger.js";
+import { stripThinkBlocks, ThinkStreamFilter } from "./think-filter.js";
+import { reportTokenUsage } from "./token-usage.js";
 
 // ✅ ARCH-AUDIT FIX: looksComplete moved to finalize-reply.ts so the rescue
 // heuristic and the deterministic truncation policy can never drift apart.

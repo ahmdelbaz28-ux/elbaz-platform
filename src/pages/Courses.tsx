@@ -1,13 +1,13 @@
+import { ChevronLeft, ChevronRight, CircuitBoard, Cpu, FileCheck, Search, SlidersHorizontal, X, Zap } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
-import { useTranslation } from "@/hooks/useTranslation";
-import { trpc } from "@/providers/trpc";
 import CourseCard from "@/components/CourseCard";
 import Seo from "@/components/SEO";
 import { CourseCardSkeleton } from "@/components/SkeletonCard";
 import { Input } from "@/components/ui/input";
-import { Zap, CircuitBoard, Cpu, FileCheck, SlidersHorizontal, Search, X, ChevronLeft, ChevronRight } from "lucide-react";
-import { useState, useMemo, useEffect } from "react";
+import { useTranslation } from "@/hooks/useTranslation";
 import { trackEvent } from "@/lib/clarity";
+import { trpc } from "@/providers/trpc";
 
 interface Category {
   id: number;

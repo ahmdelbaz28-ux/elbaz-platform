@@ -15,16 +15,16 @@
  *   onReady  → auto-resume from the saved position (same >5s rule)
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { trpc } from "@/providers/trpc";
-import { trackEvent } from "@/lib/clarity";
 import CommentNudge from "@/components/CommentNudge";
-import { buildYouTubeWatchUrl } from "@/lib/youtube-url";
+import { trackEvent } from "@/lib/clarity";
 import { sendHeartbeatBeacon } from "@/lib/watch-beacon";
 import {
   loadYouTubeIframeApi,
   YT_STATE,
   type YTPlayer,
 } from "@/lib/youtube-player-api";
+import { buildYouTubeWatchUrl } from "@/lib/youtube-url";
+import { trpc } from "@/providers/trpc";
 
 interface YouTubeLessonPlayerProps {
   readonly videoId: string;

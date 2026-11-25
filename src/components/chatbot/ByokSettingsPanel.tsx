@@ -12,9 +12,9 @@
  * preview; the panel never displays or re-fills a stored key.
  */
 
+import { ArrowRight, CheckCircle2, Eye, EyeOff, KeyRound, Loader2, PlugZap, Trash2, XCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ArrowRight, CheckCircle2, Eye, EyeOff, KeyRound, Loader2, PlugZap, Trash2, XCircle } from "lucide-react";
 
 const API_BASE = globalThis.Capacitor?.isNativePlatform()
   ? (import.meta.env.VITE_API_URL || "https://ahmedelbaz.qzz.io")

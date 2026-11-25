@@ -32,21 +32,20 @@
  */
 
 import { env } from "../lib/env";
-import { getSystemPrompt, MODE_TUNING, type ChatbotMode, type ModeTuning } from "./chatbot-prompts.js";
-
-import { buildSaadatContextBlock, enforcePinnedCitation } from "./chatbot-saadat.js";
-import { buildCablesContextBlock, enforceCablesCitations, hasCablesIntent } from "./chatbot-cables.js";
-import { buildRefsContextBlock, enforceRefsCitations, hasRefsIntent, routeRefsQuery } from "./chatbot-refs.js";
-import { extractRoutingSignal } from "./chatbot-skillnet.js";
-import { webIntentFromMessages } from "./chatbot-intent.js";
-import { reportTokenUsage } from "./token-usage.js";
-import type { ParsedScreenContext } from "./chatbot-screen.js";
-import { logger } from "./logger.js";
-import { routeChatCompletion, isWebPluginDisabled, disableWebPluginFor, WEB_PLUGIN_BODY, isOpenRouterDailyLimited, noteOpenRouterDailyLimit, isChatLaneModel, isDiscoveredModelId } from "./ai-router.js";
 import { withCallerAbort } from "./abort-utils.js";
-import { stripThinkBlocks } from "./think-filter.js";
-import { tryByokChat, type ByokConfig } from "./chatbot-byok.js";
+import { disableWebPluginFor, isChatLaneModel, isDiscoveredModelId, isOpenRouterDailyLimited, isWebPluginDisabled, noteOpenRouterDailyLimit, routeChatCompletion, WEB_PLUGIN_BODY } from "./ai-router.js";
+import { type ByokConfig, tryByokChat } from "./chatbot-byok.js";
+import { buildCablesContextBlock, enforceCablesCitations, hasCablesIntent } from "./chatbot-cables.js";
+import { webIntentFromMessages } from "./chatbot-intent.js";
+import { type ChatbotMode, getSystemPrompt, MODE_TUNING, type ModeTuning } from "./chatbot-prompts.js";
+import { buildRefsContextBlock, enforceRefsCitations, hasRefsIntent, routeRefsQuery } from "./chatbot-refs.js";
+import { buildSaadatContextBlock, enforcePinnedCitation } from "./chatbot-saadat.js";
+import type { ParsedScreenContext } from "./chatbot-screen.js";
+import { extractRoutingSignal } from "./chatbot-skillnet.js";
 import { buildAugmentedTextMessages, buildVisionFailureMessages, readImageViaVisionModels } from "./chatbot-vision.js";
+import { logger } from "./logger.js";
+import { stripThinkBlocks } from "./think-filter.js";
+import { reportTokenUsage } from "./token-usage.js";
 
 // ════════════════════════════════════════════════════════════════════════
 // HELPERS

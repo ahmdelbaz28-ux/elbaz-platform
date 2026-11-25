@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from "react";
+
 import { FlaskConical } from "lucide-react";
+import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
 
 interface EngineeringModeContextType {
   isActive: boolean;

@@ -1,16 +1,16 @@
+import {
+  AlertCircle,
+  Award,
+  CheckCircle2,
+  FileCheck,
+  Loader2,
+  Search,
+  Shield,
+} from "lucide-react";
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
 import { trpc } from "@/providers/trpc";
-import {
-  Search,
-  CheckCircle2,
-  AlertCircle,
-  Loader2,
-  Shield,
-  Award,
-  FileCheck,
-} from "lucide-react";
 
 export default function CertificateVerify() {
   const { t, lang } = useTranslation();

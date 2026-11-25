@@ -4,19 +4,19 @@
  * Procedures: payments (paginated), stats (dashboard overview), analytics (30-day)
  */
 
-import { z } from "zod";
-import { desc, eq, sql, and, count } from "drizzle-orm";
-import { adminQuery, adminMutation } from "./middleware";
-import { getDb, withTransaction } from "./queries/connection";
-import { users, payments, enrollments, courses, supportTickets, lessons } from "@db/schema";
+import { courses, enrollments, lessons, payments, supportTickets, users } from "@db/schema";
 import { TRPCError } from "@trpc/server";
+import { and, count, desc, eq, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
+import { z } from "zod";
 import { invalidateCourseCache, invalidateStatsCache } from "./lib/cache";
-import { releasePromoUsageForPayment } from "./promo-router.js";
-import { guardManualPaymentAction } from "./lib/payments-core";
-import { resolvePaymobRuntimeConfig } from "./lib/payments-config";
-import { createIntention, createLegacyWalletCheckout, summarizePaymobConfig } from "./lib/paymob";
 import { logger } from "./lib/logger";
+import { resolvePaymobRuntimeConfig } from "./lib/payments-config";
+import { guardManualPaymentAction } from "./lib/payments-core";
+import { createIntention, createLegacyWalletCheckout, summarizePaymobConfig } from "./lib/paymob";
+import { adminMutation, adminQuery } from "./middleware";
+import { releasePromoUsageForPayment } from "./promo-router.js";
+import { getDb, withTransaction } from "./queries/connection";
 
 /**
  * Sandbox-safe legacy wallet-flow probe (1 EGP order + payment key, never paid).

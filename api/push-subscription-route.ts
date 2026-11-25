@@ -1,11 +1,11 @@
+import { pushSubscriptions } from "@db/schema";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
 import { resolveOptionalUser } from "./context";
-import { getDb, withTransaction } from "./queries/connection";
-import { pushSubscriptions } from "@db/schema";
-import { getVapidPublicKey, isAllowedPushEndpoint } from "./lib/push-delivery";
 import { logger } from "./lib/logger";
+import { getVapidPublicKey, isAllowedPushEndpoint } from "./lib/push-delivery";
+import { getDb, withTransaction } from "./queries/connection";
 
 // ─── Web Push subscription management ─────────────────────────────────────────
 // Mounted at /api/notifications/push in boot.ts.

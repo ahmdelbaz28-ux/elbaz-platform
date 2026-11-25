@@ -17,23 +17,22 @@
  * update, the stored key is preserved.
  */
 
-import { z } from "zod";
-import { asc, eq } from "drizzle-orm";
-import { TRPCError } from "@trpc/server";
-import { adminQuery, adminMutation } from "./middleware";
-import { getDb } from "./queries/connection";
 import { aiModels, aiProviders } from "@db/schema";
+import { TRPCError } from "@trpc/server";
+import { asc, eq } from "drizzle-orm";
+import { z } from "zod";
 import {
-  discoverProviderModels,
   discoverAllProviders,
+  discoverProviderModels,
   getRouterHealthSnapshot,
+  invalidateAiRouterCache,isPublicProviderUrl, 
   maskApiKey,
   PROVIDER_CATALOG,
-  testProvider,
-  invalidateAiRouterCache,
+  testProvider
 } from "./lib/ai-router.js";
 import { logger } from "./lib/logger.js";
-import { isPublicProviderUrl } from "./lib/ai-router.js";
+import { adminMutation, adminQuery } from "./middleware";
+import { getDb } from "./queries/connection";
 
 function slugify(input: string): string {
   const base = input.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);

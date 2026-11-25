@@ -1,5 +1,5 @@
-import { createMiddleware } from "hono/factory";
 import { timingSafeEqual } from "node:crypto";
+import { createMiddleware } from "hono/factory";
 import { getClientIpFromHono as getClientIp } from "../lib/client-ip.js";
 import { logger } from "../lib/logger.js";
 

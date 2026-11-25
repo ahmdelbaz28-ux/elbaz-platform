@@ -1,8 +1,8 @@
+import { Facebook, Instagram, Linkedin, Mail, Twitter, Youtube } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { useTranslation } from "@/hooks/useTranslation";
 import { useContactSettings } from "@/hooks/useContactSettings";
-import { Youtube, Linkedin, Mail, Facebook, Instagram, Twitter } from "lucide-react";
+import { useTranslation } from "@/hooks/useTranslation";
 
 // Official Telegram brand mark (circular paper-plane logo)
 const TelegramIcon = ({ className }: { className?: string }) => (

@@ -1,5 +1,5 @@
-import { visualRandom } from "@/lib/random";
 import { useEffect, useRef } from 'react';
+import { visualRandom } from "@/lib/random";
 
 /* -------------------------------------------------------------------------- */
 /*  StarfieldBackground                                                        */

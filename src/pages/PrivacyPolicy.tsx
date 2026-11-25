@@ -1,7 +1,7 @@
+import { ChevronLeft, ShieldCheck } from "lucide-react";
 import { Link } from "react-router";
-import { useTranslation } from "@/hooks/useTranslation";
 import { useContactSettings } from "@/hooks/useContactSettings";
-import { ShieldCheck, ChevronLeft } from "lucide-react";
+import { useTranslation } from "@/hooks/useTranslation";
 
 export default function PrivacyPolicy() {
   const { lang } = useTranslation();

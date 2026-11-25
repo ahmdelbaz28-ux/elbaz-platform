@@ -10,10 +10,10 @@
  */
 
 import crypto from "node:crypto";
-import { generateR2PresignedUrl } from "./r2";
+import { buildYouTubeEmbedUrl, extractYouTubeId, isYouTubeVideoRef } from "../../src/lib/youtube-url";
 import { env } from "./env";
 import { logger } from "./logger.js";
-import { buildYouTubeEmbedUrl, extractYouTubeId, isYouTubeVideoRef } from "../../src/lib/youtube-url";
+import { generateR2PresignedUrl } from "./r2";
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 const VIDEO_URL_EXPIRY_SECONDS = 1800; // 30 minutes

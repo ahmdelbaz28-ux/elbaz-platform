@@ -9,11 +9,11 @@ import {
   LABEL_FONT,
   LABEL_SIDE_GAP,
   MARGIN,
+  type PlacedElement,
   placeElements,
   rectsOverlap,
-  textWidth,
-  type PlacedElement,
   type SldSpec,
+  textWidth,
 } from "./types";
 
 export type FindingLevel = "error" | "warn";

@@ -16,21 +16,21 @@
  * configured provider still answers.
  */
 
-import { useMemo, useState } from "react";
-import { useTranslation } from "@/hooks/useTranslation";
-import { trpc } from "@/providers/trpc";
-import { toast } from "sonner";
 import {
-  Bot, Plus, Pencil, Trash2, RefreshCw, PlugZap, Radar, CheckCircle2, XCircle,
-  AlertTriangle, Eye, MessageSquare, Image as ImageIcon, Sparkles, Cpu,
+  AlertTriangle, 
+  Bot, CheckCircle2, Cpu,Eye, Image as ImageIcon, MessageSquare, Pencil, PlugZap, Plus, Radar, RefreshCw, Sparkles, Trash2, XCircle,
 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
+import { useTranslation } from "@/hooks/useTranslation";
+import { trpc } from "@/providers/trpc";
 
 interface CatalogEntry { slug: string; displayName: string; baseUrl: string; hint: string; }
 interface ModelRow {

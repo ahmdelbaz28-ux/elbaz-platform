@@ -1,5 +1,5 @@
+import { useCallback, useEffect, useRef, useState } from "react";
 import { visualRandom } from "@/lib/random";
-import { useEffect, useRef, useState, useCallback } from "react";
 
 interface SLDProps {
   readonly color?: string;

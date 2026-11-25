@@ -1,9 +1,9 @@
-import { z } from "zod";
-import { desc, eq } from "drizzle-orm";
-import { createRouter, publicQuery, adminMutation } from "./middleware";
-import { getDb } from "./queries/connection";
 import { softwareDownloads } from "@db/schema";
+import { desc, eq } from "drizzle-orm";
+import { z } from "zod";
 import { pushNotification } from "./lib/notification-broadcast.js";
+import { adminMutation, createRouter, publicQuery } from "./middleware";
+import { getDb } from "./queries/connection";
 
 export const softwareRouter = createRouter({
   list: publicQuery.query(async () => {

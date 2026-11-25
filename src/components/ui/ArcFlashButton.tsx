@@ -1,5 +1,5 @@
+import { useEffect, useRef, useState } from "react";
 import { visualRandom } from "@/lib/random";
-import { useState, useEffect, useRef } from "react";
 
 interface ArcFlashButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   readonly children: React.ReactNode;

@@ -1,13 +1,13 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { payments, promoCodes, promoCodeUsage } from "@db/schema";
+import { and, count, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { db } from "./queries/connection.js";
 import { resolveOptionalUser } from "./context.js";
-import { eq, and, sql, lte, gte, isNull, or, count } from "drizzle-orm";
-import { rateLimitPerWindow } from "./lib/rate-limiter.js";
 import { getClientIpFromHono } from "./lib/client-ip.js";
 import { env } from "./lib/env.js";
-import { createHmac, timingSafeEqual } from "node:crypto";
-import { promoCodes, promoCodeUsage, payments } from "@db/schema";
+import { rateLimitPerWindow } from "./lib/rate-limiter.js";
+import { db } from "./queries/connection.js";
 
 interface PromoSession { userId: number; }
 const promoRouter = new Hono<{ Variables: { session: PromoSession | null } }>();
@@ -271,7 +271,7 @@ promoRouter.get("/validate/:code", async (c) => {
   });
 });
 
-export { promoRouter, applyPromoCodeInternal, verifyPromoHmac };
+export { applyPromoCodeInternal, promoRouter, verifyPromoHmac };
 
 
 /**

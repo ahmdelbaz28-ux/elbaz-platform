@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { BookOpen, FileBox, HelpCircle, Search, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { useTranslation } from "@/hooks/useTranslation";
 import { trpc } from "@/providers/trpc";
-import { Search, X, FileBox, HelpCircle, BookOpen } from "lucide-react";
 
 // ─── Helpers extracted to keep GlobalSearch below cognitive-complexity cap (S3776) ───
 function formatCoursePrice(course: { isPremium?: boolean; price?: number | string }, lang: "ar" | "en"): string {

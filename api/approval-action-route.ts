@@ -26,9 +26,9 @@
  */
 
 import { Hono } from "hono";
-import { verifyApprovalActionToken, decideApproval } from "./lib/approval.js";
-import { logger } from "./lib/logger.js";
+import { decideApproval, verifyApprovalActionToken } from "./lib/approval.js";
 import { getClientIpFromHeaders } from "./lib/client-ip.js";
+import { logger } from "./lib/logger.js";
 
 export const approvalActionRoute = new Hono();
 

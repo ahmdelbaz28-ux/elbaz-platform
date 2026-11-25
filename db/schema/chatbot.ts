@@ -13,13 +13,13 @@
  */
 
 import {
-  mysqlTable,
   bigint,
-  varchar,
+  foreignKey,
+  index,
+  mysqlTable,
   text,
   timestamp,
-  index,
-  foreignKey,
+  varchar,
 } from "drizzle-orm/mysql-core";
 import { users } from "./auth.js";
 

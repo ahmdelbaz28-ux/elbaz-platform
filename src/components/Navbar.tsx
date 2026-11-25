@@ -1,22 +1,20 @@
-import { useState, useEffect, useRef } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import {BookMarked, BookOpen, ChevronDown,FileBox, Headphones,Heart, HelpCircle, Home,LayoutDashboard, LogOut, 
+  Menu, Newspaper, 
+  Shield, 
+  SunDim, TrendingUp,
+  UserCog, X, 
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router";
-import { useAuth } from "@/hooks/useAuth";
-import { useTranslation } from "@/hooks/useTranslation";
 import GlobalSearch from "@/components/GlobalSearch";
 import NotificationCenter from "@/components/NotificationCenter";
-import { motion, AnimatePresence } from "framer-motion";
-import { Magnetic } from "@/components/ui/motion";
-import {
-  Menu, X, LayoutDashboard, Headphones,
-  Shield, LogOut, BookOpen, ChevronDown,
-  UserCog, FileBox, HelpCircle, Heart, TrendingUp,
-  SunDim, BookMarked, Newspaper, Home,
-} from "lucide-react";
-
 import { Button } from "@/components/ui/button";
 import { EngineeringModeToggle } from "@/components/ui/EngineeringMode";
-
+import { Magnetic } from "@/components/ui/motion";
+import { useAuth } from "@/hooks/useAuth";
 import { useEyeProtection } from "@/hooks/useEyeProtection";
+import { useTranslation } from "@/hooks/useTranslation";
 
 export default function Navbar() {
   const { lang, setLang } = useTranslation();

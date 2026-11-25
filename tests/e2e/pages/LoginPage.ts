@@ -2,7 +2,7 @@
  * Page Object Model — Login page (per the e2e-testing skill).
  * Locators are user-visible roles/ids, auto-waited by Playwright.
  */
-import { type Page, type Locator, expect } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 export class LoginPage {
   readonly page: Page;

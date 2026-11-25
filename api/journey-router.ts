@@ -1,13 +1,14 @@
 /**
  * Journey Router — user learning journey timeline
  */
-import { desc, eq, count } from "drizzle-orm";
-import { createRouter, authedQuery } from "./middleware";
-import { getDb } from "./queries/connection";
-import {
-  enrollments, courses, certificates, lessonProgress,
+
+import {certificates, courses, 
+  enrollments, lessonProgress,
   payments,
 } from "@db/schema";
+import { count, desc, eq } from "drizzle-orm";
+import { authedQuery, createRouter } from "./middleware";
+import { getDb } from "./queries/connection";
 
 export const journeyRouter = createRouter({
   timeline: authedQuery.query(async ({ ctx }) => {

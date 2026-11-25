@@ -1,12 +1,13 @@
 /**
  * Wishlist Router — bookmark courses for later
  */
-import { z } from "zod";
-import { desc, eq, sql } from "drizzle-orm";
+
+import { courses, wishlists } from "@db/schema";
 import { TRPCError } from "@trpc/server";
-import { createRouter, authedQuery, authMutation } from "./middleware";
+import { desc, eq, sql } from "drizzle-orm";
+import { z } from "zod";
+import { authedQuery, authMutation, createRouter } from "./middleware";
 import { getDb } from "./queries/connection";
-import { wishlists, courses } from "@db/schema";
 
 export const wishlistRouter = createRouter({
   list: authedQuery.query(async ({ ctx }) => {

@@ -9,9 +9,9 @@
  * 3. Provides helper functions for progress queries
  */
 
-import { eq, and, sql } from "drizzle-orm";
+import { enrollments, lessonProgress, lessons } from "@db/schema";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "../queries/connection";
-import { enrollments, lessons, lessonProgress } from "@db/schema";
 
 /**
  * Recalculate and update the enrollment progress for a user + course.

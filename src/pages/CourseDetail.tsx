@@ -1,10 +1,48 @@
-import { useParams, useNavigate, useSearchParams, Link } from "react-router";
-import { useTranslation } from "@/hooks/useTranslation";
-import { useAuth } from "@/hooks/useAuth";
-import { trpc } from "@/providers/trpc";
-import YouTubeLessonPlayer from "@/components/YouTubeLessonPlayer";
-import SubscribeGate from "@/components/SubscribeGate";
+import {
+  AlertCircle,
+  Award,
+  Building2,
+  CheckCircle,
+  CheckCircle2,
+  ChevronRight,
+  Clock,
+  Copy,
+  CreditCard,
+  Hourglass,
+  ImageOff,
+  Infinity as InfinityIcon,
+  Landmark,
+  Loader2,
+  Lock,
+  Maximize,
+  Pause,
+  Phone,
+  PlayCircle,
+  Shield,
+  Smartphone,
+  Star,
+  StickyNote,
+  Trash2,
+  Users,
+  Volume2,
+  VolumeX,
+  Wallet,
+  X,
+  Zap,
+} from "lucide-react";
+import { forwardRef, lazy, Suspense, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+import { toast } from "sonner";
 import CourseReviews from "@/components/CourseReviews";
+import Seo from "@/components/SEO";
+import SubscribeGate from "@/components/SubscribeGate";
+import { Button } from "@/components/ui/button";
+import YouTubeLessonPlayer from "@/components/YouTubeLessonPlayer";
+import { useAuth } from "@/hooks/useAuth";
+import { useTranslation } from "@/hooks/useTranslation";
+import { useWatchTracker } from "@/hooks/useWatchTracker";
+import { trackEvent, trackLearning, trackPlatform } from "@/lib/clarity";
+import { useScreenDetails } from "@/lib/screen-context";
 import {
   clearSubscribeTicket,
   clearSubscribeUnlock,
@@ -12,46 +50,7 @@ import {
   isSubscribeUnlocked,
   unlockSubscribe,
 } from "@/lib/subscribe-gate";
-import { useScreenDetails } from "@/lib/screen-context";
-import { useState, useRef, useEffect, useCallback, useImperativeHandle, forwardRef, lazy, Suspense } from 'react';
-import { useWatchTracker } from "@/hooks/useWatchTracker";
-import { trackLearning, trackPlatform, trackEvent } from "@/lib/clarity";
-import {
-  Clock,
-  Star,
-  Users,
-  PlayCircle,
-  Lock,
-  CheckCircle,
-  Zap,
-  Shield,
-  Award,
-  Smartphone,
-  Infinity as InfinityIcon,
-  ChevronRight,
-  Loader2,
-  Volume2,
-  VolumeX,
-  Maximize,
-  Pause,
-  Phone,
-  CreditCard,
-  Wallet,
-  Building2,
-  X,
-  CheckCircle2,
-  AlertCircle,
-  ImageOff,
-  Landmark,
-  Copy,
-  Hourglass,
-  StickyNote,
-  Trash2,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import Seo from "@/components/SEO";
-
-import { toast } from "sonner";
+import { trpc } from "@/providers/trpc";
 
 const QuizComponent = lazy(() => import("@/components/QuizComponent"));
 

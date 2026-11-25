@@ -13,9 +13,10 @@
  *   • No IP, no user-agent, no fingerprint — the vote is the signal, the
  *     snapshot is only there to make it reviewable.
  */
+
+import { chatbotFeedback } from "@db/schema";
 import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "../queries/connection.js";
-import { chatbotFeedback } from "@db/schema";
 import { logger } from "./logger.js";
 
 export const FEEDBACK_QUESTION_CAP = 2_000;

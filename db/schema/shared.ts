@@ -6,18 +6,18 @@
  */
 
 import {
-  mysqlTable,
   bigint,
-  varchar,
-  text,
   boolean,
-  timestamp,
+  foreignKey,
+  index,
   int,
   json,
   mediumtext,
-  index,
+  mysqlTable,
+  text,
+  timestamp,
   uniqueIndex,
-  foreignKey,
+  varchar,
 } from "drizzle-orm/mysql-core";
 import { users } from "./auth.js";
 

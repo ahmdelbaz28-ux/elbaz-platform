@@ -1,7 +1,7 @@
+import { ArrowRight, BookOpen, Home, Zap } from "lucide-react";
 import { Link } from "react-router";
-import { useTranslation } from "@/hooks/useTranslation";
-import { Zap, Home, BookOpen, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "@/hooks/useTranslation";
 
 export default function NotFound() {
   const { t, lang } = useTranslation();

@@ -1,8 +1,8 @@
+import { ChevronRight, Clock, ImageOff, Star, Users, Zap } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
-import { useTranslation } from "@/hooks/useTranslation";
-import { Clock, Star, Users, Zap, ChevronRight, ImageOff } from "lucide-react";
 import { TiltCard } from "@/components/ui/motion";
+import { useTranslation } from "@/hooks/useTranslation";
 import { youTubeThumbnailFallback } from "@/lib/youtube-url";
 
 interface CourseCardProps {

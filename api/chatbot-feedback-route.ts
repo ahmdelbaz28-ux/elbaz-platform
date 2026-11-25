@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { resolveOptionalUser } from "./context";
+import { FEEDBACK_COMMENT_CAP, recordChatbotFeedback } from "./lib/chatbot-feedback";
 import { getClientIpFromHono } from "./lib/client-ip";
-import { recordChatbotFeedback, FEEDBACK_COMMENT_CAP } from "./lib/chatbot-feedback";
 import { logger } from "./lib/logger";
 
 // ─── Chatbot feedback (👍/👎 on assistant replies) ────────────────────────────

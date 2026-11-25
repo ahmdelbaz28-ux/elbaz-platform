@@ -7,12 +7,12 @@
  * FAILS CLOSED: on any read error the gate stays ON — never silently off.
  */
 
+import { siteSettings } from "@db/schema";
 import { eq } from "drizzle-orm";
 import { getDb } from "../queries/connection";
-import { siteSettings } from "@db/schema";
-import { getCache, cacheKeys, CACHE_TTL } from "./cache";
-import { clampGateDays } from "./subscribe-ticket";
+import { CACHE_TTL, cacheKeys, getCache } from "./cache";
 import { logger } from "./logger.js";
+import { clampGateDays } from "./subscribe-ticket";
 
 export const SUBSCRIBE_GATE_SECTION = "subscribeGate";
 export const DEFAULT_GATE_DAYS = 30;

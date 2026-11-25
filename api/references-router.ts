@@ -12,20 +12,20 @@
  *   - delete: Admin mutation — delete reference file (DB record + R2 object)
  */
 import { randomBytes } from "node:crypto";
-import { z } from "zod";
-import { desc, eq, sql, and, or, like } from "drizzle-orm";
-import { createRouter, publicQuery, authMutation, adminMutation } from "./middleware";
-import { logger } from "./lib/logger.js";
-import { getDb } from "./queries/connection";
 import { referenceFiles } from "@db/schema";
+import { and, desc, eq, like, or, sql } from "drizzle-orm";
+import { z } from "zod";
+import { logger } from "./lib/logger.js";
+import { pushNotification } from "./lib/notification-broadcast.js";
 import {
-  generateR2UploadUrl,
-  generateR2DownloadUrl,
   deleteR2Object,
+  generateR2DownloadUrl,
+  generateR2UploadUrl,
   REFERENCE_ALLOWED_CONTENT_TYPES,
   REFERENCE_MAX_FILE_SIZE,
 } from "./lib/r2";
-import { pushNotification } from "./lib/notification-broadcast.js";
+import { adminMutation, authMutation, createRouter, publicQuery } from "./middleware";
+import { getDb } from "./queries/connection";
 
 export const referencesRouter = createRouter({
   // ─── List all published reference files ───

@@ -1,19 +1,19 @@
-import { useParams, useNavigate } from "react-router";
+import {
+  AlertCircle,
+  Award,
+  CheckCircle2,
+  ChevronRight,
+  Download,
+  Loader2,
+  Printer,
+  Share2,
+} from "lucide-react";
+import { useState } from "react";
+import { useNavigate, useParams } from "react-router";
+import { toast } from "sonner";
+import CertificateCard from "@/components/CertificateCard";
 import { useTranslation } from "@/hooks/useTranslation";
 import { trpc } from "@/providers/trpc";
-import { useState } from "react";
-import CertificateCard from "@/components/CertificateCard";
-import {
-  Printer,
-  Download,
-  Share2,
-  ChevronRight,
-  AlertCircle,
-  CheckCircle2,
-  Loader2,
-  Award,
-} from "lucide-react";
-import { toast } from "sonner";
 
 export default function CertificateView() { // NOSONAR — certificate view with print, download, share, LinkedIn-share, copy-link; extraction would require prop-drilling many handlers
   const { certificateNumber } = useParams<{ certificateNumber: string }>();

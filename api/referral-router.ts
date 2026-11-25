@@ -7,8 +7,8 @@
  */
 
 import { z } from "zod";
-import { createRouter, authedQuery } from "./middleware";
 import { getReferralOverview } from "./lib/referral";
+import { authedQuery, createRouter } from "./middleware";
 
 export const referralRouter = createRouter({
   /** Full referral overview for the profile page: my code, my invite link,

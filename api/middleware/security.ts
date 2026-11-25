@@ -1,6 +1,6 @@
+import { randomBytes } from "node:crypto";
 import { createMiddleware } from "hono/factory";
 import { env } from "../lib/env.js";
-import { randomBytes } from "node:crypto";
 
 export const securityMiddleware = createMiddleware(async (c, next) => {
   c.header("X-Content-Type-Options", "nosniff");

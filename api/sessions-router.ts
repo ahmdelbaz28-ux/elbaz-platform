@@ -1,10 +1,10 @@
-import { z } from "zod";
-import { TRPCError } from "@trpc/server";
-import { desc, eq, and, sql } from "drizzle-orm";
-import { createRouter, authQuery, authMutation } from "./middleware";
-import { getDb } from "./queries/connection";
-import { evictUserAuthCache } from "./context.js";
 import { userSessions, users } from "@db/schema";
+import { TRPCError } from "@trpc/server";
+import { and, desc, eq, sql } from "drizzle-orm";
+import { z } from "zod";
+import { evictUserAuthCache } from "./context.js";
+import { authMutation, authQuery, createRouter } from "./middleware";
+import { getDb } from "./queries/connection";
 
 export const sessionsRouter = createRouter({
   list: authQuery.query(async ({ ctx }) => {

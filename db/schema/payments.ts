@@ -5,18 +5,18 @@
  */
 
 import {
-  mysqlTable,
   bigint,
-  varchar,
-  text,
   boolean,
-  timestamp,
-  json,
-  int,
   decimal,
-  index,
-  uniqueIndex,
   foreignKey,
+  index,
+  int,
+  json,
+  mysqlTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  varchar,
 } from "drizzle-orm/mysql-core";
 import { users } from "./auth.js";
 import { courses, enrollments } from "./courses.js";

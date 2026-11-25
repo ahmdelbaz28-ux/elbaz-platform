@@ -15,9 +15,9 @@
  *   });
  */
 
-import { useEffect, useRef, useState, useCallback } from "react";
-import { trpc } from "@/providers/trpc";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { sendHeartbeatBeacon } from "@/lib/watch-beacon";
+import { trpc } from "@/providers/trpc";
 
 interface UseWatchTrackerOptions {
   lessonId: number | null;

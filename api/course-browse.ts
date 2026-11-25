@@ -11,12 +11,12 @@
  * subscribe-ticket gated).
  */
 
+import { categories, courses, lessons, testimonials } from "@db/schema";
+import { and, asc, desc, eq, like, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { eq, and, desc, asc, sql, like, or } from "drizzle-orm";
+import { CACHE_TTL, cacheKeys, getCache } from "./lib/cache";
 import { publicQuery } from "./middleware";
 import { getDb } from "./queries/connection";
-import { courses, categories, lessons, testimonials } from "@db/schema";
-import { getCache, CACHE_TTL, cacheKeys } from "./lib/cache";
 
 // ─── Types ───────────────────────────────────────────────────────────
 

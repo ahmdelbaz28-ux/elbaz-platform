@@ -15,9 +15,9 @@
  * registrations have nothing to write to).
  */
 
-import { eq, and, sql } from "drizzle-orm";
+import { courses, emailDripLog, users } from "@db/schema";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "../queries/connection";
-import { users, emailDripLog, courses } from "@db/schema";
 import { sendEmail } from "./email";
 import { env } from "./env";
 import { logger } from "./logger.js";

@@ -1,12 +1,12 @@
-import { z } from "zod";
-import { eq, and, desc } from "drizzle-orm";
-// ✅ SECURITY FIX: Use authedQuery instead of manual token verification
-import { createRouter, authedQuery, publicQuery } from "./middleware";
-import { getDb } from "./queries/connection";
-import { certificates, enrollments, courses, lessonProgress, lessons, users, quizQuestions } from "@db/schema";
+import { certificates, courses, enrollments, lessonProgress, lessons, quizQuestions, users } from "@db/schema";
 import { TRPCError } from "@trpc/server";
+import { and, desc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
+import { z } from "zod";
 import { activeEnrollmentWhere } from "./lib/enrollment";
+// ✅ SECURITY FIX: Use authedQuery instead of manual token verification
+import { authedQuery, createRouter, publicQuery } from "./middleware";
+import { getDb } from "./queries/connection";
 
 /**
  * ✅ CRITICAL FIX: Calculate certificate grade from actual quiz scores

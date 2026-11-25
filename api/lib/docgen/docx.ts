@@ -11,8 +11,9 @@
  * word/document.xml. No styles part — all formatting is direct, so a bad
  * style reference can never exist. Deterministic output.
  */
-import { buildZip, type ZipEntry } from "./zip.js";
+
 import type { DocSpec, NormalizedDocSpec } from "./spec.js";
+import { buildZip, type ZipEntry } from "./zip.js";
 
 const ARABIC_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
 

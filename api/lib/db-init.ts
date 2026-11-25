@@ -10,16 +10,16 @@
  * This ensures the app ALWAYS works, even on a fresh Aiven database.
  */
 
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
 import crypto from "node:crypto";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { getRawConnection } from "../queries/connection.js";
-import { hashPassword } from "./password.js";
+import { invalidateSettingsCache } from "./cache.js";
+import { type DbMigrationConn, columnExists as dbColumnExists, indexExists as dbIndexExists, type MigrationStep, runMigrations } from "./db-migrations.js";
 import { env } from "./env.js";
 import { logger } from "./logger.js";
-import { invalidateSettingsCache } from "./cache.js";
-import { columnExists as dbColumnExists, indexExists as dbIndexExists, runMigrations, type MigrationStep, type DbMigrationConn } from "./db-migrations.js";
+import { hashPassword } from "./password.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

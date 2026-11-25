@@ -11,9 +11,10 @@
  *   const fabRef = useChatFabAnimation();
  *   <button ref={fabRef}>...</button>
  */
-import { visualRandom } from "@/lib/random";
 
-import { useEffect, useRef, useCallback } from "react";
+
+import { useCallback, useEffect, useRef } from "react";
+import { visualRandom } from "@/lib/random";
 
 interface UseChatFabAnimationOptions {
   /** Interval between shake animations in ms (default: 25000) */
