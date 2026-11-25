@@ -199,17 +199,32 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
           run: async (c) => {
             const DECLARED_COLUMNS = ["id", "lessonId", "questionEn", "questionAr", "optionsEn", "optionsAr", "correctIndex", "points", "sortOrder", "createdAt"];
 
-            const tableRows = ((await c.execute(
+            // ✅ mysql2 execute() returns the [rows, fieldPackets] TUPLE — the
+            // naive cast `as { cnt }[]` + [0] reads the ROWS ARRAY as if it
+            // were a row, so `.cnt` was ALWAYS undefined and every probe in
+            // this step silently read false (tableExists=false → the drift
+            // block never ran → DROP+rebuild never fired). Same tuple bug the
+            // db-migrations module already documented and fixed via
+            // firstResultRow(); these probes must parse the tuple the same way.
+            const rowsOf = async (sql: string): Promise<Array<Record<string, unknown>>> => {
+              const raw = (await c.execute(sql)) as unknown;
+              if (Array.isArray(raw) && raw.length === 2 && Array.isArray(raw[0]) && Array.isArray(raw[1])) {
+                return raw[0] as Array<Record<string, unknown>>;
+              }
+              return (Array.isArray(raw) ? raw : []) as Array<Record<string, unknown>>;
+            };
+
+            const tableRows = await rowsOf(
               "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'quizQuestions'"
-            )) as unknown as { cnt: number }[]);
-            const tableExists = (tableRows[0]?.cnt ?? 0) > 0;
+            );
+            const tableExists = (Number(tableRows[0]?.cnt ?? 0)) > 0;
 
             if (tableExists) {
-              const colRows = ((await c.execute(
+              const colRows = await rowsOf(
                 "SELECT COLUMN_NAME, EXTRA FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'quizQuestions'"
-              )) as unknown as { COLUMN_NAME: string; EXTRA: string }[]);
-              const existing = new Set(colRows.map((r) => String(r.COLUMN_NAME).toLowerCase()));
-              const extras = new Map(colRows.map((r) => [String(r.COLUMN_NAME).toLowerCase(), String(r.EXTRA ?? "").toLowerCase()]));
+              );
+              const existing = new Set(colRows.map((r) => String(r.COLUMN_NAME ?? "").toLowerCase()).filter(Boolean));
+              const extras = new Map(colRows.map((r) => [String(r.COLUMN_NAME ?? "").toLowerCase(), String(r.EXTRA ?? "").toLowerCase()]));
               const declared = new Set(DECLARED_COLUMNS.map((n) => n.toLowerCase()));
               // Drift = declared column missing, id not AUTO_INCREMENT, OR an
               // EXTRA legacy column exists. Extra columns matter: an old
@@ -248,16 +263,16 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
             // NOTE: FK constraints live in REFERENTIAL_CONSTRAINTS, NOT in
             // INFORMATION_SCHEMA.STATISTICS (which is what dbIndexExists probes),
             // so the FK presence is checked with a dedicated query here.
-            const lessonsRows = ((await c.execute(
+            const lessonsRows = await rowsOf(
               "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lessons'"
-            )) as unknown as { cnt: number }[]);
-            const lessonsExists = (lessonsRows[0]?.cnt ?? 0) > 0;
+            );
+            const lessonsExists = (Number(lessonsRows[0]?.cnt ?? 0)) > 0;
             let fkExists = false;
             if (lessonsExists) {
-              const fkRows = ((await c.execute(
+              const fkRows = await rowsOf(
                 "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'quizQuestions' AND CONSTRAINT_NAME = 'fk_qq_lesson_id'"
-              )) as unknown as { cnt: number }[]);
-              fkExists = (fkRows[0]?.cnt ?? 0) > 0;
+              );
+              fkExists = (Number(fkRows[0]?.cnt ?? 0)) > 0;
             }
             if (lessonsExists && !fkExists) {
               await c.execute(
