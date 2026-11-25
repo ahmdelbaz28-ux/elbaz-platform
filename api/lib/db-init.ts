@@ -208,11 +208,20 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
               const colRows = ((await c.execute(
                 "SELECT COLUMN_NAME, EXTRA FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'quizQuestions'"
               )) as unknown as { COLUMN_NAME: string; EXTRA: string }[]);
-              const cols = new Map(colRows.map((r) => [String(r.COLUMN_NAME).toLowerCase(), String(r.EXTRA ?? "").toLowerCase()]));
-              const missingColumn = DECLARED_COLUMNS.some((name) => !cols.has(name.toLowerCase()));
-              const idNotAutoIncrement = !String(cols.get("id") ?? "").includes("auto_increment");
-              if (missingColumn || idNotAutoIncrement) {
-                logger.warn("[DB] quizQuestions drifted from the drizzle shape — dropping and rebuilding (verified empty)");
+              const existing = new Set(colRows.map((r) => String(r.COLUMN_NAME).toLowerCase()));
+              const extras = new Map(colRows.map((r) => [String(r.COLUMN_NAME).toLowerCase(), String(r.EXTRA ?? "").toLowerCase()]));
+              const declared = new Set(DECLARED_COLUMNS.map((n) => n.toLowerCase()));
+              // Drift = declared column missing, id not AUTO_INCREMENT, OR an
+              // EXTRA legacy column exists. Extra columns matter: an old
+              // correctOptionIndex NOT NULL WITHOUT DEFAULT made EVERY insert
+              // fail with ER_NO_DEFAULT_FOR_FIELD (1364) even after the missing
+              // declared columns were added — the admin INSERT path stays broken
+              // while SELECTs look perfectly healthy.
+              const missingColumn = DECLARED_COLUMNS.some((name) => !existing.has(name.toLowerCase()));
+              const extraColumn = [...existing].some((name) => !declared.has(name));
+              const idNotAutoIncrement = !String(extras.get("id") ?? "").includes("auto_increment");
+              if (missingColumn || extraColumn || idNotAutoIncrement) {
+                logger.warn(`[DB] quizQuestions drifted from the drizzle shape (missing=${missingColumn} extra=${extraColumn} idAutoInc=${!idNotAutoIncrement}) — dropping and rebuilding (verified empty)`);
                 await c.execute("DROP TABLE IF EXISTS `quizQuestions`");
               }
             }
