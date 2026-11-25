@@ -233,6 +233,16 @@ export const quizAdminProcedures = {
   quizStorageSelfTest: adminMutation
     .mutation(async () => {
       const db = getDb();
+      // mysql2's real cause (code/errno/sqlMessage) is nested inside drizzle's
+      // "Failed query" wrapper — surface the whole chain, not just the wrapper.
+      const describe = (err: unknown): string => {
+        const e = err as { message?: string; cause?: { code?: string; errno?: number; sqlMessage?: string; sqlState?: string } };
+        const parts = [e?.message ?? String(err)];
+        if (e?.cause) {
+          parts.push(`code=${e.cause.code ?? "?"}`, `errno=${e.cause.errno ?? "?"}`, `sqlState=${e.cause.sqlState ?? "?"}`, `sqlMessage=${e.cause.sqlMessage ?? "?"}`);
+        }
+        return parts.filter(Boolean).join(" | ").slice(0, 600);
+      };
       const steps: Array<{ step: string; ok: boolean; error?: string; id?: number }> = [];
       // Canary needs a REAL lesson (FK target) — pick the smallest lesson id.
       const [lesson] = await db.select({ id: lessons.id }).from(lessons).orderBy(asc(lessons.id)).limit(1);
@@ -254,20 +264,20 @@ export const quizAdminProcedures = {
         canaryId = (created as { id?: number })?.id;
         steps.push({ step: "insert", ok: true, id: canaryId });
       } catch (err) {
-        steps.push({ step: "insert", ok: false, error: (err as Error).message });
+        steps.push({ step: "insert", ok: false, error: describe(err) });
       }
       if (canaryId !== undefined) {
         try {
           const rows = await db.select().from(quizQuestions).where(eq(quizQuestions.id, canaryId)).limit(1);
           steps.push({ step: "select", ok: rows.length === 1 });
         } catch (err) {
-          steps.push({ step: "select", ok: false, error: (err as Error).message });
+          steps.push({ step: "select", ok: false, error: describe(err) });
         }
         try {
           await db.delete(quizQuestions).where(eq(quizQuestions.id, canaryId));
           steps.push({ step: "delete", ok: true });
         } catch (err) {
-          steps.push({ step: "delete", ok: false, error: (err as Error).message });
+          steps.push({ step: "delete", ok: false, error: describe(err) });
         }
       }
       return { ok: steps.every((s) => s.ok), steps };
