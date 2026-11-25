@@ -781,9 +781,13 @@ interface MessageBubbleProps {
   /** 📐 draw-now chip: this assistant reply promised a diagram but carried none. */
   showDrawNow: boolean;
   onDrawNow: (msgId: string) => void;
+  /** Owner request (2026-11-26): user bubbles wear the real profile photo
+   *  (users.avatar via auth.me) instead of the generic icon chip. The icon
+   *  chip stays as the fallback for users without a photo. */
+  userAvatar?: string | null;
 }
 
-const MessageBubble = memo(function MessageBubble({ msg, lang, copied, onCopy, onRetry, onFeedback, showDrawNow, onDrawNow }: MessageBubbleProps) {
+const MessageBubble = memo(function MessageBubble({ msg, lang, copied, onCopy, onRetry, onFeedback, showDrawNow, onDrawNow, userAvatar }: MessageBubbleProps) {
   const sldBodyRef = useRef<HTMLSpanElement | null>(null);
   const errorBubbleClass = msg.isError
     ? "bg-red-500/10 border border-red-500/30 text-red-300 rounded-ss-md"
@@ -827,11 +831,23 @@ const MessageBubble = memo(function MessageBubble({ msg, lang, copied, onCopy, o
 
   return (
     <div className={`flex gap-2.5 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
-      {/* Avatar — user keeps the icon chip; bot wears the site logo (owner request) */}
+      {/* Avatar — user wears their real profile photo (owner request 2026-11-26);
+          the icon chip remains only for users without one. Bot wears the site logo. */}
       {msg.role === "user" ? (
-        <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-blue-600/20 border border-blue-500/30">
-          <User className="h-3.5 w-3.5 text-blue-400" />
-        </div>
+        userAvatar ? (
+          <img
+            src={userAvatar}
+            alt=""
+            aria-hidden="true"
+            draggable={false}
+            decoding="async"
+            className="mt-0.5 h-7 w-7 flex-shrink-0 rounded-full object-cover border border-blue-500/40"
+          />
+        ) : (
+          <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-blue-600/20 border border-blue-500/30">
+            <User className="h-3.5 w-3.5 text-blue-400" />
+          </div>
+        )
       ) : (
         <img
           src="/logo-circle.png?v=2"
@@ -2346,6 +2362,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
                       onFeedback={handleFeedback}
                       showDrawNow={msg.id === drawNowMsgId}
                       onDrawNow={handleDrawNow}
+                      userAvatar={user?.avatar ?? null}
                     />
                   ))}
 

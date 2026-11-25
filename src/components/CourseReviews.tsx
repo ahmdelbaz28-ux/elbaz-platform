@@ -33,6 +33,8 @@ interface ReviewItem {
   updatedAt: string | Date;
   userName: string | null;
   userUsername: string | null;
+  /** Reviewer's profile photo (data URL from users.avatar) — null when unset. */
+  userAvatar: string | null;
 }
 
 interface MyReview {
@@ -228,9 +230,23 @@ export default function CourseReviews({ courseId, averageRating }: { readonly co
               <li key={r.id} className={`rounded-lg border border-[#1f2d44] bg-[rgba(10,14,23,0.5)] p-4${ri >= 6 ? " cv-auto-md" : ""}`}>
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-3">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#06b6d4]/15 text-sm font-bold text-[#06b6d4]">
-                      {(r.userName || r.userUsername || "?").charAt(0).toUpperCase()}
-                    </span>
+                    {/* ✅ Owner request (2026-11-26): the reviewer's real photo
+                        replaces the initials circle; the initials circle stays
+                        as the fallback for reviewers without a photo. */}
+                    {r.userAvatar ? (
+                      <img
+                        src={r.userAvatar}
+                        alt={r.userName || r.userUsername || "?"}
+                        loading="lazy"
+                        decoding="async"
+                        draggable={false}
+                        className="h-9 w-9 shrink-0 rounded-full border border-[#06b6d4]/30 object-cover"
+                      />
+                    ) : (
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#06b6d4]/15 text-sm font-bold text-[#06b6d4]">
+                        {(r.userName || r.userUsername || "?").charAt(0).toUpperCase()}
+                      </span>
+                    )}
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-[#f0f4f8]">{r.userName || r.userUsername || (lang === "ar" ? "طالب" : "Student")}</p>
                       <Stars value={r.rating} size="h-3.5 w-3.5" />

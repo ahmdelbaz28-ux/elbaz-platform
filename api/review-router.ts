@@ -27,6 +27,11 @@ export const reviewRouter = createRouter({
           updatedAt: reviews.updatedAt,
           userName: users.name,
           userUsername: users.username,
+          // Owner request (2026-11-26): reviews render the reviewer's real
+          // profile photo (data URL — same users.avatar column the whole
+          // client already reads; CourseReviews keeps the initials circle as
+          // fallback for reviewers without a photo).
+          userAvatar: users.avatar,
         })
           .from(reviews)
           .leftJoin(users, eq(reviews.userId, users.id))
