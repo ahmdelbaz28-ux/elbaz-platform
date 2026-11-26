@@ -1905,3 +1905,138 @@ body {
   content-visibility: auto;
   contain-intrinsic-size: auto 72px;
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   BRAND SIGNATURE SYSTEM — UI suggestions #1 + #3 (Brand Kit law)
+
+   The platform's official signature: the orange→cyan gradient at 3px
+   thickness. Rules of the system (full law in docs/BRAND-KIT.md):
+
+     --brand-sig-from  #F97316  primary action orange
+     --brand-sig-to    #06B6D4  secondary cyan
+     3px thickness everywhere the signature appears
+
+   Where it repeats (each position is one utility class so new screens
+   opt in with a single class — no per-screen reinvention):
+     .brand-signature-track / .brand-signature-bar
+        → scroll progress bar pinned to the page top (App.tsx)
+     .brand-signature-line
+        → section-title underline replacing the gray divider
+     .brand-signature-card
+        → course-card top edge reveal on hover (CourseCard)
+     .brand-signature-hover
+        → primary-CTA bottom accent on hover
+
+   The boot splash (index.html) carries the same gradient inline so the
+   very first painted pixels match the signature too.
+   ════════════════════════════════════════════════════════════════════ */
+:root {
+  --brand-sig-from: #F97316;
+  --brand-sig-to: #06B6D4;
+  --brand-sig-thickness: 3px;
+  --brand-sig-gradient: linear-gradient(
+    90deg,
+    var(--brand-sig-from),
+    var(--brand-sig-to)
+  );
+}
+
+/* Scroll progress track — pinned top, full width, invisible until filled */
+.brand-signature-track {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--brand-sig-thickness);
+  z-index: 70; /* above sticky navbar (z-55/60), below toasts */
+  background: rgba(255, 255, 255, 0.06);
+  pointer-events: none;
+}
+
+/* The filled portion — transform-only (compositor), origin at inline-start */
+.brand-signature-bar {
+  height: 100%;
+  width: 100%;
+  transform: scaleX(0);
+  transform-origin: left;
+  background: var(--brand-sig-gradient);
+  will-change: transform;
+}
+
+[dir="rtl"] .brand-signature-bar {
+  transform-origin: right;
+}
+
+/* Section-title underline — replaces the plain gray divider.
+   Usage: <h2 className="brand-signature-line">…</h2> */
+.brand-signature-line {
+  position: relative;
+  padding-bottom: 12px;
+}
+.brand-signature-line::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  inset-inline-start: 0;
+  width: 64px;
+  height: var(--brand-sig-thickness);
+  border-radius: 999px;
+  background: var(--brand-sig-gradient);
+}
+
+/* Course card hover reveal — gradient edge slides in along the top.
+   Usage: add .brand-signature-card to the card's <article>. */
+.brand-signature-card {
+  position: relative;
+}
+.brand-signature-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--brand-sig-thickness);
+  background: var(--brand-sig-gradient);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 300ms ease;
+  z-index: 1;
+}
+.group:hover .brand-signature-card::before,
+.brand-signature-card:hover::before {
+  transform: scaleX(1);
+}
+[dir="rtl"] .brand-signature-card::before {
+  transform-origin: right;
+}
+
+/* Primary CTA hover accent — 3px signature floor under the button.
+   Usage: add .brand-signature-hover to .btn-primary CTAs. */
+.brand-signature-hover {
+  position: relative;
+}
+.brand-signature-hover::after {
+  content: "";
+  position: absolute;
+  bottom: -6px;
+  left: 12%;
+  right: 12%;
+  height: var(--brand-sig-thickness);
+  border-radius: 999px;
+  background: var(--brand-sig-gradient);
+  opacity: 0;
+  transform: translateY(3px);
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+.brand-signature-hover:hover::after,
+.brand-signature-hover:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-signature-card::before,
+  .brand-signature-hover::after {
+    transition: none;
+  }
+}

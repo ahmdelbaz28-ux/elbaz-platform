@@ -123,7 +123,7 @@ export default function CourseCard({ course }: CourseCardProps) {
     <TiltCard className="h-full">
       <Link to={`/courses/${course.slug}`} className="group block h-full outline-none focus-visible:ring-2 focus-visible:ring-[#06b6d4] rounded-2xl">
         <article
-          className="relative h-full overflow-hidden rounded-2xl border border-[#1e2d3d] bg-[#0d1420] transition-all duration-300
+          className="brand-signature-card relative h-full overflow-hidden rounded-2xl border border-[#1e2d3d] bg-[#0d1420] transition-all duration-300
             group-hover:border-[rgba(6,182,212,0.4)] group-hover:shadow-[0_20px_60px_rgba(6,182,212,0.12)]
             group-hover:will-change-transform"
         >

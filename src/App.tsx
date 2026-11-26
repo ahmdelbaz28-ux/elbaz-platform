@@ -11,6 +11,7 @@ import NotificationPollerBridge from "@/components/NotificationPollerBridge";
 import { NotificationProvider } from "@/components/NotificationToast";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import ScrollToTop from "@/components/ScrollToTop";
+import SignatureProgressBar from "@/components/SignatureProgressBar";
 import StarfieldBackground from "@/components/StarfieldBackground";
 import ThemeProvider from "@/components/ThemeProvider";
 import AmbientOrbs from "@/components/ui/AmbientOrbs";
@@ -250,6 +251,8 @@ function Layout({ children }: { readonly children: React.ReactNode }) {
         {t("skipToContent")}
       </a>
       {!isAdminPage && <Navbar />}
+      {/* Brand signature scroll-progress bar — orange→cyan gradient (Brand Kit #3) */}
+      {!isAdminPage && <SignatureProgressBar />}
       <ScrollReset />
       <ScrollToTop />
       <main id="main-content" tabIndex={-1}><Suspense fallback={<PageLoader />}>{children}</Suspense></main>
