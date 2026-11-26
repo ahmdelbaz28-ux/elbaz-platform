@@ -14,16 +14,16 @@ import crypto from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+// ✅ SECURITY FIX (audit run-3, admin-recovery-bumps-token-version): the
+// recovery lever must evict the in-memory auth cache for the admin row it
+// rewrites. Import direction is safe — context.ts does not import db-init.
+import { evictUserAuthCache } from "../context.js";
 import { getRawConnection } from "../queries/connection.js";
 import { invalidateSettingsCache } from "./cache.js";
 import { type DbMigrationConn, columnExists as dbColumnExists, indexExists as dbIndexExists, type MigrationStep, runMigrations } from "./db-migrations.js";
 import { env } from "./env.js";
 import { logger } from "./logger.js";
 import { hashPassword } from "./password.js";
-// ✅ SECURITY FIX (audit run-3, admin-recovery-bumps-token-version): the
-// recovery lever must evict the in-memory auth cache for the admin row it
-// rewrites. Import direction is safe — context.ts does not import db-init.
-import { evictUserAuthCache } from "../context.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
