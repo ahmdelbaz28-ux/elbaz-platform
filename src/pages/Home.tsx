@@ -16,6 +16,7 @@ import {
   Award,
   BadgeCheck,
   BarChart3,
+  Brain,
   Briefcase,
   CheckCircle2,
   ChevronDown,
@@ -27,8 +28,12 @@ import {
   Eye,
   Globe,
   GraduationCap,
+  History,
+  ImagePlus,
+  KeyRound,
   Layers,
   Monitor,
+  MonitorUp,
   PenLine,
   PlayCircle,
   Rocket,
@@ -53,21 +58,6 @@ type Category = {
   descriptionAr: string | null;
   icon: string;
   sortOrder: number;
-  createdAt: Date;
-};
-
-type Testimonial = {
-  id: number;
-  name: string;
-  title: string | null;
-  company: string | null;
-  content: string;
-  rating: number;
-  /** Public certificate number — when set, a "verified" badge links to the
-   *  official /verify/:number page so visitors can prove the review belongs
-   *  to a real certificate holder. */
-  certificateNumber?: string | null;
-  isPublished: boolean;
   createdAt: Date;
 };
 
@@ -382,14 +372,13 @@ function SectionHeader({ badge, title, subtitle }: { readonly badge: string; rea
   );
 }
 
-export default function Home() { // NOSONAR — landing page with hero + features + courses + testimonials + FAQ + CTA; section extraction would require prop-drilling many translation/lang-dependent props
+export default function Home() { // NOSONAR — landing page with hero + features + courses + AI capabilities + FAQ + CTA; section extraction would require prop-drilling many translation/lang-dependent props
   const { t, lang } = useTranslation();
   const { data: coursesData, isPending: coursesPending } = trpc.course.list.useQuery({ featured: true });
   const courses = Array.isArray(coursesData?.items) ? coursesData.items : [];
   const { data: articlesData, isPending: articlesPending } = trpc.articles.list.useQuery({ limit: 3 });
   const articles = (Array.isArray(articlesData?.items) ? articlesData.items : []) as ArticleTeaser[];
   const { data: categories, isPending: categoriesPending } = trpc.course.categories.useQuery();
-  const { data: testimonials, isPending: testimonialsPending } = trpc.course.testimonials.useQuery();
   const { data: activePromotionsRaw } = trpc.settings.getActivePromotions.useQuery();
   const activePromotions = (activePromotionsRaw ?? []) as Promotion[];
   const { data: platformStats } = trpc.course.stats.useQuery();
@@ -876,54 +865,73 @@ export default function Home() { // NOSONAR — landing page with hero + feature
         </div>
       </section>
 
-      {/* ═══════════════════ TESTIMONIALS ═══════════════════ */}
+      {/* ═══════════════════ AI ASSISTANT CAPABILITIES ═══════════════════ */}
       <section className="py-24">
         <div className="mx-auto max-w-7xl px-4 lg:px-6">
-          <SectionHeader badge={t("testimonials")} title={t("whatEngineersSay")} />
+          <SectionHeader
+            badge={lang === "en" ? "AI Assistant Capabilities" : "إمكانيات المساعد الذكي"}
+            title={lang === "en" ? "More Than a Chatbot — an Engineering Partner" : "أكثر من مجرد شات بوت — شريك هندسي"}
+            subtitle={lang === "en" ? "The same assistant that solves Saadat's problems also reads your images, watches your screen live, remembers your conversations, and can run on your own API key." : "المساعد نفسه الذي يحل مسائل سادات يقرأ صورك أيضاً، ويتابع شاشتك لحظياً، ويحفظ محادثاتك، ويمكنه العمل بمفتاح API خاص بك."}
+          />
 
-          {testimonialsPending ? (
-            <div className="grid gap-6 md:grid-cols-3">
-              {[1, 2, 3].map((i) => (
-                <div key={`test-sk-${i}`} className="h-52 rounded-xl border border-border skeleton-shimmer" />
-              ))}
-            </div>
-          ) : (
-            <div className="grid gap-6 md:grid-cols-3">
-              {(testimonials || []).map((testimonial: Testimonial, idx: number) => (
-                <ScrollReveal key={testimonial.id} delay={idx * 0.1}>
-                  <motion.div whileHover={{ y: -6, scale: 1.02 }} whileTap={{ scale: 0.98 }} className="rounded-xl border border-border bg-primary p-8">
-                    <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} className="flex gap-1">
-                      {Array.from({ length: testimonial.rating || 5 }, (_, j) => `star-${j + 1}`).map(starKey => (
-                        <Star key={starKey} className="h-4 w-4 fill-amber-500 text-amber-500" />
-                      ))}
-                    </motion.div>
-                    <p className="mt-4 text-sm leading-relaxed italic text-foreground">"{testimonial.content}"</p>
-                    <motion.div whileHover={{ x: 4 }} className="mt-6 flex items-center gap-3">
-                      <motion.div whileHover={{ rotate: 360, scale: 1.1 }} transition={{ duration: 0.5 }} className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-sm font-semibold text-accent-secondary">
-                        {testimonial.name.charAt(0)}
-                      </motion.div>
-                      <div>
-                        <p className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
-                          {testimonial.name}
-                          {testimonial.certificateNumber && (
-                            <Link
-                              to={`/verify/${testimonial.certificateNumber}`}
-                              title={lang === "ar" ? "رأي موثّق بشهادة قابلة للتحقق" : "Verified against a real certificate"}
-                              className="inline-flex items-center gap-1 rounded-full border border-[#10b981]/40 bg-[rgba(16,185,129,0.12)] px-2 py-0.5 text-[10px] font-semibold text-[#10b981] transition-colors hover:bg-[rgba(16,185,129,0.22)]"
-                            >
-                              <BadgeCheck className="h-3 w-3" />
-                              {lang === "ar" ? "شهادة موثّقة" : "Verified"}
-                            </Link>
-                          )}
-                        </p>
-                        <p className="text-xs text-text-muted">{testimonial.title} {testimonial.company ? `at ${testimonial.company}` : ""}</p>
-                      </div>
-                    </motion.div>
-                  </motion.div>
-                </ScrollReveal>
-              ))}
-            </div>
-          )}
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {[
+              {
+                icon: <ImagePlus className="h-8 w-8" />,
+                variant: "orbit" as const,
+                color: "#06b6d4",
+                title: lang === "en" ? "Reads Images & Diagrams" : "قراءة الصور والمخططات",
+                body: lang === "en" ? "Upload a handwritten problem, a circuit diagram, or a software screenshot — he reads it, understands it, and solves it step by step." : "ارفع صورة مسألة مكتوبة بخط اليد أو مخطط دائرة أو لقطة من البرنامج — يقرأها ويفهمها ويحلها خطوة بخطوة.",
+              },
+              {
+                icon: <MonitorUp className="h-8 w-8" />,
+                variant: "pulse" as const,
+                color: "#10b981",
+                title: lang === "en" ? "Live Screen Sharing" : "مشاركة الشاشة الحية",
+                body: lang === "en" ? "Work in ETAP or SKM while he follows your screen in real time — guiding every step and catching mistakes before they grow." : "اشتغل على ETAP أو SKM وهو يتابع شاشتك معك لحظة بلحظة — يرشدك أثناء العمل ويضبط الخطأ قبل أن يكبر.",
+              },
+              {
+                icon: <Brain className="h-8 w-8" />,
+                variant: "morph" as const,
+                color: "#8b5cf6",
+                title: lang === "en" ? "Deep Thinking Mode" : "وضع التفكير المعمّق",
+                body: lang === "en" ? "A tough problem gets deeper reasoning and a complete worked solution, while quick questions go through the instant mode." : "المسألة المعقدة تحصل على تفكير أعمق وحل كامل بالخطوات، والأسئلة السريعة تُجاب فوراً بالوضع الفوري.",
+              },
+              {
+                icon: <KeyRound className="h-8 w-8" />,
+                variant: "glow" as const,
+                color: "#f59e0b",
+                title: lang === "en" ? "Bring Your Own Key" : "مفتاحك الخاص، بلا حصص",
+                body: lang === "en" ? "Connect your own OpenAI, Gemini, Groq, or OpenRouter key — replies flow through your provider with no platform quotas." : "اربط مفتاح OpenAI أو Gemini أو Groq أو OpenRouter من إعدادات المساعد — تمر ردودك عبر مزودك مباشرة دون حصص المنصة.",
+              },
+              {
+                icon: <History className="h-8 w-8" />,
+                variant: "float" as const,
+                color: "#3b82f6",
+                title: lang === "en" ? "Conversation Memory" : "ذاكرة تحفظ محادثاتك",
+                body: lang === "en" ? "Your last 50 rounds are summarized and stored with your account — revisit any past solution and continue where you left off." : "آخر 50 رسالة تُلخّص وتُحفظ مع حسابك — ارجع إلى أي حل سابق في أي وقت وكمّل من حيث توقفت.",
+              },
+              {
+                icon: <Zap className="h-8 w-8" />,
+                variant: "tilt" as const,
+                color: "#f43f5e",
+                title: lang === "en" ? "Live Streaming, Full Control" : "بث لحظي وتحكم كامل",
+                body: lang === "en" ? "Answers stream word by word as they are generated — stop at any moment, copy any step, or clear the chat and start fresh." : "الإجابة تظهر كلمة بكلمة أثناء توليدها — أوقفها في أي لحظة، انسخ أي خطوة، أو امسح المحادثة وابدأ من جديد.",
+              },
+            ].map((cap, idx) => (
+              <BentoCard key={cap.title} delay={(idx % 3) * 0.1} className="p-8">
+                <div className="flex flex-col h-full items-center text-center">
+                  <AnimatedIcon icon={cap.icon} variant={cap.variant} size="lg" color={cap.color} />
+                  <h3 className="mt-6 text-xl font-bold text-foreground">{cap.title}</h3>
+                  <p className="mt-3 text-sm leading-relaxed text-text-muted">{cap.body}</p>
+                </div>
+              </BentoCard>
+            ))}
+          </div>
+
+          <p className="mt-10 text-center text-xs text-text-muted">
+            {lang === "en" ? "The assistant lives on every page — open it anytime from the floating button at the bottom corner of the screen." : "المساعد متاح في كل الصفحات — افتحه في أي وقت من الزر العائم في أسفل زاوية الشاشة."}
+          </p>
         </div>
       </section>
 
