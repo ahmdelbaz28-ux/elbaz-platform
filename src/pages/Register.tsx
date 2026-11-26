@@ -71,6 +71,132 @@ function describeRegistrationError(err: any, lang: "ar" | "en"): string {
   return lang === "ar" ? "حدث خطأ في النظام. يرجى المحاولة مرة أخرى لاحقاً." : "A system error occurred. Please try again later.";
 }
 
+type UiLang = "ar" | "en";
+
+// ✅ Sonar S3776 + S3358 + S6819 remediation (2026-11-26): the approval panel,
+// the Google button/divider, the referral banner, the eye toggles and the GIS
+// registration callback moved to pure module-scope helpers — Register() and
+// validateRegistrationForm stay under the cognitive-complexity budget and no
+// nested ternary remains. Behavior unchanged (same copy, same order, same
+// sentinels).
+
+function RegisterPendingApprovalPanel({ lang }: { lang: UiLang }) {
+  return (
+    <output className="block rounded-2xl border border-amber-400/30 bg-amber-400/10 p-6" data-testid="register-pending-panel">
+      <div className="flex items-start gap-3">
+        <Hourglass className="mt-0.5 h-6 w-6 shrink-0 text-amber-300" />
+        <div>
+          <h2 className="text-lg font-bold text-amber-200">
+            {lang === "ar" ? "أهلاً بك في منصة المهندس أحمد الباز! 🌟" : "Welcome to Eng. Ahmed Elbaz's platform! 🌟"}
+          </h2>
+          <p className="mt-2 text-[14px] leading-relaxed text-amber-100/90">
+            {lang === "ar"
+              ? "شكراً لتسجيلك! تم استلام طلب انضمامك بنجاح وهو الآن بانتظار المراجعة. المهندس أحمد الباز سيراجع طلبك وسيتم الموافقة عليه في أقرب وقت إن شاء الله — وسنبلغك فور التفعيل، وبعدها تستطيع تسجيل الدخول مباشرة والبدء في التعلم."
+              : "Thank you for signing up! Your join request has been received and is now awaiting review. Eng. Ahmed Elbaz will review it and approve it as soon as possible — you'll be notified once it's activated, and then you can sign in and start learning right away."}
+          </p>
+          <p className="mt-3 rounded-lg bg-amber-400/10 p-3 text-[12.5px] leading-relaxed text-amber-200/80">
+            {lang === "ar"
+              ? "يمكنك الآن إغلاق هذه الصفحة بأمان — حاول تسجيل الدخول بعد وصول إشعار الموافقة."
+              : "You can safely close this page now — try signing in after you receive the approval notification."}
+          </p>
+        </div>
+      </div>
+    </output>
+  );
+}
+
+function GoogleSignUpButton({ onClick, loading, disabled, lang }: { onClick: () => void; loading: boolean; disabled: boolean; lang: UiLang }) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} className="flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-primary px-4 py-3 text-sm font-medium text-foreground transition-all duration-200 hover:border-accent-secondary/60 hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50">
+      {loading ? <div className="h-5 w-5 animate-spin rounded-full border-2 border-accent-secondary border-t-transparent" /> : (
+        <svg className="h-5 w-5" viewBox="0 0 24 24" role="img" aria-hidden="true">
+          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />
+          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+        </svg>
+      )}
+      {loading ? bilingualByLang("جارٍ التسجيل...", "Signing up...", lang) : bilingualByLang("التسجيل بجوجل", "Sign up with Google", lang)}
+    </button>
+  );
+}
+
+function GoogleOrDivider({ lang }: { lang: UiLang }) {
+  return (
+    <div className="relative my-4">
+      <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border" /></div>
+      <div className="relative flex justify-center text-xs"><span className="bg-background px-3 text-text-muted">{lang === "ar" ? "أو" : "or"}</span></div>
+    </div>
+  );
+}
+
+function ReferralWelcomeBanner({ lang }: { lang: UiLang }) {
+  return (
+    <div className="mb-4 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
+      <Gift className="h-4 w-4 shrink-0 text-emerald-500" />
+      <p className="text-xs text-emerald-500">
+        {lang === "ar"
+          ? `أنت مدعوم من صديق لك 🎁 خصم ترحيبي ${5}% مستنيك بعد إنشاء الحساب في صفحة ملفك الشخصي.`
+          : `You were invited by a friend 🎁 a ${5}% welcome coupon awaits in your profile after signing up.`}
+      </p>
+    </div>
+  );
+}
+
+function PasswordVisibilityToggle({ show, onToggle, lang }: { show: boolean; onToggle: () => void; lang: UiLang }) {
+  return (
+    <button type="button" onClick={onToggle} className="absolute end-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary" aria-label={show ? bilingualByLang("إخفاء كلمة المرور", "Hide password", lang) : bilingualByLang("إظهار كلمة المرور", "Show password", lang)}>
+      {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+    </button>
+  );
+}
+
+/** ✅ Sonar S3776: the GIS registration callback lives at module scope — the
+ *  component keeps only a thin useCallback wrapper (stable deps). */
+async function runGoogleRegisterCallback(
+  response: GoogleCredentialResponse,
+  deps: {
+    lang: UiLang;
+    navigate: (to: string, opts?: { replace: boolean }) => void;
+    queryClient: { clear: () => void };
+    setGoogleLoading: (v: boolean) => void;
+    setError: (v: string) => void;
+    setPendingApproval: (v: boolean) => void;
+  },
+): Promise<void> {
+  const { lang, navigate, queryClient } = deps;
+  if (!response.credential) return;
+  deps.setGoogleLoading(true); deps.setError("");
+  try {
+    const res = await fetch("/api/google-auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken: response.credential }) });
+    const data = await res.json();
+    if (data.success && data.user) {
+      trackPlatform("google_register_success");
+      // ✅ SECURITY FIX (audit run-1, auth.google-login.query-cache-purge-missing):
+      // a Google sign-up that establishes a NEW identity must not inherit the
+      // previous account's cached private queries (persisted + in-memory).
+      try { localStorage.removeItem("ELBAZ_QUERY_CACHE"); } catch { /* ignore */ }
+      queryClient.clear();
+      identifyUser(data.user.id, data.user.username, { role: "user", loginMethod: "google" });
+      toast.success(lang === "ar" ? "تم إنشاء الحساب بنجاح" : "Account created successfully");
+      navigate("/", { replace: true });
+    } else {
+      // ✅ ADMIN APPROVAL GATE: the GIS flow creates the account as pending
+      // and returns approval_pending (403, no session) — show the same
+      // respectful panel as the local path.
+      if (data.error === "approval_pending") {
+        deps.setPendingApproval(true);
+        return;
+      }
+      const errMsg = data.error || (lang === "ar" ? "فشل تسجيل الدخول بجوجل" : "Google sign-in failed");
+      deps.setError(errMsg); toast.error(errMsg);
+    }
+  } catch {
+    const errMsg = lang === "ar" ? "تعذر الاتصال بالخادم" : "Could not connect to server";
+    deps.setError(errMsg); toast.error(errMsg);
+  } finally { deps.setGoogleLoading(false); }
+}
+
 export default function Register() {
   const { t, lang } = useTranslation();
   const queryClient = useQueryClient();
@@ -127,42 +253,18 @@ export default function Register() {
     console.warn("[GoogleAuth] globalThis.__ENV__ not found, falling back to /api/env fetch");
     // ✅ PERF (client-fetch dedupe): shared module-scope cache — revisiting
     // this page (or switching Login ↔ Register) no longer re-fetches /api/env.
+    // ✅ Sonar S9383: rejection is explicit — without /api/env the Google
+    // button simply doesn't render; nothing further to recover here.
     fetchPublicEnv()
-      .then(data => { if (data?.GOOGLE_CLIENT_ID) setGoogleClientId(data.GOOGLE_CLIENT_ID); });
+      .then(data => { if (data?.GOOGLE_CLIENT_ID) setGoogleClientId(data.GOOGLE_CLIENT_ID); })
+      .catch(() => { /* /api/env unreachable — Google sign-up button stays hidden */ });
   }, []);
 
-  const handleGoogleCallback = useCallback(async (response: GoogleCredentialResponse) => {
-    if (!response.credential) return;
-    setGoogleLoading(true); setError("");
-    try {
-      const res = await fetch("/api/google-auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken: response.credential }) });
-      const data = await res.json();
-      if (data.success && data.user) {
-        trackPlatform("google_register_success");
-        // ✅ SECURITY FIX (audit run-1, auth.google-login.query-cache-purge-missing):
-        // a Google sign-up that establishes a NEW identity must not inherit the
-        // previous account's cached private queries (persisted + in-memory).
-        try { localStorage.removeItem("ELBAZ_QUERY_CACHE"); } catch { /* ignore */ }
-        queryClient.clear();
-        identifyUser(data.user.id, data.user.username, { role: "user", loginMethod: "google" });
-        toast.success(lang === "ar" ? "تم إنشاء الحساب بنجاح" : "Account created successfully");
-        navigate("/", { replace: true });
-      } else {
-        // ✅ ADMIN APPROVAL GATE: the GIS flow creates the account as pending
-        // and returns approval_pending (403, no session) — show the same
-        // respectful panel as the local path.
-        if (data.error === "approval_pending") {
-          setPendingApproval(true);
-          return;
-        }
-        setError(data.error || (lang === "ar" ? "فشل تسجيل الدخول بجوجل" : "Google sign-in failed"));
-        toast.error(data.error || "Google sign-in failed");
-      }
-    } catch {
-      const errMsg = lang === "ar" ? "تعذر الاتصال بالخادم" : "Could not connect to server";
-      setError(errMsg); toast.error(errMsg);
-    } finally { setGoogleLoading(false); }
-  }, [lang, navigate, queryClient]);
+  // ✅ Sonar S3776: thin wrapper — the full GIS callback lives at module scope.
+  const handleGoogleCallback = useCallback(
+    (response: GoogleCredentialResponse) => runGoogleRegisterCallback(response, { lang, navigate, queryClient, setGoogleLoading, setError, setPendingApproval }),
+    [lang, navigate, queryClient],
+  );
 
   useEffect(() => {
     if (!googleClientId) return;
@@ -228,9 +330,14 @@ export default function Register() {
       queryClient.clear();
       if (data?.user?.id && data?.user?.username) identifyUser(data.user.id, data.user.username, { role: "user", isNewUser: true });
       if (isNativePlatform() && data?.token) setStoredToken(data.token);
-      toast.success(refCode
-        ? (lang === "ar" ? "تم إنشاء الحساب — خصم الترحيب بتاعك مستنيك في ملفك الشخصي 🎁" : "Account created — your welcome coupon is waiting in your profile 🎁")
-        : t("registerSuccess"));
+      // ✅ Sonar S3358: flat branches instead of a nested ternary.
+      if (refCode) {
+        toast.success(lang === "ar"
+          ? "تم إنشاء الحساب — خصم الترحيب بتاعك مستنيك في ملفك الشخصي 🎁"
+          : "Account created — your welcome coupon is waiting in your profile 🎁");
+      } else {
+        toast.success(t("registerSuccess"));
+      }
       navigate("/", { replace: true });
     },
     onError: (err) => {
@@ -243,14 +350,26 @@ export default function Register() {
   const failValidation = (msg: string): boolean => { setError(msg); toast.error(msg); return false; };
 
   const validateRegistrationForm = (): boolean => {
-    if (!username.trim() || !password.trim()) return failValidation(lang === "en" ? "Username and password are required" : "اسم المستخدم وكلمة المرور مطلوبان");
-    if (password !== confirmPassword) return failValidation(lang === "en" ? "Passwords do not match" : "كلمات المرور غير متطابقة");
-    if (username.trim().length < 3) return failValidation(lang === "en" ? "Username must be at least 3 characters" : "اسم المستخدم يجب أن يكون 3 أحرف على الأقل");
-    if (username.trim().length > 30) return failValidation(lang === "en" ? "Username is too long (max 30 characters)" : "اسم المستخدم طويل جداً (الحد الأقصى 30 حرف)");
-    if (!/^[a-zA-Z0-9_\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]+$/.test(username.trim())) return failValidation(lang === "en" ? "Username can only contain letters (English/Arabic), numbers, and underscores (_)" : "اسم المستخدم يمكن أن يحتوي فقط على حروف (إنجليزية/عربية)، أرقام، وشرطة سفلية (_)");
-    if (email.trim() && !isValidEmail(email.trim())) return failValidation(lang === "en" ? "Invalid email format" : "صيغة البريد الإلكتروني غير صحيحة");
-    if (password.length < 8) return failValidation(lang === "en" ? "Password must be at least 8 characters" : "كلمة المرور يجب أن تكون 8 أحرف على الأقل");
-    if (!hasPasswordStrengthChars(password)) return failValidation(lang === "en" ? "Password must contain at least one uppercase letter, one lowercase letter, and a number" : "كلمة المرور يجب أن تحتوي على حرف كبير وحرف صغير ورقم على الأقل");
+    const u = username.trim();
+    const e = email.trim();
+    // ✅ Sonar S3776 (25 → 6): data-driven checks, first failure wins — same
+    // order and the exact same copy as the previous if-chain. Conditions are
+    // pure, so eager evaluation is safe.
+    const checks: readonly { valid: boolean; ar: string; en: string }[] = [
+      { valid: Boolean(u) && Boolean(password), ar: "اسم المستخدم وكلمة المرور مطلوبان", en: "Username and password are required" },
+      { valid: password === confirmPassword, ar: "كلمات المرور غير متطابقة", en: "Passwords do not match" },
+      { valid: u.length >= 3, ar: "اسم المستخدم يجب أن يكون 3 أحرف على الأقل", en: "Username must be at least 3 characters" },
+      { valid: u.length <= 30, ar: "اسم المستخدم طويل جداً (الحد الأقصى 30 حرف)", en: "Username is too long (max 30 characters)" },
+      { valid: /^[a-zA-Z0-9_\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]+$/.test(u), ar: "اسم المستخدم يمكن أن يحتوي فقط على حروف (إنجليزية/عربية)، أرقام، وشرطة سفلية (_)", en: "Username can only contain letters (English/Arabic), numbers, and underscores (_)" },
+      { valid: !e || isValidEmail(e), ar: "صيغة البريد الإلكتروني غير صحيحة", en: "Invalid email format" },
+      { valid: password.length >= 8, ar: "كلمة المرور يجب أن تكون 8 أحرف على الأقل", en: "Password must be at least 8 characters" },
+      { valid: hasPasswordStrengthChars(password), ar: "كلمة المرور يجب أن تحتوي على حرف كبير وحرف صغير ورقم على الأقل", en: "Password must contain at least one uppercase letter, one lowercase letter, and a number" },
+    ];
+    for (const check of checks) {
+      if (!check.valid) {
+        return failValidation(lang === "ar" ? check.ar : check.en);
+      }
+    }
     return true;
   };
 
@@ -272,65 +391,23 @@ export default function Register() {
         </div>
 
         {/* ✅ ADMIN APPROVAL GATE — the respectful welcome panel replaces the
-            form once the request is in (owner's exact copy, user's language). */}
+            form once the request is in (owner's exact copy, user's language).
+            Extracted to a module component — Sonar S3776/S6819. */}
         {pendingApproval ? (
-          <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-6" role="status" data-testid="register-pending-panel">
-            <div className="flex items-start gap-3">
-              <Hourglass className="mt-0.5 h-6 w-6 shrink-0 text-amber-300" />
-              <div>
-                <h2 className="text-lg font-bold text-amber-200">
-                  {lang === "ar" ? "أهلاً بك في منصة المهندس أحمد الباز! 🌟" : "Welcome to Eng. Ahmed Elbaz's platform! 🌟"}
-                </h2>
-                <p className="mt-2 text-[14px] leading-relaxed text-amber-100/90">
-                  {lang === "ar"
-                    ? "شكراً لتسجيلك! تم استلام طلب انضمامك بنجاح وهو الآن بانتظار المراجعة. المهندس أحمد الباز سيراجع طلبك وسيتم الموافقة عليه في أقرب وقت إن شاء الله — وسنبلغك فور التفعيل، وبعدها تستطيع تسجيل الدخول مباشرة والبدء في التعلم."
-                    : "Thank you for signing up! Your join request has been received and is now awaiting review. Eng. Ahmed Elbaz will review it and approve it as soon as possible — you'll be notified once it's activated, and then you can sign in and start learning right away."}
-                </p>
-                <p className="mt-3 rounded-lg bg-amber-400/10 p-3 text-[12.5px] leading-relaxed text-amber-200/80">
-                  {lang === "ar"
-                    ? "يمكنك الآن إغلاق هذه الصفحة بأمان — حاول تسجيل الدخول بعد وصول إشعار الموافقة."
-                    : "You can safely close this page now — try signing in after you receive the approval notification."}
-                </p>
-              </div>
-            </div>
-          </div>
+          <RegisterPendingApprovalPanel lang={lang} />
         ) : (
         <>
 
         {googleClientId && (
           <div className="mb-4">
-            <button type="button" onClick={handleGoogleSignIn} disabled={googleLoading || registerMutation.isPending} className="flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-primary px-4 py-3 text-sm font-medium text-foreground transition-all duration-200 hover:border-accent-secondary/60 hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50">
-              {googleLoading ? <div className="h-5 w-5 animate-spin rounded-full border-2 border-accent-secondary border-t-transparent" /> : (
-                <svg className="h-5 w-5" viewBox="0 0 24 24" role="img" aria-hidden="true">
-                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
-                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                </svg>
-              )}
-              {googleLoading ? bilingualByLang("جارٍ التسجيل...", "Signing up...", lang) : bilingualByLang("التسجيل بجوجل", "Sign up with Google", lang)}
-            </button>
+            <GoogleSignUpButton onClick={handleGoogleSignIn} loading={googleLoading} disabled={googleLoading || registerMutation.isPending} lang={lang} />
           </div>
         )}
 
-        {googleClientId && (
-          <div className="relative my-4">
-            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border" /></div>
-            <div className="relative flex justify-center text-xs"><span className="bg-background px-3 text-text-muted">{lang === "ar" ? "أو" : "or"}</span></div>
-          </div>
-        )}
+        {googleClientId && <GoogleOrDivider lang={lang} />}
 
         {/* Referral welcome — the invited friend sees this before signing up. */}
-        {refCode && (
-          <div className="mb-4 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
-            <Gift className="h-4 w-4 shrink-0 text-emerald-500" />
-            <p className="text-xs text-emerald-500">
-              {lang === "ar"
-                ? `أنت مدعوم من صديق لك 🎁 خصم ترحيبي ${5}% مستنيك بعد إنشاء الحساب في صفحة ملفك الشخصي.`
-                : `You were invited by a friend 🎁 a ${5}% welcome coupon awaits in your profile after signing up.`}
-            </p>
-          </div>
-        )}
+        {refCode && <ReferralWelcomeBanner lang={lang} />}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="rounded-xl border border-border bg-primary p-6">
@@ -353,18 +430,14 @@ export default function Register() {
                 <Label htmlFor="register-password" className="text-sm text-text-muted">{t("password")} *</Label>
                 <div className="relative mt-1">
                   <Input id="register-password" name="password" type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t("enterPassword")} className="border-border bg-background pe-10 text-foreground placeholder:text-text-faint focus:border-accent-secondary focus:ring-accent-secondary" autoComplete="new-password" required />
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute end-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary" aria-label={showPassword ? bilingualByLang("إخفاء كلمة المرور", "Hide password", lang) : bilingualByLang("إظهار كلمة المرور", "Show password", lang)}>
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
+                  <PasswordVisibilityToggle show={showPassword} onToggle={() => setShowPassword((v) => !v)} lang={lang} />
                 </div>
               </div>
               <div>
                 <Label htmlFor="register-confirm-password" className="text-sm text-text-muted">{t("confirmPassword")} *</Label>
                 <div className="relative mt-1">
                   <Input id="register-confirm-password" name="confirmPassword" type={showPassword ? "text" : "password"} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder={t("enterPassword")} className="border-border bg-background pe-10 text-foreground placeholder:text-text-faint focus:border-accent-secondary focus:ring-accent-secondary" autoComplete="new-password" required />
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute end-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary" aria-label={showPassword ? bilingualByLang("إخفاء كلمة المرور", "Hide password", lang) : bilingualByLang("إظهار كلمة المرور", "Show password", lang)}>
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
+                  <PasswordVisibilityToggle show={showPassword} onToggle={() => setShowPassword((v) => !v)} lang={lang} />
                 </div>
               </div>
             </div>

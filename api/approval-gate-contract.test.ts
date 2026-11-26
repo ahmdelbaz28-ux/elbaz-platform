@@ -171,6 +171,34 @@ describe("admin approval gate — source contract pins", () => {
     expect(notifyBody).toContain("/api/approval/action?token=");
   });
 
+  // ── 5b. ROOT-CURE (owner report 2026-11-26, "قبول/رفض الإيميل مش بينفذ"):
+  // the canonical domain's Cloudflare challenge never lets mail-app webviews
+  // through, so the owner's email clicks died at the edge. The email buttons
+  // now use a challenge-free base URL and the shield exempts the route; a
+  // db_error must ALSO never masquerade as a completed decision.
+  it("email action links use the challenge-free base (APPROVAL_ACTION_BASE_URL)", () => {
+    expect(approvalLib).toContain("export function approvalActionBaseUrl()");
+    expect(approvalLib).toContain("env.APPROVAL_ACTION_BASE_URL");
+    const notifyBody = approvalLib.slice(approvalLib.indexOf("export async function notifyAdminsOfRegistration"));
+    expect(notifyBody).toContain("approvalActionBaseUrl()");
+  });
+
+  it("the shield exempts /api/approval/action from the host gate (clicks survive any host)", () => {
+    const shield = src("./middleware/shield.ts");
+    expect(shield).toContain('c.req.path.startsWith("/api/approval/action")');
+    expect(shield).toContain("!isApprovalAction");
+  });
+
+  it("db_error on the email action is an honest retry page — never a fake 'already decided'", () => {
+    const handlerIdx = actionRoute.indexOf('approvalActionRoute.get("/action"');
+    const handler = actionRoute.slice(handlerIdx);
+    expect(handler).toContain('reason === "db_error"');
+    expect(handler).toContain("تعذّر تنفيذ الإجراء الآن");
+    expect(handler).toContain("503");
+    // the inert page is reserved for genuinely already-decided links
+    expect(handler).toContain("تم البت في هذا الطلب مسبقاً");
+  });
+
   it("the admin fan-out targets admin streams only and never leaks to users", () => {
     const loadAdmins = approvalLib.slice(approvalLib.indexOf("async function loadAdminIds"), approvalLib.indexOf("async function loadAdminIds") + 500);
     expect(loadAdmins).toContain('eq(users.role, "admin")');

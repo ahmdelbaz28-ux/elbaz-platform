@@ -626,7 +626,7 @@ function ytParseInnertube(payload) {
   const seen = new Set();
   const loose = [];
   const walk = (node) => {
-    if (Array.isArray(node)) { for (const child of node) walk(child); return; }
+    if (Array.isArray(node)) { for (const child of node) { walk(child); } return; }
     if (!node || typeof node !== 'object') return;
     const obj = node;
     const lockup = obj.lockupViewModel;

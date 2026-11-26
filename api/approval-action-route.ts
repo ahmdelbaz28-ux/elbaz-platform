@@ -111,6 +111,25 @@ approvalActionRoute.get("/action", async (c) => {
     if (result.reason === "not_found") {
       return c.html(page("الحساب غير موجود", "الحساب المرتبط بهذا الرابط لم يعد موجودًا.", "The account linked to this action no longer exists.", "bad"), 404);
     }
+    // ✅ ROOT-CURE (owner report 2026-11-26, "قبول/رفض الإيميل مش بينفذ"): a
+    // db_error (transient DB outage, missing column, timeout) used to land in
+    // the same inert "already decided" page below — the owner read "تم البت
+    // مسبقاً" and walked away while NOTHING was written: the approval circle
+    // silently never closed. A decision that was NOT applied must never be
+    // reported as decided — surface an honest retry page (and the 503 tells
+    // monitors this endpoint had a real failure) instead of a false "done".
+    if (result.reason === "db_error") {
+      logger.error("[ApprovalRoute] decision FAILED (db error) — action NOT applied", { userId, action });
+      return c.html(
+        page(
+          "تعذّر تنفيذ الإجراء الآن",
+          "حدث خطأ مؤقت في قاعدة البيانات ولم يُطبَّق القرار. انتظر دقيقة ثم اضغط زر الإجراء من البريد مرة أخرى، أو قرر من لوحة التحكم (المستخدمون).",
+          "A temporary database error occurred and the decision was NOT applied. Wait a minute, then press the action button from the email again — or decide from the dashboard (Users tab).",
+          "bad",
+        ),
+        503,
+      );
+    }
     // not_pending — a consumed or superseded link: inert page, no oracle.
     return c.html(page("تم البت في هذا الطلب مسبقاً", "هذا الطلب حُسم بالفعل — لا حاجة لإعادة الإجراء. يمكنك مراجعة حالته من لوحة التحكم.", "This request was already decided — no further action needed. You can review its status from the dashboard.", "neutral"));
   }

@@ -282,6 +282,22 @@ export function adminAlertEmail(): string | null {
   return "ahmdelbaz28@gmail.com";
 }
 
+/** ✅ ROOT-CURE (owner report 2026-11-26, "قبول/رفض الإيميل مش بينفذ"): the
+ *  base URL the email's Approve/Reject buttons point at. The canonical domain
+ *  sits behind a Cloudflare managed challenge that mail-app webviews and
+ *  non-JS clients never pass (measured: real-browser navigation stuck on
+ *  "Just a moment…", curl 403 cf-mitigated) — clicks carrying the owner's
+ *  signed authority died at the edge. APPROVAL_ACTION_BASE_URL (Space
+ *  variable, set to the raw *.hf.space origin) routes the buttons straight
+ *  to the app — no edge challenge in the path; the HMAC-signed token remains
+ *  the sole authority (see the shield exemption for /api/approval/action).
+ *  Falls back to FRONTEND_URL when unset (canonical-domain behavior). */
+export function approvalActionBaseUrl(): string {
+  const v = (env.APPROVAL_ACTION_BASE_URL || "").trim().replace(/\/+$/, "");
+  if (/^https:\/\//.test(v)) return v;
+  return env.FRONTEND_URL.replace(/\/+$/, "");
+}
+
 async function loadAdminIds(): Promise<number[]> {
   const db = getDb();
   const rows = await db
@@ -336,8 +352,8 @@ export async function notifyAdminsOfRegistration(params: {
         name,
         email,
         registeredAt: new Date(),
-        approveUrl: `${frontendUrl}/api/approval/action?token=${encodeURIComponent(approveToken)}`,
-        rejectUrl: `${frontendUrl}/api/approval/action?token=${encodeURIComponent(rejectToken)}`,
+        approveUrl: `${approvalActionBaseUrl()}/api/approval/action?token=${encodeURIComponent(approveToken)}`,
+        rejectUrl: `${approvalActionBaseUrl()}/api/approval/action?token=${encodeURIComponent(rejectToken)}`,
         dashboardUrl: `${frontendUrl}/admin?tab=users`,
       });
       const message = {

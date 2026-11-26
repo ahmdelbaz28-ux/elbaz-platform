@@ -185,7 +185,20 @@ export const shieldMiddleware = createMiddleware(async (c, next) => {
     // Exempt it like the Paymob webhook above so the playlist mirror never
     // depends on which egress path a relay happens to use.
     const isYtSyncIngest = c.req.path.startsWith("/api/yt-sync/");
-    if (!isEmbedFrame && !isInternal && !isPaymobWebhook && !isYtSyncIngest) {
+    // ✅ ROOT-CURE (owner report 2026-11-26, "أضغط قبول/رفض من الإيميل ومش بينفذ"):
+    // the owner's email Approve/Reject buttons link to /api/approval/action with an
+    // HMAC-signed token. The canonical domain sits behind a Cloudflare managed
+    // challenge that mail-app webviews and non-JS clients NEVER pass (measured:
+    // real browser navigation stuck on "Just a moment…"; curl 403 cf-mitigated) —
+    // so clicks that carry the owner's authority died at the edge and the approval
+    // circle never closed. Like the Paymob/yt-sync exemptions above, the signed
+    // token IS the authority here (HMAC-SHA256 over the payload, 7-day TTL,
+    // timing-safe compare, per-IP rate limit, inert no-oracle pages) — the host
+    // gate adds nothing but a place for the click to die. Exempt the path so the
+    // email buttons work from ANY host: canonical domain, raw *.hf.space origin
+    // (APPROVAL_ACTION_BASE_URL links), or a future mirror.
+    const isApprovalAction = c.req.path.startsWith("/api/approval/action");
+    if (!isEmbedFrame && !isInternal && !isPaymobWebhook && !isYtSyncIngest && !isApprovalAction) {
       const xfHost = (c.req.header("x-forwarded-host") ?? "").split(",")[0].trim().toLowerCase();
       const effective = xfHost || host0;
       // ✅ v1.1.3 HARDENING (origin E2E audit 2026-11-20): the space router

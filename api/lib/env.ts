@@ -107,6 +107,15 @@ const envSchema = z.object({
    *  only the email alert is skipped. */
   ADMIN_ALERT_EMAIL: z.string().email().optional(),
 
+  /** ✅ ROOT-CURE (2026-11-26): base URL the email Approve/Reject buttons point
+   *  at. Set it to the raw Space origin (https://<owner>-<space>.hf.space) so
+   *  the owner's email clicks bypass the canonical domain's Cloudflare managed
+   *  challenge, which mail-app webviews never pass (the approval circle never
+   *  closed — clicks died at the edge). The signed token remains the sole
+   *  authority; the shield exempts /api/approval/action from the host gate.
+   *  Unset / non-https → FRONTEND_URL (previous behavior). */
+  APPROVAL_ACTION_BASE_URL: z.string().url().optional(),
+
   REDIS_URL: z.string().url().optional(),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60000),
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().default(300),

@@ -42,6 +42,24 @@
       "sourceType": "github",
       "skillPath": "skills/obsidian-markdown/SKILL.md",
       "computedHash": ""
+    },
+    "systematic-debugging": {
+      "source": "obra/superpowers",
+      "sourceType": "github",
+      "skillPath": "skills/systematic-debugging/SKILL.md",
+      "computedHash": "51c6435d98c83c42c96ba7c35725a0b2c376cd487fb1a4e6bd0ddbe7e33ef202"
+    },
+    "sonarqube-audit": {
+      "source": "netdata/netdata",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/triage-sonarqube/SKILL.md",
+      "computedHash": "787edbe3ea8dae7ced1818ef584937cce2fc194685ed926e4cf4ce2c1d49f39b"
+    },
+    "agent-browser": {
+      "source": "vercel-labs/agent-browser",
+      "sourceType": "github",
+      "skillPath": "",
+      "computedHash": "a845f2c97ff2411ecf82396a98ffd16ca6e6dd4cbb6b9691ac17a716bd4bc9c6"
     }
   }
 }

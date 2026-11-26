@@ -21,6 +21,118 @@ interface GoogleCredentialResponse {
   error?: string;
 }
 
+type UiLang = "ar" | "en";
+
+// ✅ Sonar S3776 + S3358 remediation (2026-11-26): the approval-gate panels,
+// the Google-auth success/gate/error paths and the login-failure copy moved
+// OUT of the component body into pure module-scope helpers — Login() and its
+// handlers stay under the cognitive-complexity budget and no nested ternary
+// remains. Behavior is unchanged (same sentinels, same copy, same order).
+
+function ApprovalPendingPanel({ lang }: { lang: UiLang }) {
+  return (
+    <output className="mb-4 block rounded-2xl border border-amber-400/30 bg-amber-400/10 p-5" data-testid="approval-pending-panel">
+      <div className="flex items-start gap-3">
+        <Hourglass className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+        <div>
+          <h2 className="text-[15px] font-bold text-amber-200">
+            {lang === "ar" ? "أهلاً بك في منصة المهندس أحمد الباز! 🌟" : "Welcome to Eng. Ahmed Elbaz's platform! 🌟"}
+          </h2>
+          <p className="mt-1.5 text-[13.5px] leading-relaxed text-amber-100/90">
+            {lang === "ar"
+              ? "تم استلام طلب انضمامك بنجاح. المهندس أحمد الباز سيراجع طلبك وسيتم الموافقة عليه في أقرب وقت إن شاء الله — بعدها يمكنك تسجيل الدخول مباشرة. شكراً لانتظارك وصدقك."
+              : "Your join request has been received. Eng. Ahmed Elbaz will review it and approve it as soon as possible — you will be able to sign in right after. Thank you for your patience."}
+          </p>
+          {/* ✅ ROOT-CURE (owner report 2026-11-26, "the admin confirmed my
+              email but the site asks me to log in every time"): the gate
+              and the email confirmation are two independent milestones.
+              This panel says so explicitly — a user who verified their
+              email but is still pending understands the REAL blocker
+              instead of concluding the site "forgets" them. */}
+          <p className="mt-2 text-[12.5px] leading-relaxed text-amber-200/80">
+            {lang === "ar"
+              ? "ملاحظة: تأكيد البريد الإلكتروني خطوة أولى فقط — فتح الدخول يتم بموافقة الأدمن على الحساب. وإذا سجّلت سابقاً باسم مستخدم وكلمة مرور فاستخدم نفس الطريقة للدخول (دخول جوجل ببريد مختلف ينشئ طلباً جديداً)."
+              : "Note: email confirmation is only the first step — sign-in unlocks with the admin's approval of the account. If you previously registered with a username and password, sign in the same way (Google sign-in with a different address creates a new request)."}
+          </p>
+        </div>
+      </div>
+    </output>
+  );
+}
+
+function ApprovalRejectedPanel({ lang }: { lang: UiLang }) {
+  return (
+    <output className="mb-4 block rounded-2xl border border-red-400/30 bg-red-400/10 p-5" role="alert" data-testid="approval-rejected-panel">
+      <div className="flex items-start gap-3">
+        <ShieldX className="mt-0.5 h-5 w-5 shrink-0 text-red-300" />
+        <div>
+          <h2 className="text-[15px] font-bold text-red-200">
+            {lang === "ar" ? "لم يتم اعتماد هذا الحساب" : "This account was not approved"}
+          </h2>
+          <p className="mt-1.5 text-[13.5px] leading-relaxed text-red-100/90">
+            {lang === "ar"
+              ? "نعتذر — لم يتم قبول طلب الانضمام لهذا الحساب، لذلك لا يمكن تسجيل الدخول به. إن كنت ترى أن هذا خطأ فنحن نأسف لذلك — يرجى التواصل مع الدعم لمراجعة القرار."
+              : "We're sorry — the join request for this account was not accepted, so it cannot sign in. If you believe this is a mistake, please contact support to review the decision."}
+          </p>
+        </div>
+      </div>
+    </output>
+  );
+}
+
+/** Shared tail of a successful Google sign-in — purges the previous
+ *  identity's cached queries, identifies the user, toasts, navigates. */
+function applyGoogleAuthSuccess(
+  user: { id?: number; username?: string; role?: string } | undefined,
+  deps: {
+    queryClient: { clear: () => void };
+    lang: UiLang;
+    navigate: (to: string, opts?: { replace: boolean }) => void;
+  },
+): void {
+  trackPlatform("google_login_success");
+  // ✅ SECURITY FIX (audit run-1, auth.google-login.query-cache-purge-missing):
+  // a Google sign-in that replaces a different identity must purge that
+  // identity's cached private queries (persisted copy + in-memory cache) —
+  // same contract the local-login path enforces.
+  try { localStorage.removeItem("ELBAZ_QUERY_CACHE"); } catch { /* ignore */ }
+  deps.queryClient.clear();
+  if (user?.id && user?.username) identifyUser(user.id, user.username, { role: user.role || "user", loginMethod: "google" });
+  toast.success(deps.lang === "ar" ? "تم تسجيل الدخول بنجاح" : "Logged in successfully");
+  deps.navigate(safeRedirectTarget(), { replace: true });
+}
+
+/** Stable server sentinels from the GIS flow — "pending" | "rejected" | null. */
+function googleAuthGateState(error: unknown): "pending" | "rejected" | null {
+  if (error === "approval_pending") return "pending";
+  if (error === "approval_rejected") return "rejected";
+  return null;
+}
+
+/** Generic Google-auth failure copy (never leaks provider internals). */
+function googleAuthFallbackMessage(data: { error?: string }, lang: UiLang): string {
+  return data.error || (lang === "ar" ? "فشل تسجيل الدخول بجوجل" : "Google login failed");
+}
+
+/** ✅ Sonar S3358/S3776: the login-failure copy (incl. the 2FA step) built as
+ *  flat branches — no nested ternaries, and the component's onError stays thin. */
+function describeLoginFailure(
+  errorCode: string | undefined,
+  lang: UiLang,
+  totpEntered: boolean,
+): { needsTotp: boolean; msg: string } {
+  if (errorCode === "TOO_MANY_REQUESTS") {
+    return { needsTotp: false, msg: lang === "ar" ? "محاولات كثيرة. انتظر قليلاً ثم حاول مرة أخرى." : "Too many login attempts. Please wait a moment and try again." };
+  }
+  if (errorCode === "UNAUTHORIZED") {
+    if (!totpEntered) {
+      return { needsTotp: true, msg: lang === "ar" ? "هذا الحساب محمي بالتحقق بخطوتين — أدخل رمز التحقق" : "This account is protected with 2FA — enter your verification code" };
+    }
+    return { needsTotp: true, msg: lang === "ar" ? "اسم المستخدم أو كلمة المرور أو رمز التحقق غير صحيح" : "Invalid username, password, or verification code" };
+  }
+  return { needsTotp: false, msg: lang === "ar" ? "حدث خطأ في النظام. يرجى المحاولة مرة أخرى لاحقاً." : "A system error occurred. Please try again later." };
+}
+
 declare global {
   interface Window {
     google?: {
@@ -94,8 +206,11 @@ export default function Login() {
     console.warn("[GoogleAuth] globalThis.__ENV__ not found, falling back to /api/env fetch");
     // ✅ PERF (client-fetch dedupe): shared module-scope cache (src/lib/google-env.ts)
     // — revisiting this page (or switching Login ↔ Register) no longer re-fetches /api/env.
+    // ✅ Sonar S9383: the rejection is explicit — if /api/env is unreachable the
+    // Google button simply doesn't render; there is nothing further to recover here.
     fetchPublicEnv()
-      .then(data => { if (data?.GOOGLE_CLIENT_ID) setGoogleClientId(data.GOOGLE_CLIENT_ID); });
+      .then(data => { if (data?.GOOGLE_CLIENT_ID) setGoogleClientId(data.GOOGLE_CLIENT_ID); })
+      .catch(() => { /* /api/env unreachable — Google sign-in button stays hidden */ });
   }, []);
 
   useEffect(() => {
@@ -183,29 +298,21 @@ export default function Login() {
       const res = await fetch("/api/google-auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken: response.credential }) });
       const data = await res.json();
       if (data.success && data.user) {
-        trackPlatform("google_login_success");
-        // ✅ SECURITY FIX (audit run-1, auth.google-login.query-cache-purge-missing):
-        // a Google sign-in that replaces a different identity must purge that
-        // identity's cached private queries (persisted copy + in-memory cache) —
-        // same contract the local-login path enforces below.
-        try { localStorage.removeItem("ELBAZ_QUERY_CACHE"); } catch { /* ignore */ }
-        queryClient.clear();
-        if (data.user?.id && data.user?.username) identifyUser(data.user.id, data.user.username, { role: data.user.role || "user", loginMethod: "google" });
-        toast.success(lang === "ar" ? "تم تسجيل الدخول بنجاح" : "Logged in successfully");
-        navigate(safeRedirectTarget(), { replace: true });
+        applyGoogleAuthSuccess(data.user, { queryClient, lang, navigate });
       } else {
         // ✅ ADMIN APPROVAL GATE: GIS flow blocks pending/rejected accounts
         // with these stable error codes (no session is issued server-side).
-        if (data.error === "approval_pending" || data.error === "approval_rejected") {
-          setApprovalState(data.error === "approval_pending" ? "pending" : "rejected");
+        const gate = googleAuthGateState(data.error);
+        if (gate) {
+          setApprovalState(gate);
           return;
         }
-        const errMsg = data.error || (lang === "ar" ? "فشل تسجيل الدخول بجوجل" : "Google login failed");
+        const errMsg = googleAuthFallbackMessage(data, lang);
         setError(errMsg); toast.error(errMsg);
       }
     } catch (err) {
       console.error("[GoogleAuth] Network error:", err);
-      const errMsg = lang === "ar" ? "تعذر الاتصال بالخادم" : "Could not connect to server";
+      const errMsg = bilingualByLang("تعذر الاتصال بالخادم", "Could not connect to server", lang);
       setError(errMsg); toast.error(errMsg);
     } finally { setGoogleLoading(false); }
   }, [lang, navigate, queryClient]);
@@ -275,19 +382,13 @@ export default function Login() {
         setError("");
         return;
       }
-      let errorMsg: string;
-      const errorCode = (err.data as { code?: string })?.code;
-      if (errorCode === "TOO_MANY_REQUESTS") errorMsg = lang === "ar" ? "محاولات كثيرة. انتظر قليلاً ثم حاول مرة أخرى." : "Too many login attempts. Please wait a moment and try again.";
-      else if (errorCode === "UNAUTHORIZED") {
+      const verdict = describeLoginFailure((err.data as { code?: string })?.code, lang, Boolean(totpCode.trim()));
+      if (verdict.needsTotp) {
         // ✅ SECURITY FIX (audit run-1): surface the 2FA step — accounts with
         // 2FA enabled now require a TOTP/backup code at login.
         setShowTotpInput(true);
-        errorMsg = lang === "ar"
-          ? (totpCode.trim() ? "اسم المستخدم أو كلمة المرور أو رمز التحقق غير صحيح" : "هذا الحساب محمي بالتحقق بخطوتين — أدخل رمز التحقق")
-          : (totpCode.trim() ? "Invalid username, password, or verification code" : "This account is protected with 2FA — enter your verification code");
       }
-      else errorMsg = lang === "ar" ? "حدث خطأ في النظام. يرجى المحاولة مرة أخرى لاحقاً." : "A system error occurred. Please try again later.";
-      setError(errorMsg); toast.error(errorMsg);
+      setError(verdict.msg); toast.error(verdict.msg);
     },
   });
 
@@ -362,52 +463,10 @@ export default function Login() {
         {/* ✅ ADMIN APPROVAL GATE — respectful review/rejection panels (2026-11-24).
             Owner's exact copy: the user is welcomed warmly and told that
             Eng. Ahmed Elbaz will review their request and approve it soon —
-            in the language the user chose. NOT styled as an error. */}
-        {approvalState === "pending" && (
-          <div className="mb-4 rounded-2xl border border-amber-400/30 bg-amber-400/10 p-5" role="status" data-testid="approval-pending-panel">
-            <div className="flex items-start gap-3">
-              <Hourglass className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
-              <div>
-                <h2 className="text-[15px] font-bold text-amber-200">
-                  {lang === "ar" ? "أهلاً بك في منصة المهندس أحمد الباز! 🌟" : "Welcome to Eng. Ahmed Elbaz's platform! 🌟"}
-                </h2>
-                <p className="mt-1.5 text-[13.5px] leading-relaxed text-amber-100/90">
-                  {lang === "ar"
-                    ? "تم استلام طلب انضمامك بنجاح. المهندس أحمد الباز سيراجع طلبك وسيتم الموافقة عليه في أقرب وقت إن شاء الله — بعدها يمكنك تسجيل الدخول مباشرة. شكراً لانتظارك وصدقك."
-                    : "Your join request has been received. Eng. Ahmed Elbaz will review it and approve it as soon as possible — you will be able to sign in right after. Thank you for your patience."}
-                </p>
-                {/* ✅ ROOT-CURE (owner report 2026-11-26, "the admin confirmed my
-                    email but the site asks me to log in every time"): the gate
-                    and the email confirmation are two independent milestones.
-                    This panel now says so explicitly — a user who verified their
-                    email but is still pending understands the REAL blocker
-                    instead of concluding the site "forgets" them. */}
-                <p className="mt-2 text-[12.5px] leading-relaxed text-amber-200/80">
-                  {lang === "ar"
-                    ? "ملاحظة: تأكيد البريد الإلكتروني خطوة أولى فقط — فتح الدخول يتم بموافقة الأدمن على الحساب. وإذا سجّلت سابقاً باسم مستخدم وكلمة مرور فاستخدم نفس الطريقة للدخول (دخول جوجل ببريد مختلف ينشئ طلباً جديداً)."
-                    : "Note: email confirmation is only the first step — sign-in unlocks with the admin's approval of the account. If you previously registered with a username and password, sign in the same way (Google sign-in with a different address creates a new request)."}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-        {approvalState === "rejected" && (
-          <div className="mb-4 rounded-2xl border border-red-400/30 bg-red-400/10 p-5" role="alert" data-testid="approval-rejected-panel">
-            <div className="flex items-start gap-3">
-              <ShieldX className="mt-0.5 h-5 w-5 shrink-0 text-red-300" />
-              <div>
-                <h2 className="text-[15px] font-bold text-red-200">
-                  {lang === "ar" ? "لم يتم اعتماد هذا الحساب" : "This account was not approved"}
-                </h2>
-                <p className="mt-1.5 text-[13.5px] leading-relaxed text-red-100/90">
-                  {lang === "ar"
-                    ? "نعتذر — لم يتم قبول طلب الانضمام لهذا الحساب، لذلك لا يمكن تسجيل الدخول به. إن كنت ترى أن هذا خطأ فنحن نأسف لذلك — يرجى التواصل مع الدعم لمراجعة القرار."
-                    : "We're sorry — the join request for this account was not accepted, so it cannot sign in. If you believe this is a mistake, please contact support to review the decision."}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
+            in the language the user chose. NOT styled as an error.
+            (Extracted to module components — Sonar S3776/S6819.) */}
+        {approvalState === "pending" && <ApprovalPendingPanel lang={lang} />}
+        {approvalState === "rejected" && <ApprovalRejectedPanel lang={lang} />}
 
         {/* Premium panel — everything (Google + form) lives in one dark
             panel so the video stays visible around the edges. Note: NO
