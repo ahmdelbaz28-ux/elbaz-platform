@@ -337,7 +337,14 @@ async function chatRequestPreflight(c: Context): Promise<ChatPreflight> {
   // the preflight; every failure path below REFUNDS it exactly once. The
   // reservation is intentionally held across post-preflight awaits — any
   // throw before the endpoint returns is caught here and refunded first.
-  const quotaLane = visionQuotaLane(screenCapture, ip);
+  // ✅ SECURITY FIX (audit run-3, ai.quota.vision-lane-user-keyed): the vision
+  // lanes were keyed by header-derived IP even though chat is login-required
+  // since the 2026-11-25 directive — a caller rotating spoofable forwarded
+  // headers reset its 5/day attachment lane per request. Chat is now always
+  // authenticated at this point, so key the lane on the ACCOUNT (same limits,
+  // non-spoofable dimension). The per-IP message caps upstream remain the
+  // outer abuse brake.
+  const quotaLane = visionQuotaLane(screenCapture, `u${chatUser.id}`);
   let visionReserved = false;
   if (vision) {
     const reservation = await tryConsumeImageQuota(quotaLane.key, imageCount, quotaLane.limit);
@@ -369,7 +376,14 @@ async function chatRequestPreflight(c: Context): Promise<ChatPreflight> {
 
     // ✅ SECURITY FIX (pre-launch audit run-2): daily per-USER message quota —
     // generous headroom for real students; only an automated loop hits it.
+    // ✅ SECURITY FIX (audit run-3, ai.quota.vision-reservation-leak-user-daily-path):
+    // this early return previously leaked the vision reservation taken above
+    // (the catch below only covers throws). REFUND before returning so the
+    // codebase invariant "every failure path refunds exactly once" holds.
     if (chatUser && !bumpAndCheckChatbotDaily(`user:${chatUser.id}`, CHATBOT_DAILY_USER_LIMIT)) {
+      if (visionReserved) {
+        await refundImageQuota(quotaLane.key, imageCount).catch(() => {});
+      }
       return { error: errorResponse(c, "RATE_LIMITED", { lang: dailyLang, chatId: body.chatId, message: chatbotDailyQuotaMessage(CHATBOT_DAILY_USER_LIMIT, dailyLang) }) };
     }
 
@@ -401,6 +415,17 @@ async function chatRequestPreflight(c: Context): Promise<ChatPreflight> {
 // ── Chat-history persistence helpers (logged-in users only) ──
 // The assistant reply is only persisted on SUCCESS so error banners and
 // quota warnings never pollute the restored history.
+
+// ✅ SECURITY FIX (audit run-3, screen-context-auth-server-bound): the
+// client-reported pageContext.auth ("admin") was previously accepted into the
+// system prompt as-is — a guest could present an admin screen state. Chat is
+// login-required at both call sites, so the field is now derived from the
+// RESOLVED session role, never the client payload.
+function parseScreenContextBoundToSession(raw: unknown, role: string | undefined | null): ReturnType<typeof parseScreenContext> {
+  const parsed = parseScreenContext(raw);
+  if (parsed) parsed.auth = role === "admin" ? "admin" : "user";
+  return parsed;
+}
 
 /** Plain text + vision note for the last user message of a normalized round. */
 function lastUserRoundText(messages: ChatApiMessage[], vision: boolean): string {
@@ -490,7 +515,8 @@ chatbotRouter.post("/", async (c) => {
       // ✅ SCREEN CONTEXT: the client's live screen snapshot (open page,
       // displayed entity, nav trail) — strictly validated before it may reach
       // the system prompt; an invalid/absent payload just omits the block.
-      screen: parseScreenContext(body.pageContext) ?? undefined,
+      // auth is server-bound to the resolved session role (audit run-3).
+      screen: parseScreenContextBoundToSession(body.pageContext, chatUser?.role) ?? undefined,
       // ✅ Review fix (2026-11-11): the client's disconnect signal reaches the
       // whole cascade — the walk, every lane and every in-flight fetch now
       // observe it (abort-utils composition), not just the persistence loop.
@@ -654,7 +680,8 @@ chatbotRouter.post("/stream", async (c) => {
     historySummary: historySummary ?? undefined,
     // ✅ SCREEN CONTEXT: the client's live screen snapshot — validated above
     // the walk so every round sees the same grounded screen state.
-    screen: parseScreenContext(body.pageContext) ?? undefined,
+    // auth is server-bound to the resolved session role (audit run-3).
+    screen: parseScreenContextBoundToSession(body.pageContext, chatUser?.role) ?? undefined,
     preferLegacy: round >= 2,
     // ✅ ARCH-AUDIT FIX: the walk sees the endpoint's abort signal — rounds
     // abandoned by the hard cap / client disconnect stop burning quota.

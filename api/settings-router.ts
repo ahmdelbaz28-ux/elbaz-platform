@@ -79,7 +79,10 @@ export const settingsRouter = createRouter({
     .input(z.object({
       section: z.string().min(1).max(100),
       key: z.string().min(1).max(255),
-      value: z.string(),
+      // ✅ SECURITY FIX (audit run-3, settings-upsert-bounded): the column is
+      // TEXT (64KB) — an oversize value previously surfaced as a raw DB 500.
+      // Bound the input to fit the column with headroom.
+      value: z.string().max(60000),
       type: z.enum(["text", "richtext", "image", "url", "color", "number", "json"]).default("text"),
       sortOrder: z.number().int().default(0),
     }))
@@ -99,26 +102,28 @@ export const settingsRouter = createRouter({
   bulkUpsert: adminMutation
     .input(z.object({
       section: z.string().min(1).max(100),
+      // ✅ SECURITY FIX (audit run-3, settings-upsert-bounded): bound the bulk
+      // fan-out (previously an unbounded array via Promise.all) and the value
+      // size, and run the writes SEQUENTIALLY so a large batch cannot pin the
+      // 10-connection pool.
       settings: z.array(z.object({
         key: z.string().min(1).max(255),
-        value: z.string(),
+        value: z.string().max(60000),
         type: z.enum(["text", "richtext", "image", "url", "color", "number", "json"]).default("text"),
         sortOrder: z.number().int().default(0),
-      })),
+      })).max(50),
     }))
     .mutation(async ({ input }) => {
       const db = getDb();
-      // Use a single query per setting with INSERT ... ON DUPLICATE KEY UPDATE
-      // This reduces from 2N queries to N queries
-      await Promise.all(
-        input.settings.map((s) =>
-          db.execute(
-            sql`INSERT INTO siteSettings (\`section\`, \`key\`, \`value\`, \`type\`, \`sortOrder\`)
-             VALUES (${input.section}, ${s.key}, ${s.value}, ${s.type}, ${s.sortOrder})
-             ON DUPLICATE KEY UPDATE \`value\` = VALUES(\`value\`), \`type\` = VALUES(\`type\`)`
-          )
-        )
-      );
+      // One query per setting with INSERT ... ON DUPLICATE KEY UPDATE —
+      // executed sequentially (bounded by the .max(50) array cap above).
+      for (const s of input.settings) {
+        await db.execute(
+          sql`INSERT INTO siteSettings (\`section\`, \`key\`, \`value\`, \`type\`, \`sortOrder\`)
+           VALUES (${input.section}, ${s.key}, ${s.value}, ${s.type}, ${s.sortOrder})
+           ON DUPLICATE KEY UPDATE \`value\` = VALUES(\`value\`), \`type\` = VALUES(\`type\`)`
+        );
+      }
       await invalidateSettingsCache();
       return { success: true };
     }),

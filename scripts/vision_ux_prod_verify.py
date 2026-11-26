@@ -1,3 +1,4 @@
+import os
 #!/usr/bin/env python3
 """VISION-UX PROD VERIFY — the 2026-10-23 user complaint, verified live:
   C1  instant mode + image  → progressive typing (caret + growth), never all-at-once
@@ -12,7 +13,7 @@ from playwright.sync_api import sync_playwright
 
 PROD = "https://ahmedelbaz.qzz.io"
 OUT = "/home/z/my-project/work/elbaz-platform/scripts/shots_vision_ux"
-USER, PASS = "chatfix_live_01", "ChatFix2026X"
+USER, PASS = os.environ.get("PROBE_USER", ""), os.environ.get("PROBE_PASSWORD", "")  # scrubbed (audit run-3, committed-prod-probe-credentials): read from env
 results, fails = [], []
 
 def check(name, cond, detail=""):

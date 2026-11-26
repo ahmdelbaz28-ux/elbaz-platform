@@ -215,14 +215,14 @@ export function decodeWatermarkToken(
     const [userIdStr, username, lessonIdStr, timestampStr, hmac] = parts;
     const payload = `${userIdStr}|${username}|${lessonIdStr}|${timestampStr}`;
 
-    // If no WATERMARK_SECRET, accept the token without verification
+    // ✅ SECURITY FIX (audit run-3, watermark-decode-fail-closed): when
+    // WATERMARK_SECRET is unset the decoder previously ACCEPTED tokens without
+    // any verification — a forged token would name an arbitrary user as the
+    // leaker. Fail closed: tokens generated in that mode carry no HMAC part
+    // (4 fields) and are rejected here; set WATERMARK_SECRET to enable the
+    // watermark trail.
     if (!WATERMARK_SECRET) {
-      return {
-        userId: Number.parseInt(userIdStr, 10),
-        username,
-        lessonId: Number.parseInt(lessonIdStr, 10),
-        timestamp: Number.parseInt(timestampStr, 10),
-      };
+      return null;
     }
 
     const expectedHmac = crypto

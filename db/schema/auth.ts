@@ -51,6 +51,18 @@ export const users = mysqlTable(
     /** Wrong-entry counter for the verification code — 5 misses invalidate it. */
     emailOtpAttempts: int("emailOtpAttempts").notNull().default(0),
     emailVerifiedAt: timestamp("emailVerifiedAt", { mode: "date" }),
+    /**
+     * ✅ SECURITY FIX (audit run-3, google-link-email-provenance): HOW the
+     * email was verified. 'delivered' = the platform sent a code/link to the
+     * address and the holder completed it; 'approval' = an admin approved the
+     * account (the owner directive treats approval as email confirmation).
+     * Google account LINKING by email match requires 'delivered' — an
+     * attacker-created, admin-approved row with someone else's email must
+     * never silently merge the victim's Google identity into it.
+     * NULL (legacy rows) is backfilled to 'delivered' by migration v21 so
+     * existing verified accounts keep working.
+     */
+    emailVerificationSource: varchar("emailVerificationSource", { length: 20 }),
     totpSecret: varchar("totpSecret", { length: 255 }),
     totpEnabled: boolean("totpEnabled").notNull().default(false),
     totpBackupCodes: json("totpBackupCodes"),

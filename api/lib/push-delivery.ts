@@ -91,6 +91,11 @@ export function isAllowedPushEndpoint(endpoint: string): boolean {
     return false;
   }
   if (parsed.protocol !== "https:") return false;
+  // ✅ SECURITY FIX (audit run-3, push-endpoint-port-pinned): the dial host
+  // was already suffix-matched, but a non-443 port on the same host was
+  // accepted — pin the port to the default (443) so the server-side POST can
+  // only reach the standard push-service TLS endpoint.
+  if (parsed.port !== "" && parsed.port !== "443") return false;
   const host = parsed.hostname.toLowerCase();
   return PUSH_ENDPOINT_HOST_SUFFIXES.some((suffix) => host === suffix || host.endsWith(`.${suffix}`));
 }

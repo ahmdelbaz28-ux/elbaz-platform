@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { evictUserAuthCache } from "./context.js";
+import { getClientIpFromHeaders } from "./lib/client-ip";
 import { authMutation, authQuery, createRouter } from "./middleware";
 import { getDb } from "./queries/connection";
 
@@ -53,7 +54,11 @@ export const sessionsRouter = createRouter({
         deviceName: input.deviceName || null,
         browser: input.browser || null,
         os: input.os || null,
-        ipAddress: input.ipAddress || null,
+        // ✅ SECURITY FIX (audit run-3, sessions-ip-server-derived): the IP
+        // shown in the device manager was previously taken VERBATIM from the
+        // client input (attacker-chosen display data). Derive it from the
+        // request headers instead; the client-supplied value is ignored.
+        ipAddress: getClientIpFromHeaders(ctx.req.headers) || null,
       });
 
       return { success: true, id: Number(session.insertId) };

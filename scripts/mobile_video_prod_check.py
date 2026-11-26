@@ -22,7 +22,7 @@ from _gate_unlock import unlock_subscribe_gate
 
 PROD = "https://ahmedelbaz.qzz.io"
 SLUG = "etap-complete-course"
-USER, PW = "paytest01", "PayTest2026"  # committed test account (free-enroll harness)
+USER, PW = os.environ.get("PROBE_USER", ""), os.environ.get("PROBE_PASSWORD", "")  # scrubbed (audit run-3, committed-prod-probe-credentials): read from env  # committed test account (free-enroll harness)
 OUT = "/home/z/my-project/work/elbaz-platform/scripts/shots_mobile_video"
 subprocess.run(["mkdir", "-p", OUT], check=True)
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "

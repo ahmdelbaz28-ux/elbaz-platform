@@ -41,6 +41,7 @@ import { sendEmail } from "./email.js";
 import { buildAdminApprovalRequestEmail } from "./email-templates.js";
 import { env } from "./env.js";
 import { logger, maskEmail } from "./logger.js";
+import { grantReferralRewardForInvitee } from "./referral.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Statuses + the gate
@@ -163,7 +164,12 @@ export async function decideApproval(params: {
         // (or wait) again. Stamping emailVerifiedAt here anchors that promise:
         // pre-gate accounts flipped to pending by the v18 backfill come out
         // of approval with a verified email, and no UI state can nag them.
-        ...(params.action === "approve" ? { emailVerifiedAt: now } : {}),
+        // ✅ SECURITY FIX (audit run-3, google-link-email-provenance): the
+        // PROVENANCE is recorded ('approval') so Google linking by email match
+        // can distinguish approval-stamped addresses from delivered ones —
+        // an attacker-created row with someone else's email must never merge
+        // the victim's Google identity into it.
+        ...(params.action === "approve" ? { emailVerifiedAt: now, emailVerificationSource: "approval" } : {}),
         ...(params.action === "reject" ? { tokenVersion: row.tokenVersion + 1 } : {}),
       })
       .where(eq(users.id, params.userId));
@@ -171,6 +177,15 @@ export async function decideApproval(params: {
     // Close the in-memory auth-cache window immediately (30s TTL otherwise).
     if (params.action === "reject") {
       evictUserAuthCache(params.userId);
+    }
+
+    // ✅ SECURITY FIX (audit run-3, referral-reward-granted-on-unapproved-registration-self-referral-farming):
+    // the referrer reward is granted HERE — when the invitee is actually
+    // approved — instead of at registration. Best-effort + idempotent (see
+    // grantReferralRewardForInvitee); both the dashboard and the email-action
+    // paths go through this single decision function.
+    if (params.action === "approve") {
+      await grantReferralRewardForInvitee(params.userId);
     }
 
     logger.info("[Approval] decision applied", {

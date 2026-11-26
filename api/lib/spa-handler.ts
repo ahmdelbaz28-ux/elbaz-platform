@@ -107,7 +107,17 @@ async function applyNonce(
       ...publicEnv,
       buildId: currentBuildId || process.env.BUILD_ID || "dev",
     };
-    const envScript = `<script nonce="${nonce}">globalThis.__ENV__=${JSON.stringify(envWithBuild)};</script>`;
+    // ✅ SECURITY FIX (audit run-3, env-json-script-breakout): JSON.stringify
+    // does NOT escape "</script>" — a public env value carrying that sequence
+    // would terminate the inline script early and inject markup into the served
+    // shell. Reuse the codebase's own script-safe JSON serializer (escapes <, >,
+    // U+2028/2029 — the same treatment seo-meta.ts applies to JSON-LD).
+    const safeEnvJson = JSON.stringify(envWithBuild)
+      .replaceAll("<", "\\u003c")
+      .replaceAll(">", "\\u003e")
+      .replaceAll("\u2028", "\\u2028")
+      .replaceAll("\u2029", "\\u2029");
+    const envScript = `<script nonce="${nonce}">globalThis.__ENV__=${safeEnvJson};</script>`;
     out = out.replace(/<meta name="csp-nonce"[^>]*>/, `$&${envScript}`);
   } catch {
     // env injection is best-effort — page still renders without it

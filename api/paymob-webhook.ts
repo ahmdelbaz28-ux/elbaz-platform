@@ -145,6 +145,27 @@ async function processWebhookInTransaction(
     return c.json({ ok: true, message: "Transaction not found" }, 200);
   }
 
+  // ✅ SECURITY FIX (audit run-3, pay-webhook-unsigned-merchant-order-ref-swap):
+  // merchant_order_id is NOT part of the HMAC-signed field list, while
+  // obj.order.id IS. A legitimately-signed callback could therefore be replayed
+  // with a substituted merchant_order_id to complete a different pending row.
+  // Bind the SIGNED envelope identity (order.id) to the stored paymobOrderId
+  // before any state mutation. Rows created before paymobOrderId was persisted
+  // (or refund callbacks where Paymob re-uses the original order id) are
+  // unaffected: the check only fires when both sides are present.
+  if (
+    paymentRecord.paymobOrderId &&
+    obj.order?.id != null &&
+    String(obj.order.id) !== String(paymentRecord.paymobOrderId)
+  ) {
+    logger.warn(`[Paymob Webhook] Signed order.id does not match stored paymobOrderId — rejecting`, {
+      merchantOrderId,
+      signedOrderId: obj.order?.id,
+      storedOrderId: paymentRecord.paymobOrderId,
+    });
+    return c.json({ ok: false, error: "Order mismatch" }, 401);
+  }
+
   // ✅ SECURITY FIX (audit run-1, fp.paymob-webhook-terminal-guard-blocks-post-
   // failure-success): obj.pending is part of the Paymob callback contract
   // (wallet/kiosk settle as pending first) — a pending event is NOT a terminal
@@ -199,7 +220,14 @@ async function processWebhookInTransaction(
     .update(payments)
     .set({
       status: newStatus,
-      providerPaymentId: String(obj.id),
+      // ✅ SECURITY FIX (audit run-3, paymob-refund-preserves-charge-reference):
+      // refund/void events carry the REFUND transaction id in obj.id; do not
+      // overwrite the original charge reference (forensic integrity). The
+      // refund txn id is logged above and stays visible in Paymob's dashboard.
+      providerPaymentId:
+        (isRefunded || isVoided) && paymentRecord.providerPaymentId
+          ? paymentRecord.providerPaymentId
+          : String(obj.id),
       paidAt: isSuccess ? new Date() : null,
     })
     .where(eq(payments.transactionId, merchantOrderId));
@@ -225,7 +253,9 @@ async function processWebhookInTransaction(
     // ✅ SECURITY FIX (audit run-1, payments.promo-quota-burn): release the
     // promo quota this payment consumed — refunds/voids must return the
     // discount to the shared budget.
-    await releasePromoUsageForPayment(Number(paymentRecord.id), Number(paymentRecord.userId));
+    // ✅ SECURITY FIX (audit run-3, promo-release-tx-atomic): pass the caller's
+    // tx so the release commits (or rolls back) WITH the refund mutation.
+    await releasePromoUsageForPayment(Number(paymentRecord.id), Number(paymentRecord.userId), tx);
   }
 
   // ── Step 6: Create enrollment if payment successful ──

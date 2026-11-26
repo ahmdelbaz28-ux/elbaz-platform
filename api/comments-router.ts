@@ -151,9 +151,13 @@ export const commentsRouter = createRouter({
 
       if (existing) {
         await db.delete(commentLikes).where(eq(commentLikes.id, existing.id));
+        // ✅ SECURITY FIX (audit run-3, comments-like-counter-guard): the
+        // counter previously moved unconditionally — likes could be nudged on
+        // hidden comments (moderated content kept climbing). Only move the
+        // counter for VISIBLE comments; like rows keep owner binding.
         await db.update(lessonComments)
-          .set({ likeCount: sql`${lessonComments.likeCount} - 1` })
-          .where(eq(lessonComments.id, input.commentId));
+          .set({ likeCount: sql`GREATEST(${lessonComments.likeCount} - 1, 0)` })
+          .where(and(eq(lessonComments.id, input.commentId), eq(lessonComments.isHidden, false)));
         return { success: true, liked: false };
       }
 
@@ -163,7 +167,7 @@ export const commentsRouter = createRouter({
       });
       await db.update(lessonComments)
         .set({ likeCount: sql`${lessonComments.likeCount} + 1` })
-        .where(eq(lessonComments.id, input.commentId));
+        .where(and(eq(lessonComments.id, input.commentId), eq(lessonComments.isHidden, false)));
       return { success: true, liked: true };
     }),
 

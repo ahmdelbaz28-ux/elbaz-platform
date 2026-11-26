@@ -69,6 +69,11 @@ function page(title: string, bodyAr: string, bodyEn: string, tone: "ok" | "bad" 
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="robots" content="noindex, nofollow" />
+<!-- ✅ SECURITY FIX (audit run-3, approval-action-csp-parity): these decision
+     pages are fully static (no scripts, inline styles only) — pin a minimal
+     CSP so any future template change cannot silently introduce script or
+     object sources. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; form-action 'none'; base-uri 'none'" />
 <title>${title}</title>
 </head>
 <body style="margin:0; background:#0a0e17; font-family: Arial, sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;">

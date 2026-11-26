@@ -1077,6 +1077,17 @@ const DISPLAY_CONFIG: Record<
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /** A single notification row inside the scrollable list. */
+/**
+ * ✅ SECURITY FIX (audit run-3, channelurl-scheme-policy): the channelUrl
+ * anchor previously rendered whatever URL the record carried with NO scheme
+ * policy — the same gap the run-1 fix closed for record.url. Apply the same
+ * rule: only relative paths or http(s) URLs may become an <a href>.
+ * (The writer today is admin/config-controlled, but the policy belongs here.)
+ */
+function isSafeNotificationUrl(url: string): boolean {
+  return url.startsWith("/") || /^https?:\/\//i.test(url);
+}
+
 function NotificationRow({
   record,
   lang,
@@ -1156,7 +1167,7 @@ function NotificationRow({
           <p className="text-[11px] text-[#475569]">
             {relativeTime(record.timestamp, lang)}
           </p>
-          {record.channelUrl && (
+          {record.channelUrl && isSafeNotificationUrl(record.channelUrl) && (
             <a
               href={record.channelUrl}
               target="_blank"

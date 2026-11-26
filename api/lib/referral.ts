@@ -162,19 +162,73 @@ export async function applyReferral(
     }
   };
 
-  const rewardOk = await grantCoupon(rewardCode, REFERRAL_REWARD_PERCENT);
+  // ✅ SECURITY FIX (audit run-3, referral-reward-granted-on-unapproved-registration-self-referral-farming):
+  // the referrer reward is NO LONGER granted at registration — see
+  // grantReferralRewardForInvitee() called from the admin approval flow.
   const friendOk = await grantCoupon(friendCode, REFERRAL_WELCOME_PERCENT);
 
-  logger.info("[Referral] applied", {
+  logger.info("[Referral] applied (reward deferred to approval)", {
     referrer: referrer.id,
     newUser: newUserId,
     rewardCode,
     friendCode,
-    rewardOk,
     friendOk,
   });
 
   return { rewardCode, friendCode, referrerUsername: referrer.username };
+}
+
+/**
+ * ✅ SECURITY FIX (audit run-3, referral-reward-granted-on-unapproved-registration-self-referral-farming):
+ * Grant the referrer's 10% reward coupon ONLY once the invited account reaches
+ * approvalStatus='approved'. Previously the reward was minted at registration
+ * time, so throwaway self-referrals (different userId, same owner) farmed
+ * coupons for accounts that were never approved and never purchased.
+ *
+ * Called best-effort from the approval decision paths (dashboard + email
+ * action) — a failure here must never fail the approval itself.
+ * Idempotent: a coupon row for the stored reward code short-circuits the grant
+ * (covers referrals attributed before this fix and replayed decisions).
+ */
+export async function grantReferralRewardForInvitee(inviteeUserId: number): Promise<void> {
+  try {
+    const db = getDb();
+    const [referralRow] = await db
+      .select({ referrerUserId: referrals.referrerUserId, rewardPromoCode: referrals.rewardPromoCode })
+      .from(referrals)
+      .where(eq(referrals.referredUserId, inviteeUserId))
+      .limit(1);
+    if (!referralRow?.rewardPromoCode || !referralRow.referrerUserId) return;
+
+    const [existingCoupon] = await db
+      .select({ id: promoCodes.id })
+      .from(promoCodes)
+      .where(eq(promoCodes.code, referralRow.rewardPromoCode))
+      .limit(1);
+    if (existingCoupon) return; // already granted (legacy registration-time grant)
+
+    const now = new Date();
+    const validUntil = new Date(now.getTime() + REFERRAL_COUPON_VALID_DAYS * 24 * 3600 * 1000);
+    await db.insert(promoCodes).values({
+      code: referralRow.rewardPromoCode,
+      discountType: "percentage",
+      discountValue: String(REFERRAL_REWARD_PERCENT),
+      maxUses: 1,
+      validUntil,
+      createdBy: referralRow.referrerUserId,
+      isActive: true,
+    });
+    logger.info("[Referral] reward coupon granted at invitee approval", {
+      invitee: inviteeUserId,
+      referrer: referralRow.referrerUserId,
+      rewardCode: referralRow.rewardPromoCode,
+    });
+  } catch (err) {
+    logger.warn("[Referral] deferred reward grant failed (approval unaffected)", {
+      invitee: inviteeUserId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 export interface ReferralOverview {

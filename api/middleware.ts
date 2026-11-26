@@ -4,6 +4,7 @@ import superjson from "superjson";
 import type { TrpcContext } from "./context";
 import { getClientIpFromHeaders } from "./lib/client-ip";
 import { env } from "./lib/env";
+import { logger } from "./lib/logger";
 import { checkRateLimit } from "./lib/rate-limiter";
 import { getDb } from "./queries/connection";
 
@@ -63,7 +64,20 @@ const requireAuth = t.middleware(async (opts) => {
 
 function requireRole(role: string) {
   return t.middleware(async (opts) => {
-    if (opts.ctx.user?.role !== role) throw new TRPCError({ code: "FORBIDDEN" });
+    if (opts.ctx.user?.role !== role) {
+      // ✅ SECURITY FIX (audit run-3, audit-role-denials-observable): FORBIDDEN
+      // probes by authenticated non-admins were previously recorded nowhere
+      // (auditAdmin runs after requireRole). A throttled warn line makes the
+      // probe pattern visible to the operator without adding a DB write to
+      // the hot path.
+      logger.warn("[AuthZ] admin procedure denied", {
+        procedure: opts.path,
+        userId: opts.ctx.user?.id ?? null,
+        username: opts.ctx.user?.username ?? null,
+        requiredRole: role,
+      });
+      throw new TRPCError({ code: "FORBIDDEN" });
+    }
     return opts.next({ ctx: { ...opts.ctx, user: opts.ctx.user } });
   });
 }
@@ -77,8 +91,13 @@ function requireRole(role: string) {
 //   · audit failure is swallowed — logging must never break the request
 //   · input values whose KEY looks sensitive are redacted BEFORE storage
 //   · no FK on actorId — the trail survives user deletion
-const AUDIT_REDACT_KEY = /(password|passwd|token|secret|apikey|api_key|hash|credential)/i;
+// ✅ SECURITY FIX (audit run-3, audit-redaction-settings-value-carrier): the
+// generic "value" key is redacted too (EXACT key match, so discountValue etc.
+// stay readable) — settings.upsert/bulkUpsert carry {section,key,value} and a
+// future secret pasted as a setting value must never land in the trail.
+const AUDIT_REDACT_KEY = /(password|passwd|token|secret|apikey|api_key|hash|credential|^value$)/i;
 const AUDIT_INPUT_MAX = 400;
+const auditWarnState = new Map<string, number>();
 
 /** Exported for unit tests — redaction + truncation of audited input. */
 export function auditInputSummary(input: unknown): string | null {
@@ -123,8 +142,20 @@ const auditAdmin = t.middleware(async (opts) => {
       inputSummary: auditInputSummary(rawInput),
       ip: opts.ctx.req?.headers ? getClientIpFromHeaders(opts.ctx.req.headers) : "unknown",
     });
-  } catch {
-    /* audit must never break the admin request */
+  } catch (auditErr) {
+    // ✅ SECURITY FIX (audit run-3, audit-failure-observable): the audit write
+    // must never break the admin request, but a SILENT catch meant an
+    // adminAuditLog outage produced zero signal — accountability degraded
+    // invisibly. A throttled warn makes the degradation visible.
+    const key = "auditAdminWarn";
+    const now = Date.now();
+    const last = (auditWarnState.get(key) ?? 0);
+    if (now - last > 60_000) {
+      auditWarnState.set(key, now);
+      logger.warn("[Audit] adminAuditLog write failed (throttled warn)", {
+        error: auditErr instanceof Error ? auditErr.message : String(auditErr),
+      });
+    }
   }
   return result;
 });

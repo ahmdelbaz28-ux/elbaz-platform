@@ -72,7 +72,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CHAIN_DELAY_SECONDS: ${{ github.event.inputs.chain_delay_seconds || '840' }}
         run: |
-          DELAY=$((CHAIN_DELAY_SECONDS))
+          # ✅ SECURITY FIX (audit run-3, relay-chain-delay-validated): bash
+          # $(( )) arithmetic evaluates embedded command substitution, so an
+          # attacker-influenced input could smuggle a subexpression. The input
+          # is write-access-gated (workflow_dispatch), but validate it to a
+          # plain integer anyway and fall back to the documented default.
+          case "$CHAIN_DELAY_SECONDS" in
+            ''|*[!0-9]*) DELAY=840 ;;
+            *) DELAY=$((CHAIN_DELAY_SECONDS)) ;;
+          esac
           if [ "$DELAY" -gt 0 ]; then
             echo "Pacing ${DELAY}s before arming the next run…"
             sleep "$DELAY"

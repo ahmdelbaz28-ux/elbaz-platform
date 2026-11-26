@@ -16,6 +16,7 @@
 import crypto from "node:crypto";
 import { users } from "@db/schema";
 import { eq, sql } from "drizzle-orm";
+import { RateLimiterMemory } from "rate-limiter-flexible";
 // ✅ SECURITY FIX (pre-launch audit run-2): instant cache eviction after
 // password reset revokes sessions (no 30s cache window for the old JWT).
 // Import direction is safe: context.ts does not import email.ts.
@@ -31,6 +32,18 @@ const RESET_TOKEN_EXPIRY_MINUTES = 15;
 const RESET_TOKEN_LENGTH = 32;
 const EMAIL_VERIFICATION_EXPIRY_MINUTES = 30;
 const EMAIL_VERIFICATION_TOKEN_LENGTH = 32;
+
+// ✅ SECURITY FIX (audit run-3, forgot-password-no-per-recipient-send-budget):
+// per-RECIPIENT send budget for password resets — bounds the operator's Resend
+// spend and victim-inbox harassment independently of source-IP rotation.
+// In-memory per process (documented single-pod deployment; the Redis-backed
+// per-IP buckets remain the outer layer).
+const PASSWORD_RESET_RECIPIENT_POINTS = 3;
+const PASSWORD_RESET_RECIPIENT_WINDOW_SEC = 24 * 3600;
+const passwordResetRecipientLimiter = new RateLimiterMemory({
+  points: PASSWORD_RESET_RECIPIENT_POINTS,
+  duration: PASSWORD_RESET_RECIPIENT_WINDOW_SEC,
+});
 
 interface EmailMessage {
   to: string;
@@ -189,6 +202,24 @@ export async function initiatePasswordReset(rawEmail: string, headers?: Headers)
 
   if (!user?.email) {
     // Don't reveal whether the email exists
+    return { success: true, message: genericMessage };
+  }
+
+  // ✅ SECURITY FIX (audit run-3, forgot-password-no-per-recipient-send-budget):
+  // the per-IP forgotPassword bucket alone bounds one source; a distributed
+  // caller could still bombard ONE victim inbox from the operator's Resend
+  // account (each call also resets the victim's pending reset token). Add a
+  // per-RECIPIENT budget: 3 resets / 24h / email address. Suppressed requests
+  // return the SAME generic message (no enumeration oracle) and are logged
+  // server-side for the operator.
+  try {
+    await passwordResetRecipientLimiter.consume(email, 1);
+  } catch (rlErr) {
+    const msBeforeNext = (rlErr as { msBeforeNext?: number })?.msBeforeNext;
+    logger.warn("[Email] password-reset send suppressed — per-recipient budget exhausted", {
+      recipient: maskEmail(email),
+      retryAfterSec: typeof msBeforeNext === "number" ? Math.ceil(msBeforeNext / 1000) : null,
+    });
     return { success: true, message: genericMessage };
   }
 
@@ -573,6 +604,10 @@ export async function completeEmailVerification(
     emailOtpCode: null, // ✅ Single-use: clear code immediately
     emailOtpAttempts: 0,
     emailVerifiedAt: new Date(),
+    // ✅ SECURITY FIX (audit run-3, google-link-email-provenance): this stamp
+    // comes from a DELIVERED code/link completed by the address holder — mark
+    // the provenance so Google linking by email match accepts it.
+    emailVerificationSource: "delivered",
     updatedAt: new Date(),
   };
 

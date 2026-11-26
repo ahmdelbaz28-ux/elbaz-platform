@@ -49,14 +49,21 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
 
     const cspDirectives = [
       "default-src 'self'",
-      `script-src 'self' 'nonce-${nonce}' https://cdn.jsdelivr.net https://www.clarity.ms https://accounts.google.com https://oauth2.googleapis.com https://www.youtube.com https://s.ytimg.com`,
+      // ✅ SECURITY FIX (audit run-3, csp-remove-unused-jsdelivr + csp-object-none):
+      // cdn.jsdelivr.net was allowlisted but nothing in src/public/api/electron
+      // loads from it — an unused script host lets any future HTML-injection
+      // sink pull arbitrary npm-published code past the nonce layer. Also added
+      // object-src 'none' + upgrade-insecure-requests (defense in depth).
+      `script-src 'self' 'nonce-${nonce}' https://www.clarity.ms https://accounts.google.com https://oauth2.googleapis.com https://www.youtube.com https://s.ytimg.com`,
+      "object-src 'none'",
+      "upgrade-insecure-requests",
       "worker-src 'self'",
       // ✅ ROOT-CURE (2026-11-13, live CSP violations on /login): Google
       // Identity Services injects its own stylesheet
       // (https://accounts.google.com/gsi/style) when rendering the Sign-In
       // button — without it in style-src the browser blocked the sheet and
       // every /login visit filed a CSP violation report.
-      "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com https://accounts.google.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com",
       "font-src 'self' https://fonts.gstatic.com",
       "img-src 'self' data: blob: https:",
       // 🐛 FIX (E2E purchase→certificate journey): media-src was MISSING —
@@ -97,11 +104,15 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
     // nonce-based CSP but prevents the site from breaking on the custom domain.
     const cspDirectives = [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://www.clarity.ms https://accounts.google.com https://oauth2.googleapis.com https://www.youtube.com https://s.ytimg.com",
+      // ✅ Same jsdelivr removal + object-src/upgrade additions as the nonce
+      // branch above (see that block for the rationale).
+      "script-src 'self' 'unsafe-inline' https://www.clarity.ms https://accounts.google.com https://oauth2.googleapis.com https://www.youtube.com https://s.ytimg.com",
+      "object-src 'none'",
+      "upgrade-insecure-requests",
       "worker-src 'self'",
       // ✅ Same accounts.google.com style-src allowance as the nonce CSP
       // above (Google Identity Services stylesheet, see the nonce block).
-      "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com https://accounts.google.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com",
       "font-src 'self' https://fonts.gstatic.com",
       "img-src 'self' data: blob: https:",
       // 🐛 FIX (E2E purchase→certificate journey): media-src was MISSING —
@@ -170,7 +181,15 @@ export const securityMiddleware = createMiddleware(async (c, next) => {
   // Exemptions: /api/csp-report (anonymous telemetry; its JSON parse never
   // sees ambient credentials) and Paymob webhook paths (HMAC-authenticated
   // S2S, no cookies involved).
-  if (method === "POST" || method === "PUT" || method === "PATCH") {
+  // ✅ SECURITY FIX (audit run-3, csrf-gate-covers-delete): DELETE is a
+  // state-changing method that the same-origin gate skipped — it was protected
+  // only by CORS preflight. Cross-site DELETEs carry Origin (browser-supplied)
+  // and DELETEs without Origin/Referer are S2S/native (no ambient cookie), so
+  // extending the gate is a pure defense-in-depth win with no behavior change
+  // for first-party callers. NOTE: the Content-Type allowlist below still
+  // covers only POST/PUT/PATCH — bodyless DELETEs legitimately omit
+  // Content-Type.
+  if (method === "POST" || method === "PUT" || method === "PATCH" || method === "DELETE") {
     const isCsrfExempt =
       path === "/api/csp-report" ||
       path.includes("/paymob/webhook") ||

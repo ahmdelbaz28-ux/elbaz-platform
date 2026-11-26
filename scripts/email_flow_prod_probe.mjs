@@ -29,7 +29,7 @@ const USERNAME = `mailprobe${stamp}`;
 // 422 "Invalid to field" — that is a PROVIDER policy, not a platform bug.
 // Use a real recipient domain so the probe measures the actual send path.
 const EMAIL = `mailprobe.${stamp}@gmail.com`;
-const PASSWORD = "Probe#Temp2026";
+const PASSWORD = process.env.PROBE_PASSWORD || ""; // scrubbed (audit run-3, committed-prod-probe-credentials): read from env
 
 let fails = 0;
 function check(name, pass, detail = "") {

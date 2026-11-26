@@ -301,7 +301,9 @@ export const adminPaymentsProcedures = {
         // ✅ SECURITY FIX (audit run-1, payments.promo-quota-burn): release the
         // promo quota this pending payment consumed — rejection must not
         // permanently drain the shared budget.
-        await releasePromoUsageForPayment(input.paymentId, payment.userId);
+        // ✅ SECURITY FIX (audit run-3, promo-release-tx-atomic): pass the
+        // caller's tx so the release commits (or rolls back) WITH the reject.
+        await releasePromoUsageForPayment(input.paymentId, payment.userId, tx);
 
         return { success: true };
       });

@@ -1,3 +1,4 @@
+import os
 """E2E — free enrollment on production, as a real (test) user.
 paytest01 logs in → opens the (now free) ETAP course → clicks Enroll For Free
 → expect instant enrollment (no Paymob), enrolled state + lessons unlocked.
@@ -11,7 +12,7 @@ OUT = "/home/z/my-project/work/elbaz-platform/scripts/shots_admin"
 subprocess.run(["mkdir", "-p", OUT], check=True)
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
-USER, PW = "paytest01", "PayTest2026"
+USER, PW = os.environ.get("PROBE_USER", ""), os.environ.get("PROBE_PASSWORD", "")  # scrubbed (audit run-3, committed-prod-probe-credentials): read from env
 fails = []
 def check(name, cond, detail=""):
     print(f"{'✓' if cond else '✗'} {name}" + (f" — {detail}" if detail else ""))

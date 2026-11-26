@@ -24,6 +24,12 @@ on:
     types: [opened, synchronize, reopened]
   workflow_dispatch: # Allow manual triggering
 
+# ✅ SECURITY FIX (audit run-3, sonarcloud-explicit-permissions): the workflow
+# previously inherited the repo-default GITHUB_TOKEN permissions. Read-only is
+# sufficient for analysis — pin it explicitly (least privilege).
+permissions:
+  contents: read
+
 jobs:
   sonarcloud:
     name: SonarCloud Analysis

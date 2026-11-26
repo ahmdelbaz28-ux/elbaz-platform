@@ -445,6 +445,20 @@ googleAuthRouter.get("/callback", async (c) => { // NOSONAR — complex function
 
       if (existingByEmail.length > 0 && emailVerified) {
         const user = existingByEmail[0];
+        // ✅ SECURITY FIX (audit run-3, google-link-email-provenance): Google's
+        // email_verified claim proves the CALLER controls the address — it says
+        // NOTHING about who created the local row. A self-registered row with
+        // the victim's email that was admin-approved (provenance 'approval')
+        // would otherwise silently merge the victim's Google identity into an
+        // attacker-controlled account. Link ONLY rows whose email was verified
+        // by a DELIVERED code/link (or legacy rows backfilled 'delivered').
+        if (user.emailVerificationSource !== "delivered") {
+          logger.warn("[GoogleAuth/OAuth] Refused to link: local row email provenance is not delivered", {
+            googleEmail: maskEmail(googleEmail),
+            provenance: user.emailVerificationSource ?? "unknown",
+          });
+          return c.redirect("/?google_error=email_not_confirmed");
+        }
         await db.update(users).set({ googleId: googleId, lastSignInAt: new Date(), ...(googlePicture && !user.avatar && { avatar: googlePicture }) }).where(eq(users.id, user.id));
         userId = user.id;
         username = user.username;
@@ -706,6 +720,15 @@ googleAuthRouter.post("/", async (c) => {
 
       if (existingByEmail.length > 0) {
         const user = existingByEmail[0];
+        // ✅ SECURITY FIX (audit run-3, google-link-email-provenance): same
+        // delivered-provenance requirement as the OAuth callback branch.
+        if (user.emailVerificationSource !== "delivered") {
+          logger.warn("[GoogleAuth/GIS] Refused to link: local row email provenance is not delivered", {
+            googleEmail: maskEmail(googleEmail),
+            provenance: user.emailVerificationSource ?? "unknown",
+          });
+          return errorResponse(c, 403, "EMAIL_NOT_CONFIRMED", "هذا البريد غير مؤكَّد عبر رسالة تحقق — أكمل التحقق من البريد أولاً أو استخدم تسجيل الدخول بكلمة المرور.");
+        }
         await db
           .update(users)
           .set({

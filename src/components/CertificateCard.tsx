@@ -37,7 +37,14 @@ function getGradeLabel(grade: string, score?: number): string {
         return `Pass \u2014 ${score}%`;
     }
   }
-  return grade || "Pass";
+  // ✅ SECURITY FIX (audit run-3, certificate-grade-whitelisted): the fallback
+  // previously interpolated the RAW DB grade string into dangerouslySetInnerHTML.
+  // The grade column is enum-only by construction today, but whitelist the
+  // enum so a future non-enum value can never reach the raw-HTML sink.
+  const normalized = (grade || "").toLowerCase();
+  if (normalized === "distinction") return "\u2605 Distinction";
+  if (normalized === "merit") return "Merit";
+  return "Pass";
 }
 
 function formatDate(date: string | Date): string {

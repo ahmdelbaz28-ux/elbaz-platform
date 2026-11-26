@@ -106,6 +106,15 @@ export interface NormalizedChatInput {
 
 export type NormalizeFailure = { status: 400 | 413; en: string; ar: string; code: ChatbotErrorCode };
 
+// ✅ SECURITY FIX (audit run-3, chat-text-control-chars-stripped): chat text
+// keeps C0/C1 control characters (screen context strips them) — the text is
+// PERSISTED (chatMessages, feedback snapshots) and re-served from GET /history,
+// so strip the same \p{Cc} class at normalization for parity (newlines are
+// preserved — they are NOT in \p{Cc}).
+function stripChatControlChars(raw: string): string {
+  return raw.replace(/\p{Cc}/gu, "");
+}
+
 export function normalizeChatInput(raw: unknown): { ok: true; data: NormalizedChatInput } | { ok: false; failure: NormalizeFailure } {
   if (!Array.isArray(raw) || raw.length === 0) {
     return { ok: false, failure: { status: 400, code: "BAD_REQUEST", en: "Messages array is required", ar: "Messages array is required" } };
@@ -130,7 +139,7 @@ export function normalizeChatInput(raw: unknown): { ok: true; data: NormalizedCh
     const content = m.content;
 
     if (typeof content === "string") {
-      const clipped = content.slice(0, MAX_MESSAGE_CHARS);
+      const clipped = stripChatControlChars(content).slice(0, MAX_MESSAGE_CHARS);
       messages.push({ role, content: clipped });
       continue;
     }
@@ -148,7 +157,7 @@ export function normalizeChatInput(raw: unknown): { ok: true; data: NormalizedCh
       if (!part || typeof part !== "object") continue;
       const p = part as { type?: unknown; text?: unknown; image_url?: { url?: unknown }; source?: unknown };
       if (p.type === "text" && typeof p.text === "string") {
-        textParts.push(p.text);
+        textParts.push(stripChatControlChars(p.text));
       } else if (p.type === "image_url" && typeof p.image_url?.url === "string") {
         imageUrls.push(p.image_url.url);
         // The client tags LIVE screen frames with `source: "screen_capture"`.

@@ -383,14 +383,24 @@ function addSecurityHeaders(response, url) {
 // REFLECTED or the browser kills every app request at CORS. Web requests
 // (origin == ALLOWED_DOMAIN) keep the pinned domain; unknown origins keep the
 // pinned domain too (no wildcard with credentials).
+// ✅ SECURITY FIX (audit run-3, worker-cors-null-origin-credentials): the
+// literal "null" origin (Electron offline file:// fallback) is still REFLECTED
+// so the offline fallback keeps working, but it NO LONGER receives
+// Access-Control-Allow-Credentials — ACAO:null + ACAC:true is the classic
+// credentialed-cross-origin-read combo for any sandboxed iframe that can force
+// Origin:null. The offline fallback cannot carry cookies meaningfully anyway
+// (no network), so dropping credentials there costs nothing.
 const NATIVE_APP_ORIGINS = new Set(['https://localhost', 'http://localhost', 'capacitor://localhost', 'null']);
+const NULL_ORIGIN = 'null';
 function addCORSHeaders(response, request) {
   const newHeaders = new Headers(response.headers);
   let corsOrigin = ALLOWED_DOMAIN;
+  let allowCredentials = true;
   if (request) {
     const reqOrigin = request.headers.get('Origin');
     if (reqOrigin && reqOrigin !== ALLOWED_DOMAIN && NATIVE_APP_ORIGINS.has(reqOrigin)) {
       corsOrigin = reqOrigin;
+      if (reqOrigin === NULL_ORIGIN) allowCredentials = false;
     }
   }
   newHeaders.set('Access-Control-Allow-Origin', corsOrigin);
@@ -401,7 +411,11 @@ function addCORSHeaders(response, request) {
   // sliding-renewed JWT and keep its localStorage session alive.
   newHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Auth-Token, X-Request-ID, X-Forwarded-For, X-Capacitor-Platform');
   newHeaders.set('Access-Control-Expose-Headers', 'X-Request-ID, X-Renewed-Token');
-  newHeaders.set('Access-Control-Allow-Credentials', 'true');
+  if (allowCredentials) {
+    newHeaders.set('Access-Control-Allow-Credentials', 'true');
+  } else {
+    newHeaders.delete('Access-Control-Allow-Credentials');
+  }
   newHeaders.set('Access-Control-Max-Age', '86400');
   newHeaders.set('Vary', 'Accept-Encoding, Origin');
   return new Response(response.body, {

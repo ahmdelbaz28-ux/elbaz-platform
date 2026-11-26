@@ -59,7 +59,6 @@ type AppVariables = {
 };
 
 import { approvalActionRoute } from "./approval-action-route.js";
-import { getClientIpFromHono } from "./lib/client-ip";
 import { startYoutubeWatcher } from "./lib/youtube-watcher.js";
 import { shieldMiddleware } from "./middleware/shield.js";
 import { notificationRoute } from "./notification-route.js";
@@ -365,32 +364,13 @@ app.get("/__webhook/status", async (c) => {
       return c.json({ error: "Not Found" }, 404);
     }
   } else {
-    // BUG FIX: was using .pop() which returns the LAST proxy IP, not the client.
-    // Now uses unified getClientIpFromHono which correctly takes the first IP.
-    const clientIp = getClientIpFromHono(c);
-    // Private/internal CIDR ranges for the trust check. These are IANA
-    // reserved blocks (RFC 1918) — they cannot be reached from the public
-    // internet, so the values are intentionally hardcoded. NOSONAR —
-    // reviewed against SonarCloud S1313.
-    const internalRanges = ["127.1", "10/8", "172.16/12", "192.168/16", "::1"]; // NOSONAR
-    const isInternal = internalRanges.some((range) => {
-      if (!clientIp) return false;
-      if (!range.includes("/")) return clientIp === range;
-      const parts = range.split("/");
-      const networkStr = parts[0];
-      const cidrBits = Number.parseInt(parts[1], 10);
-      const networkParts = networkStr.split(".").map(Number);
-      const ipParts = clientIp.split(".").map(Number);
-      if (networkParts.length !== 4 || ipParts.length !== 4 || networkParts.some(Number.isNaN) || ipParts.some(Number.isNaN)) {
-        return clientIp === range;
-      }
-      const ipNum = ((ipParts[0] << 24) | (ipParts[1] << 16) | (ipParts[2] << 8) | ipParts[3]) >>> 0;
-      const netNum = ((networkParts[0] << 24) | (networkParts[1] << 16) | (networkParts[2] << 8) | networkParts[3]) >>> 0;
-      const mask = cidrBits > 0 ? (~((1 << (32 - cidrBits)) - 1)) >>> 0 : 0 >>> 0;
-      return (ipNum & mask) === (netNum & mask);
-    });
-
-    if (env.NODE_ENV === "production" && !isInternal) {
+    // ✅ SECURITY FIX (audit run-3, webhook-status-prod-token-required): the
+    // legacy RFC1918 IP-trust fallback keyed on header-derived client IPs,
+    // which are client-controllable on a direct-to-origin path — and its
+    // payload discloses nothing beyond the anonymous /api/health. Production
+    // now REQUIRES the ≥16-char WEBHOOK_STATUS_TOKEN; the open fallback is a
+    // non-production convenience only. The dead CIDR-matching loop was removed.
+    if (env.NODE_ENV === "production") {
       return c.json({ error: "Not Found" }, 404);
     }
   }
@@ -620,22 +600,6 @@ async function start() {
     startEmailDripScheduler();
   }
 
-  // ── Last-resort process guards (availability-first) ──
-  // The platform's never-throw contract is enforced per-feature, but ONE
-  // escaping rejection anywhere (a background worker, a fire-and-forget
-  // import) must never take the whole server down — Node's default since 15
-  // is to exit on unhandled rejections. Log loudly, keep serving.
-  process.on("unhandledRejection", (reason) => {
-    appLogger.error("[Server] Unhandled rejection contained", {
-      error: reason instanceof Error ? reason.message : String(reason),
-    });
-  });
-  process.on("uncaughtException", (err) => {
-    appLogger.error("[Server] Uncaught exception contained", {
-      error: err instanceof Error ? err.message : String(err),
-    });
-  });
-
   const shutdownHandler = async (signal: string) => {
     appLogger.info(`[Server] ${signal} received, shutting down...`);
     try {
@@ -653,6 +617,25 @@ async function start() {
   process.on("SIGTERM", () => shutdownHandler("SIGTERM"));
   process.on("SIGINT", () => shutdownHandler("SIGINT"));
 }
+
+// ── Last-resort process guards (availability-first) ──
+// ✅ SECURITY FIX (audit run-3, boot-guards-registered-first): the guards were
+// registered at the END of start(), leaving a boot window where ONE escaping
+// rejection (a background worker, a fire-and-forget import) could kill the
+// process before the handlers existed. Module scope = covered from the first
+// tick. The platform's never-throw contract is enforced per-feature, but one
+// escaping rejection anywhere must never take the whole server down — Node's
+// default since 15 is to exit on unhandled rejections. Log loudly, keep serving.
+process.on("unhandledRejection", (reason) => {
+  appLogger.error("[Server] Unhandled rejection contained", {
+    error: reason instanceof Error ? reason.message : String(reason),
+  });
+});
+process.on("uncaughtException", (err) => {
+  appLogger.error("[Server] Uncaught exception contained", {
+    error: err instanceof Error ? err.message : String(err),
+  });
+});
 
 try {
   await start();

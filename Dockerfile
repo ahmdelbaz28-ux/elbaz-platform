@@ -59,6 +59,12 @@ ENV NODE_OPTIONS="--max-old-space-size=1024"
 RUN set -e && \
     npm run build && \
     echo "=== Build complete ===" && \
+    # ✅ SECURITY FIX (audit run-3, docker-scripts-not-in-runtime): the ops
+    # scripts directory (E2E harnesses, live-probe tooling) was previously
+    # shipped inside the PRODUCTION image and therefore into the public HF
+    # Space. The build needs scripts/prebuild-guard.js (npm prebuild lifecycle)
+    # but the runtime does not — delete it from the final filesystem.
+    rm -rf /app/scripts && \
     addgroup -g 1001 -S appgroup && \
     adduser -S appuser -u 1001 -G appgroup && \
     chown -R appuser:appgroup /app
@@ -70,8 +76,11 @@ EXPOSE 7860
 # NODE_ENV. The CMD below runs tsx directly and does NOT set NODE_ENV,
 # so without this line the image silently defaulted to development mode.
 ENV NODE_ENV=production
+# ✅ SECURITY FIX (audit run-3, docker-healthcheck-port-aware): the healthcheck
+# hardcoded 7860 while the app honors env.PORT — a deployment that overrides
+# PORT shipped an image whose own healthcheck always fails. Respect the env.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD wget -qO- http://localhost:7860/api/health || exit 1
+  CMD wget -qO- "http://localhost:${PORT:-7860}/api/health" || exit 1
 ENTRYPOINT ["/sbin/tini", "--"]
 # was: CMD ["npx", "tsx", "api/boot.ts"] (S8543 — no unpinned npx in prod);
 # direct binary avoids on-demand package installs in the production image.

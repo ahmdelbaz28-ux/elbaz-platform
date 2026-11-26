@@ -261,7 +261,11 @@ export const courseBrowseProcedures = {
       SELECT
         (SELECT COUNT(*) FROM courses WHERE isPublished = 1) AS totalCourses,
         (SELECT COUNT(*) FROM users WHERE role = 'user') AS totalStudents,
-        (SELECT COUNT(*) FROM lessons) AS totalLessons,
+        -- ✅ SECURITY FIX (audit run-3, stats-lesson-count-publish-policy):
+        -- count only published lessons — the denominator now agrees with the
+        -- publish policy applied everywhere else (draft lessons were
+        -- previously counted, drifting from the visible catalog).
+        (SELECT COUNT(*) FROM lessons l JOIN courses c ON c.id = l.courseId WHERE c.isPublished = 1 AND l.isPublished = 1) AS totalLessons,
         COALESCE((SELECT AVG(rating) FROM courses WHERE isPublished = 1), 0) AS avgRating
     `) as unknown as [Array<{ totalCourses: number; totalStudents: number; totalLessons: number; avgRating: string }>, unknown];
     const row = rawRows[0];

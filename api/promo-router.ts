@@ -279,18 +279,30 @@ export { applyPromoCodeInternal, promoRouter, verifyPromoHmac };
  * quota a pending payment consumed, for use on admin rejection and webhook
  * refund/void. Idempotent: the usage row is deleted and the counter clamped
  * at zero, so repeated calls are safe.
+ * ✅ SECURITY FIX (audit run-3, promo-release-tx-atomic): an optional executor
+ * (the caller's transaction) lets the release commit atomically with the state
+ * change it compensates — the webhook refund tx and the admin-reject tx pass
+ * their `tx`, so a caller rollback can no longer leave the quota released for
+ * a payment row that no longer exists.
  */
-export async function releasePromoUsageForPayment(paymentId: number, userId: number): Promise<void> {
-  const rows = await db
+type PromoReleaseExecutor = Pick<typeof db, "select" | "delete" | "update">;
+
+export async function releasePromoUsageForPayment(
+  paymentId: number,
+  userId: number,
+  executor?: PromoReleaseExecutor,
+): Promise<void> {
+  const dbx: PromoReleaseExecutor = executor ?? db;
+  const rows = await dbx
     .select({ id: promoCodeUsage.id, promoCodeId: promoCodeUsage.promoCodeId })
     .from(promoCodeUsage)
     .where(and(eq(promoCodeUsage.paymentId, paymentId), eq(promoCodeUsage.userId, userId)));
   if (rows.length === 0) return;
-  await db.delete(promoCodeUsage).where(and(eq(promoCodeUsage.paymentId, paymentId), eq(promoCodeUsage.userId, userId)));
+  await dbx.delete(promoCodeUsage).where(and(eq(promoCodeUsage.paymentId, paymentId), eq(promoCodeUsage.userId, userId)));
   const counts = new Map<number, number>();
   for (const r of rows) counts.set(r.promoCodeId, (counts.get(r.promoCodeId) ?? 0) + 1);
   for (const [promoCodeId, n] of counts) {
-    await db
+    await dbx
       .update(promoCodes)
       .set({ usedCount: sql`GREATEST(${promoCodes.usedCount} - ${n}, 0)` })
       .where(eq(promoCodes.id, promoCodeId));

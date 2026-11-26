@@ -1,3 +1,4 @@
+import os
 """LIVE E2E — the honest "push unavailable on this device" card on production.
 
 Simulates the user's 2026-10-30 report EXACTLY: a real Chromium on production
@@ -34,7 +35,7 @@ STATE_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
 
 PROD = "https://ahmedelbaz.qzz.io"
 OUT = "/home/z/my-project/download/push-fix"
-USER, PW = "chatfix_live_01", "ChatFix2026X"
+USER, PW = os.environ.get("PROBE_USER", ""), os.environ.get("PROBE_PASSWORD", "")  # scrubbed (audit run-3, committed-prod-probe-credentials): read from env
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
 

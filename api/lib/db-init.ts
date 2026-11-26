@@ -20,6 +20,10 @@ import { type DbMigrationConn, columnExists as dbColumnExists, indexExists as db
 import { env } from "./env.js";
 import { logger } from "./logger.js";
 import { hashPassword } from "./password.js";
+// ✅ SECURITY FIX (audit run-3, admin-recovery-bumps-token-version): the
+// recovery lever must evict the in-memory auth cache for the admin row it
+// rewrites. Import direction is safe — context.ts does not import db-init.
+import { evictUserAuthCache } from "../context.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -309,6 +313,27 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
               await c.execute("ALTER TABLE `users` MODIFY COLUMN `avatar` MEDIUMTEXT NULL");
               logger.info("[DB] users.avatar widened TEXT→MEDIUMTEXT (avatar uploads enabled)");
             }
+          },
+        },
+        {
+          // ✅ SECURITY FIX (audit run-3, google-link-email-provenance): record
+          // HOW an email was verified. 'delivered' = a code/link was sent to
+          // the address and completed; 'approval' = an admin approved the
+          // account (the owner directive treats approval as confirmation).
+          // Google LINKING by email match requires 'delivered' provenance.
+          // Backfill: rows already verified keep working ('delivered' — the
+          // pre-column contract), so no existing account regresses; only NEW
+          // approval-stamped rows are refused for linking.
+          id: "v21-users-email-verification-source",
+          description: "email provenance for Google linking: users.emailVerificationSource ('delivered'|'approval')",
+          run: async (c) => {
+            if (!(await dbColumnExists(c, "users", "emailVerificationSource"))) {
+              await c.execute("ALTER TABLE users ADD COLUMN `emailVerificationSource` VARCHAR(20) NULL");
+              logger.info("[DB]   + users.emailVerificationSource");
+            }
+            await c.execute(
+              "UPDATE users SET emailVerificationSource = 'delivered' WHERE emailVerifiedAt IS NOT NULL AND emailVerificationSource IS NULL"
+            );
           },
         },
       ];
@@ -1611,10 +1636,24 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
                  ON DUPLICATE KEY UPDATE value = VALUES(value)`,
                 [currentHash]
               );
+              // ✅ SECURITY FIX (audit run-3, admin-recovery-bumps-token-version):
+              // installing the recovery hash now also bumps tokenVersion, so
+              // every previously-issued admin JWT dies instantly — a recovery
+              // rotation must displace the sessions it was meant to displace,
+              // not just future logins.
               await conn.execute(
-                `UPDATE users SET passwordHash = ?, updatedAt = NOW() WHERE username = 'admin'`,
+                `UPDATE users SET passwordHash = ?, tokenVersion = tokenVersion + 1, updatedAt = NOW() WHERE username = 'admin'`,
                 [recoveryHash]
               );
+              const [adminIdRows] = await conn.execute(
+                `SELECT id FROM users WHERE username = 'admin' LIMIT 1`
+              );
+              const adminId = Array.isArray(adminIdRows) && adminIdRows.length > 0
+                ? Number((adminIdRows[0] as { id?: unknown }).id)
+                : 0;
+              if (adminId > 0 && Number.isFinite(adminId)) {
+                evictUserAuthCache(adminId);
+              }
               await conn.execute(
                 `INSERT INTO siteSettings (section, \`key\`, value, type, sortOrder)
                  VALUES ('adminRecovery', 'phase', 'claimed', 'text', 0)

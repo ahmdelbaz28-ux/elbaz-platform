@@ -105,7 +105,11 @@ jobs:
       - name: Setup Git LFS
         run: |
           git lfs install
-          git lfs fetch --all origin
+          # ✅ SECURITY FIX (audit run-3, prod-e2e-screenshots-lfs-public): scoped
+          # LFS fetch to the deployed ref — fetching --all pulled EVERY
+          # historical LFS object (including removed production screenshots)
+          # onto the runner.
+          git lfs fetch origin main
           git lfs checkout
           echo "=== LFS files tracked ==="
           git lfs ls-files | head -10
@@ -157,8 +161,13 @@ jobs:
           # while production kept running stale (possibly vulnerable) code.
           git push hf-space main --force
 
-          # Push LFS objects to HF's Xet storage
-          git lfs push hf-space --all
+          # Push LFS objects to HF's Xet storage.
+          # ✅ SECURITY FIX (audit run-3, prod-e2e-screenshots-lfs-public):
+          # `git lfs push --all` re-uploaded EVERY historical LFS object to the
+          # PUBLIC Space on every deploy — including removed production E2E
+          # screenshots (admin dashboard states). Push only objects reachable
+          # from the deployed ref.
+          git lfs push hf-space main
 
           echo "Deploy complete! SHA: ${SHA}"
 

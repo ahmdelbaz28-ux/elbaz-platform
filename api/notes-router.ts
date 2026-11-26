@@ -149,7 +149,10 @@ export const notesRouter = createRouter({
       delete cleanUpdates.id;
 
       if (Object.keys(cleanUpdates).length === 0) return { success: true };
-      await db.update(userNotes).set(cleanUpdates).where(eq(userNotes.id, id));
+      // ✅ HARDENING (audit run-3, notes-write-self-authorizing-where): the
+      // ownership was checked immediately above, but the write re-targeted by
+      // bare id. Re-bind userId in the WHERE so the write is self-authorizing.
+      await db.update(userNotes).set(cleanUpdates).where(and(eq(userNotes.id, id), eq(userNotes.userId, ctx.user.id)));
       return { success: true };
     }),
 
@@ -163,7 +166,8 @@ export const notesRouter = createRouter({
         .where(and(eq(userNotes.id, input.id), eq(userNotes.userId, ctx.user.id)))
         .limit(1);
       if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Note not found" });
-      await db.delete(userNotes).where(eq(userNotes.id, input.id));
+      // ✅ HARDENING (audit run-3): same self-authorizing WHERE as update().
+      await db.delete(userNotes).where(and(eq(userNotes.id, input.id), eq(userNotes.userId, ctx.user.id)));
       return { success: true };
     }),
 
@@ -200,7 +204,8 @@ export const notesRouter = createRouter({
           .limit(1);
 
         if (existing) {
-          await db.update(userNotes).set(buildNoteUpdates(note)).where(eq(userNotes.id, note.id));
+          // ✅ HARDENING (audit run-3): same self-authorizing WHERE as update().
+          await db.update(userNotes).set(buildNoteUpdates(note)).where(and(eq(userNotes.id, note.id), eq(userNotes.userId, ctx.user.id)));
           results.push({ id: note.id, action: "updated" });
         } else {
           // note.id was provided but no matching note for this user — create instead

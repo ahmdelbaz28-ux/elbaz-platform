@@ -324,7 +324,11 @@ export const localAuthRouter = createRouter({
         // ✅ ADMIN APPROVAL GATE: NO session is issued for a pending account —
         // no JWT, no cookies, no native token. The response only confirms the
         // request was received; the login gate enforces the rest server-side.
-        clearRateLimit(ip, "register");
+        // ✅ SECURITY FIX (audit run-3, register-success-clears-own-rate-bucket):
+        // clearing the register bucket on success voided the 10/15min cap —
+        // a scripted client sustained mass account creation (each minting an
+        // admin fan-out + owner alert email). The per-account login throttle
+        // pattern does not apply here: registration success must KEEP counting.
 
         const responseData: AuthResponse = {
           user: { id: userId, username: input.username, name: input.name || input.username },

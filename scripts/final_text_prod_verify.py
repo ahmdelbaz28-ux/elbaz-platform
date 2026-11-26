@@ -1,3 +1,4 @@
+import os
 #!/usr/bin/env python3
 """FINAL text-lane verify through the REAL user path (site domain, headed Chromium).
 Covers the user's quality bar: progressive reveal + caret + clean Arabic + speed."""
@@ -5,7 +6,7 @@ import re, sys, time
 from playwright.sync_api import sync_playwright
 
 PROD = "https://ahmedelbaz.qzz.io"
-USER, PASS = "chatfix_live_01", "ChatFix2026X"
+USER, PASS = os.environ.get("PROBE_USER", ""), os.environ.get("PROBE_PASSWORD", "")  # scrubbed (audit run-3, committed-prod-probe-credentials): read from env
 GARBLED = ["التعاياث", "للاستاتث", "رايت دائماً", "راجلت", "أعت عن"]
 fails, results = [], []
 

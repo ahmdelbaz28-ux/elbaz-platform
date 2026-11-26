@@ -40,8 +40,22 @@ export function formatVideoPosition(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+// ✅ SECURITY FIX (audit run-3, email-drip-name-escaped): the user-controlled
+// display name is interpolated into HTML email bodies WITHOUT escaping (the
+// shared email-templates.ts escapes the same data). Self-targeted content
+// injection only, but an HTML payload in the name would render in the
+// recipient's mail client — reuse the same escaping contract.
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 export function welcomeEmailBody(name: string, lang: DripLang): { subject: string; html: string; text: string } {
-  const display = name || (lang === "ar" ? "صديقنا" : "friend");
+  const display = escapeHtml(name || (lang === "ar" ? "صديقنا" : "friend"));
   if (lang === "ar") {
     return {
       subject: `أهلاً بيك في منصة الباز يا ${display} 🚀`,
@@ -66,7 +80,7 @@ export function welcomeEmailBody(name: string, lang: DripLang): { subject: strin
 }
 
 export function nudgeEmailBody(name: string, lang: DripLang): { subject: string; html: string; text: string } {
-  const display = name || (lang === "ar" ? "صديقنا" : "friend");
+  const display = escapeHtml(name || (lang === "ar" ? "صديقنا" : "friend"));
   if (lang === "ar") {
     return {
       subject: `حسابك فات يومين من غير ما تبدأ يا ${display} — الدرس الأول ساعة بس ⏱️`,
@@ -97,7 +111,7 @@ export function congratsEmailBody(
   certificateUrl: string,
   lang: DripLang,
 ): { subject: string; html: string; text: string } {
-  const display = name || (lang === "ar" ? "بطل" : "champion");
+  const display = escapeHtml(name || (lang === "ar" ? "بطل" : "champion"));
   if (lang === "ar") {
     return {
       subject: `🎉 مبروك يا ${display} — أكملت "${courseTitle}" بالكامل!`,

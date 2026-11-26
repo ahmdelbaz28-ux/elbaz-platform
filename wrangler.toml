@@ -11,9 +11,14 @@
 #
 # SAFETY:
 #   keep_vars = true  → existing bindings (EDGE_ORIGIN_SECRET secret_text,
-#   provisioned by the deploy workflow) are PRESERVED on dashboard builds;
-#   without it, a wrangler upload would silently drop the edge→origin HMAC
-#   binding and re-open the direct-to-origin bypass door.
+#   provisioned by the deploy workflow) are PRESERVED on dashboard builds.
+# ✅ CORRECTION (audit run-3, edge-hmac-claim-unverified-at-origin): an earlier
+#   version of this comment claimed dropping the binding would "re-open the
+#   direct-to-origin bypass door". The ORIGIN never verified x-edge-sig (no
+#   reader in api/ — see shield.ts:110-120 which compares only a raw bearer for
+#   the operator lane). The binding guards the worker's own signing/relay lanes,
+#   not the origin's ingress; direct-to-origin access on the raw *.hf.space
+#   host is gated only by the optional EDGE_HOST_ENFORCE flag.
 
 name = "ahmedelbaz"
 main = "infra/security-audit/worker-v7-hardened.js"

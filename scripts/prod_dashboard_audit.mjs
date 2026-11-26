@@ -30,7 +30,7 @@ const headers = process.env.FWD_HOST
 const stamp = Date.now().toString(36);
 const USERNAME = `dashprobe${stamp}`.slice(0, 20);
 const EMAIL = `dashprobe.${stamp}@example.com`;
-const PASSWORD = "Probe#Temp2026";
+const PASSWORD = process.env.PROBE_PASSWORD || ""; // scrubbed (audit run-3, committed-prod-probe-credentials): read from env
 
 let fails = 0;
 function check(name, pass, detail = "") {

@@ -81,10 +81,21 @@ jobs:
           }
 
           # ✅ SECURITY (post-audit): provision the edge→origin HMAC secret as a
-          # binding so every proxied request carries x-edge-ts/x-edge-sig and the
-          # origin's shield middleware rejects direct-to-origin traffic. Fail
-          # LOUDLY when missing — deploying without it silently re-opens the
-          # direct-to-origin bypass door.
+          # binding so the WORKER signs x-edge-ts/x-edge-sig on its own proxied
+          # requests.
+          # ✅ CORRECTION (audit run-3, edge-hmac-claim-unverified-at-origin):
+          # this comment previously claimed "the origin's shield middleware
+          # rejects direct-to-origin traffic" via x-edge-sig — that ORIGIN-SIDE
+          # VERIFICATION DOES NOT EXIST (grep: no reader of x-edge-sig in api/;
+          # shield.ts only compares a raw bearer for the operator lane, and its
+          # in-code note documents that HMAC enforcement was measured and
+          # rolled back while the worker is not in the domain's request path).
+          # The binding still matters for the worker's own relay/TG auth, but
+          # direct-to-origin access on the raw *.hf.space host is NOT
+          # cryptographically closed — EDGE_HOST_ENFORCE (flag-gated) is the
+          # only origin-side gate today.
+          # Fail LOUDLY when missing — deploying without it leaves the worker's
+          # signing lane and Telegram/YouTube relays unguarded.
           edge_secret = os.environ.get('EDGE_ORIGIN_SECRET', '').strip()
           if not edge_secret or len(edge_secret) < 32:
               print("  ❌ EDGE_ORIGIN_SECRET missing or shorter than 32 chars — refusing to deploy an unprotected edge")

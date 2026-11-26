@@ -1,3 +1,4 @@
+import os
 """PRODUCTION E2E — payment UNAUTHORIZED fix verification (headed under Xvfb).
 
 Scenarios against https://ahmedelbaz.qzz.io (commit 5d317f1):
@@ -14,8 +15,8 @@ from playwright.sync_api import sync_playwright
 
 BASE = "https://ahmedelbaz.qzz.io"
 COURSE = f"{BASE}/courses/etap-complete-course"
-USER = "paytest01"
-PASS = "PayTest2026"
+USER = os.environ.get("PROBE_USER", "")  # scrubbed (audit run-3): read from env
+PASS = os.environ.get("PROBE_PASSWORD", "")  # scrubbed (audit run-3): read from env
 OUT = "/home/z/my-project/work/elbaz-platform/scripts/shots_pay"
 subprocess.run(["mkdir", "-p", OUT], check=True)
 

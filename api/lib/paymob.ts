@@ -354,16 +354,30 @@ export function verifyTransactionCallback(
 /**
  * Verify the callback amount matches what we recorded (anti partial-payment).
  * Compares integer cents to avoid float artifacts, and pins currency to EGP.
+ * ✅ SECURITY FIX (audit run-3, paymob-webhook-currency-binding): the callback's
+ * OWN signed currency (obj.currency) is now compared too — numeric-cents
+ * equality alone would accept a same-number amount in a different currency.
+ * The check is tolerant: when the callback omits currency the merchant-side
+ * pin still applies, so legacy event shapes keep passing.
  */
 export function verifyPaymobAmount(
   webhookAmountCents: number,
   expectedAmount: string | number,
   expectedCurrency: string,
+  webhookCurrency?: string | null,
 ): boolean {
   if (!Number.isFinite(webhookAmountCents)) return false;
   const expectedCents = toAmountCents(expectedAmount);
   if (!Number.isInteger(expectedCents)) return false;
-  return webhookAmountCents === expectedCents && expectedCurrency === "EGP";
+  if (expectedCurrency !== "EGP") return false;
+  if (
+    webhookCurrency != null &&
+    webhookCurrency !== "" &&
+    String(webhookCurrency).toUpperCase() !== expectedCurrency.toUpperCase()
+  ) {
+    return false;
+  }
+  return webhookAmountCents === expectedCents;
 }
 
 export {

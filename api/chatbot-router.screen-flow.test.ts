@@ -112,7 +112,9 @@ describe("POST /api/chatbot — live screen flow", () => {
 
     // Pre-dispatch ATOMIC reservation on the dedicated lane (audit run-1);
     // the reservation is kept on success — no refund must fire.
-    expect(tryConsumeImageQuota).toHaveBeenCalledWith("203.0.113.7#screen", 1, 60);
+    // ✅ audit run-3: the lane is keyed on the AUTHENTICATED account (u<id>),
+    // not the spoofable IP — chat is login-required at this point.
+    expect(tryConsumeImageQuota).toHaveBeenCalledWith("u7#screen", 1, 60);
     expect(refundImageQuota).not.toHaveBeenCalled();
   });
 
@@ -124,7 +126,7 @@ describe("POST /api/chatbot — live screen flow", () => {
       headers: { "Content-Type": "application/json" },
     });
     expect(res.status).toBe(200);
-    expect(tryConsumeImageQuota).toHaveBeenCalledWith("203.0.113.7", 1, 5);
+    expect(tryConsumeImageQuota).toHaveBeenCalledWith("u7", 1, 5);
     expect(refundImageQuota).not.toHaveBeenCalled();
   });
 
@@ -226,7 +228,7 @@ describe("POST /api/chatbot/stream — live screen flow", () => {
     const req = getStreamResponse.mock.calls[0]?.[0] as { vision: boolean; screenCapture: boolean };
     expect(req.vision).toBe(true);
     expect(req.screenCapture).toBe(true);
-    expect(tryConsumeImageQuota).toHaveBeenCalledWith("203.0.113.7#screen", 1, 60);
+    expect(tryConsumeImageQuota).toHaveBeenCalledWith("u7#screen", 1, 60);
 
     // Drain the stream to completion — the preflight reservation is KEPT on
     // success (no post-dispatch increment remains; no refund must fire).

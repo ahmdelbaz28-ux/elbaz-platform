@@ -16,7 +16,12 @@ function escapeCsv(value: string | number | boolean | null | undefined): string 
   // (OWASP CSV injection). User-controlled fields (e.g. the free-form display
   // name) previously reached admin-opened spreadsheets unescaped — a cell
   // beginning with = + - @ or a tab executes as a formula in Excel/Sheets.
-  if (/^[=+\-@\t\r]/.test(str)) {
+  // ✅ SECURITY FIX (audit run-3, export-csv-whitespace-formula-guard): the
+  // guard previously tested only the FIRST character — " =cmd()" (leading
+  // whitespace) escaped the prefix check. Test after trimming so whitespace-
+  // padded formula cells are neutralized too (Excel/Sheets ignore the leading
+  // whitespace when evaluating).
+  if (/^[=+\-@\t\r]/.test(str.trimStart())) {
     str = `'${str}'`;
   }
   if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {

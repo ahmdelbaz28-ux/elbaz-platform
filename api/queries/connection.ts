@@ -85,11 +85,25 @@ async function testConnection(retries = 3, delay = 1000): Promise<void> {
       }
     }
   }
-  // SECURITY: In production, never fall back to mock mode — fail loudly
-  if (env.NODE_ENV === "production") {
-    logger.error("[DB] FATAL: Cannot connect to database in production. Exiting.", { error: lastErr?.message });
+  // ✅ SECURITY FIX (audit run-3, sandbox-mode-inmemory-degradation): Sandbox
+  // Mode used to engage SILENTLY whenever NODE_ENV ≠ 'production' — a typo
+  // ('prod'), a manual container exec, or an unset NODE_ENV degraded the whole
+  // platform to an in-memory fake DB where withTransaction() never runs its
+  // callback and insert() fabricates success. The fallback is now EXPLICIT
+  // OPT-IN: vitest keeps its contract via NODE_ENV=test, humans opt in via
+  // ELBAZ_SANDBOX_MODE=1 for local dev without MySQL — anything else fails
+  // loudly exactly like production.
+  const sandboxAllowed =
+    process.env.ELBAZ_SANDBOX_MODE === "1" || process.env.NODE_ENV === "test";
+  if (!sandboxAllowed) {
+    logger.error("[DB] FATAL: Cannot connect to database. Exiting.", {
+      error: lastErr?.message,
+      nodeEnv: env.NODE_ENV,
+      hint: "Set ELBAZ_SANDBOX_MODE=1 explicitly to run without MySQL (local development only).",
+    });
     process.exit(1);
-  }    logger.error('[DB] Could not connect to MySQL. Enabling "Elite Sandbox Mode" (In-Memory Data).');
+  }
+  logger.error('[DB] Could not connect to MySQL. Enabling "Elite Sandbox Mode" (In-Memory Data) — explicit opt-in (ELBAZ_SANDBOX_MODE=1 / test env).');
   isMockMode = true;
 }
 

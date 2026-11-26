@@ -1,3 +1,4 @@
+import os
 #!/usr/bin/env python3
 """FULL USER-LEVEL CHATBOT TEST — every feature, as a real user, on production.
 
@@ -21,7 +22,7 @@ from playwright.sync_api import sync_playwright
 
 PROD = "https://ahmedelbaz.qzz.io"
 OUT = "/home/z/my-project/work/elbaz-platform/scripts/shots_user_test"
-USER, PASS = "chatfix_live_01", "ChatFix2026X"
+USER, PASS = os.environ.get("PROBE_USER", ""), os.environ.get("PROBE_PASSWORD", "")  # scrubbed (audit run-3, committed-prod-probe-credentials): read from env
 results, fails = [], []
 
 def check(name, cond, detail=""):
