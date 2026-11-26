@@ -10,6 +10,9 @@
 name: temp-dns-spf-dmarc
 on:
   workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths: [".github/workflows/temp-dns-spf-dmarc.yml"]
 permissions: {}
 jobs:
   dns:
