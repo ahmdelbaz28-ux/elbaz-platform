@@ -515,7 +515,9 @@ describe("Chatbot Module", () => {
 
       expect(result.success).toBe(true);
       expect(result.reply).toBe("Fast Groq reply!");
-      expect(result.model).toBe("llama-3.3-70b-versatile");
+      // ✅ 2026-11-26 catalog refresh: GROQ_MODELS leads with the current
+      // production reasoning id (gpt-oss-120b) — the sweep's first live id wins.
+      expect(result.model).toBe("openai/gpt-oss-120b");
       const firstProviderCall = calledUrls.find((u) => !u.includes("/auth/key"));
       expect(firstProviderCall).toContain("groq.com");
     });
