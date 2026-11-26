@@ -67,7 +67,6 @@ export function useWatchTracker({
       console.warn("[WatchTracker] Heartbeat failed:", err.message);
     },
   });
-
   // 🐛 FIX (E2E purchase→certificate journey): the server exposes
   // course.markWatched (marks lessonProgress.isCompleted = true + recalculates
   // enrollment progress) but NOTHING in the frontend ever called it — video
@@ -89,6 +88,26 @@ export function useWatchTracker({
   useEffect(() => {
     onLessonCompletedRef.current = onLessonCompleted;
   }, [onLessonCompleted]);
+
+  // ✅ PERF (react-best-practices rerender-* / advanced-*): react-query returns
+  // a NEW mutation-object identity on every render. `sendHeartbeat` depended on
+  // `heartbeatMutation`, so its identity — and the identity of `startTracking`
+  // / `stopTracking` — changed on EVERY host render; and ProtectedVideoPlayer
+  // re-renders ~4×/s on `timeupdate`. That re-ran the 4 video-listener effect
+  // and the visibilitychange effect up to 4×/s (detach + reattach 6 listeners
+  // per tick). Mirror the file's own `onLessonCompletedRef` pattern: keep the
+  // mutation objects in refs and read them at call time — the callbacks become
+  // referentially stable and the effects bind ONCE per lesson. Behavior is
+  // identical: `.mutate()` is stable in react-query and `onError`/`onSuccess`
+  // are captured at the useMutation call site.
+  const heartbeatMutationRef = useRef(heartbeatMutation);
+  useEffect(() => {
+    heartbeatMutationRef.current = heartbeatMutation;
+  });
+  const markWatchedMutationRef = useRef(markWatchedMutation);
+  useEffect(() => {
+    markWatchedMutationRef.current = markWatchedMutation;
+  });
 
   // Load saved position when lesson changes
   const { data: savedProgress } = trpc.course.getSavedPosition.useQuery(
@@ -121,12 +140,12 @@ export function useWatchTracker({
     lastPositionRef.current = currentPosition;
     lastTickRef.current = now;
 
-    heartbeatMutation.mutate({
+    heartbeatMutationRef.current.mutate({
       lessonId: lessonIdRef.current,
       watchedSeconds: Math.min(watchedSeconds, 300), // Cap at 5 minutes per heartbeat (matches server validation)
       lastPosition: currentPosition,
     });
-  }, [videoRef, heartbeatMutation]);
+  }, [videoRef]);
 
   // Start tracking (when video plays)
   const startTracking = useCallback(() => {
@@ -171,7 +190,7 @@ export function useWatchTracker({
       // mount; the server upsert is idempotent, the guard avoids spam).
       if (lessonIdRef.current && completedLessonRef.current !== lessonIdRef.current) {
         completedLessonRef.current = lessonIdRef.current;
-        markWatchedMutation.mutate({ lessonId: lessonIdRef.current });
+        markWatchedMutationRef.current.mutate({ lessonId: lessonIdRef.current });
       }
     };
     const onSeeked = () => {
@@ -189,7 +208,7 @@ export function useWatchTracker({
       video.removeEventListener("ended", onEnded);
       video.removeEventListener("seeked", onSeeked);
     };
-  }, [enabled, lessonId, videoRef, startTracking, stopTracking, markWatchedMutation]);
+  }, [enabled, lessonId, videoRef, startTracking, stopTracking]);
 
   // Auto-resume: seek to saved position when video loads
   useEffect(() => {

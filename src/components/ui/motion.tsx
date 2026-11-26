@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 
-import { type HTMLMotionProps, motion } from "framer-motion";
+import { type HTMLMotionProps, motion, useMotionValue, useSpring } from "framer-motion";
 import React, { useEffect, useState } from "react";
 // ✅ FIX: Import cn() from utils.ts instead of duplicating it.
 // Duplicate cn() functions cause maintenance issues and bundle size bloat.
@@ -133,10 +133,18 @@ export function HoverSpring({ children, className, ...props }: DivMotionProps) {
 /**
  * 3D Tilt Card Effect
  * Adds professional depth that follows mouse movement.
+ *
+ * ✅ PERF (react-best-practices rerender-*): per-mousemove `setState` re-rendered
+ * the whole card (and its subtree) on EVERY pointer move — TiltCard wraps every
+ * CourseCard, so sweeping the Courses grid re-rendered ~12 cards per event.
+ * useMotionValue + useSpring drive the transform on framer-motion's engine with
+ * ZERO React re-renders; same math, same spring params (150/20), same visuals.
  */
 export function TiltCard({ children, className, ...props }: DivMotionProps) {
-  const [rotateX, setRotateX] = React.useState(0);
-  const [rotateY, setRotateY] = React.useState(0);
+  const rotateXMV = useMotionValue(0);
+  const rotateYMV = useMotionValue(0);
+  const rotateX = useSpring(rotateXMV, { stiffness: 150, damping: 20 });
+  const rotateY = useSpring(rotateYMV, { stiffness: 150, damping: 20 });
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -144,25 +152,20 @@ export function TiltCard({ children, className, ...props }: DivMotionProps) {
     const y = e.clientY - rect.top;
     const centerX = rect.width / 2;
     const centerY = rect.height / 2;
-    const rotateX = ((y - centerY) / centerY) * -10;
-    const rotateY = ((x - centerX) / centerX) * 10;
-
-    setRotateX(rotateX);
-    setRotateY(rotateY);
+    rotateXMV.set(((y - centerY) / centerY) * -10);
+    rotateYMV.set(((x - centerX) / centerX) * 10);
   };
 
   const handleMouseLeave = () => {
-    setRotateX(0);
-    setRotateY(0);
+    rotateXMV.set(0);
+    rotateYMV.set(0);
   };
 
   return (
     <motion.div
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
-      animate={{ rotateX, rotateY }}
-      transition={{ type: "spring", stiffness: 150, damping: 20 }}
-      style={{ perspective: 1000, transformStyle: "preserve-3d" }}
+      style={{ rotateX, rotateY, perspective: 1000, transformStyle: "preserve-3d" }}
       className={cn("relative transition-all duration-200", className)}
       {...props}
     >
@@ -174,21 +177,32 @@ export function TiltCard({ children, className, ...props }: DivMotionProps) {
 /**
  * Magnetic Attraction Effect
  * Elements feel "alive" by subtly gravitating towards the cursor.
+ *
+ * ✅ PERF (react-best-practices rerender-*): per-mousemove `setState` re-rendered
+ * this wrapper on every pointer move — Magnetic wraps EVERY Navbar link, so
+ * moving the cursor across the navbar triggered a React render per event per
+ * link. useMotionValue + useSpring drive x/y on the motion engine with zero
+ * re-renders; same 0.2 attraction factor, same spring params (150/15/0.1).
  */
 export function Magnetic({ children, ...props }: { readonly children: React.ReactElement }) {
   const ref = React.useRef<HTMLDivElement>(null);
-  const [position, setPosition] = React.useState({ x: 0, y: 0 });
+  const xMV = useMotionValue(0);
+  const yMV = useMotionValue(0);
+  const x = useSpring(xMV, { stiffness: 150, damping: 15, mass: 0.1 });
+  const y = useSpring(yMV, { stiffness: 150, damping: 15, mass: 0.1 });
 
   const handleMouseMove = (e: MouseEvent) => {
     const { clientX, clientY } = e;
     const { left, top, width, height } = ref.current!.getBoundingClientRect();
-    const x = clientX - (left + width / 2);
-    const y = clientY - (top + height / 2);
-    setPosition({ x: x * 0.2, y: y * 0.2 });
+    const nx = clientX - (left + width / 2);
+    const ny = clientY - (top + height / 2);
+    xMV.set(nx * 0.2);
+    yMV.set(ny * 0.2);
   };
 
   const handleMouseLeave = () => {
-    setPosition({ x: 0, y: 0 });
+    xMV.set(0);
+    yMV.set(0);
   };
 
   return (
@@ -197,8 +211,7 @@ export function Magnetic({ children, ...props }: { readonly children: React.Reac
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       onMouseMove={handleMouseMove as any}
       onMouseLeave={handleMouseLeave}
-      animate={{ x: position.x, y: position.y }}
-      transition={{ type: "spring", stiffness: 150, damping: 15, mass: 0.1 }}
+      style={{ x, y }}
       {...props}
     >
       {children}

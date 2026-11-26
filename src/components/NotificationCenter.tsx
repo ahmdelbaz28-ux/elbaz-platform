@@ -337,10 +337,18 @@ export function useNotificationHistory(): NotificationHistoryState {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return [];
-      const parsed: NotificationRecord[] = JSON.parse(raw);
+      // ✅ react-best-practices client-* (localStorage versioning): accept both
+      // the { v, items } envelope and the legacy bare array so the upgrade
+      // path is lossless.
+      const parsed: unknown = JSON.parse(raw);
+      const list: NotificationRecord[] = Array.isArray(parsed)
+        ? (parsed as NotificationRecord[])
+        : Array.isArray((parsed as { items?: NotificationRecord[] })?.items)
+          ? (parsed as { items: NotificationRecord[] }).items
+          : [];
       // Auto-clean notifications older than 7 days on init
       const now = Date.now();
-      return parsed.filter((n) => now - n.timestamp < SEVEN_DAYS_MS);
+      return list.filter((n) => now - n.timestamp < SEVEN_DAYS_MS);
     } catch {
       return [];
     }
@@ -349,7 +357,7 @@ export function useNotificationHistory(): NotificationHistoryState {
   // Persist to localStorage whenever notifications change
   const persist = useCallback((items: NotificationRecord[]) => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ v: 1, items }));
     } catch {
       // quota exceeded – silently ignore
     }
@@ -511,6 +519,23 @@ export function usePushNotification(
   useEffect(() => {
     if (!isSupported) return;
     let cancelled = false;
+    // ✅ PERF (react-best-practices async-waterfall): the VAPID public-key fetch
+    // is fully independent of the serviceWorker-ready chain below — it used to
+    // be SERIALIZED behind an up-to-8s `serviceWorker.ready` wait on first
+    // visits, delaying the push-availability flag for every logged-in user.
+    // Start it as its own lane first; each lane keeps its own try/catch, so
+    // error semantics and the `cancelled` guard are unchanged.
+    void (async () => {
+      try {
+        const res = await fetch(`${apiBaseUrl()}/api/notifications/push/public-key`);
+        if (res.ok) {
+          const data = (await res.json()) as PushPublicKeyResponse;
+          if (!cancelled) setIsPushEnabled(Boolean(data.enabled && data.publicKey));
+        }
+      } catch {
+        if (!cancelled) setIsPushEnabled(Boolean(vapidPublicKey));
+      }
+    })();
     void (async () => {
       try {
         // Timeout guard: `serviceWorker.ready` never resolves when no SW is
@@ -545,16 +570,6 @@ export function usePushNotification(
               : "idle",
           );
         }
-      }
-      // Feature flag: does the server have VAPID keys configured?
-      try {
-        const res = await fetch(`${apiBaseUrl()}/api/notifications/push/public-key`);
-        if (res.ok) {
-          const data = (await res.json()) as PushPublicKeyResponse;
-          if (!cancelled) setIsPushEnabled(Boolean(data.enabled && data.publicKey));
-        }
-      } catch {
-        if (!cancelled) setIsPushEnabled(Boolean(vapidPublicKey));
       }
     })();
     return () => {
@@ -1556,7 +1571,7 @@ export default function NotificationCenter() { // NOSONAR — large component wi
       if (dx !== 0) panel.style.setProperty("translate", `${dx}px 0px`);
     };
     clampToViewport();
-    window.addEventListener("resize", clampToViewport);
+    window.addEventListener("resize", clampToViewport, { passive: true }); // ✅ PERF (react-best-practices): passive — layout read only
     return () => {
       window.removeEventListener("resize", clampToViewport);
       panel.style.setProperty("translate", "0px 0px");

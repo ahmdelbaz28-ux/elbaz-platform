@@ -1,4 +1,5 @@
 import { motion, useScroll, useTransform } from "framer-motion";
+import { useMemo } from "react";
 import { Link } from "react-router";
 import CourseCard from "@/components/CourseCard";
 import Seo from "@/components/SEO";
@@ -380,7 +381,6 @@ export default function Home() { // NOSONAR — landing page with hero + feature
   const articles = (Array.isArray(articlesData?.items) ? articlesData.items : []) as ArticleTeaser[];
   const { data: categories, isPending: categoriesPending } = trpc.course.categories.useQuery();
   const { data: activePromotionsRaw } = trpc.settings.getActivePromotions.useQuery();
-  const activePromotions = (activePromotionsRaw ?? []) as Promotion[];
   const { data: platformStats } = trpc.course.stats.useQuery();
 
   const ps = platformStats ?? { totalStudents: 0, satisfactionRate: 0, totalCourses: 0, totalLessons: 0 } as Stats;
@@ -398,9 +398,17 @@ export default function Home() { // NOSONAR — landing page with hero + feature
     { q: lang === "en" ? "Is there a refund policy?" : "هل يوجد سياسة استرداد؟", a: lang === "en" ? "We offer a 7-day money-back guarantee for all premium courses. If the content doesn't meet your expectations, contact support for a full refund." : "نقدم ضمان استرداد الأموال لمدة 7 أيام لجميع الكورسات المدفوعة." },
   ];
 
-  const topPromotion = activePromotions?.find((p: Promotion) => {
+  // ✅ PERF (react-best-practices rerender-* / js-*): localStorage.getItem is a
+  // synchronous main-thread read — it used to run inside this render-path find()
+  // on EVERY Home re-render (each of the 5 query resolutions, every language
+  // toggle, every countdown tick). Memoize on `activePromotionsRaw` (stable
+  // react-query identity — the `?? []` fallback lives INSIDE the callback so
+  // the deps never see a fresh empty-array identity per render). Dismissal
+  // still hides the banner instantly via PromoBanner's own mount-time state
+  // (unchanged).
+  const topPromotion = useMemo(() => ((activePromotionsRaw ?? []) as Promotion[]).find((p: Promotion) => {
     try { return (p.position === "top" || p.position === "hero_above") && !localStorage.getItem(`dismissed-promo-${p.id}`); } catch { return (p.position === "top" || p.position === "hero_above"); }
-  });
+  }), [activePromotionsRaw]);
 
   return (
     <div className="min-h-screen overflow-hidden">

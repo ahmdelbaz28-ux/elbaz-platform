@@ -71,10 +71,10 @@ export default function ByokSettingsPanel({ lang, onClose, onActiveChange }: Pro
 
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/user-ai-provider`);
+      const res = await fetch(`${API_BASE}/api/user-ai-provider`, { signal });
       if (res.status === 401) {
         toast(t("سجّل الدخول أولاً لاستخدام النموذج الخاص", "Please log in to use a custom model"), { duration: 2500 });
         onClose();
@@ -93,7 +93,12 @@ export default function ByokSettingsPanel({ lang, onClose, onActiveChange }: Pro
         // the user types a new one (overwrite-on-save semantics).
       }
       onActiveChange?.(!!saved && saved.enabled);
-    } catch {
+    } catch (err) {
+      // ✅ PERF (react-best-practices client-*): the panel is a modal that
+      // mounts/unmounts on every open/close — abort the in-flight load on
+      // unmount instead of letting it settle into dead state writes. An abort
+      // is a user navigation, not an error: no toast.
+      if ((err as Error)?.name === "AbortError") return;
       toast(t("تعذر تحميل الإعدادات — تحقق من الاتصال", "Couldn't load settings — check your connection"), { duration: 2500 });
     } finally {
       setLoading(false);
@@ -101,7 +106,10 @@ export default function ByokSettingsPanel({ lang, onClose, onActiveChange }: Pro
   }, [t, onClose, onActiveChange]);
 
   useEffect(() => {
-    void load();
+    const ac = new AbortController();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load() flips `loading` synchronously so the skeleton paints on mount (pre-existing pattern)
+    void load(ac.signal);
+    return () => ac.abort();
   }, [load]);
 
   const selectedCatalog = catalog.find((p) => p.id === provider);

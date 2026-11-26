@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowRight, CheckCircle, RotateCcw, XCircle } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "@/hooks/useTranslation";
 import { trackLearning } from "@/lib/clarity";
@@ -19,6 +19,15 @@ export default function QuizComponent({ lessonId }: QuizComponentProps) {
 
   const { data: questions, isLoading } = trpc.quiz.byLesson.useQuery({ lessonId });
   const submitMutation = trpc.quiz.submit.useMutation();
+
+  // ✅ PERF (react-best-practices js-*): `answers.find` per option was O(options
+  // × answers) per question render — build a Map once per answers change.
+  // (Placed BEFORE the early returns below — rules of hooks.)
+  const selectedByQuestion = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const a of answers) m.set(a.questionId, a.selectedOption);
+    return m;
+  }, [answers]);
 
   // Track quiz start (first time user interacts with quiz)
   useEffect(() => {
@@ -78,7 +87,7 @@ export default function QuizComponent({ lessonId }: QuizComponentProps) {
   };
 
   const isSelected = (optionIndex: number) => {
-    return answers.find((a) => a.questionId === question.id)?.selectedOption === optionIndex;
+    return selectedByQuestion.get(question.id) === optionIndex;
   };
 
   const handleRetake = () => {
@@ -178,6 +187,13 @@ interface QuizResultViewProps {
 }
 
 function QuizResultView({ result, questions, t, lang, onRetake }: QuizResultViewProps) {
+  // ✅ PERF (react-best-practices js-*): questions.find per result row was O(n²)
+  // — build the lookup Map once.
+  const questionById = useMemo(() => {
+    const m = new Map<number, (typeof questions)[number]>();
+    for (const q of questions) m.set(q.id, q);
+    return m;
+  }, [questions]);
   return (
     <div className="rounded-lg border border-[#1f2d44] bg-[#0a0e17] p-6">
       <div className="text-center">
@@ -204,7 +220,7 @@ function QuizResultView({ result, questions, t, lang, onRetake }: QuizResultView
       {/* Detailed results */}
       <div className="mt-6 space-y-4">
         {result.results.map((r: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
-          const q = questions.find((q) => q.id === r.questionId);
+          const q = questionById.get(r.questionId);
           return (
             <div key={r.questionId} className="rounded-lg border border-[#1f2d44] p-4">
               <div className="flex items-start gap-2">

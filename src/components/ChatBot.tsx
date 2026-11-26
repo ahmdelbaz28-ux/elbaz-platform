@@ -17,7 +17,7 @@ import {
   User,
   X,
 } from "lucide-react";
-import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { toast } from "sonner";
 import ByokSettingsPanel from "@/components/chatbot/ByokSettingsPanel";
@@ -128,6 +128,12 @@ function brainToggleTitle(thinking: boolean, lang: string): string {
     : "Instant mode — click to enable Thinking";
 }
 
+// ✅ react-best-practices client-* (localStorage versioning): persisted arrays
+// previously had no schema marker — the next shape evolution could not be
+// detected. Write a { v, items } envelope; the reader stays tolerant of BOTH
+// the legacy bare array and the envelope, so nothing breaks on upgrade.
+const CHAT_STORAGE_VERSION = 1;
+
 function saveMessagesToStorage(msgs: Message[], key: string): void {
   try {
     const serializable = msgs.slice(-MAX_STORAGE_MESSAGES).map((m) => ({
@@ -143,7 +149,7 @@ function saveMessagesToStorage(msgs: Message[], key: string): void {
         image: m.image ? { thumb: m.image.thumb, name: m.image.name, source: m.image.source } : undefined,
       }));
     try { localStorage.removeItem(LEGACY_CHAT_STORAGE_KEY); } catch { /* pre-fix entry */ }
-    localStorage.setItem(key, JSON.stringify(serializable));
+    localStorage.setItem(key, JSON.stringify({ v: CHAT_STORAGE_VERSION, items: serializable }));
   } catch {
     // Intentionally ignored: localStorage may be full or unavailable — chat history is non-critical. — SonarCloud S2486
   }
@@ -154,8 +160,10 @@ function loadMessagesFromStorage(key: string): Message[] | null {
     const raw = localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed) || parsed.length === 0) return null;
-    return parsed.map((m: any) => ({ // eslint-disable-line @typescript-eslint/no-explicit-any
+    // Accept both the versioned envelope and the legacy bare array.
+    const items = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.items) ? parsed.items : null;
+    if (!items || items.length === 0) return null;
+    return items.map((m: any) => ({ // eslint-disable-line @typescript-eslint/no-explicit-any
         id: m.id || crypto.randomUUID(),
         role: m.role || "assistant",
         content: m.content || "",
@@ -2122,11 +2130,23 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
     }
   }, [isOpen, messages.length]);
 
-  const innerSeenCount = lastSeenCount > 0
-    ? messages.slice(0, lastSeenCount).filter((m) => m.role === "assistant" && !m.isError).length
-    : 0;
-  const unreadCount = isOpen ? 0 : Math.max(0, messages.filter((m) => m.role === "assistant" && !m.isError).length -
-        innerSeenCount);
+  // ✅ PERF (react-best-practices js-* / rerender-*): the two filter passes over
+  // `messages` used to re-run on EVERY render — and ChatBot re-renders every
+  // 30ms while the streaming-reveal ticker appends text. Single O(n) pass,
+  // memoized on [messages, lastSeenCount]; `unreadCount` stays a derived value.
+  const { assistantCount, innerSeenCount } = useMemo(() => {
+    let assistantCount = 0;
+    let innerSeenCount = 0;
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i];
+      if (m.role === "assistant" && !m.isError) {
+        assistantCount++;
+        if (i < lastSeenCount) innerSeenCount++;
+      }
+    }
+    return { assistantCount, innerSeenCount };
+  }, [messages, lastSeenCount]);
+  const unreadCount = isOpen ? 0 : Math.max(0, assistantCount - innerSeenCount);
 
   // ─── Streaming model display ───
   // Neutral typing label — deliberately says nothing about which model or

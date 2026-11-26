@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTranslation } from "@/hooks/useTranslation";
 import { isNativePlatform, setStoredToken } from "@/lib/auth-storage";
+import { fetchPublicEnv } from "@/lib/google-env";
 import { identifyUser, trackPlatform } from "@/lib/clarity";
 import { initiateGoogleOAuth } from "@/lib/google-auth";
 import { bilingualByLang } from "@/lib/i18n";
@@ -91,10 +92,10 @@ export default function Login() {
       return;
     }
     console.warn("[GoogleAuth] globalThis.__ENV__ not found, falling back to /api/env fetch");
-    fetch("/api/env", { cache: "no-store" })
-      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then(data => { if (data?.GOOGLE_CLIENT_ID) setGoogleClientId(data.GOOGLE_CLIENT_ID); })
-      .catch((err) => console.warn("[GoogleAuth] Could not fetch /api/env:", err.message));
+    // ✅ PERF (client-fetch dedupe): shared module-scope cache (src/lib/google-env.ts)
+    // — revisiting this page (or switching Login ↔ Register) no longer re-fetches /api/env.
+    fetchPublicEnv()
+      .then(data => { if (data?.GOOGLE_CLIENT_ID) setGoogleClientId(data.GOOGLE_CLIENT_ID); });
   }, []);
 
   useEffect(() => {

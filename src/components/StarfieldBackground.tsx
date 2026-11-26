@@ -425,7 +425,22 @@ export default function StarfieldBackground() {
     };
 
     resize();
-    globalThis.addEventListener('resize', resize);
+    // ✅ PERF (react-best-practices rendering-*/client-*): mobile URL-bar
+    // show/hide and keyboard open/close fire RESIZE BURSTS — each event used
+    // to re-measure DPR, re-render the full static layer, re-seed every
+    // particle and repaint (stars visibly jump). rAF-coalesce: at most one
+    // resize pass per frame; the last event's geometry always wins (trailing
+    // edge). passive:true is the rule-compliant default (handler never
+    // preventDefaults).
+    let resizeRaf = 0;
+    const onResize = (): void => {
+      if (resizeRaf) return;
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = 0;
+        resize();
+      });
+    };
+    globalThis.addEventListener('resize', onResize, { passive: true });
 
     if (prefersReduced) {
       paint(0);
@@ -449,7 +464,8 @@ export default function StarfieldBackground() {
     return () => {
       running = false;
       if (rafId) cancelAnimationFrame(rafId);
-      globalThis.removeEventListener('resize', resize);
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
+      globalThis.removeEventListener('resize', onResize);
       document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);

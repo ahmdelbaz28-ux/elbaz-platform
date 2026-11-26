@@ -86,7 +86,8 @@ export function useFabScrollVisibility(disabled = false): boolean {
     };
 
     globalThis.addEventListener("scroll", onScroll, { passive: true });
-    vv?.addEventListener("resize", onVVResize);
+    // ✅ PERF (react-best-practices): passive — the handler never preventDefaults
+    vv?.addEventListener("resize", onVVResize, { passive: true });
     return () => {
       globalThis.removeEventListener("scroll", onScroll);
       vv?.removeEventListener("resize", onVVResize);

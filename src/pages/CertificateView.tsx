@@ -72,6 +72,22 @@ async function buildCertificateShareImage(data: {
     ]);
   } catch { /* system fallback fonts still render readable text */ }
 
+  // ✅ PERF (react-best-practices async-waterfall): the logo (network fetch)
+  // and the QR (local data-URI rasterization) are fully independent — they
+  // used to be awaited sequentially with ~50 lines of text drawing in between,
+  // so the network round-trip added its full latency to the share-image build.
+  // Start BOTH loads now and await each inside its original guarded block
+  // below; identical error semantics (each catch still ships the card).
+  const logoPromise = loadImage("/logo-circle.png?v=2");
+  const qrPromise = (async () => {
+    // The library emits width/height:100% styling; as an <img> raster source
+    // it needs explicit pixel dimensions — strip the style and pin the size.
+    const svg = generateQRCodeSVG(`https://ahmedelbaz.qzz.io/verify/${certificateNumber}`, 260)
+      .replace(/style="[^"]*"/, "")
+      .replace("<svg ", '<svg width="260" height="260" ');
+    return loadImage(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`);
+  })();
+
   // ── Background: navy + soft cyan glow behind the logo ──
   ctx.fillStyle = "#0a1628";
   ctx.fillRect(0, 0, SHARE_IMG_W, SHARE_IMG_H);
@@ -93,7 +109,7 @@ async function buildCertificateShareImage(data: {
 
   // ── Circular platform logo, top center ──
   try {
-    const logo = await loadImage("/logo-circle.png?v=2");
+    const logo = await logoPromise;
     ctx.save();
     ctx.beginPath();
     ctx.arc(SHARE_IMG_W / 2, 122, 46, 0, Math.PI * 2);
@@ -151,12 +167,7 @@ async function buildCertificateShareImage(data: {
 
   // ── QR — white plate so it stays scannable on the dark background ──
   try {
-    // The library emits width/height:100% styling; as an <img> raster source
-    // it needs explicit pixel dimensions — strip the style and pin the size.
-    const svg = generateQRCodeSVG(`https://ahmedelbaz.qzz.io/verify/${certificateNumber}`, 260)
-      .replace(/style="[^"]*"/, "")
-      .replace("<svg ", '<svg width="260" height="260" ');
-    const qr = await loadImage(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`);
+    const qr = await qrPromise;
     const plate = 128;
     const plateX = SHARE_IMG_W - 90 - plate;
     const plateY = 462;

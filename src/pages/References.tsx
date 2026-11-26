@@ -80,11 +80,16 @@ interface FileCardProps {
   readonly isDownloading: boolean;
   readonly onDownload: (id: number, fileName: string) => void;
   readonly onDelete: (id: number, title: string) => void;
+  /* ✅ PERF: content-visibility class applied ON the card root (same pattern as
+     Articles.tsx ArticleCard) — a wrapper div would break the grid's
+     equal-height stretch (the card relies on align-items:stretch for its
+     flex column + mt-auto footer). */
+  readonly cvClass?: string;
 }
 
-function FileCard({ item, lang, isAdmin, isDownloading, onDownload, onDelete }: FileCardProps) {
+function FileCard({ item, lang, isAdmin, isDownloading, onDownload, onDelete, cvClass }: FileCardProps) {
   return (
-    <div className="group relative flex min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-background p-5 transition-all hover:border-accent-secondary/40 hover:bg-primary hover:shadow-lg hover:shadow-accent-secondary/5">
+    <div className={`group relative flex min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-background p-5 transition-all hover:border-accent-secondary/40 hover:bg-primary hover:shadow-lg hover:shadow-accent-secondary/5${cvClass ? ` ${cvClass}` : ""}`}>
       {/* File icon + extension badge */}
       <div className="mb-3 flex items-start justify-between">
         <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary">
@@ -213,11 +218,14 @@ export default function References() {
   // ─── Filtered items ───
   const items = useMemo(() => {
     if (!data?.items) return [];
+    // ✅ PERF (react-best-practices js-*): `search.toLowerCase()` was recomputed
+    // up to 3× per item inside the filter — hoist it once per keystroke.
+    const q = search.toLowerCase();
     return data.items.filter((item: ReferenceFile) => {
-      const matchesSearch = !search ||
-        item.title.toLowerCase().includes(search.toLowerCase()) ||
-        (item.description || "").toLowerCase().includes(search.toLowerCase()) ||
-        item.fileName.toLowerCase().includes(search.toLowerCase());
+      const matchesSearch = !q ||
+        item.title.toLowerCase().includes(q) ||
+        (item.description || "").toLowerCase().includes(q) ||
+        item.fileName.toLowerCase().includes(q);
       const matchesCategory = selectedCategory === "all" || item.category === selectedCategory;
       return matchesSearch && matchesCategory;
     });
@@ -287,7 +295,10 @@ export default function References() {
     }
     return (
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {items.map((item: ReferenceFile) => (
+        {items.map((item: ReferenceFile, idx: number) => (
+          /* ✅ PERF (react-best-practices rendering-*): content-visibility past the
+             first screenful (same pattern as Articles — see index.css cv-auto).
+             Offscreen cards skip layout/paint until scrolled to. */
           <FileCard
             key={item.id}
             item={item}
@@ -296,6 +307,7 @@ export default function References() {
             isDownloading={downloadingId === item.id}
             onDownload={handleDownload}
             onDelete={handleDelete}
+            cvClass={idx >= 12 ? "cv-auto" : undefined}
           />
         ))}
       </div>

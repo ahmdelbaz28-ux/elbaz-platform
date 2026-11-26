@@ -103,12 +103,22 @@ export default function GlobalSearch() {
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
+  // ✅ PERF (react-best-practices client-*): the query used to change its key
+  // on EVERY keystroke with no debounce — one server round-trip per typed
+  // character (Courses.tsx already debounces; same pattern). 250ms trailing
+  // debounce: the final query is identical, only the intermediate fetches go.
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), 250);
+    return () => clearTimeout(t);
+  }, [query]);
+
   const { data, isFetching } = trpc.search.global.useQuery(
-    { query, limit: 5 },
-    { enabled: query.length >= 2, staleTime: 30000 }
+    { query: debouncedQuery, limit: 5 },
+    { enabled: debouncedQuery.length >= 2, staleTime: 30000 }
   );
 
   // Keyboard shortcut: Cmd/Ctrl + K
@@ -132,6 +142,7 @@ export default function GlobalSearch() {
       setTimeout(() => inputRef.current?.focus(), 50);
     } else {
       setQuery(""); // eslint-disable-line react-hooks/set-state-in-effect
+      setDebouncedQuery("");
     }
   }, [isOpen]);
 
@@ -152,6 +163,7 @@ export default function GlobalSearch() {
     navigate(link);
     setIsOpen(false);
     setQuery("");
+    setDebouncedQuery("");
   };
 
   if (!isOpen) {
@@ -168,7 +180,7 @@ export default function GlobalSearch() {
     );
   }
 
-  const showDropdown = query.length >= 2 && Boolean(data);
+  const showDropdown = debouncedQuery.length >= 2 && Boolean(data);
 
   return (
     <div ref={containerRef} className="relative">

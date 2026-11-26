@@ -1,8 +1,9 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Eye, EyeOff, Gift, Hourglass, Zap } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
+import { fetchPublicEnv } from "@/lib/google-env";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -99,7 +100,17 @@ export default function Register() {
       try { localStorage.setItem("elbaz_ref", refCodeFromUrl); } catch { /* private mode */ }
     }
   }, [refCodeFromUrl]);
-  const refCode = refCodeFromUrl || (() => { try { return localStorage.getItem("elbaz_ref") || ""; } catch { return ""; } })();
+  // ✅ PERF (react-best-practices js-* / rerender-*): the stored referral code
+  // used to be re-read from localStorage inside an IIFE on EVERY render (every
+  // keystroke of the form). It is now a useMemo keyed on `refCodeFromUrl`:
+  // keystrokes never re-read storage (the key is stable while typing), and a
+  // re-read happens exactly when the URL param changes — including the strip
+  // case, where the capture effect below has just written the captured code.
+  const storedRefCode = useMemo(() => {
+    try { return localStorage.getItem("elbaz_ref") || ""; } catch { return ""; }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refCodeFromUrl is an intentional re-read trigger: when ?ref=CODE is stripped in-place, the capture effect below has already persisted it and this re-read picks it up
+  }, [refCodeFromUrl]);
+  const refCode = refCodeFromUrl || storedRefCode;
 
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -112,10 +123,10 @@ export default function Register() {
     // whenever the build-time __ENV__ injection was absent. The dedicated
     // public-env endpoint is /api/env (same source Login.tsx already uses).
     console.warn("[GoogleAuth] globalThis.__ENV__ not found, falling back to /api/env fetch");
-    fetch("/api/env", { cache: "no-store" })
-      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then(data => { if (data?.GOOGLE_CLIENT_ID) setGoogleClientId(data.GOOGLE_CLIENT_ID); })
-      .catch((err) => console.warn("[GoogleAuth] Could not fetch /api/env:", err.message));
+    // ✅ PERF (client-fetch dedupe): shared module-scope cache — revisiting
+    // this page (or switching Login ↔ Register) no longer re-fetches /api/env.
+    fetchPublicEnv()
+      .then(data => { if (data?.GOOGLE_CLIENT_ID) setGoogleClientId(data.GOOGLE_CLIENT_ID); });
   }, []);
 
   const handleGoogleCallback = useCallback(async (response: GoogleCredentialResponse) => {

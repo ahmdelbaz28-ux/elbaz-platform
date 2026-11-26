@@ -122,13 +122,18 @@ interface FileCardProps {
   readonly lang: "ar" | "en";
   readonly isDownloading: boolean;
   readonly onDownload: (id: number, fileName: string) => void;
+  /* ✅ PERF: content-visibility class applied ON the card root (same pattern as
+     Articles.tsx ArticleCard) — a wrapper div would break the grid's
+     equal-height stretch (the card relies on align-items:stretch for its
+     flex column + mt-auto footer). */
+  readonly cvClass?: string;
 }
 
-function FileCard({ item, lang, isDownloading, onDownload }: FileCardProps) {
+function FileCard({ item, lang, isDownloading, onDownload, cvClass }: FileCardProps) {
   const ext = getFileExtension(item.fileName);
 
   return (
-    <div className="group relative flex flex-col rounded-xl border border-border bg-primary p-5 transition-all duration-200 hover:border-[rgba(6,182,212,0.35)] hover:bg-primary hover:shadow-[0_8px_32px_rgba(6,182,212,0.06)]">
+    <div className={`group relative flex flex-col rounded-xl border border-border bg-primary p-5 transition-all duration-200 hover:border-[rgba(6,182,212,0.35)] hover:bg-primary hover:shadow-[0_8px_32px_rgba(6,182,212,0.06)]${cvClass ? ` ${cvClass}` : ""}`}>
       {/* Header: Icon + Extension badge */}
       <div className="mb-3 flex items-start justify-between">
         <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-background group-hover:bg-accent-secondary/10 transition-colors">
@@ -215,12 +220,15 @@ export default function Documents() {
   // ─── Filtered items ───
   const items = useMemo(() => {
     if (!data?.items) return [];
+    // ✅ PERF (react-best-practices js-*): `search.toLowerCase()` was recomputed
+    // up to 3× per item inside the filter — hoist it once per keystroke.
+    const q = search.toLowerCase();
     return data.items.filter((item: ReferenceFile) => {
       const matchesSearch =
-        !search ||
-        item.title.toLowerCase().includes(search.toLowerCase()) ||
-        (item.description || "").toLowerCase().includes(search.toLowerCase()) ||
-        item.fileName.toLowerCase().includes(search.toLowerCase());
+        !q ||
+        item.title.toLowerCase().includes(q) ||
+        (item.description || "").toLowerCase().includes(q) ||
+        item.fileName.toLowerCase().includes(q);
       const matchesCategory = selectedCategory === "all" || item.category === selectedCategory;
       return matchesSearch && matchesCategory;
     });
@@ -397,13 +405,17 @@ export default function Documents() {
             <DocumentsEmpty lang={lang} hasFilter={Boolean(search) || selectedCategory !== "all"} />
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {items.map((item: ReferenceFile) => (
+              {items.map((item: ReferenceFile, idx: number) => (
+                /* ✅ PERF (react-best-practices rendering-*): content-visibility past the
+                   first screenful (same pattern as Articles — see index.css cv-auto).
+                   Offscreen cards skip layout/paint until scrolled to. */
                 <FileCard
                   key={item.id}
                   item={item}
                   lang={lang}
                   isDownloading={downloadingId === item.id}
                   onDownload={handleDownload}
+                  cvClass={idx >= 12 ? "cv-auto" : undefined}
                 />
               ))}
             </div>
