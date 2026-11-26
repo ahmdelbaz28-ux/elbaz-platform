@@ -37,7 +37,7 @@ import { and, eq, ne } from "drizzle-orm";
 import { evictUserAuthCache } from "../context.js";
 import { pushNotificationEvent } from "../notification-poll-router.js";
 import { getDb } from "../queries/connection.js";
-import { sendEmail } from "./email.js";
+import { sendEmailWithDiagnostics } from "./email.js";
 import { buildAdminApprovalRequestEmail } from "./email-templates.js";
 import { env } from "./env.js";
 import { logger, maskEmail } from "./logger.js";
@@ -302,6 +302,14 @@ async function loadAdminIds(): Promise<number[]> {
  *     clients toast it within ~15s (NotificationPollerBridge), the approval
  *     card refreshes, and the frontend plays the chime + device notification.
  *  2. Email alert with Approve/Reject buttons (signed single-purpose links).
+ *
+ * ✅ EMAIL DELIVERY VISIBILITY (owner report 2026-11-26, "no approval email
+ * ever reached my inbox and nothing told me"): the email verdict is now part
+ * of the notification itself — the send happens FIRST (with ONE transient
+ * retry), and the in-app alert either confirms the delivery ("بريد التنبيه
+ * في طريقه") or carries the exact provider failure reason, so the owner
+ * never silently misses a registration because an email died. Every outcome
+ * is also persisted in the email_delivery_log ledger (see email.ts).
  */
 export async function notifyAdminsOfRegistration(params: {
   userId: number;
@@ -313,47 +321,88 @@ export async function notifyAdminsOfRegistration(params: {
   frontendUrl: string;
 }): Promise<void> {
   const { userId, username, name, email, frontendUrl } = params;
+
+  // ── 1. Email alert FIRST (one transient retry) — its verdict feeds the
+  // in-app notification so the dashboard always tells the truth. ──
+  const to = adminAlertEmail();
+  let emailVerdict: string | null = null; // null = skipped (no inbox), true/false flows below
+  let emailOk = false;
+  if (to) {
+    try {
+      const approveToken = signApprovalActionToken(userId, "approve");
+      const rejectToken = signApprovalActionToken(userId, "reject");
+      const emailDoc = buildAdminApprovalRequestEmail({
+        username,
+        name,
+        email,
+        registeredAt: new Date(),
+        approveUrl: `${frontendUrl}/api/approval/action?token=${encodeURIComponent(approveToken)}`,
+        rejectUrl: `${frontendUrl}/api/approval/action?token=${encodeURIComponent(rejectToken)}`,
+        dashboardUrl: `${frontendUrl}/admin?tab=users`,
+      });
+      const message = {
+        to,
+        subject: emailDoc.subject,
+        html: emailDoc.html,
+        text: emailDoc.text,
+        deliveryClass: "approval-alert",
+      };
+      let result = await sendEmailWithDiagnostics(message);
+      // ONE retry for TRANSIENT failures only (network unreachable, provider
+      // 5xx). A config/validation failure (missing key, 4xx) will fail again
+      // identically — retrying it just delays the truthful notification.
+      if (!result.ok && isTransientEmailFailure(result)) {
+        await new Promise((r) => setTimeout(r, 3000));
+        result = await sendEmailWithDiagnostics(message);
+      }
+      emailOk = result.ok;
+      emailVerdict = result.ok
+        ? null
+        : (result.reason || "سبب غير معروف من مزوّد البريد");
+      if (emailOk) {
+        logger.info("[Approval] alert email sent", { userId, to: maskEmail(to) });
+      } else {
+        logger.warn("[Approval] alert email failed (best-effort)", { userId, reason: emailVerdict });
+      }
+    } catch (err) {
+      emailVerdict = err instanceof Error ? err.message : String(err);
+      logger.warn("[Approval] alert email threw (best-effort)", { userId, error: emailVerdict });
+    }
+  } else {
+    logger.info("[Approval] no ADMIN_ALERT_EMAIL resolved — email alert skipped", { userId });
+  }
+
+  // ── 2. In-app fan-out, now carrying the email verdict. ──
   try {
     const adminIds = await loadAdminIds();
     const title = "طلب انضمام جديد — Needs approval";
-    const message = `${name || username} (@${username}) سجل في المنصة ويحتاج موافقتك — new registration awaiting your approval`;
+    const base = `${name || username} (@${username}) سجل في المنصة ويحتاج موافقتك — new registration awaiting your approval`;
+    const verdictSuffix = to
+      ? emailOk
+        ? " ✅ بريد التنبيه أُرسل إلى صندوقك — يمكنك القبول/الرفض من رابطه أو من هذه اللوحة."
+        : ` ⚠️ تعذّر إرسال بريد التنبيه (${emailVerdict}) — اعتمد الحساب من هذه اللوحة مباشرة أو اضغط "إعادة الإرسال".`
+      : "";
+    const message = `${base}${verdictSuffix}`;
     for (const adminId of adminIds) {
       await pushNotificationEvent("system", title, message, adminId, {
-        approvalRequest: { userId, username, name, email },
+        approvalRequest: { userId, username, name, email, emailAlertOk: emailOk, emailAlertReason: emailVerdict },
         url: "/admin?tab=users",
       });
     }
-    logger.info("[Approval] admin fan-out pushed", { userId, admins: adminIds.length });
+    logger.info("[Approval] admin fan-out pushed", { userId, admins: adminIds.length, emailOk });
   } catch (err) {
     logger.warn("[Approval] admin notification push failed (best-effort)", {
       userId,
       error: err instanceof Error ? err.message : String(err),
     });
   }
+}
 
-  const to = adminAlertEmail();
-  if (!to) {
-    logger.info("[Approval] no ADMIN_ALERT_EMAIL configured — email alert skipped", { userId });
-    return;
-  }
-  try {
-    const approveToken = signApprovalActionToken(userId, "approve");
-    const rejectToken = signApprovalActionToken(userId, "reject");
-    const emailDoc = buildAdminApprovalRequestEmail({
-      username,
-      name,
-      email,
-      registeredAt: new Date(),
-      approveUrl: `${frontendUrl}/api/approval/action?token=${encodeURIComponent(approveToken)}`,
-      rejectUrl: `${frontendUrl}/api/approval/action?token=${encodeURIComponent(rejectToken)}`,
-      dashboardUrl: `${frontendUrl}/admin?tab=users`,
-    });
-    await sendEmail({ to, subject: emailDoc.subject, html: emailDoc.html, text: emailDoc.text });
-    logger.info("[Approval] alert email sent", { userId, to: maskEmail(to) });
-  } catch (err) {
-    logger.warn("[Approval] alert email failed (best-effort)", {
-      userId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
+/** True when an email failure is worth ONE retry: provider unreachable
+ *  (network class) or a server-side 5xx. Deterministic 4xx/config failures
+ *  are never retried — the answer will be identical. */
+function isTransientEmailFailure(result: { ok: boolean; reason?: string }): boolean {
+  if (result.ok) return false;
+  const r = result.reason || "";
+  return r.startsWith("Resend unreachable:") || /error 5\d\d/.test(r);
 }

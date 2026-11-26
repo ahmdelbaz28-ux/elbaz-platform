@@ -217,6 +217,17 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
   });
   const pendingApprovals = approvalsData?.items ?? [];
   const pendingApprovalsCount = approvalsData?.total ?? 0;
+  // ✅ EMAIL DELIVERY VISIBILITY (owner report 2026-11-26): the last email
+  // send outcomes from the server's bounded ledger — the approval card can
+  // now TELL the owner whether the alert email really went out and, when it
+  // did not, the exact provider reason (missing key / unverified domain /
+  // validation error) instead of the send failing silently forever.
+  const { data: emailDeliveryLog } = trpc.admin.emailDeliveryLog.useQuery(undefined, {
+    enabled: !!isAdmin,
+    refetchInterval: 60_000,
+  });
+  const lastAlertOutcome = emailDeliveryLog?.lastAlert ?? null;
+  const recentEmailOutcomes = (emailDeliveryLog?.items ?? []).slice(0, 3);
   // IDs already sitting in the approval queue — the users table hides its
   // re-review button for them (they are already gated).
   const pendingApprovalIds = new Set(pendingApprovals.map((u) => u.id));
@@ -1124,6 +1135,58 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                         {isRTL ? "تفعيل صوت وتنبيهات الجهاز" : "Enable sound + device alerts"}
                       </Button>
                     </div>
+                    {/* ✅ EMAIL DELIVERY VISIBILITY: the alert-email verdict is
+                        shown ON the approval card — a failed send is never
+                        silent again (reason straight from the provider). */}
+                    {pendingApprovalsCount > 0 && lastAlertOutcome && (
+                      <div
+                        className={`flex flex-wrap items-center gap-2 border-b px-4 py-2 text-xs ${
+                          lastAlertOutcome.ok
+                            ? "border-emerald-500/20 bg-[rgba(16,185,129,0.06)] text-emerald-300"
+                            : "border-red-500/30 bg-[rgba(239,68,68,0.08)] text-red-300"
+                        }`}
+                        data-testid="approval-email-verdict"
+                      >
+                        {lastAlertOutcome.ok ? (
+                          <>
+                            <span className="font-bold">✅ بريد التنبيه أُرسل فعلاً</span>
+                            <span className="text-text-muted">
+                              إلى {lastAlertOutcome.toMasked} — تحقق من صندوق الوارد ومجلد البريد غير المرغوب، أو اعتمد من هذه اللوحة مباشرة.
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="font-bold">⚠️ فشل إرسال بريد التنبيه</span>
+                            <span className="text-text-muted">
+                              ({lastAlertOutcome.providerStatus || "غير معروف"}) {lastAlertOutcome.reason || "سبب غير معروف"} — اعتمد/ارفض من هذه اللوحة مباشرة، أو أصلح إعدادات مزوّد البريد.
+                            </span>
+                            <button
+                              type="button"
+                              className="ms-auto rounded-md border border-red-400/40 px-2 py-0.5 font-bold text-red-200 transition-colors hover:bg-red-500/10"
+                              onClick={() => {
+                                const first = pendingApprovals[0];
+                                if (first) resendApprovalEmailMutation.mutate({ userId: first.id });
+                              }}
+                            >
+                              إعادة الإرسال
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                    {recentEmailOutcomes.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-amber-500/10 bg-[rgba(245,158,11,0.03)] px-4 py-1.5 text-[11px] text-text-muted" data-testid="email-delivery-ledger">
+                        <span className="font-bold text-text-secondary">سجل توصيل البريد (الأحدث أولاً):</span>
+                        {recentEmailOutcomes.map((r) => (
+                          <span key={r.id} className={r.ok ? "text-emerald-400/80" : "text-red-400/80"}>
+                            {r.ok ? "✅" : "❌"} {r.class} → {r.toMasked}{r.providerStatus ? ` [${r.providerStatus}]` : ""}
+                          </span>
+                        ))}
+                        {emailDeliveryLog?.fromEmail && (
+                          <span className="ms-auto">المُرسِل: {emailDeliveryLog.fromEmail}</span>
+                        )}
+                      </div>
+                    )}
                     {pendingApprovals.length === 0 ? (
                       <p className="px-4 py-5 text-sm text-text-muted" data-testid="approvals-empty">
                         {isRTL

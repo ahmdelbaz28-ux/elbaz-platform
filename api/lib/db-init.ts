@@ -336,6 +336,32 @@ export async function ensureDatabase(): Promise<void> { // NOSONAR — sequentia
             );
           },
         },
+        {
+          // ✅ EMAIL DELIVERY VISIBILITY (owner report 2026-11-26, "the approval
+          // email never reached me and I never knew"): email sends were
+          // best-effort with the outcome only in server logs the owner cannot
+          // see — a failed provider config / unverified domain stayed silent
+          // forever. This bounded ledger records every send outcome (masked
+          // recipient, provider status, safe reason) so the admin dashboard can
+          // answer "did the alert email actually go out — and if not, why"
+          // without any server-log access.
+          id: "v22-email-delivery-log",
+          description: "bounded email delivery ledger for owner-visible send outcomes",
+          run: async (c) => {
+            await c.execute(`CREATE TABLE IF NOT EXISTS email_delivery_log (
+              id INT AUTO_INCREMENT PRIMARY KEY,
+              at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              class VARCHAR(40) NOT NULL,
+              toMasked VARCHAR(255) NOT NULL,
+              ok TINYINT(1) NOT NULL,
+              providerStatus VARCHAR(20) NULL,
+              reason VARCHAR(300) NULL
+            )`);
+            if (!(await dbIndexExists(c, "email_delivery_log", "idx_edl_at"))) {
+              await c.execute("CREATE INDEX idx_edl_at ON email_delivery_log (at)");
+            }
+          },
+        },
       ];
       await runMigrations(conn, MIGRATIONS);
 

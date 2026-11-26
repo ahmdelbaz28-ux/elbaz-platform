@@ -50,6 +50,11 @@ interface EmailMessage {
   subject: string;
   html: string;
   text: string;
+  // ✅ EMAIL DELIVERY VISIBILITY (2026-11-26): a stable bucket key (e.g.
+  // "approval-alert", "password-reset", "self-test") recorded in the
+  // email_delivery_log ledger so the admin dashboard can show per-flow
+  // delivery outcomes. Purely diagnostic — never affects sending.
+  deliveryClass?: string;
 }
 
 function getFrontendUrl(headers?: Headers): string {
@@ -89,6 +94,34 @@ export async function sendEmail(message: EmailMessage): Promise<boolean> {
   return result.ok;
 }
 
+// ✅ EMAIL DELIVERY VISIBILITY (owner report 2026-11-26): record every send
+// outcome into a bounded ledger (migration v22) so the admin dashboard can
+// answer "did the alert email actually go out — and if not, why" from the UI.
+// Best-effort by construction: a logging failure must NEVER affect the send
+// itself (the ledger may not exist yet on a racing boot — swallow silently).
+async function recordDeliveryOutcome(
+  message: EmailMessage,
+  ok: boolean,
+  providerStatus: string | null,
+  reason: string | null,
+): Promise<void> {
+  try {
+    const db = getDb();
+    const cls = (message.deliveryClass || "other").slice(0, 40);
+    const reasonBounded = reason ? reason.replace(/\s+/g, " ").trim().slice(0, 300) : null;
+    await db.execute(
+      // sql template binds the values — no string interpolation of user data.
+      sql`INSERT INTO email_delivery_log (class, toMasked, ok, providerStatus, reason)
+          VALUES (${cls}, ${maskEmail(message.to)}, ${ok ? 1 : 0}, ${providerStatus}, ${reasonBounded})`
+    );
+    // Bounded ledger: drop rows older than 14 days (cheap, indexed by at).
+    await db.execute(sql`DELETE FROM email_delivery_log WHERE at < NOW() - INTERVAL 14 DAY`);
+  } catch {
+    // Diagnostic write failed (table missing on a racing boot, DB hiccup…).
+    // Never propagate — sending already reported its own result.
+  }
+}
+
 export async function sendEmailWithDiagnostics(message: EmailMessage): Promise<SendEmailResult> {
   if (!env.isProduction) {
     // Development: Log email to console
@@ -97,34 +130,47 @@ export async function sendEmailWithDiagnostics(message: EmailMessage): Promise<S
       subject: message.subject,
       textPreview: message.text.substring(0, 200),
     });
+    await recordDeliveryOutcome(message, true, "dev", "dev mode — not sent");
     return { ok: true };
   }
 
   // Production: Use configured email provider
   if (!env.RESEND_API_KEY) {
     logger.error("No email provider configured (RESEND_API_KEY not set)");
+    await recordDeliveryOutcome(message, false, "config", "Email service not configured (RESEND_API_KEY missing)");
     return { ok: false, reason: "Email service not configured" };
   }
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: `Ahmed Elbaz Platform <${env.RESEND_FROM_EMAIL}>`,
-      to: message.to,
-      subject: message.subject,
-      html: message.html,
-      text: message.text,
-      // ✅ DELIVERABILITY (2026-11-25 audit): a monitored Reply-To raises
-      // mailbox-provider trust (users can answer — "no-reply" domains with no
-      // reply path score worse in spam filters) and routes real replies to the
-      // owner's alert inbox. Resend's reply_to accepts a bare address.
-      ...(env.ADMIN_ALERT_EMAIL ? { reply_to: env.ADMIN_ALERT_EMAIL } : {}),
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: `Ahmed Elbaz Platform <${env.RESEND_FROM_EMAIL}>`,
+        to: message.to,
+        subject: message.subject,
+        html: message.html,
+        text: message.text,
+        // ✅ DELIVERABILITY (2026-11-25 audit): a monitored Reply-To raises
+        // mailbox-provider trust (users can answer — "no-reply" domains with no
+        // reply path score worse in spam filters) and routes real replies to the
+        // owner's alert inbox. Resend's reply_to accepts a bare address.
+        ...(env.ADMIN_ALERT_EMAIL ? { reply_to: env.ADMIN_ALERT_EMAIL } : {}),
+      }),
+    });
+  } catch (err) {
+    // Network/DNS/TLS failure reaching Resend — previously an unhandled
+    // rejection crashed the caller's best-effort flow; now a classified,
+    // logged, LEDGERED outcome. Retryable (transient) by nature.
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error("[Email/Resend] network failure", { error: msg.slice(0, 200) });
+    await recordDeliveryOutcome(message, false, "network", `network failure: ${msg}`);
+    return { ok: false, reason: `Resend unreachable: ${msg.slice(0, 120)}` };
+  }
 
   if (!response.ok) {
     const errBody = await response.text().catch(() => "");
@@ -150,15 +196,19 @@ export async function sendEmailWithDiagnostics(message: EmailMessage): Promise<S
     // rendered to the ADMIN only.
     const bodySnippet = errBody.replace(/\s+/g, " ").trim().slice(0, 200);
 
+    const reason = isSandboxBlock
+      ? "Resend domain not verified — sandbox mode only allows sending to the account owner's email."
+      : `Resend API error ${response.status}${bodySnippet ? `: ${bodySnippet}` : ""}`;
+    await recordDeliveryOutcome(message, false, String(response.status), reason);
+
     return {
       ok: false,
-      reason: isSandboxBlock
-        ? "Resend domain not verified — sandbox mode only allows sending to the account owner's email."
-        : `Resend API error ${response.status}${bodySnippet ? `: ${bodySnippet}` : ""}`,
+      reason,
       needsDomainVerification: isSandboxBlock,
     };
   }
 
+  await recordDeliveryOutcome(message, true, String(response.status), null);
   return { ok: true };
 }
 

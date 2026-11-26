@@ -247,6 +247,42 @@ export const adminUsersProcedures = {
       return { success: true };
     }),
 
+  // ✅ EMAIL DELIVERY VISIBILITY (owner report 2026-11-26): the last email
+  // send outcomes from the bounded email_delivery_log ledger (migration
+  // v22) — the dashboard can now answer "did the approval alert actually
+  // go out, and if not, WHY" without any server-log access. Read-only,
+  // best-effort: a missing table (pre-migration boot race) degrades to an
+  // empty list instead of erroring the tab.
+  emailDeliveryLog: adminQuery
+    .query(async () => {
+      const db = getDb();
+      try {
+        const [rows] = await db.execute(sql`
+          SELECT id, at, class, toMasked, ok, providerStatus, reason
+          FROM email_delivery_log
+          ORDER BY id DESC
+          LIMIT 10
+        `) as unknown as [Array<{
+          id: number; at: string; class: string; toMasked: string;
+          ok: number; providerStatus: string | null; reason: string | null;
+        }>, unknown];
+        const items = (rows || []).map((r) => ({
+          id: r.id,
+          at: r.at,
+          class: r.class,
+          toMasked: r.toMasked,
+          ok: !!r.ok,
+          providerStatus: r.providerStatus,
+          reason: r.reason,
+        }));
+        const lastAlert = items.find((r) => r.class === "approval-alert") ?? null;
+        return { items, lastAlert, fromEmail: env.RESEND_FROM_EMAIL };
+      } catch {
+        // Ledger not created yet (boot race) — degrade to empty, never error.
+        return { items: [], lastAlert: null, fromEmail: env.RESEND_FROM_EMAIL };
+      }
+    }),
+
   // ✅ ROOT FIX (owner report 2026-11-24, "راجع المشكلة من جذورها"): the v17
   // migration grandfathered every PRE-GATE account as 'approved' — the owner
   // signed in with his old @AHMEDBAZ account and the gate never stopped him.
