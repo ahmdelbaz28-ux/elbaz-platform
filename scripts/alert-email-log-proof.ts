@@ -5,7 +5,7 @@
  * log line "[Approval] alert email sent" (userId + masked recipient) must
  * appear in the stream within seconds of the registration — that line is
  * logged ONLY after the Resend API call returned ok:true for the message to
- * ADMIN_ALERT_EMAIL (ahmedelbaz28@gmail.com).
+ * ADMIN_ALERT_EMAIL (ahmdelbaz28@gmail.com).
  *
  * Exit 0 = send line observed. Exit 1 = no line within the window.
  */

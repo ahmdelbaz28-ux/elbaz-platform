@@ -20,7 +20,7 @@
  * Exit 0 = all contracts hold.
  *
  * NOTE: the probe creates ONE throwaway account (gate_probe_*). The owner
- * will receive its alert email at ahmedelbaz28@gmail.com — clicking
+ * will receive its alert email at ahmdelbaz28@gmail.com — clicking
  * "Approve/Reject" there is the final human proof of the email-action loop.
  * The account can be deleted from the dashboard afterwards.
  */
@@ -170,7 +170,7 @@ try {
 console.log("");
 if (failures === 0) {
   console.log(`ALL APPROVAL-GATE CONTRACTS HOLD (production) — probe user: ${USERNAME}`);
-  console.log("التنبيه البريدي يجب أن يصل الآن إلى ahmedelbaz28@gmail.com — زر القبول/الرفض من البريد هو الإثبات البشري الأخير.");
+  console.log("التنبيه البريدي يجب أن يصل الآن إلى ahmdelbaz28@gmail.com — زر القبول/الرفض من البريد هو الإثبات البشري الأخير.");
   process.exit(0);
 } else {
   console.log(`${failures} FAILURES — probe user: ${USERNAME}`);

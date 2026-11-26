@@ -1,7 +1,7 @@
 // Web-vitals style metrics on the LIVE homepage + courses page (real Chrome).
 import { chromium } from "playwright";
 
-const BASE = process.env.BASE_URL || "https://ahmedelbaz28-ahmdrtap.hf.space";
+const BASE = process.env.BASE_URL || "https://ahmdelbaz28-ahmdrtap.hf.space";
 const FWD = process.env.FWD_HOST || "";
 
 async function measure(page, url, label) {

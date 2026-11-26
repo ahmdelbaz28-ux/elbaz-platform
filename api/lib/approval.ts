@@ -279,7 +279,7 @@ export function verifyApprovalActionToken(token: string): ApprovalTokenVerdict {
 export function adminAlertEmail(): string | null {
   const v = (env.ADMIN_ALERT_EMAIL || "").trim().toLowerCase();
   if (v.includes("@")) return v;
-  return "ahmedelbaz28@gmail.com";
+  return "ahmdelbaz28@gmail.com";
 }
 
 async function loadAdminIds(): Promise<number[]> {
