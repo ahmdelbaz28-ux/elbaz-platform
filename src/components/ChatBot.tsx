@@ -556,7 +556,7 @@ function ComposerRow({ value, onValueChange, onKeyDown, taRef, fileInputRef, onP
         <button
           onClick={doSend}
           disabled={!canSend}
-          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white transition-all hover:shadow-lg hover:shadow-cyan-500/25 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:shadow-none"
+          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-700 to-blue-600 text-white transition-all hover:shadow-lg hover:shadow-cyan-500/25 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:shadow-none"
           aria-label={lang === "ar" ? "إرسال" : "Send"}
         >
           <Send className="h-4 w-4" />
@@ -2141,7 +2141,7 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
   else windowShellClass += "w-[420px] h-[600px] rounded-2xl";
 
   let windowInnerClass = "relative h-full flex flex-col overflow-hidden ";
-  if (isMinimized) windowInnerClass += "bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full cursor-pointer";
+  if (isMinimized) windowInnerClass += "bg-gradient-to-br from-cyan-700 to-blue-600 rounded-full cursor-pointer";
   else {
     windowInnerClass += "bg-[#0a1019] border border-[#1e2d3d] shadow-2xl shadow-black/50 ";
     windowInnerClass += isMobileViewport ? "rounded-none" : "rounded-2xl";
@@ -2154,14 +2154,14 @@ export default function ChatBot() { // NOSONAR — chatbot component with SSE st
         <button
           ref={fabRef}
           onClick={handleFabClick}
-          className={"fixed z-[100] w-10 h-10 md:w-14 md:h-14 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/25 flex items-center justify-center transition-all duration-300 hover:scale-110 hover:shadow-cyan-500/40 active:scale-95 chatbot-fab transform-gpu will-change-transform" +
+          className={"fixed z-[100] w-10 h-10 md:w-14 md:h-14 rounded-full bg-gradient-to-br from-cyan-700 to-blue-600 text-white shadow-lg shadow-cyan-500/25 flex items-center justify-center transition-all duration-300 hover:scale-110 hover:shadow-cyan-500/40 active:scale-95 chatbot-fab transform-gpu will-change-transform" +
             (fabHidden ? " fab-scroll-hidden" : "")}
           aria-label={lang === "ar" ? "\u0641\u062a\u062d \u0627\u0644\u0645\u0633\u0627\u0639\u062f \u0627\u0644\u0630\u0643\u064a" : "Open AI Assistant"}
         >
           <div className="relative">
             <Bot className="w-5 h-5 md:w-6 md:h-6" />
             {unreadCount > 0 && (
-              <span className="absolute -top-2 -right-2 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+              <span className="absolute -top-2 -right-2 w-4 h-4 bg-red-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
                 {unreadCount > 9 ? "9+" : unreadCount}
               </span>
             )}

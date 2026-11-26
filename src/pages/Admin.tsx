@@ -1158,7 +1158,7 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                             <div className="flex items-center gap-2">
                               <Button
                                 size="sm"
-                                className="bg-emerald-600 text-white hover:bg-emerald-500"
+                                className="bg-emerald-600 text-[#04121c] hover:bg-emerald-500"
                                 disabled={approveUserMutation.isPending}
                                 data-testid={`approve-${u.username}`}
                                 onClick={() => approveUserMutation.mutate({ userId: u.id })}
@@ -1254,7 +1254,7 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
                                   <Badge variant="outline" className="border-amber-500/40 text-xs text-amber-300" data-testid={`status-pending-${u.username}`}>{isRTL ? "بانتظار موافقتك" : "Awaiting your approval"}</Badge>
                                   <Button
                                     size="sm"
-                                    className="h-7 bg-emerald-600 px-2 text-xs text-white hover:bg-emerald-500"
+                                    className="h-7 bg-emerald-600 px-2 text-xs text-[#04121c] hover:bg-emerald-500"
                                     disabled={approveUserMutation.isPending}
                                     title={isRTL ? "قبول الحساب من هنا مباشرة — الدخول سيتاح فورًا" : "Approve right here — sign-in unlocks immediately"}
                                     data-testid={`approve-row-${u.username}`}
@@ -2478,7 +2478,7 @@ export default function Admin() { // NOSONAR — admin dashboard with many CMS/C
           <DialogHeader><DialogTitle className="text-foreground">{isRTL ? "حذف الثيم" : "Delete Theme"}</DialogTitle><DialogDescription className="text-text-muted">{isRTL ? "هل أنت متأكد من حذف هذا الثيم؟" : "Are you sure you want to delete this theme?"}</DialogDescription></DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteConfirmId(null)} className="border-border text-text-muted">{isRTL ? "إلغاء" : "Cancel"}</Button>
-            <Button variant="destructive" onClick={() => deleteTheme.mutate({ id: Number(deleteConfirmId) })} className="bg-[#f43f5e] text-white">{isRTL ? "حذف" : "Delete"}</Button>
+            <Button variant="destructive" onClick={() => deleteTheme.mutate({ id: Number(deleteConfirmId) })} className="bg-[#e11d48] text-white">{isRTL ? "حذف" : "Delete"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

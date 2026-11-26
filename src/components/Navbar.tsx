@@ -202,7 +202,7 @@ export default function Navbar() {
                   {user?.avatar ? (
                     <img src={user.avatar} alt="" className="h-6 w-6 rounded-full object-cover" />
                   ) : (
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-accent text-[11px] font-bold text-white">{(user?.name || user?.username || "U").charAt(0).toUpperCase()}</div>
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-accent text-[11px] font-bold text-[#0a0e17]">{(user?.name || user?.username || "U").charAt(0).toUpperCase()}</div>
                   )}
                   <span className="max-w-[100px] truncate text-text-secondary">{user?.name || user?.username}</span>
                   <ChevronDown className={`h-3.5 w-3.5 text-text-muted transition-transform duration-200 ${userMenuOpen ? "rotate-180" : ""}`} />

@@ -159,7 +159,7 @@ export default function QuizComponent({ lessonId }: QuizComponentProps) {
             size="sm"
             onClick={handleFinish}
             disabled={answers.length === 0 || submitMutation.isPending}
-            className="bg-[#10b981] text-white hover:bg-[#059669]"
+            className="bg-[#10b981] text-[#04121c] hover:bg-[#059669]"
           >
             {t("finish")}
           </Button>

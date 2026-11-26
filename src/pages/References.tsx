@@ -123,7 +123,7 @@ function FileCard({ item, lang, isAdmin, isDownloading, onDownload, onDelete }: 
           <Button
             onClick={() => onDownload(item.id, item.fileName)}
             disabled={isDownloading}
-            className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-600 hover:shadow-md hover:shadow-cyan-500/20"
+            className="flex-1 bg-gradient-to-r from-cyan-700 to-blue-600 hover:shadow-md hover:shadow-cyan-500/20"
             size="sm"
           >
             {isDownloading ? (
@@ -319,7 +319,7 @@ export default function References() {
             <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
               <div>
                 <div className="mb-3 flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 shadow-lg shadow-cyan-500/25">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-700 to-blue-600 shadow-lg shadow-cyan-500/25">
                     <FileBox className="h-7 w-7 text-white" />
                   </div>
                   <h1 className="text-3xl font-bold text-white md:text-4xl">
@@ -389,7 +389,7 @@ export default function References() {
                 {isAdmin && (
                   <Button
                     onClick={() => setShowUploadModal(true)}
-                    className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:shadow-lg hover:shadow-cyan-500/25"
+                    className="bg-gradient-to-r from-cyan-700 to-blue-600 hover:shadow-lg hover:shadow-cyan-500/25"
                   >
                     <Upload className="h-4 w-4 mr-1.5" />
                     {lang === "ar" ? "رفع ملف" : "Upload File"}
@@ -719,7 +719,7 @@ function UploadModal({ lang, onClose, onUploaded, getUploadUrl, createReference 
           <Button
             onClick={handleUpload}
             disabled={uploadDisabled}
-            className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-600"
+            className="flex-1 bg-gradient-to-r from-cyan-700 to-blue-600"
           >
             {uploading ? (
               <Loader2 className="h-4 w-4 animate-spin" />

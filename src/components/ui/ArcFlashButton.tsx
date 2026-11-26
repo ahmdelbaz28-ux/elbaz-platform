@@ -90,7 +90,7 @@ export default function ArcFlashButton({
     >
       <button
         {...props}
-        className={`relative h-12 gap-2 overflow-hidden rounded-lg px-7 text-sm transition-all duration-200 ${baseClass} ${
+        className={`relative inline-flex h-12 items-center justify-center gap-2 overflow-hidden rounded-lg px-7 text-sm transition-all duration-200 ${baseClass} ${
           hovering
             ? "shadow-[0_0_20px_rgba(6,182,212,0.5),0_0_40px_rgba(6,182,212,0.2)]"
             : "shadow-none"

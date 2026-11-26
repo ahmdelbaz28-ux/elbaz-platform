@@ -640,7 +640,7 @@ function LessonNotesPanel({ lessonId, courseId, playerRef, lang, onSeek }: Lesso
             <button
               onClick={handleAddNote}
               disabled={!draft.trim() || createNote.isPending}
-              className="rounded-lg bg-[#06b6d4] px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#0891b2] disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg bg-[#06b6d4] px-4 py-1.5 text-xs font-semibold text-[#04121c] transition-colors hover:bg-[#0891b2] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {createNote.isPending ? (ar ? "جاري الحفظ..." : "Saving...") : (ar ? "حفظ الملحوظة" : "Save note")}
             </button>
@@ -659,7 +659,7 @@ function LessonNotesPanel({ lessonId, courseId, playerRef, lang, onSeek }: Lesso
                 <button
                   onClick={() => handleSeekTo(note.timestampSeconds as number)}
                   title={ar ? "اضغط للرجوع لهذه اللحظة" : "Click to seek to this moment"}
-                  className="shrink-0 rounded bg-[rgba(6,182,212,0.15)] px-2 py-1 font-mono text-xs font-bold text-[#06b6d4] transition-colors hover:bg-[#06b6d4] hover:text-white"
+                  className="shrink-0 rounded bg-[rgba(6,182,212,0.15)] px-2 py-1 font-mono text-xs font-bold text-[#06b6d4] transition-colors hover:bg-[#06b6d4] hover:text-[#04121c]"
                 >
                   {formatNoteTimestamp(note.timestampSeconds)}
                 </button>
@@ -1508,7 +1508,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                         onClick={expandMiniPlayer}
                         aria-label={lang === "ar" ? "توسيع الفيديو" : "Expand player"}
                         title={lang === "ar" ? "توسيع" : "Expand"}
-                        className="rounded-lg bg-black/70 p-1.5 text-white transition-colors hover:bg-[#06b6d4]"
+                        className="rounded-lg bg-black/70 p-1.5 text-white transition-colors hover:bg-[#06b6d4] hover:text-[#04121c]"
                       >
                         <Maximize className="h-3.5 w-3.5" />
                       </button>
@@ -1516,7 +1516,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                         onClick={closeMiniPlayer}
                         aria-label={lang === "ar" ? "إيقاف وإغلاق النافذة العائمة" : "Pause and close mini-player"}
                         title={lang === "ar" ? "إيقاف" : "Pause"}
-                        className="rounded-lg bg-black/70 p-1.5 text-white transition-colors hover:bg-[#ef4444]"
+                        className="rounded-lg bg-black/70 p-1.5 text-white transition-colors hover:bg-[#dc2626]"
                       >
                         <X className="h-3.5 w-3.5" />
                       </button>
@@ -1553,7 +1553,7 @@ export default function CourseDetail() { // NOSONAR — large course-detail page
                               <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                                 <Link
                                   to="/login"
-                                  className="inline-flex items-center gap-2 rounded-lg bg-[#06b6d4] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#0891b2]"
+                                  className="inline-flex items-center gap-2 rounded-lg bg-[#06b6d4] px-5 py-2.5 text-sm font-semibold text-[#04121c] transition-colors hover:bg-[#0891b2]"
                                   data-testid="lesson-login-wall"
                                 >
                                   {lang === "en" ? "Sign In" : "تسجيل الدخول"}

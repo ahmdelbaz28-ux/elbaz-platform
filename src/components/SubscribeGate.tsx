@@ -101,7 +101,7 @@ export default function SubscribeGate({ lang, channelUrl, days, onUnlocked }: Su
         <button
           type="button"
           onClick={openChannel}
-          className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#ff0000] px-4 py-2.5 text-sm font-bold text-white shadow-[0_8px_24px_rgba(255,0,0,0.25)] transition-transform hover:scale-[1.02] active:scale-[0.99]"
+          className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#e60000] px-4 py-2.5 text-sm font-bold text-white shadow-[0_8px_24px_rgba(255,0,0,0.25)] transition-transform hover:scale-[1.02] active:scale-[0.99]"
           data-testid="subscribe-gate-open"
         >
           <Youtube className="h-5 w-5" aria-hidden="true" />

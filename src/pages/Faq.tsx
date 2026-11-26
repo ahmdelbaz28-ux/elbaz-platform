@@ -174,7 +174,7 @@ export default function Faq() {
         <div className="relative overflow-hidden border-b border-border bg-gradient-to-br from-cyan-600/10 to-blue-600/10">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgba(6,182,212,0.15),transparent_60%)]" />
           <div className="relative mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8 text-center">
-            <div className="mb-4 flex h-14 w-14 mx-auto items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 shadow-lg shadow-cyan-500/25">
+            <div className="mb-4 flex h-14 w-14 mx-auto items-center justify-center rounded-xl bg-gradient-to-br from-cyan-700 to-blue-600 shadow-lg shadow-cyan-500/25">
               <HelpCircle className="h-8 w-8 text-white" />
             </div>
             <h1 className="text-3xl font-bold text-white md:text-4xl mb-3">
@@ -229,7 +229,7 @@ export default function Faq() {
             </p>
             <Link
               to="/support"
-              className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:shadow-lg hover:shadow-cyan-500/25"
+              className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-cyan-700 to-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:shadow-lg hover:shadow-cyan-500/25"
             >
               <MessageCircle className="h-4 w-4" />
               {lang === "ar" ? "تواصل مع الدعم" : "Contact Support"}

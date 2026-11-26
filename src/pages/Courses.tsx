@@ -236,7 +236,7 @@ export default function Courses() {
             {lang === "en" ? "All" : "الكل"} ({totalCount})
           </button>
 
-          <button data-testid="filter-free" onClick={() => updateParams((next) => { next.set("type", "free"); })} className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${selectedType === "free" ? "bg-emerald-600 text-white" : "border border-border text-text-muted hover:border-emerald-600"}`}>
+          <button data-testid="filter-free" onClick={() => updateParams((next) => { next.set("type", "free"); })} className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${selectedType === "free" ? "bg-emerald-600 text-[#04121c]" : "border border-border text-text-muted hover:border-emerald-600"}`}>
             {t("free")} ({freeCount})
           </button>
 
