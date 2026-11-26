@@ -89,20 +89,56 @@ interface ChatResponse {
   message?: string;
 }
 
-async function chat(cookie: string, body: Record<string, unknown>, timeoutMs = 180_000): Promise<{ status: number; data: ChatResponse }> {
-  const res = await fetch(`${BASE}/api/chatbot`, {
-    method: "POST",
-    headers: { ...H, Cookie: cookie },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  let data: ChatResponse = {};
+/** One raw attempt. status 0 = network error / timeout (transient by definition). */
+async function chatOnce(cookie: string, body: Record<string, unknown>, timeoutMs: number): Promise<{ status: number; data: ChatResponse }> {
   try {
-    data = (await res.json()) as ChatResponse;
+    const res = await fetch(`${BASE}/api/chatbot`, {
+      method: "POST",
+      headers: { ...H, Cookie: cookie },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    let data: ChatResponse = {};
+    try {
+      data = (await res.json()) as ChatResponse;
+    } catch {
+      data = {};
+    }
+    return { status: res.status, data };
   } catch {
-    data = {};
+    return { status: 0, data: {} };
   }
-  return { status: res.status, data };
+}
+
+/** Statuses the chatbot endpoint returns while the AI cascade is briefly
+ *  cooling down / rate-limited upstream — always worth one more try. */
+const TRANSIENT_STATUS = new Set([429, 500, 502, 503, 504, 529]);
+
+/**
+ * Chat with in-place resilience: transient provider blips (a 503 while every
+ * lane is briefly cooling down, a 429, a dropped connection, or a 200 with an
+ * EMPTY reply — the kilo-auto empty-content failure mode) are retried here
+ * (x3, 20s/40s backoff) so one bad second cannot redden the whole deploy run.
+ * Real contract breaks (non-transient status or wrong content) still fail the
+ * gate exactly as before, and the job-level "2 attempts" pattern remains as
+ * the outer safety net.
+ */
+async function chat(cookie: string, body: Record<string, unknown>, timeoutMs = 180_000): Promise<{ status: number; data: ChatResponse }> {
+  let last: { status: number; data: ChatResponse } = { status: 0, data: {} };
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    last = await chatOnce(cookie, body, timeoutMs);
+    const reply = last.data.reply ?? "";
+    const transient = last.status === 0 || TRANSIENT_STATUS.has(last.status) || (last.status === 200 && !reply);
+    if (!transient) return last;
+    if (attempt < 3) {
+      const waitMs = 20_000 * attempt;
+      console.log(
+        `  ↻ transient (HTTP ${last.status}${last.status === 200 ? " empty-reply" : ""}) — retrying in ${Math.round(waitMs / 1000)}s (attempt ${attempt + 1}/3)`,
+      );
+      await new Promise<void>((resolve) => setTimeout(resolve, waitMs));
+    }
+  }
+  return last;
 }
 
 async function main(): Promise<void> {
