@@ -383,7 +383,9 @@ describe("Chatbot Module", () => {
 
       expect(result.success).toBe(true);
       expect(result.reply).toBe("Hello! I can confirm I am the Elbaz assistant.");
-      expect(result.model).toBe("minimaxai/minimax-m3");
+      // ✅ 2026-11-26 cascade refresh: the legacy lane walks NVIDIA_MODELS —
+      // the first LIVE id wins (minimaxai/minimax-m3 is the pruned tail id).
+      expect(result.model).toBe("nvidia/nemotron-3-ultra-550b-a55b");
 
       // NVIDIA recorded as healthy; OpenRouter untouched.
       const stats = getChatbotStats();
@@ -542,7 +544,8 @@ describe("Chatbot Module", () => {
 
       expect(result.success).toBe(true);
       expect(result.reply).toBe("Deep NVIDIA reply!");
-      expect(result.model).toBe("minimaxai/minimax-m3");
+      // ✅ 2026-11-26 cascade refresh: NVIDIA_MODELS[0] is the served id.
+      expect(result.model).toBe("nvidia/nemotron-3-ultra-550b-a55b");
       const firstProviderCall = calledUrls.find((u) => !u.includes("/auth/key"));
       expect(firstProviderCall).toContain("integrate.api.nvidia.com");
     });

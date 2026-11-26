@@ -85,7 +85,24 @@ export interface ChatApiMessage {
 export const NVIDIA_API_KEY =
   env.NVIDIA_API_KEY || process.env.NVIDIA_API_KEY || "";
 export const NVIDIA_ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions";
-export const NVIDIA_MODEL = "minimaxai/minimax-m3";
+// ✅ ROOT-CURE (2026-11-26, owner report "الشات بوت يرجع 503 — كل المزودات فشلت"):
+// the legacy lane dialed ONE hardcoded id (minimaxai/minimax-m3) whose catalog
+// entry has drifted — every attempt failed `!response.ok` SILENTLY (non-401
+// failures had no log line), drove nvidiaConsecFails past
+// MAX_CONSEC_NVIDIA_FAILS and left the whole NVIDIA tier rotating through
+// 2-minute cooldowns with ZERO log evidence. The lane now walks a small
+// cascade of LIVE catalog ids — headlined by nvidia/nemotron-3-ultra-550b-a55b,
+// proven serving in production (2026-11-26T14:25:21Z, attempt 2, 11.5s) —
+// gated by the live discovery registry exactly like the Groq lane, so catalog
+// rotation SKIPS dead ids instead of burning silent failures.
+export const NVIDIA_MODELS: string[] = [
+  "nvidia/nemotron-3-ultra-550b-a55b",             // proven live in prod 2026-11-26 (11.5s reply)
+  "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", // live catalog (dynamic-router evidence, never 410)
+  "openai/gpt-oss-120b",                           // NVIDIA-hosted GPT-OSS 120B reasoning
+  "minimaxai/minimax-m3",                          // legacy id — kept LAST; discovery prunes when dead
+];
+/** Streaming lane's TIER-1 headline id — first id of the live cascade. */
+export const NVIDIA_MODEL = NVIDIA_MODELS[0];
 
 // ── TIER 2: Groq — Tertiary (free ultra-fast models) ──────────────────
 // Order matters for BOTH lanes: instant starts at index 0 (Groq is its FIRST
@@ -96,14 +113,19 @@ export const NVIDIA_MODEL = "minimaxai/minimax-m3";
 export const GROQ_API_KEY =
   env.GROQ_API_KEY || process.env.GROQ_API_KEY || "";
 export const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
+// ✅ CATALOG REFRESH (2026-11-26, live console.groq.com/docs/models): the old
+// static list carried ids Groq has since DEPRECATED (qwen/qwen3-32b and
+// meta-llama/llama-4-scout per the 2026-06-17 deprecation email) or superseded
+// (kimi-k2-instruct → -0905; qwen3.6-27b → 3.8) — every sweep burned silent
+// fast 404/410 failures before reaching a live id. Now the sweep leads with
+// Groq's CURRENT production models; discovery gating prunes any future drift.
 export const GROQ_MODELS = [
-  "llama-3.3-70b-versatile",                    // fast, best all-round quality — safe for instant's short budgets
-  "openai/gpt-oss-120b",                        // 120B reasoning — thinking-grade quality on Groq
-  "moonshotai/kimi-k2-instruct",                // very strong instruct MoE
-  "qwen/qwen3-32b",                             // reasoning (think-filter strips <think>)
-  "qwen/qwen3.6-27b",                           // newer Qwen generation
-  "llama-3.1-8b-instant",                       // fastest safety net
-  "meta-llama/llama-4-scout-17b-16e-instruct",  // multimodal-capable fallback
+  "openai/gpt-oss-120b",                        // 120B reasoning — thinking-grade quality on Groq (production)
+  "llama-3.3-70b-versatile",                    // fast, best all-round quality — safe for instant's short budgets (production)
+  "openai/gpt-oss-20b",                         // 20B fast reasoning (production)
+  "moonshotai/kimi-k2-instruct-0905",           // very strong instruct MoE (live catalog)
+  "qwen/qwen3.8-27b",                           // newest Qwen generation (preview)
+  "llama-3.1-8b-instant",                       // fastest safety net (production)
 ];
 
 /**
@@ -277,7 +299,12 @@ export async function tryGroq(
     if (!response.ok) {
       chatHealth.groqConsecFails++;
       chatHealth.groqLastFailTime = Date.now();
-      discardBody(response);
+      // ✅ ROOT-CURE (2026-11-26): same no-silent-failure contract as the
+      // NVIDIA lane — the status + provider snippet land in the logs so a
+      // catalog drift (404/410) or a quota wall (429) is diagnosable the
+      // moment it happens instead of hiding behind a bare null.
+      const detail = (await response.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 180);
+      logger.warn("[Chatbot/Groq] request failed (non-auth)", { status: response.status, model: modelId, detail });
       return null;
     }
 
@@ -290,6 +317,7 @@ export async function tryGroq(
     if (data.error) {
       chatHealth.groqConsecFails++;
       chatHealth.groqLastFailTime = Date.now();
+      logger.warn("[Chatbot/Groq] provider error envelope", { model: modelId, error: String(data.error).slice(0, 180) });
       return null;
     }
 
@@ -352,6 +380,28 @@ export async function tryNvidia(
   tuning: ModeTuning = MODE_TUNING.thinking,
   abortSignal?: AbortSignal,
 ): Promise<{ reply: string; model: string } | null> {
+  // ✅ ROOT-CURE (2026-11-26): walk the LIVE cascade instead of one hardcoded
+  // id — a dead catalog entry can no longer kill the whole NVIDIA tier
+  // silently. Discovery gating skips drifted ids (same contract as the Groq
+  // lane); a 401/403 marks the key dead and stops the walk immediately.
+  for (const modelId of NVIDIA_MODELS) {
+    if (abortSignal?.aborted) return null; // abandoned request never dials the next id
+    if (!isDiscoveredModelId("nvidia", modelId)) continue;
+    const result = await tryNvidiaModel(messages, systemPrompt, modelId, timeoutMs, tuning, abortSignal);
+    if (result) return result;
+    if (chatHealth.nvidiaKeyValid === false) return null; // auth rejected — more ids won't help
+  }
+  return null;
+}
+
+async function tryNvidiaModel(
+  messages: ChatApiMessage[],
+  systemPrompt: string,
+  modelId: string,
+  timeoutMs: number,
+  tuning: ModeTuning = MODE_TUNING.thinking,
+  abortSignal?: AbortSignal,
+): Promise<{ reply: string; model: string } | null> {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   try {
     const controller = new AbortController();
@@ -366,7 +416,7 @@ export async function tryNvidia(
       // ✅ Review fix: caller abort cancels the in-flight NVIDIA fetch.
       signal: withCallerAbort(abortSignal, controller.signal),
       body: JSON.stringify({
-        model: NVIDIA_MODEL,
+        model: modelId,
         messages: [
           { role: "system", content: systemPrompt },
           ...messages.map((m) => ({ role: m.role, content: m.content })),
@@ -390,7 +440,12 @@ export async function tryNvidia(
     if (!response.ok) {
       chatHealth.nvidiaConsecFails++;
       chatHealth.nvidiaLastFailTime = Date.now();
-      discardBody(response);
+      // ✅ ROOT-CURE (2026-11-26): non-auth failures are no longer SILENT —
+      // a 410/429/500 with zero log evidence is exactly what hid the dead
+      // hardcoded id from every diagnostic for weeks. Log status + short
+      // provider snippet, then let the cascade try the next live id.
+      const detail = (await response.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 180);
+      logger.warn("[Chatbot/NVIDIA] request failed (non-auth)", { status: response.status, model: modelId, detail });
       return null;
     }
 
@@ -403,11 +458,12 @@ export async function tryNvidia(
     if (data.error) {
       chatHealth.nvidiaConsecFails++;
       chatHealth.nvidiaLastFailTime = Date.now();
+      logger.warn("[Chatbot/NVIDIA] provider error envelope", { model: modelId, error: String(data.error).slice(0, 180) });
       return null;
     }
 
     // ✅ TOKEN OPTIMIZATION (v3.6.0): every billed call is now observable.
-    reportTokenUsage("nvidia", NVIDIA_MODEL, data.usage);
+    reportTokenUsage("nvidia", modelId, data.usage);
 
     // stripThinkBlocks: see tryGroq — zero visible reasoning, ever.
     const reply = stripThinkBlocks(data.choices?.[0]?.message?.content ?? "");
@@ -415,18 +471,19 @@ export async function tryNvidia(
     if (!reply || reply.trim().length === 0) {
       chatHealth.nvidiaConsecFails++;
       chatHealth.nvidiaLastFailTime = Date.now();
+      logger.warn("[Chatbot/NVIDIA] empty reply", { model: modelId });
       return null;
     }
 
     chatHealth.nvidiaConsecFails = 0;
     chatHealth.nvidiaLastSuccess = Date.now();
     chatHealth.nvidiaKeyValid = true;
-    return { reply: reply.trim(), model: NVIDIA_MODEL };
+    return { reply: reply.trim(), model: modelId };
   } catch (e) {
     if (timeoutId) clearTimeout(timeoutId);
     chatHealth.nvidiaConsecFails++;
     chatHealth.nvidiaLastFailTime = Date.now();
-    logger.warn("[Chatbot/NVIDIA] request failed", { error: String(e) });
+    logger.warn("[Chatbot/NVIDIA] request failed", { model: modelId, error: String(e) });
     return null;
   }
 }
