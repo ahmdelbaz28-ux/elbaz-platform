@@ -353,7 +353,7 @@ function SectionHeader({ badge, title, subtitle }: { readonly badge: string; rea
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
         transition={{ delay: 0.1, duration: 0.6 }}
-        className="mt-4 text-3xl font-bold text-[var(--animation-text)] lg:text-5xl section-header-glow"
+        className="brand-signature-line mt-4 text-3xl font-bold text-[var(--animation-text)] lg:text-5xl"
       >
         {title}
       </motion.h2>
@@ -427,9 +427,10 @@ export default function Home() { // NOSONAR — landing page with hero + feature
               short fades with tiny delays. */}
           <div className="flex-1 text-center lg:text-start">
               <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.3, ease: "easeOut" }} className="flex items-center justify-center gap-2 lg:justify-start">
-                <motion.div animate={{ opacity: [0.5, 1, 0.5], scale: [0.95, 1.05, 0.95] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}>
-                  <Zap className="h-4 w-4 text-[var(--animation-accent)]" />
-                </motion.div>
+                {/* Brand Kit §6 — one motion per screen: this badge is STATIC.
+                    The only continuous motion in the hero is the primary CTA
+                    pulse glow below. */}
+                <Zap className="h-4 w-4 text-[var(--animation-accent)]" />
                 <span className="text-xs font-medium uppercase tracking-[0.15em] text-[var(--animation-accent)]">
                   {lang === "en" ? "PREMIUM ELECTRICAL ENGINEERING" : "تعليم هندسي كهربي متميز"}
                 </span>
@@ -449,7 +450,13 @@ export default function Home() { // NOSONAR — landing page with hero + feature
 
               <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, duration: 0.4 }} className="mt-8 flex flex-col items-center gap-4 sm:flex-row lg:justify-start">
                 <Link to="/courses">
-                  <ArcFlashButton variant="primary" onClick={() => trackEvent("cta_click", { button: "explore_courses", page: "hero" })}>
+                  {/* THE hero's single continuous motion: the primary CTA pulse
+                      glow (Brand Kit §6 — التوهج النابض للإجراء الأساسي وحده). */}
+                  <ArcFlashButton
+                    variant="primary"
+                    wrapperClassName="brand-cta-glow"
+                    onClick={() => trackEvent("cta_click", { button: "explore_courses", page: "hero" })}
+                  >
                     <Zap className="h-4 w-4" />
                     {t("exploreCourses")}
                   </ArcFlashButton>
@@ -479,13 +486,15 @@ export default function Home() { // NOSONAR — landing page with hero + feature
               transform (scale/x) animates — transforms never gate LCP. */}
           <div className="mt-8 flex flex-1 justify-center lg:mt-0 lg:justify-end">
             <motion.div initial={{ opacity: 1, scale: 0.96, x: 24 }} animate={{ opacity: 1, scale: 1, x: 0 }} transition={{ duration: 0.4, ease: "easeOut" }} className="relative w-full max-w-2xl lg:max-w-[600px] xl:max-w-[700px]">
-              <motion.div animate={{ opacity: [0.4, 0.7, 0.4], scale: [1, 1.05, 1] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }} className="absolute -inset-6 rounded-[2rem] bg-gradient-to-br from-accent-secondary/20 via-accent/10 to-transparent blur-3xl" />
-              <motion.div animate={{ boxShadow: ["0 0 30px rgba(6,182,212,0.3)", "0 0 50px rgba(6,182,212,0.5)", "0 0 30px rgba(6,182,212,0.3)"] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }} className="relative z-10 overflow-hidden rounded-[1.5rem] border border-border bg-background shadow-2xl">
+              {/* Brand Kit §6 — static ambient glow (was pulsing); the frame
+                  below is static too. Zero continuous motion on the image. */}
+              <div className="absolute -inset-6 rounded-[2rem] bg-gradient-to-br from-accent-secondary/15 via-accent/8 to-transparent blur-3xl" />
+              <div className="relative z-10 overflow-hidden rounded-[1.5rem] border border-border bg-background shadow-2xl">
                 <ParallaxHeroImage src="/hero-main.webp" alt="Master Electrical Engineering with Eng. Ahmed Elbaz" />
                 <div className="absolute inset-0 bg-gradient-to-t from-background/40 via-transparent to-white/5 pointer-events-none" />
-              </motion.div>
+              </div>
 
-              <motion.div animate={{ y: [0, -8, 0] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }} className="absolute -bottom-4 -right-4 z-20 hidden lg:flex">
+              <div className="absolute -bottom-4 -right-4 z-20 hidden lg:flex">
                 <NeonGlow color="#06b6d4" className="flex items-center gap-3 rounded-2xl bg-primary p-4 border border-border shadow-xl">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-secondary/10">
                     <Star className="h-6 w-6 text-yellow-400 fill-yellow-400" />
@@ -495,14 +504,14 @@ export default function Home() { // NOSONAR — landing page with hero + feature
                     <p className="text-xs text-text-muted">Engineering Expert</p>
                   </div>
                 </NeonGlow>
-              </motion.div>
+              </div>
 
-              <motion.div animate={{ y: [0, 6, 0] }} transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut", delay: 0.5 }} className="absolute -top-2 -left-2 z-20 hidden lg:flex">
-                <motion.div animate={{ boxShadow: ["0 0 15px rgba(16,185,129,0.3)", "0 0 25px rgba(16,185,129,0.5)", "0 0 15px rgba(16,185,129,0.3)"] }} transition={{ duration: 2, repeat: Infinity }} className="flex items-center gap-2 rounded-xl bg-primary border border-border px-3 py-2 shadow-xl">
+              <div className="absolute -top-2 -left-2 z-20 hidden lg:flex">
+                <div className="flex items-center gap-2 rounded-xl bg-primary border border-border px-3 py-2 shadow-xl">
                   <Zap className="h-5 w-5 text-emerald-500" />
                   <span className="text-xs font-semibold text-foreground">{resolvedStats.totalStudents}+ {lang === "ar" ? "طالب" : "Students"}</span>
-                </motion.div>
-              </motion.div>
+                </div>
+              </div>
             </motion.div>
           </div>
         </div>
@@ -510,15 +519,16 @@ export default function Home() { // NOSONAR — landing page with hero + feature
         {/* Scroll-down indicator — mobile: in normal flow BELOW the banner
             (centered, never overlaps the hero image); desktop: unchanged
             absolute position at the section bottom (centered via inset-x +
-            flex, immune to framer-motion transform overrides). */}
-        <motion.div animate={{ y: [0, 8, 0], opacity: [0.4, 1, 0.4] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} className="relative z-20 mt-2 mb-6 flex flex-col items-center gap-2 pointer-events-none lg:absolute lg:bottom-8 lg:inset-x-0 lg:mt-0 lg:mb-0">
+            flex, immune to framer-motion transform overrides).
+            Brand Kit §6: static — no bounce loop. */}
+        <div className="relative z-20 mt-2 mb-6 flex flex-col items-center gap-2 pointer-events-none lg:absolute lg:bottom-8 lg:inset-x-0 lg:mt-0 lg:mb-0">
           <span className="text-[10px] uppercase tracking-widest text-text-muted">{lang === "ar" ? "مرر للأسفل" : "Scroll Down"}</span>
           <div className="flex h-6 w-4 items-start justify-center">
             <svg width="16" height="24" viewBox="0 0 16 24" fill="none" role="img" aria-hidden="true">
               <path d="M8 0 L8 18 M3 13 L8 18 L13 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-accent-secondary"/>
             </svg>
           </div>
-        </motion.div>
+        </div>
       </section>
 
       {/* ═══════════════════ SOFTWARE STRIP ═══════════════════ */}
@@ -801,7 +811,11 @@ export default function Home() { // NOSONAR — landing page with hero + feature
               </ul>
               <div className="mt-6 flex flex-col items-center justify-center gap-4 sm:flex-row">
                 <Link to="/register">
-                  <ArcFlashButton variant="primary" onClick={() => trackEvent("cta_click", { button: "try_ai_assistant", page: "ai_assistant_section" })}>
+                  <ArcFlashButton
+                    variant="primary"
+                    wrapperClassName="brand-signature-hover"
+                    onClick={() => trackEvent("cta_click", { button: "try_ai_assistant", page: "ai_assistant_section" })}
+                  >
                     <Zap className="h-4 w-4" />
                     {lang === "en" ? "Create an account and try it" : "أنشئ حساباً وجرّبه الآن"}
                   </ArcFlashButton>
@@ -960,7 +974,7 @@ export default function Home() { // NOSONAR — landing page with hero + feature
             </motion.p>
             <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.3 }} className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
               <Link to="/courses">
-                <Button className="glow-btn h-12 bg-gradient-to-r from-accent-secondary to-accent-secondary/80 px-7 text-sm font-semibold text-background" onClick={() => trackEvent("cta_click", { button: "get_started_free", page: "cta_banner" })}>
+                <Button className="brand-signature-hover glow-btn h-12 bg-gradient-to-r from-accent-secondary to-accent-secondary/80 px-7 text-sm font-semibold text-background" onClick={() => trackEvent("cta_click", { button: "get_started_free", page: "cta_banner" })}>
                   {t("getStartedFree")}
                 </Button>
               </Link>

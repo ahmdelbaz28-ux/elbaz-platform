@@ -13,7 +13,7 @@ import { getSystemPrompt, PROMPT_VERSION } from "../elbaz-platform/api/lib/chatb
 import { routeSkills } from "../elbaz-platform/api/lib/chatbot-skillnet";
 import { buildCablesContextBlock, hasCablesIntent } from "../elbaz-platform/api/lib/chatbot-cables";
 import { buildRefsContextBlock, hasRefsIntent, routeRefsQuery } from "../elbaz-platform/api/lib/chatbot-refs";
-import { buildSaadatContextBlock, hasSaadatIntent } from "../elbaz-platform/api/lib/chatbot-saadat";
+import { buildSaadatContextBlock } from "../elbaz-platform/api/lib/chatbot-saadat";
 
 /** Production-replica gating (the exact chatbot.ts junction, v3.9.2):
  *  cross-flags flow BOTH ways — refs receives cablesIntentActive, cables
@@ -35,7 +35,11 @@ let fail = 0;
 function check(label: string, ok: boolean, detail = ""): void {
   const safe = detail.replace(/\p{Cc}+/gu, " ");
   console.log(`${ok ? "  ✓" : "  ✗ FAIL"} ${label}${safe ? ` — ${safe}` : ""}`);
-  ok ? pass++ : fail++;
+  if (ok) {
+    pass++;
+  } else {
+    fail++;
+  }
 }
 
 interface Case {

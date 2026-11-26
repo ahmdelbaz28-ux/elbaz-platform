@@ -261,9 +261,12 @@ body {
     radial-gradient(circle at 75% 50%, rgba(255,255,255,0.03) 0%, transparent 50%);
 }
 
-/* ── Gradient text utility ── */
+/* ── Gradient text utility ──
+   Brand Kit §2: the headline keyword uses the OFFICIAL signature gradient
+   (orange #F97316 → cyan #06B6D4) — the same signature as the scroll bar,
+   splash and course-card hover, so every screenshot carries the brand mark. */
 .gradient-text {
-  background: linear-gradient(135deg, #F97316, #FBBF24);
+  background: linear-gradient(120deg, #F97316 15%, #F97316 35%, #06B6D4 85%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -1156,9 +1159,9 @@ img[loading="lazy"] {
   color: #0e7490 !important;
 }
 
-/* ── Gradient text — keep the cyan-to-teal but darken for light bg ── */
+/* ── Gradient text — signature hue, darkened for AA contrast on light bg ── */
 [data-theme="light"] .gradient-text {
-  background: linear-gradient(135deg, #0891b2, #06b6d4, #0d9488) !important;
+  background: linear-gradient(120deg, #C2410C 20%, #EA580C 40%, #0E7490 85%) !important;
   -webkit-background-clip: text !important;
   -webkit-text-fill-color: transparent !important;
   background-clip: text !important;
@@ -2038,5 +2041,39 @@ body {
   .brand-signature-card::before,
   .brand-signature-hover::after {
     transition: none;
+  }
+}
+
+/* ── Primary CTA pulse glow — THE one motion per screen (Brand Kit §6).
+   Applied to the hero's primary action button only. The glow is a
+   pseudo-element whose OPACITY animates (compositor-friendly — no
+   box-shadow animation), so the pulse costs almost nothing per frame. */
+.brand-cta-glow {
+  position: relative;
+}
+.brand-cta-glow::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 12px;
+  box-shadow: 0 0 26px rgba(6, 182, 212, 0.55);
+  opacity: 0.45;
+  animation: brand-cta-pulse 2.6s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+@keyframes brand-cta-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.75;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .brand-cta-glow::before {
+    animation: none;
+    opacity: 0.45;
   }
 }

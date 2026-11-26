@@ -1,4 +1,4 @@
-import { ChevronRight, Clock, ImageOff, Star, Users, Zap } from "lucide-react";
+import { BadgeCheck, ChevronRight, Clock, ImageOff, Star, Users, Zap } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 import { TiltCard } from "@/components/ui/motion";
@@ -212,6 +212,16 @@ export default function CourseCard({ course }: CourseCardProps) {
                       ? `${(course.studentCount / 1000).toFixed(1)}k`
                       : course.studentCount.toLocaleString()}
                     {lang === "ar" ? " طالب" : " students"}
+                  </span>
+                </div>
+                {/* Brand Kit §7 proof system — the ONE green check badge,
+                    identical language on course cards, reviews and
+                    certificates. Truthful platform-wide: completion of every
+                    course awards a verifiable certificate (QR /verify). */}
+                <div className="flex items-center gap-1" title={lang === "ar" ? "شهادة إتمام موثقة برمز تحقق فريد" : "Verifiable completion certificate"}>
+                  <BadgeCheck className="h-3.5 w-3.5 fill-[#10b981]/20 text-[#10b981]" />
+                  <span className="text-[11px] font-medium text-[#10b981]">
+                    {lang === "ar" ? "شهادة موثقة" : "Certified"}
                   </span>
                 </div>
               </div>

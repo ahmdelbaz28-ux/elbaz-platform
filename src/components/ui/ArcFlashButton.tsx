@@ -5,6 +5,10 @@ interface ArcFlashButtonProps extends React.ButtonHTMLAttributes<HTMLButtonEleme
   readonly children: React.ReactNode;
   readonly variant?: "primary" | "outline";
   readonly arcColor?: string;
+  /** Classes for the visual wrapper div (position effects like
+   *  .brand-cta-glow / .brand-signature-hover live on the wrapper —
+   *  the inner <button> has overflow-hidden and would clip them). */
+  readonly wrapperClassName?: string;
 }
 
 // Module-scope helper: fade out arcs by 0.3 and drop any that reach 0.
@@ -36,6 +40,7 @@ export default function ArcFlashButton({
   variant = "primary",
   arcColor = "#06b6d4",
   className = "",
+  wrapperClassName = "",
   ...props
 }: ArcFlashButtonProps) {
   const [arcs, setArcs] = useState<{ id: number; d: string; opacity: number }[]>([]);
@@ -83,7 +88,7 @@ export default function ArcFlashButton({
     // biome-ignore lint/a11y/noStaticElementInteractions: wrapper div for visual hover effects only; the inner <button> handles all interaction
     <div // NOSONAR — S6819: <img> is for images only; role=presentation is correct for decorative wrapper
       ref={containerRef}
-      className="relative inline-block"
+      className={`relative inline-block ${wrapperClassName}`}
       role="presentation"
       onMouseEnter={() => setHovering(true)}
       onMouseLeave={() => setHovering(false)}

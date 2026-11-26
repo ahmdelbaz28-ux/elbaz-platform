@@ -338,14 +338,17 @@ export default function CertificateCard({ data }: CertificateCardProps) {
           pointer-events: none;
         }
 
-        /* ── Gradient Bars ── */
+        /* ── Gradient Bars — the OFFICIAL brand signature (orange→cyan, 3px).
+            Brand Kit §2 forbids any other gradient in signature positions;
+            the certificate is a shareable brand asset (suggestion #5), so its
+            top/bottom bars carry the exact same signature as the site. */
         .cert-bar-top {
           position: absolute;
           top: 24px;
           left: 24px;
           right: 24px;
           height: 3px;
-          background: linear-gradient(90deg, transparent, #06b6d4, #22d3ee, #10b981, #06b6d4, transparent);
+          background: linear-gradient(90deg, transparent, #F97316 22%, #06b6d4 78%, transparent);
           z-index: 3;
         }
         .cert-bar-bottom {
@@ -354,7 +357,7 @@ export default function CertificateCard({ data }: CertificateCardProps) {
           left: 24px;
           right: 24px;
           height: 3px;
-          background: linear-gradient(90deg, transparent, #06b6d4, #22d3ee, #10b981, #06b6d4, transparent);
+          background: linear-gradient(90deg, transparent, #F97316 22%, #06b6d4 78%, transparent);
           z-index: 3;
         }
 

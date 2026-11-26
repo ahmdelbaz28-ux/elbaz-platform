@@ -144,7 +144,7 @@ async function main(): Promise<void> {
     });
     const reply = data.reply ?? "";
     check("C1 schneider endpoint 200", status === 200 && !!reply, `status=${status}`);
-    check("C2 schneider citation with Product ID", /\[Schneider Electric Egypt[^\]]*Product ID:\s*[A-Z0-9_\-]+\]/.test(reply), (reply.match(/\[Schneider Electric Egypt[^\]]*\]/) ?? [""])[0]);
+    check("C2 schneider citation with Product ID", /\[Schneider Electric Egypt[^\]]*Product ID:\s*[A-Z0-9_-]+\]/.test(reply), (reply.match(/\[Schneider Electric Egypt[^\]]*\]/) ?? [""])[0]);
     checkSoft("C3 schneider price present", /EGP|جنيه/.test(reply) && /\d{3},?\d{3}/.test(reply), "");
   }
 

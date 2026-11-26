@@ -79,7 +79,11 @@ export default function FloatingIconsBg() {
     }
   }, []);
 
-  const particles = generateParticles(25);
+  // Brand Kit motion law (#2, one-motion-per-screen): the background layer was
+  // 25 independently animated icons — visual noise that competed with the
+  // page's primary action. Reduced to FIVE barely-visible icons (opacity
+  // 0.03–0.13) sharing ONE slow drift motion. See docs/BRAND-KIT.md §6.
+  const particles = generateParticles(5);
 
   return (
     <div
@@ -98,42 +102,23 @@ export default function FloatingIconsBg() {
           height: var(--size);
           opacity: var(--opacity);
           color: hsla(var(--hue), 100%, 75%, 0.4);
-          animation-timing-function: ease-in-out;
-          animation-iteration-count: infinite;
-          animation-direction: alternate;
-          will-change: transform, opacity;
           filter: blur(0.5px);
         }
 
+        /* ONE slow drift per icon — transform only, no opacity pulse,
+           no scale/rotate. The quietest possible ambient layer. */
         @keyframes iconFloat {
-          0% {
-            transform: translate(0, 0) scale(1) rotate(0deg);
-            opacity: var(--opacity);
+          from {
+            transform: translate(0, 0);
           }
-          20% {
-            transform: translate(calc(var(--amp) * 0.4px), calc(var(--amp) * -0.2px)) scale(1.03) rotate(1deg);
-            opacity: calc(var(--opacity) * 1.4);
-          }
-          40% {
-            transform: translate(calc(var(--amp) * -0.2px), calc(var(--amp) * 0.4px)) scale(0.97) rotate(-1deg);
-            opacity: var(--opacity);
-          }
-          60% {
-            transform: translate(calc(var(--amp) * 0.3px), calc(var(--amp) * 0.3px)) scale(1.02) rotate(1deg);
-            opacity: calc(var(--opacity) * 1.3);
-          }
-          80% {
-            transform: translate(calc(var(--amp) * -0.4px), calc(var(--amp) * -0.1px)) scale(0.98) rotate(-1deg);
-            opacity: var(--opacity);
-          }
-          100% {
-            transform: translate(0, 0) scale(1) rotate(0deg);
-            opacity: var(--opacity);
+          to {
+            transform: translate(calc(var(--amp) * 0.5px), calc(var(--amp) * -0.5px));
           }
         }
 
         .floating-icons .icon {
-          animation-name: iconFloat;
+          animation: iconFloat 40s ease-in-out infinite alternate;
+          will-change: transform;
         }
 
         .floating-icons.reduced-motion .icon {
@@ -168,8 +153,9 @@ export default function FloatingIconsBg() {
             "--amp": p.amplitude,
             left: `${p.x}%`,
             top: `${p.y}%`,
-            animationDuration: `${p.duration}s`,
-            animationDelay: `${p.delay}s`,
+            // NOTE: no per-icon animationDuration/Delay — the Brand Kit
+            // one-motion rule means the whole layer drifts on the SAME
+            // 40s cycle instead of 25 desynchronized loops.
           } as React.CSSProperties}
           dangerouslySetInnerHTML={{ __html: p.svg }}
         />

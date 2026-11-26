@@ -16,7 +16,7 @@
  *    only surfaces a friendly message on FORBIDDEN.
  */
 
-import { Lock, MessageSquareText, Star } from "lucide-react";
+import { BadgeCheck, Lock, MessageSquareText, ShieldCheck, Star } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
@@ -119,7 +119,7 @@ export default function CourseReviews({ courseId, averageRating }: { readonly co
               <MessageSquareText className="h-5 w-5 text-[#06b6d4]" />
               {lang === "ar" ? "تقييمات الطلاب" : "Student Reviews"}
             </h2>
-            <div className="mt-2 flex items-center gap-2">
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
               <Stars value={Math.round(averageRating)} />
               <span className="text-sm text-[#94a3b8]">
                 {total > 0
@@ -128,6 +128,15 @@ export default function CourseReviews({ courseId, averageRating }: { readonly co
                       : `${averageRating.toFixed(1)} out of 5 (${total} review${total === 1 ? "" : "s"})`)
                   : (lang === "ar" ? "لا تقييمات بعد" : "No reviews yet")}
               </span>
+              {/* Brand Kit §7 — every proof is clickable: verify any student's
+                  certificate directly from the reviews section. */}
+              <Link
+                to="/verify"
+                className="flex items-center gap-1 text-xs font-medium text-[#10b981] transition-colors hover:text-[#34d399]"
+              >
+                <ShieldCheck className="h-3.5 w-3.5" />
+                {lang === "ar" ? "تحقق من شهادة" : "Verify a certificate"}
+              </Link>
             </div>
           </div>
 
@@ -249,7 +258,20 @@ export default function CourseReviews({ courseId, averageRating }: { readonly co
                       </span>
                     )}
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-[#f0f4f8]">{r.userName || r.userUsername || (lang === "ar" ? "طالب" : "Student")}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="truncate text-sm font-medium text-[#f0f4f8]">{r.userName || r.userUsername || (lang === "ar" ? "طالب" : "Student")}</p>
+                        {/* Brand Kit §7 proof system — ONE green check badge.
+                            Truthful by construction: the server enforces that
+                            reviews come only from enrolled students, so every
+                            published review IS a verified student. */}
+                        <span
+                          className="flex shrink-0 items-center gap-1 rounded-full bg-[rgba(16,185,129,0.12)] px-1.5 py-0.5 text-[10px] font-semibold text-[#10b981]"
+                          title={lang === "ar" ? "رأي طالب مسجل فعلياً في الكورس (تحقق خادمي)" : "Verified enrolled student (server-enforced)"}
+                        >
+                          <BadgeCheck className="h-3 w-3" />
+                          {lang === "ar" ? "طالب موثق" : "Verified"}
+                        </span>
+                      </div>
                       <Stars value={r.rating} size="h-3.5 w-3.5" />
                     </div>
                   </div>
