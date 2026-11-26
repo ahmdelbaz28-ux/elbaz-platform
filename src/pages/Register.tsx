@@ -106,10 +106,12 @@ export default function Register() {
   // keystrokes never re-read storage (the key is stable while typing), and a
   // re-read happens exactly when the URL param changes — including the strip
   // case, where the capture effect below has just written the captured code.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refCodeFromUrl is an intentional re-read trigger (not a real dependency) — when ?ref=CODE is stripped in-place, the capture effect has already persisted it and this re-read picks it up
   const storedRefCode = useMemo(() => {
     try { return localStorage.getItem("elbaz_ref") || ""; } catch { return ""; }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refCodeFromUrl is an intentional re-read trigger: when ?ref=CODE is stripped in-place, the capture effect below has already persisted it and this re-read picks it up
   }, [refCodeFromUrl]);
+
   const refCode = refCodeFromUrl || storedRefCode;
 
   useEffect(() => {
